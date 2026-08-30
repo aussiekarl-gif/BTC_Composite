@@ -547,9 +547,9 @@ def main() -> int:
             "No trades are executed."
         )
 
-        if signal == "START_DCA":
+if signal == "START_DCA":
             title = (
-                f"BTC DCA START — Risk {composite_risk:.3f}, "
+                f"BTC DCA START - Risk {composite_risk:.3f}, "
                 f"BTC {format_usd(current_price)}"
             )
             priority = "high"
@@ -557,27 +557,24 @@ def main() -> int:
 
         elif signal == "PENDING_CONFIRMATION":
             title = (
-                f"BTC DCA pending — Day {consecutive_days}/"
+                f"BTC DCA pending - Day {consecutive_days}/"
                 f"{config.confirmation_days}"
             )
             priority = "default"
             tags = "bitcoin,hourglass_flowing_sand"
 
         elif signal != previous_status:
-            title = f"BTC DCA status changed — {signal}"
+            title = f"BTC DCA status changed - {signal}"
             priority = "default"
             tags = "bitcoin,bar_chart"
 
         else:
             title = (
-                f"BTC DCA monitor — Risk {composite_risk:.3f} "
+                f"BTC DCA monitor - Risk {composite_risk:.3f} "
                 f"({signal})"
             )
             priority = "low"
             tags = "bitcoin,bar_chart"
-
-        print(message)
-        send_ntfy(config, title, message, priority, tags)
 
         return 0
 
