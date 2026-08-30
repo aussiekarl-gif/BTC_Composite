@@ -1,9 +1,19 @@
 #!/usr/bin/env python3
 """
 BTC Composite DCA Risk Proxy
+============================
 
 This script does not place trades. It sends an ntfy notification and logs
 the result.
+
+Data sources:
+- BTC price history: blockchain.com Charts API (free, keyless).
+- MVRV Z-Score, Realized Price, Puell Multiple: bitcoin-data.com API
+  (free tier, requires a token - see BITCOIN_DATA_API_TOKEN below).
+- AHR999: computed in-script from price history using the published
+  formula (5.84*log10(days_since_genesis) - 17.01 fair-value curve,
+  combined with a 200-day geometric moving average cost basis). No
+  separate API needed for this one.
 
 Composite weighting:
 - Power-law residual: 25%
@@ -15,9 +25,17 @@ Composite weighting:
 START_DCA is only triggered when:
 1. BTC price is at or below entry_price_usd
 2. Composite proxy risk is at or below risk_start_threshold
-3. Both conditions persist for confirmation_days daily runs
+3. Both conditions persist for confirmation_days consecutive runs
 
-This is NOT Benjamin Cowen's proprietary Risk Metric.
+This is NOT Benjamin Cowen's proprietary Risk Metric - it's your own
+transparent composite built from public data and formulas.
+
+Configuration split:
+- Strategy parameters (entry_price_usd, risk_start_threshold,
+  confirmation_days, the residual boundaries) live in config.json,
+  committed to the repo - these aren't secret, they're your strategy.
+- Credentials (BITCOIN_DATA_API_TOKEN, NTFY_TOPIC, NTFY_SERVER) come
+  from environment variables / GitHub Actions secrets - never committed.
 """
 
 from __future__ import annotations
@@ -45,7 +63,6 @@ if hasattr(sys.stdout, "reconfigure"):
 
 CONFIG_FILE = Path("config.json")
 DATA_DIR = Path("data")
-MANUAL_METRICS_FILE = DATA_DIR / "manual_metrics.json"
 HISTORY_FILE = DATA_DIR / "risk_history.csv"
 STATE_FILE = DATA_DIR / "state.json"
 
@@ -54,7 +71,17 @@ PRICE_HISTORY_URL = (
     "?timespan=all&format=json&sampled=false"
 )
 
+BITCOIN_DATA_API_BASE = "https://api.bitcoin-data.com"
+MVRV_ZSCORE_ENDPOINT = "/v1/mvrv-zscore/last"
+REALIZED_PRICE_ENDPOINT = "/v1/realized-price/last"
+PUELL_MULTIPLE_ENDPOINT = "/v1/puell-multiple/last"
+
 GENESIS_DATE = datetime(2009, 1, 3, tzinfo=timezone.utc)
+
+# Published AHR999 constants (5.84*log10(days) - 17.01 fair-value curve).
+AHR999_EXPONENT = 5.84
+AHR999_INTERCEPT = -17.01
+AHR999_GMA_WINDOW_DAYS = 200
 
 WEIGHTS = {
     "powerlaw": 0.25,
@@ -83,17 +110,31 @@ class Config:
     ntfy_server: str
     ntfy_topic: str
     ntfy_token: str
+    bitcoin_data_api_token: str
 
 
 def load_config() -> Config:
     if not CONFIG_FILE.exists():
         raise RuntimeError(
-            "config.json is missing. GitHub Actions should create it "
-            "from config.example.json."
+            "config.json is missing. Copy config.example.json to "
+            "config.json and fill in your strategy parameters."
         )
 
     with CONFIG_FILE.open("r", encoding="utf-8") as file:
         raw = json.load(file)
+
+    # Credentials come from environment variables (GitHub secrets),
+    # never from the committed config.json.
+    ntfy_topic = os.environ.get("NTFY_TOPIC", str(raw.get("ntfy_topic", "")))
+    ntfy_token = os.environ.get("NTFY_TOKEN", str(raw.get("ntfy_token", "")))
+    ntfy_server = os.environ.get("NTFY_SERVER") or str(raw.get("ntfy_server", "https://ntfy.sh"))
+    bitcoin_data_api_token = os.environ.get("BITCOIN_DATA_API_TOKEN", "")
+
+    if not bitcoin_data_api_token:
+        raise RuntimeError(
+            "BITCOIN_DATA_API_TOKEN is not set. This is required to fetch "
+            "MVRV Z-Score, Realized Price, and Puell Multiple."
+        )
 
     return Config(
         entry_price_usd=float(raw["entry_price_usd"]),
@@ -103,9 +144,10 @@ def load_config() -> Config:
         cheap_residual=float(raw["cheap_residual"]),
         neutral_residual=float(raw["neutral_residual"]),
         expensive_residual=float(raw["expensive_residual"]),
-        ntfy_server=str(raw["ntfy_server"]).rstrip("/"),
-        ntfy_topic=str(raw.get("ntfy_topic", "")),
-        ntfy_token=str(raw.get("ntfy_token", "")),
+        ntfy_server=ntfy_server.rstrip("/"),
+        ntfy_topic=ntfy_topic,
+        ntfy_token=ntfy_token,
+        bitcoin_data_api_token=bitcoin_data_api_token,
     )
 
 
@@ -129,13 +171,10 @@ def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
-def parse_utc_datetime(value: str) -> datetime:
-    result = datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-    if result.tzinfo is None:
-        return result.replace(tzinfo=timezone.utc)
-
-    return result.astimezone(timezone.utc)
+def parse_utc_date(value: str) -> datetime:
+    """Parse a YYYY-MM-DD date string (as returned by bitcoin-data.com's
+    'd' field) into a UTC midnight datetime."""
+    return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
 
 # ================================================================
@@ -180,63 +219,81 @@ def fit_power_law(
 
 
 # ================================================================
-# Manual metrics file
+# AHR999 (computed in-script - no separate API needed)
 # ================================================================
 
-def load_manual_metrics(config: Config) -> dict[str, float]:
+def compute_ahr999(days: np.ndarray, prices: np.ndarray) -> tuple[float, float, float]:
+    """Returns (ahr999, gma_200, fair_value_curve) using the published
+    formula: ahr999 = (price / 200-day geometric moving average)
+                     * (price / (10^(5.84*log10(days_since_genesis) - 17.01)))
     """
-    Required fields in data/manual_metrics.json:
-      as_of_utc
-      mvrv_z
-      ahr999
-      puell_multiple
-      realised_price_usd
-    """
-    if not MANUAL_METRICS_FILE.exists():
-        raise RuntimeError(
-            f"Missing {MANUAL_METRICS_FILE}. "
-            "Create the file using the supplied example."
-        )
+    current_price = float(prices[-1])
+    current_days = float(days[-1])
 
-    with MANUAL_METRICS_FILE.open("r", encoding="utf-8") as file:
-        data = json.load(file)
+    window = prices[-AHR999_GMA_WINDOW_DAYS:] if len(prices) >= AHR999_GMA_WINDOW_DAYS else prices
+    gma_200 = float(np.exp(np.mean(np.log(window))))
 
-    required = {
-        "as_of_utc",
-        "mvrv_z",
-        "ahr999",
-        "puell_multiple",
-        "realised_price_usd",
-    }
+    fair_value_curve = float(10 ** (AHR999_EXPONENT * math.log10(current_days) + AHR999_INTERCEPT))
 
-    missing = required - set(data.keys())
+    ahr999 = (current_price / gma_200) * (current_price / fair_value_curve)
+    return ahr999, gma_200, fair_value_curve
 
-    if missing:
-        raise RuntimeError(
-            f"manual_metrics.json is missing: {sorted(missing)}"
-        )
 
-    as_of = parse_utc_datetime(data["as_of_utc"])
-    age = utc_now() - as_of
+# ================================================================
+# On-chain metrics via bitcoin-data.com (MVRV Z-Score, Realized
+# Price, Puell Multiple)
+# ================================================================
+
+def _fetch_bitcoin_data_metric(endpoint: str, field: str, token: str) -> tuple[float, str]:
+    """Returns (value, date_string) for a bitcoin-data.com /last endpoint."""
+    url = f"{BITCOIN_DATA_API_BASE}{endpoint}"
+    resp = requests.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return float(data[field]), str(data["d"])
+
+
+def fetch_onchain_metrics(config: Config) -> dict[str, Any]:
+    """Fetches MVRV Z-Score, Realized Price, and Puell Multiple from
+    bitcoin-data.com, and checks each isn't stale beyond
+    config.max_metric_age_hours."""
+    mvrv_z, mvrv_date = _fetch_bitcoin_data_metric(
+        MVRV_ZSCORE_ENDPOINT, "mvrvZscore", config.bitcoin_data_api_token
+    )
+    realised_price, realised_date = _fetch_bitcoin_data_metric(
+        REALIZED_PRICE_ENDPOINT, "realizedPrice", config.bitcoin_data_api_token
+    )
+    puell_multiple, puell_date = _fetch_bitcoin_data_metric(
+        PUELL_MULTIPLE_ENDPOINT, "puellMultiple", config.bitcoin_data_api_token
+    )
+
+    oldest_date = min(
+        parse_utc_date(mvrv_date),
+        parse_utc_date(realised_date),
+        parse_utc_date(puell_date),
+    )
+    age = utc_now() - oldest_date
 
     if age > timedelta(hours=config.max_metric_age_hours):
         raise RuntimeError(
-            "manual_metrics.json is stale. "
-            f"It is {age} old; maximum permitted age is "
-            f"{config.max_metric_age_hours} hours."
+            "On-chain metrics from bitcoin-data.com are stale. "
+            f"Oldest dated value is {age} old; maximum permitted age is "
+            f"{config.max_metric_age_hours} hours. "
+            f"(mvrv={mvrv_date}, realised={realised_date}, puell={puell_date})"
         )
 
-    metrics = {
-        "mvrv_z": float(data["mvrv_z"]),
-        "ahr999": float(data["ahr999"]),
-        "puell_multiple": float(data["puell_multiple"]),
-        "realised_price_usd": float(data["realised_price_usd"]),
-    }
-
-    if metrics["realised_price_usd"] <= 0:
+    if realised_price <= 0:
         raise RuntimeError("realised_price_usd must be greater than zero.")
 
-    return metrics
+    return {
+        "mvrv_z": mvrv_z,
+        "puell_multiple": puell_multiple,
+        "realised_price_usd": realised_price,
+    }
 
 
 # ================================================================
@@ -433,12 +490,12 @@ def main() -> int:
         residual = math.log10(current_price) - fitted_log
         pct_from_trend = ((current_price / fitted_price) - 1.0) * 100
 
-        metrics = load_manual_metrics(config)
+        ahr999, gma_200, ahr999_fair_value = compute_ahr999(days, prices)
+        onchain = fetch_onchain_metrics(config)
 
-        mvrv_z = metrics["mvrv_z"]
-        ahr999 = metrics["ahr999"]
-        puell_multiple = metrics["puell_multiple"]
-        realised_price = metrics["realised_price_usd"]
+        mvrv_z = onchain["mvrv_z"]
+        puell_multiple = onchain["puell_multiple"]
+        realised_price = onchain["realised_price_usd"]
 
         price_realised_ratio = current_price / realised_price
 
@@ -520,7 +577,7 @@ def main() -> int:
             f"Power-law trend:        {format_usd(fitted_price)}\n"
             f"Price vs trend:         {pct_from_trend:+.1f}%\n"
             f"Power-law residual:     {residual:+.4f}\n\n"
-            "MANUAL METRICS\n"
+            "AUTOMATED METRICS\n"
             f"MVRV Z-Score:           {mvrv_z:.3f}\n"
             f"AHR999:                 {ahr999:.3f}\n"
             f"Realised price:         {format_usd(realised_price)}\n"
