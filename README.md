@@ -35,6 +35,27 @@ automatically; there's no dollar cutoff that blocks buying above some
 fixed price. Even in unfavourable conditions you'll see a small
 non-zero number rather than a flat "wait."
 
+
+This means your fundamentals still influence the allocation below $65k,
+but the raw price acts as a heavy discount that **kills buying entirely**
+above your chosen maximum. At $55k, for example, if your composite says
+0.72, the final becomes 0.36—cutting your weekly slice in half.
+
+Adjust `price_max_dca_usd` and `price_min_dca_usd` in `config.json` to
+match your personal risk tolerance.
+
+## Soft Price Penalty Override
+
+Even though the composite is great at measuring long-term value, it can
+still produce a surprisingly high "cheapness" score when BTC is trading
+above $60k (because metrics like MVRV might only be in "neutral"
+territory). To prevent this, a **soft price penalty factor** is applied
+directly to the final composite:
+
+- **Price ≤ `price_max_dca_usd` (e.g., 45k)** → factor = 1.0 (full composite applies)
+- **Price ≥ `price_min_dca_usd` (e.g., 65k)** → factor = 0.0 (zero allocation)
+- **Between 45k and 65k** → factor is linearly interpolated from 1.0 down to 0.0
+
 ## One-time setup
 
 ### 1. Get a free bitcoin-data.com API token
