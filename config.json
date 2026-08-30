@@ -2,7 +2,7 @@
   "entry_price_usd": 60000,
   "risk_start_threshold": 0.30,
   "confirmation_days": 2,
-  "max_metric_age_hours": 36,
+  "max_metric_age_hours": 60,
 
   "cheap_residual": -0.60,
   "neutral_residual": -0.32,
