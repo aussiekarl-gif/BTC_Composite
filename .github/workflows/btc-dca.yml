@@ -1,9 +1,9 @@
-name: BTC Composite DCA Risk Monitor
+name: BTC Composite DCA Monitor
 
 on:
   schedule:
-    # Daily, 08:15 UTC.
-    # Daily execution is required for the two-day confirmation rule.
+    # Runs daily at 08:15 UTC.
+    # Daily is needed because confirmation_days is 2.
     - cron: "15 8 * * *"
 
   workflow_dispatch:
@@ -27,13 +27,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install packages
         run: pip install -r requirements.txt
 
-      - name: Create runtime config
+      - name: Create private runtime configuration
         env:
-          CRYPTOQUANT_API_KEY: ${{ secrets.CRYPTOQUANT_API_KEY }}
-          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
         run: |
@@ -43,51 +41,21 @@ jobs:
           import json
           import os
 
-          with open("config.json", "r", encoding="utf-8") as f:
-              config = json.load(f)
+          with open("config.json", "r", encoding="utf-8") as file:
+              config = json.load(file)
 
-          config["cryptoquant_api_key"] = os.environ["CRYPTOQUANT_API_KEY"]
-          config["coinglass_api_key"] = os.environ["COINGLASS_API_KEY"]
-          config["ntfy_topic"] = os.environ["NTFY_TOPIC"]
+          config["ntfy_topic"] = os.environ.get("NTFY_TOPIC", "")
           config["ntfy_token"] = os.environ.get("NTFY_TOKEN", "")
 
-          with open("config.json", "w", encoding="utf-8") as f:
-              json.dump(config, f, indent=2)
-              f.write("\n")
+          with open("config.json", "w", encoding="utf-8") as file:
+              json.dump(config, file, indent=2)
+              file.write("\n")
           PY
 
-      - name: Restore manual realised price
-        env:
-          MANUAL_REALISED_PRICE_USD: ${{ secrets.MANUAL_REALISED_PRICE_USD }}
-        run: |
-          mkdir -p data
-
-          python - <<'PY'
-          import json
-          import os
-          from datetime import datetime, timezone
-
-          value = os.environ.get("MANUAL_REALISED_PRICE_USD")
-          if not value:
-              raise SystemExit(
-                  "MANUAL_REALISED_PRICE_USD GitHub secret is required "
-                  "while realised_price_source is set to manual."
-              )
-
-          payload = {
-              "as_of_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-              "realised_price_usd": float(value)
-          }
-
-          with open("data/manual_metrics.json", "w", encoding="utf-8") as f:
-              json.dump(payload, f, indent=2)
-              f.write("\n")
-          PY
-
-      - name: Run monitor
+      - name: Run BTC DCA monitor
         run: python btc_composite_dca.py
 
-      - name: Commit non-secret state and history
+      - name: Save state and history
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -95,6 +63,6 @@ jobs:
           git add data/risk_history.csv data/state.json
 
           git diff --cached --quiet || \
-            git commit -m "Update BTC composite DCA monitor state"
+            git commit -m "Update BTC DCA monitor history"
 
           git push
