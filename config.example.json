@@ -9,11 +9,11 @@
   "expensive_residual": 0.35,
 
   "cryptoquant_base_url": "https://api.cryptoquant.com",
-  "cryptoquant_api_key": "o7l4crwyMncCiNKbEFk4nVmQNvbhIdsaGemjRqu0cxo90CHDpIefx",
+  "cryptoquant_api_key": "CRYPTOQUANT_API-KEY",
   "cryptoquant_mvrv_endpoint": "/v2/community/bitcoin-mvrv-z-score",
 
   "coinglass_base_url": "https://open-api-v4.coinglass.com",
-  "coinglass_api_key": "83689c2f0efe472b994518d316851b37",
+  "coinglass_api_key": "COINGLASS_API_KEY",
   "coinglass_ahr999_endpoint": "/api/indicator/ahr999",
   "coinglass_puell_endpoint": "/api/indicator/puell-multiple",
 
@@ -23,6 +23,6 @@
   "realised_price_api_key_header": "Authorization",
 
   "ntfy_server": "https://ntfy.sh",
-  "ntfy_topic": "btc-yellow-a8f3k2z9",
+  "ntfy_topic": "NTFY_TOPIC",
   "ntfy_token": ""
 }
