@@ -22,6 +22,12 @@ Composite weighting:
 - Price vs realised price: 20%
 - Puell Multiple: 10%
 
+Price Penalty Factor (soft override):
+- Price ≤ price_max_dca_usd (45k) → factor = 1.0 (full composite)
+- Price ≥ price_min_dca_usd (65k) → factor = 0.0 (zero allocation)
+- Between them → linear interpolation from 1.0 to 0.0
+- Final composite = original_composite * price_factor
+
 No hard price ceiling and no on/off gate. Every run computes a
 composite_value in [0, 1] (1 = cheap, 0 = expensive) and reports a
 suggested weekly allocation: weekly_slice_pct = composite_value * 100 / 12
@@ -103,6 +109,9 @@ WEIGHTS = {
 class Config:
     max_metric_age_hours: int
 
+    price_max_dca_usd: float
+    price_min_dca_usd: float
+
     cheap_residual: float
     neutral_residual: float
     expensive_residual: float
@@ -138,6 +147,8 @@ def load_config() -> Config:
 
     return Config(
         max_metric_age_hours=int(raw["max_metric_age_hours"]),
+        price_max_dca_usd=float(raw["price_max_dca_usd"]),
+        price_min_dca_usd=float(raw["price_min_dca_usd"]),
         cheap_residual=float(raw["cheap_residual"]),
         neutral_residual=float(raw["neutral_residual"]),
         expensive_residual=float(raw["expensive_residual"]),
@@ -486,6 +497,29 @@ def main() -> int:
             )
         )
 
+        # ================================================================
+        # SOFT PRICE PENALTY OVERRIDE
+        # ================================================================
+        # Apply a linear penalty factor based purely on USD price.
+        # Price <= price_max_dca_usd (45k) -> factor = 1.0 (full composite)
+        # Price >= price_min_dca_usd (65k) -> factor = 0.0 (zero allocation)
+        # Between them -> linear interpolation from 1.0 to 0.0
+        # This ensures the fundamentals still matter, but price acts as
+        # a heavy discount that kills buying above $65k.
+        if current_price <= config.price_max_dca_usd:
+            price_factor = 1.0
+        elif current_price >= config.price_min_dca_usd:
+            price_factor = 0.0
+        else:
+            price_range = config.price_min_dca_usd - config.price_max_dca_usd
+            price_factor = (config.price_min_dca_usd - current_price) / price_range
+
+        # Multiply the original composite by the price factor.
+        # This is the FINAL composite value used for DCA.
+        composite_value = clamp(composite_value * price_factor, 0.0, 1.0)
+        composite_risk = 1.0 - composite_value
+        # ================================================================
+
         invest_pct_full = round(clamp(composite_value, 0.0, 1.0) * 100, 2)
         weekly_slice_pct = round(invest_pct_full / SPREAD_WEEKS, 4)
 
@@ -527,7 +561,9 @@ def main() -> int:
             f"AHR999 (20%):           {scores['ahr999']:.3f}\n"
             f"Price / realised (20%): {scores['price_realised']:.3f}\n"
             f"Puell (10%):            {scores['puell']:.3f}\n\n"
-            f"Composite value:        {composite_value:.3f}\n"
+            f"Composite value (raw):  {composite_value / price_factor if price_factor > 0 else 0.0:.3f}\n"
+            f"Price penalty factor:   {price_factor:.3f}\n"
+            f"Final composite value:  {composite_value:.3f}\n"
             f"Composite proxy risk:   {composite_risk:.3f}\n\n"
             f"Full allocation today:  {invest_pct_full}% of your normal DCA amount\n"
             f"This week's slice (/{SPREAD_WEEKS}): {weekly_slice_pct}%\n"
