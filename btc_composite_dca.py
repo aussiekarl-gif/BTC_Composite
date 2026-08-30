@@ -35,6 +35,9 @@ from typing import Any
 import numpy as np
 import requests
 
+# Force UTF-8 for standard output to prevent encoding crashes on runners
+if hasattr(sys.stdout, "reconfigure"):
+  sys.stdout.reconfigure(encoding="utf-8")
 
 # ================================================================
 # File locations
