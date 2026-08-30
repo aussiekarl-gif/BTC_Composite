@@ -28,6 +28,12 @@ Price Penalty Factor (soft override):
 - Between them → linear interpolation from 1.0 to 0.0
 - Final composite = original_composite * price_factor
 
+AUD Conversion (if TOTAL_CAPITAL_AUD is set):
+- Baseline is calculated to deploy the full capital in 16 weeks
+  under neutral conditions ($50k BTC, composite ≈ 0.70).
+- Each week's AUD buy = baseline × (weekly_slice_pct / 100)
+- Remaining capital is tracked via risk_history.csv.
+
 No hard price ceiling and no on/off gate. Every run computes a
 composite_value in [0, 1] (1 = cheap, 0 = expensive) and reports a
 suggested weekly allocation: weekly_slice_pct = composite_value * 100 / 12
@@ -90,7 +96,8 @@ AHR999_EXPONENT = 5.84
 AHR999_INTERCEPT = -17.01
 AHR999_GMA_WINDOW_DAYS = 200
 
-SPREAD_WEEKS = 12  # spread the full allocation across this many weekly slices
+SPREAD_WEEKS = 12          # spread the full allocation across this many weekly slices
+TARGET_WEEKS = 16          # deploy total capital over this many weeks (4 months)
 
 WEIGHTS = {
     "powerlaw": 0.25,
@@ -175,6 +182,10 @@ def format_usd(value: float) -> str:
     return f"${value:,.0f}"
 
 
+def format_aud(value: float) -> str:
+    return f"${value:,.2f}"
+
+
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
@@ -183,6 +194,27 @@ def parse_utc_date(value: str) -> datetime:
     """Parse a YYYY-MM-DD date string (as returned by bitcoin-data.com's
     'd' field) into a UTC midnight datetime."""
     return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+
+# ================================================================
+# History reader for tracking spent capital
+# ================================================================
+
+def get_total_spent_aud() -> float:
+    """Read risk_history.csv and sum the 'aud_buy' column if it exists."""
+    if not HISTORY_FILE.exists():
+        return 0.0
+
+    try:
+        with HISTORY_FILE.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            total = 0.0
+            for row in reader:
+                if "aud_buy" in row and row["aud_buy"]:
+                    total += float(row["aud_buy"])
+            return total
+    except (csv.Error, ValueError, KeyError):
+        return 0.0
 
 
 # ================================================================
@@ -412,6 +444,7 @@ def append_history(row: dict[str, Any]) -> None:
         "composite_risk",
         "invest_pct_full",
         "weekly_slice_pct",
+        "aud_buy",              # NEW
     ]
 
     new_file = not HISTORY_FILE.exists()
@@ -467,6 +500,10 @@ def main() -> int:
     try:
         config = load_config()
 
+        # --- Read total capital from environment (GitHub secret) ---
+        total_capital_aud = float(os.environ.get("TOTAL_CAPITAL_AUD", 0))
+
+        # --- Fetch price data and fit power law ---
         days, prices = fetch_price_history()
         _, exponent, fitted_logs = fit_power_law(days, prices)
 
@@ -477,7 +514,10 @@ def main() -> int:
         residual = math.log10(current_price) - fitted_log
         pct_from_trend = ((current_price / fitted_price) - 1.0) * 100
 
+        # --- Compute AHR999 (in-script) ---
         ahr999, gma_200, ahr999_fair_value = compute_ahr999(days, prices)
+
+        # --- Fetch on-chain metrics ---
         onchain = fetch_onchain_metrics(config)
 
         mvrv_z = onchain["mvrv_z"]
@@ -486,6 +526,7 @@ def main() -> int:
 
         price_realised_ratio = current_price / realised_price
 
+        # --- Calculate original composite risk ---
         composite_risk, composite_value, scores = (
             calculate_composite_risk(
                 residual=residual,
@@ -500,12 +541,6 @@ def main() -> int:
         # ================================================================
         # SOFT PRICE PENALTY OVERRIDE
         # ================================================================
-        # Apply a linear penalty factor based purely on USD price.
-        # Price <= price_max_dca_usd (45k) -> factor = 1.0 (full composite)
-        # Price >= price_min_dca_usd (65k) -> factor = 0.0 (zero allocation)
-        # Between them -> linear interpolation from 1.0 to 0.0
-        # This ensures the fundamentals still matter, but price acts as
-        # a heavy discount that kills buying above $65k.
         if current_price <= config.price_max_dca_usd:
             price_factor = 1.0
         elif current_price >= config.price_min_dca_usd:
@@ -514,15 +549,40 @@ def main() -> int:
             price_range = config.price_min_dca_usd - config.price_max_dca_usd
             price_factor = (config.price_min_dca_usd - current_price) / price_range
 
-        # Multiply the original composite by the price factor.
-        # This is the FINAL composite value used for DCA.
+        # Final composite after price penalty
         composite_value = clamp(composite_value * price_factor, 0.0, 1.0)
         composite_risk = 1.0 - composite_value
         # ================================================================
 
+        # --- Calculate percentages ---
         invest_pct_full = round(clamp(composite_value, 0.0, 1.0) * 100, 2)
         weekly_slice_pct = round(invest_pct_full / SPREAD_WEEKS, 4)
 
+        # ================================================================
+        # AUD CONVERSION
+        # ================================================================
+        if total_capital_aud > 0:
+            # Baseline: at $50k with neutral fundamentals (composite ~0.70),
+            # weekly_slice_pct = 4.375%. We set baseline to finish in exactly TARGET_WEEKS at that rate.
+            neutral_slice_at_50k = 0.04375  # 4.375%
+            baseline_weekly_aud = total_capital_aud / (TARGET_WEEKS * neutral_slice_at_50k)
+            weekly_aud_buy = baseline_weekly_aud * (weekly_slice_pct / 100)
+
+            # Read history to track how much we've already spent
+            total_spent_so_far = get_total_spent_aud()
+            remaining_capital = total_capital_aud - total_spent_so_far
+
+            # Cap this week's buy so we don't overspend
+            weekly_aud_buy = min(weekly_aud_buy, remaining_capital)
+            weekly_aud_buy = max(weekly_aud_buy, 0.0)
+        else:
+            weekly_aud_buy = 0.0
+            remaining_capital = 0.0
+            baseline_weekly_aud = 0.0
+            total_spent_so_far = 0.0
+        # ================================================================
+
+        # --- Append history (now includes aud_buy) ---
         append_history(
             {
                 "date_utc": utc_today(),
@@ -538,45 +598,71 @@ def main() -> int:
                 "composite_risk": f"{composite_risk:.4f}",
                 "invest_pct_full": f"{invest_pct_full:.2f}",
                 "weekly_slice_pct": f"{weekly_slice_pct:.4f}",
+                "aud_buy": f"{weekly_aud_buy:.2f}",
             }
         )
 
-        message = (
-            "BTC COMPOSITE DCA MONITOR\n"
-            "=========================\n\n"
-            f"Date (UTC):             {utc_today()}\n"
-            f"BTC price:              {format_usd(current_price)}\n"
-            f"Power-law trend:        {format_usd(fitted_price)}\n"
-            f"Price vs trend:         {pct_from_trend:+.1f}%\n"
-            f"Power-law residual:     {residual:+.4f}\n\n"
-            "AUTOMATED METRICS\n"
-            f"MVRV Z-Score:           {mvrv_z:.3f}\n"
-            f"AHR999:                 {ahr999:.3f}\n"
-            f"Realised price:         {format_usd(realised_price)}\n"
-            f"Price / realised price: {price_realised_ratio:.3f}x\n"
-            f"Puell Multiple:         {puell_multiple:.3f}\n\n"
-            "COMPOSITE VALUE SCORES\n"
-            f"Power law (25%):        {scores['powerlaw']:.3f}\n"
-            f"MVRV Z (25%):           {scores['mvrv_z']:.3f}\n"
-            f"AHR999 (20%):           {scores['ahr999']:.3f}\n"
-            f"Price / realised (20%): {scores['price_realised']:.3f}\n"
-            f"Puell (10%):            {scores['puell']:.3f}\n\n"
-            f"Composite value (raw):  {composite_value / price_factor if price_factor > 0 else 0.0:.3f}\n"
-            f"Price penalty factor:   {price_factor:.3f}\n"
-            f"Final composite value:  {composite_value:.3f}\n"
-            f"Composite proxy risk:   {composite_risk:.3f}\n\n"
-            f"Full allocation today:  {invest_pct_full}% of your normal DCA amount\n"
-            f"This week's slice (/{SPREAD_WEEKS}): {weekly_slice_pct}%\n"
+        # --- Build notification message ---
+        message_lines = [
+            "BTC COMPOSITE DCA MONITOR",
+            "=========================",
+            "",
+            f"Date (UTC):             {utc_today()}",
+            f"BTC price:              {format_usd(current_price)}",
+            f"Power-law trend:        {format_usd(fitted_price)}",
+            f"Price vs trend:         {pct_from_trend:+.1f}%",
+            f"Power-law residual:     {residual:+.4f}",
+            "",
+            "AUTOMATED METRICS",
+            f"MVRV Z-Score:           {mvrv_z:.3f}",
+            f"AHR999:                 {ahr999:.3f}",
+            f"Realised price:         {format_usd(realised_price)}",
+            f"Price / realised price: {price_realised_ratio:.3f}x",
+            f"Puell Multiple:         {puell_multiple:.3f}",
+            "",
+            "COMPOSITE VALUE SCORES",
+            f"Power law (25%):        {scores['powerlaw']:.3f}",
+            f"MVRV Z (25%):           {scores['mvrv_z']:.3f}",
+            f"AHR999 (20%):           {scores['ahr999']:.3f}",
+            f"Price / realised (20%): {scores['price_realised']:.3f}",
+            f"Puell (10%):            {scores['puell']:.3f}",
+            "",
+            f"Composite value (raw):  {composite_value / price_factor if price_factor > 0 else 0.0:.3f}",
+            f"Price penalty factor:   {price_factor:.3f}",
+            f"Final composite value:  {composite_value:.3f}",
+            f"Composite proxy risk:   {composite_risk:.3f}",
+            "",
+            f"Full allocation today:  {invest_pct_full}% of your normal DCA amount",
+            f"This week's slice (/{SPREAD_WEEKS}): {weekly_slice_pct}%",
+            "",
+        ]
+
+        if total_capital_aud > 0:
+            message_lines.extend([
+                f"💰 AUD DCA (this week):  {format_aud(weekly_aud_buy)} AUD",
+                f"📊 Total spent so far:   {format_aud(total_spent_so_far)} AUD",
+                f"🏦 Remaining capital:    {format_aud(remaining_capital)} AUD",
+                f"📆 Target deployment:    {TARGET_WEEKS} weeks ({TARGET_WEEKS//4} months)",
+                "",
+            ])
+        else:
+            message_lines.append("💰 TOTAL_CAPITAL_AUD not set – showing % only.")
+            message_lines.append("")
+
+        message_lines.extend([
             "Recalculated fresh every run - if conditions improve, "
             "next run's slice rises automatically. No price ceiling, "
-            "no on/off gate - there's always a number, even a small one.\n\n"
+            "no on/off gate - there's always a number, even a small one.",
+            "",
             "This is your own transparent composite proxy. "
             "It is not Benjamin Cowen's proprietary risk metric. "
-            "No trades are executed."
-        )
+            "No trades are executed.",
+        ])
+
+        message = "\n".join(message_lines)
 
         title = (
-            f"BTC DCA - {weekly_slice_pct}% this week "
+            f"BTC DCA - {format_aud(weekly_aud_buy)} AUD "
             f"(risk {composite_risk:.2f})"
         )
         priority = "default"
