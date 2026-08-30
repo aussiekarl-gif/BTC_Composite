@@ -54,6 +54,8 @@ jobs:
 
       - name: Run BTC DCA monitor
         run: python btc_composite_dca.py
+        env:
+          PYTHONIOENCODING: utf-8
 
       - name: Save state and history
         run: |
