@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-BTC Composite DCA Simulator (Streamlit Dashboard)
-==================================================
-Interactive backtest & forward-simulation of your Dynamic Composite DCA model.
-Uses Price vs 200-day SMA as a proxy for the fundamental composite.
-Supports FUTURE DATES (extends the last known price flat).
+BTC Composite DCA Simulator (Fully Flexible)
+=============================================
+Adjust risk thresholds, bias, and compare vs Equal DCA & Lump Sum.
+Supports historical data + future projection (flat price).
 """
 
 import datetime
@@ -17,18 +16,11 @@ import requests
 import streamlit as st
 
 # ================================================================
-# Configuration (Matches your config.json)
-# ================================================================
-SPREAD_WEEKS = 12
-NEUTRAL_SLICE_AT_50K = 0.04375  # 4.375%
-
-
-# ================================================================
-# Data Fetcher (cached, with future date projection)
+# Data Fetcher (with future projection)
 # ================================================================
 @st.cache_data(ttl=3600)
 def fetch_btc_history(start_date, end_date):
-    """Fetch daily BTC prices. If end_date is in the future, extends with flat price."""
+    """Fetch daily BTC prices. Extends with flat price for future dates."""
     url = "https://api.blockchain.info/charts/market-price?timespan=all&format=json&sampled=false"
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
@@ -44,13 +36,11 @@ def fetch_btc_history(start_date, end_date):
     df = pd.DataFrame(prices)
     df = df.set_index("date").sort_index()
 
-    # Filter to requested range
     if start_date:
         df = df[df.index >= start_date]
 
-    # --- Future projection logic ---
+    # Future projection (flat price)
     if end_date and end_date > df.index[-1]:
-        # Extend with flat price (last known price) for future dates
         last_price = df["price"].iloc[-1]
         last_date = df.index[-1]
         current_date = last_date + timedelta(days=1)
@@ -58,14 +48,13 @@ def fetch_btc_history(start_date, end_date):
         while current_date <= end_date:
             future_dates.append(current_date)
             current_date += timedelta(days=1)
-        
         if future_dates:
             future_df = pd.DataFrame(
                 {"price": [last_price] * len(future_dates)},
                 index=future_dates
             )
             df = pd.concat([df, future_df])
-    
+
     if end_date:
         df = df[df.index <= end_date]
 
@@ -73,59 +62,68 @@ def fetch_btc_history(start_date, end_date):
 
 
 # ================================================================
-# Core Strategy Logic
+# Core Simulation (with full parameter control)
 # ================================================================
-def simulate_dca(df, total_capital_aud, target_weeks, spread_weeks, price_max, price_min):
+def simulate_dca(df, params):
     """
-    Simulates the Composite DCA strategy on weekly data.
-    Returns a DataFrame with every weekly trade and a portfolio summary.
+    params: dict with keys:
+        total_capital, target_weeks, spread_weeks,
+        price_max, price_min,
+        fund_cheap, fund_expensive, composite_bias
     """
-    # 1. Filter to Mondays (or the closest available day of each week)
     weekly = df.resample("W-MON").first().dropna().copy()
     if weekly.empty:
         return pd.DataFrame(), {}
 
-    # 2. Calculate 200-day SMA (rolling, using original daily data)
+    # SMA
     sma_series = df["price"].rolling(window=200).mean()
     weekly["sma_200"] = sma_series.reindex(weekly.index).ffill()
 
-    # 3. Fundamental proxy: Price vs 200-day SMA
-    # Map: price/SMA = 1.0 -> score=1.0 (cheap), price/SMA = 1.5 -> score=0.0 (expensive)
+    # --- 1. Fundamental Score (user-adjustable curve) ---
+    def calc_fundamental(price, sma):
+        if sma <= 0:
+            return 0.5
+        ratio = price / sma
+        if ratio <= params["fund_cheap"]:
+            return 1.0
+        if ratio >= params["fund_expensive"]:
+            return 0.0
+        # Linear interpolation between cheap and expensive
+        return (params["fund_expensive"] - ratio) / (params["fund_expensive"] - params["fund_cheap"])
+
     weekly["f_score"] = weekly.apply(
-        lambda row: max(0.0, min(1.0, (1.5 - (row["price"] / row["sma_200"])) / 0.5))
-        if row["sma_200"] > 0 else 0.5,
+        lambda row: calc_fundamental(row["price"], row["sma_200"]),
         axis=1,
     )
 
-    # 4. Price Penalty Factor (USER FIX: clear labels)
+    # --- 2. Price Penalty (user-adjusted floor/ceiling) ---
     def calc_price_penalty(price):
-        if price <= price_max:   # Below floor -> Full buying power
+        if price <= params["price_max"]:
             return 1.0
-        if price >= price_min:   # Above ceiling -> No buying
+        if price >= params["price_min"]:
             return 0.0
-        # Linear interpolation between floor and ceiling
-        return (price_min - price) / (price_min - price_max)
+        return (params["price_min"] - price) / (params["price_min"] - params["price_max"])
 
     weekly["price_factor"] = weekly["price"].apply(calc_price_penalty)
 
-    # 5. Final Composite = Fundamental * Price Penalty
-    weekly["composite"] = weekly["f_score"] * weekly["price_factor"]
+    # --- 3. Final Composite (Fundamental * Penalty * Bias) ---
+    weekly["composite"] = weekly["f_score"] * weekly["price_factor"] * params["composite_bias"]
+    weekly["composite"] = weekly["composite"].clip(0.0, 1.0)
 
-    # 6. Weekly Slice %
-    weekly["slice_pct"] = (weekly["composite"] * 100) / spread_weeks
+    # --- 4. Slice & Baseline ---
+    weekly["slice_pct"] = (weekly["composite"] * 100) / params["spread_weeks"]
     weekly["slice_pct"] = weekly["slice_pct"].clip(lower=0)
 
-    # 7. AUD Baseline
-    baseline_weekly_aud = total_capital_aud / (target_weeks * NEUTRAL_SLICE_AT_50K)
+    baseline_weekly = params["total_capital"] / (params["target_weeks"] * 0.04375)
 
-    # 8. Simulate buying weekly
-    cash = total_capital_aud
+    # --- 5. Run simulation ---
+    cash = params["total_capital"]
     btc_held = 0.0
     total_invested = 0.0
     trades = []
 
     for idx, row in weekly.iterrows():
-        aud_buy = baseline_weekly_aud * (row["slice_pct"] / 100)
+        aud_buy = baseline_weekly * (row["slice_pct"] / 100)
         aud_buy = min(aud_buy, cash)
         aud_buy = max(aud_buy, 0.0)
 
@@ -137,287 +135,244 @@ def simulate_dca(df, total_capital_aud, target_weeks, spread_weeks, price_max, p
         else:
             btc_bought = 0.0
 
-        trades.append(
-            {
-                "date": idx,
-                "price": row["price"],
-                "sma_200": row["sma_200"],
-                "f_score": row["f_score"],
-                "price_factor": row["price_factor"],
-                "composite": row["composite"],
-                "slice_pct": row["slice_pct"],
-                "aud_buy": aud_buy,
-                "btc_bought": btc_bought,
-                "btc_held": btc_held,
-                "cash_remaining": cash,
-                "total_invested": total_invested,
-            }
-        )
+        trades.append({
+            "date": idx,
+            "price": row["price"],
+            "sma_200": row["sma_200"],
+            "f_score": row["f_score"],
+            "price_factor": row["price_factor"],
+            "composite": row["composite"],
+            "slice_pct": row["slice_pct"],
+            "aud_buy": aud_buy,
+            "btc_bought": btc_bought,
+            "btc_held": btc_held,
+            "cash_remaining": cash,
+            "total_invested": total_invested,
+        })
 
     trade_df = pd.DataFrame(trades)
-
-    # Portfolio valuation
     current_price = weekly["price"].iloc[-1] if not weekly.empty else 0
-    current_portfolio_value = btc_held * current_price
-    total_return_pct = (
-        ((current_portfolio_value / total_invested) - 1) * 100 if total_invested > 0 else 0
-    )
+    portfolio_value = btc_held * current_price
     avg_price = total_invested / btc_held if btc_held > 0 else 0
-    latest_composite = weekly["composite"].iloc[-1] if not weekly.empty else 0
-    latest_factor = weekly["price_factor"].iloc[-1] if not weekly.empty else 0
 
     summary = {
-        "total_capital": total_capital_aud,
+        "total_capital": params["total_capital"],
         "total_invested": total_invested,
         "cash_remaining": cash,
         "btc_held": btc_held,
         "avg_price": avg_price,
         "current_price": current_price,
-        "portfolio_value": current_portfolio_value,
-        "total_return_pct": total_return_pct,
-        "baseline_weekly_aud": baseline_weekly_aud,
-        "weeks_simulated": len(trade_df),
-        "latest_composite": latest_composite,
-        "latest_factor": latest_factor,
+        "portfolio_value": portfolio_value,
+        "return_pct": ((portfolio_value / total_invested) - 1) * 100 if total_invested > 0 else 0,
+        "baseline_weekly": baseline_weekly,
+        "weeks": len(trade_df),
+        "final_composite": weekly["composite"].iloc[-1] if not weekly.empty else 0,
     }
-
     return trade_df, summary
+
+
+# ================================================================
+# Comparison Strategies (Equal DCA & Lump Sum)
+# ================================================================
+def compare_strategies(df, total_capital, target_weeks, current_price):
+    """Calculate Equal DCA and Lump Sum results for the same period."""
+    weekly = df.resample("W-MON").first().dropna().copy()
+    if weekly.empty:
+        return {}, {}
+
+    n_weeks = min(len(weekly), target_weeks)
+    equal_per_week = total_capital / n_weeks if n_weeks > 0 else 0
+
+    # Equal DCA
+    btc_equal = 0.0
+    invested_equal = 0.0
+    for i in range(n_weeks):
+        price = weekly["price"].iloc[i]
+        btc_equal += equal_per_week / price
+        invested_equal += equal_per_week
+
+    port_equal = btc_equal * current_price
+    return_equal = ((port_equal / invested_equal) - 1) * 100 if invested_equal > 0 else 0
+
+    # Lump Sum (all-in on first day)
+    first_price = weekly["price"].iloc[0]
+    btc_lump = total_capital / first_price
+    port_lump = btc_lump * current_price
+    return_lump = ((port_lump / total_capital) - 1) * 100 if total_capital > 0 else 0
+
+    equal_summary = {
+        "btc": btc_equal,
+        "invested": invested_equal,
+        "portfolio": port_equal,
+        "return": return_equal,
+    }
+    lump_summary = {
+        "btc": btc_lump,
+        "invested": total_capital,
+        "portfolio": port_lump,
+        "return": return_lump,
+    }
+    return equal_summary, lump_summary
 
 
 # ================================================================
 # Streamlit UI
 # ================================================================
 st.set_page_config(page_title="BTC DCA Simulator", layout="wide")
+st.title("₿ Bitcoin DCA Simulator (Flexible Composite)")
+st.markdown("Adjust the **risk curve, bias, and speed** – compare your Dynamic DCA against Equal DCA and Lump Sum.")
 
-st.title("₿ Bitcoin DCA Simulator (Composite Model)")
-st.markdown(
-    """
-    This simulator runs your **Dynamic Composite DCA** model on historical & projected BTC data.
-    It combines a fundamental proxy (Price vs 200-day SMA) with a strict **price penalty**
-    to determine your weekly AUD buys.
-    """
-)
-
-# --- Sidebar: User Inputs ---
+# --- SIDEBAR: Full Controls ---
 with st.sidebar:
-    st.header("⚙️ Parameters")
-    total_capital = st.number_input(
-        "Total Capital (AUD)",
-        min_value=1000,
-        max_value=10_000_000,
-        value=500000,
-        step=10000,
-        help="Your total cash pool to deploy.",
-    )
+    st.header("💰 Capital & Speed")
+    total_capital = st.number_input("Total Capital (AUD)", 1000, 10_000_000, 500000, 10000)
+    target_weeks = st.slider("Target Deployment (Weeks)", 4, 52, 16, 1)
 
-    target_weeks = st.slider(
-        "Target Deployment (Weeks)",
-        min_value=4,
-        max_value=52,
-        value=16,
-        step=1,
-        help="Aim to deploy all capital within this many weeks under neutral conditions.",
-    )
+    st.divider()
+    st.header("📐 Price Penalty (USD)")
+    price_max = st.number_input("🔽 Aggressive Floor (Max DCA)", 20000, 100000, 45000, 1000,
+                                help="Below this, penalty = 1.0 (full buying power).")
+    price_min = st.number_input("🔼 Conservative Ceiling (Zero DCA)", 30000, 150000, 65000, 1000,
+                                help="Above this, penalty = 0.0 (no buying).")
+    spread_weeks = st.number_input("Spread Weeks", 4, 26, 12, 1,
+                                   help="Spread 100% allocation over this many weeks.")
+
+    st.divider()
+    st.header("🧠 Fundamental Risk Curve (SMA Proxy)")
+    st.caption("Price / 200-day SMA ratio mapping to Fundamental Score (0–1).")
+    fund_cheap = st.slider("Cheap Threshold (SMA multiple)", 0.7, 1.3, 1.0, 0.01,
+                           help="Below this ratio, Fundamental Score = 1.0 (max cheap).")
+    fund_expensive = st.slider("Expensive Threshold (SMA multiple)", 1.2, 2.5, 1.5, 0.01,
+                               help="Above this ratio, Fundamental Score = 0.0 (max expensive).")
+
+    st.divider()
+    st.header("⚖️ Composite Bias")
+    composite_bias = st.slider("Bias Multiplier", 0.5, 1.5, 1.0, 0.05,
+                               help="Scale the final composite up (aggressive) or down (conservative).")
 
     st.divider()
     st.subheader("📅 Date Range")
     today = datetime.datetime.now(timezone.utc)
-    default_start = today - timedelta(days=365 * 2)
-    
-    # Allow future end dates!
-    start_date = st.date_input(
-        "Start Date",
-        value=default_start,
-        max_value=today,  # Start must be <= today
-    )
-    end_date = st.date_input(
-        "End Date",
-        value=today + timedelta(days=90),  # Default: 3 months into future
-        min_value=today,  # End can be in the future
-    )
+    start_date = st.date_input("Start Date", value=today - timedelta(days=365*2), max_value=today)
+    end_date = st.date_input("End Date", value=today + timedelta(days=90), min_value=today)
 
-    st.divider()
-    st.subheader("📐 Strategy Anchors")
-    # FIXED: Clearer labels to avoid min/max confusion
-    price_max = st.number_input(
-        "🔽 Aggressive Floor (Max DCA)", 
-        value=45000, 
-        step=1000, 
-        help="Below this price, penalty = 1.0 (max buying power)."
-    )
-    price_min = st.number_input(
-        "🔼 Conservative Ceiling (Zero DCA)", 
-        value=65000, 
-        step=1000, 
-        help="Above this price, penalty = 0.0 (no buying)."
-    )
-    spread_weeks = st.number_input(
-        "Spread Weeks", value=12, step=1, help="Spread the full 100% allocation over this many weeks."
-    )
+    st.caption("🔬 Data: blockchain.com (free). Future dates = flat projection.")
 
-    st.divider()
-    st.caption("🔬 Data sourced from blockchain.com (free, keyless).")
-    st.caption("📈 Future dates use the last known price (flat projection).")
-    st.caption("Fundamental proxy: Price vs 200-day SMA.")
-
-# --- Fetch Data ---
-with st.spinner("Fetching historical BTC prices..."):
-    start_dt = datetime.datetime.combine(start_date, datetime.datetime.min.time(), tzinfo=timezone.utc)
-    end_dt = datetime.datetime.combine(end_date, datetime.datetime.max.time(), tzinfo=timezone.utc)
-    df = fetch_btc_history(start_dt, end_dt)
-
+# --- Load Data ---
+start_dt = datetime.datetime.combine(start_date, datetime.datetime.min.time(), tzinfo=timezone.utc)
+end_dt = datetime.datetime.combine(end_date, datetime.datetime.max.time(), tzinfo=timezone.utc)
+df = fetch_btc_history(start_dt, end_dt)
 if df.empty:
-    st.error("No data found for the selected date range. Please try a wider range.")
+    st.error("No data found. Try a wider range.")
     st.stop()
 
-# --- Run Simulation ---
-trade_df, summary = simulate_dca(
-    df,
-    total_capital,
-    target_weeks,
-    spread_weeks,
-    price_max,
-    price_min,
+# --- Build Params ---
+params = {
+    "total_capital": total_capital,
+    "target_weeks": target_weeks,
+    "spread_weeks": spread_weeks,
+    "price_max": price_max,
+    "price_min": price_min,
+    "fund_cheap": fund_cheap,
+    "fund_expensive": fund_expensive,
+    "composite_bias": composite_bias,
+}
+
+# --- Run Simulations ---
+trade_df, summary = simulate_dca(df, params)
+if trade_df.empty:
+    st.warning("No trades. Adjust parameters.")
+    st.stop()
+
+equal_summary, lump_summary = compare_strategies(
+    df, total_capital, target_weeks, summary["current_price"]
 )
 
-if trade_df.empty:
-    st.warning("No trades were executed in this period. Try adjusting the date range or price anchors.")
-    st.stop()
-
 # ================================================================
-# METRICS CARDS (UPDATED with Composite & Factor)
+# METRICS CARDS: Dynamic DCA
 # ================================================================
+st.subheader("📊 Your Dynamic DCA Performance")
 col1, col2, col3, col4, col5 = st.columns(5)
+col1.metric("💰 Invested", f"${summary['total_invested']:,.0f} AUD")
+col2.metric("₿ BTC Accumulated", f"{summary['btc_held']:.4f} BTC")
+col3.metric("💹 Avg Price", f"${summary['avg_price']:,.2f} USD")
+col4.metric("📈 Portfolio Value", f"${summary['portfolio_value']:,.0f} USD",
+            delta=f"{summary['return_pct']:+.2f}%")
+col5.metric("🧠 Final Composite", f"{summary['final_composite']:.3f}")
 
-with col1:
+# ================================================================
+# COMPARISON CARDS (Profit vs Other Strategies)
+# ================================================================
+st.subheader("⚔️ Strategy Comparison (Profit / Return)")
+comp_col1, comp_col2, comp_col3 = st.columns(3)
+
+with comp_col1:
     st.metric(
-        "💰 Total Invested",
-        f"${summary['total_invested']:,.0f} AUD",
-        help="Total capital deployed so far.",
+        "🚀 Dynamic DCA (Yours)",
+        f"${summary['portfolio_value']:,.0f} USD",
+        delta=f"{summary['return_pct']:+.2f}%",
+        help="Your composite model's result.",
     )
-
-with col2:
+with comp_col2:
     st.metric(
-        "₿ BTC Accumulated",
-        f"{summary['btc_held']:.4f} BTC",
-        help="Total Bitcoin accumulated.",
+        "📅 Equal DCA (Fixed $/week)",
+        f"${equal_summary['portfolio']:,.0f} USD",
+        delta=f"{equal_summary['return']:+.2f}%",
+        help="Same total capital, spread evenly over the period.",
     )
-
-with col3:
+with comp_col3:
     st.metric(
-        "💹 Avg Buy Price",
-        f"${summary['avg_price']:,.2f} USD",
-        help="Average purchase price.",
-    )
-
-with col4:
-    current_price = summary['current_price']
-    port_value = summary['portfolio_value']
-    invested = summary['total_invested']
-    return_pct = ((port_value / invested) - 1) * 100 if invested > 0 else 0
-    st.metric(
-        "📈 Portfolio Value",
-        f"${port_value:,.0f} USD",
-        delta=f"{return_pct:+.2f}%",
-        help="Current value of your holdings.",
-    )
-
-with col5:
-    # NEW: Composite & Factor combined metric
-    comp = summary['latest_composite']
-    factor = summary['latest_factor']
-    st.metric(
-        "🧠 Current Composite",
-        f"{comp:.3f}",
-        delta=f"Factor {factor:.2f}",
-        help="Composite = Fundamental (0-1) × Price Penalty. 1 = Max Cheap, 0 = Max Expensive.",
+        "💥 Lump Sum (All-in Day 1)",
+        f"${lump_summary['portfolio']:,.0f} USD",
+        delta=f"{lump_summary['return']:+.2f}%",
+        help="Invest everything on the first day of the backtest.",
     )
 
 # ================================================================
-# CHART: Portfolio, Price, AND Composite
+# CHART: Portfolio + Composite + Price
 # ================================================================
-st.subheader("📊 Portfolio Value Over Time (with Risk Signals)")
-
+st.subheader("📈 Portfolio Value Over Time (with Risk Signals)")
 fig = go.Figure()
 
-# Trace 1: Portfolio Value
-fig.add_trace(
-    go.Scatter(
-        x=trade_df["date"],
-        y=trade_df["btc_held"] * trade_df["price"],
-        mode="lines",
-        name="Portfolio Value (USD)",
-        line=dict(color="#F7931A", width=3),
-    )
-)
+# Portfolio Value
+fig.add_trace(go.Scatter(
+    x=trade_df["date"], y=trade_df["btc_held"] * trade_df["price"],
+    mode="lines", name="Portfolio Value (USD)", line=dict(color="#F7931A", width=3)
+))
+# BTC Price
+fig.add_trace(go.Scatter(
+    x=trade_df["date"], y=trade_df["price"],
+    mode="lines", name="BTC Price (USD)", line=dict(color="#2E86C1", width=2, dash="dot"),
+    yaxis="y2"
+))
+# Total Invested
+fig.add_trace(go.Scatter(
+    x=trade_df["date"], y=trade_df["total_invested"],
+    mode="lines", name="Total Invested (USD)", line=dict(color="#28B463", width=2, dash="dash")
+))
+# Composite Score
+fig.add_trace(go.Scatter(
+    x=trade_df["date"], y=trade_df["composite"],
+    mode="lines", name="Composite Score (0-1)", line=dict(color="#9B59B6", width=2, dash="dot"),
+    yaxis="y3"
+))
 
-# Trace 2: BTC Price (Secondary Axis)
-fig.add_trace(
-    go.Scatter(
-        x=trade_df["date"],
-        y=trade_df["price"],
-        mode="lines",
-        name="BTC Price (USD)",
-        line=dict(color="#2E86C1", width=2, dash="dot"),
-        yaxis="y2",
-    )
-)
-
-# Trace 3: Total Invested (Baseline)
-fig.add_trace(
-    go.Scatter(
-        x=trade_df["date"],
-        y=trade_df["total_invested"],
-        mode="lines",
-        name="Total Invested (USD)",
-        line=dict(color="#28B463", width=2, dash="dash"),
-    )
-)
-
-# Trace 4: Composite Score (NEW - Right Axis)
-fig.add_trace(
-    go.Scatter(
-        x=trade_df["date"],
-        y=trade_df["composite"],
-        mode="lines",
-        name="Composite Score (0-1)",
-        line=dict(color="#9B59B6", width=2, dash="dot"),
-        yaxis="y3",
-    )
-)
-
-# Layout with THREE axes
 fig.update_layout(
     xaxis=dict(title="Date", gridcolor="rgba(128,128,128,0.2)"),
     yaxis=dict(title="Portfolio / Invested ($)", tickprefix="$", gridcolor="rgba(128,128,128,0.2)"),
-    yaxis2=dict(
-        title="BTC Price ($)",
-        tickprefix="$",
-        overlaying="y",
-        side="right",
-        gridcolor="rgba(128,128,128,0)",
-    ),
-    yaxis3=dict(
-        title="Composite Score",
-        overlaying="y",
-        side="right",
-        position=0.85,  # Slightly offset from price axis
-        range=[0, 1.1],
-        gridcolor="rgba(128,128,128,0)",
-    ),
+    yaxis2=dict(title="BTC Price ($)", tickprefix="$", overlaying="y", side="right", gridcolor="rgba(128,128,128,0)"),
+    yaxis3=dict(title="Composite Score", overlaying="y", side="right", position=0.85, range=[0, 1.1], gridcolor="rgba(128,128,128,0)"),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     hovermode="x unified",
     template="plotly_dark",
     height=500,
 )
-
 st.plotly_chart(fig, use_container_width=True)
 
 # ================================================================
-# TRADE HISTORY TABLE
+# TRADE HISTORY (Full Transparency)
 # ================================================================
 st.subheader("📋 Simulated Trade History")
-
 display_df = trade_df.copy()
 display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
 display_df["price"] = display_df["price"].map("${:,.0f}".format)
@@ -430,66 +385,25 @@ display_df["btc_bought"] = display_df["btc_bought"].map("{:.6f}".format)
 display_df["btc_held"] = display_df["btc_held"].map("{:.6f}".format)
 display_df["cash_remaining"] = display_df["cash_remaining"].map("${:,.0f}".format)
 
-columns_to_show = [
-    "date",
-    "price",
-    "f_score",
-    "price_factor",
-    "composite",
-    "slice_pct",
-    "aud_buy",
-    "btc_bought",
-    "btc_held",
-    "cash_remaining",
-]
-display_df = display_df[columns_to_show]
-display_df.columns = [
-    "Date",
-    "BTC Price",
-    "Fund. Score",
-    "Penalty Factor",
-    "Composite",
-    "Slice %",
-    "AUD Buy",
-    "BTC Bought",
-    "BTC Held",
-    "Cash Left",
-]
-
+cols = ["date", "price", "f_score", "price_factor", "composite", "slice_pct", "aud_buy", "btc_bought", "btc_held", "cash_remaining"]
+display_df = display_df[cols]
+display_df.columns = ["Date", "BTC Price", "Fund. Score", "Penalty", "Composite", "Slice %", "AUD Buy", "BTC Bought", "BTC Held", "Cash Left"]
 st.dataframe(display_df, use_container_width=True, height=400)
 
 # ================================================================
-# FOOTER & SUMMARY
+# FOOTER
 # ================================================================
 st.divider()
-col_a, col_b = st.columns(2)
-with col_a:
-    st.metric(
-        "📆 Target Deployment Period",
-        f"{target_weeks} weeks ({target_weeks//4} months)",
-        help="If BTC stays at $50k and composite is 0.70, you'll finish on time.",
-    )
-with col_b:
-    st.metric(
-        "🧮 Baseline Weekly DCA",
-        f"${summary['baseline_weekly_aud']:,.0f} AUD",
-        help="The 100% baseline amount. Your actual buys are a percentage of this.",
-    )
-
 st.caption(
     f"""
-    **Simulation Summary**  
-    • Total Capital: ${summary['total_capital']:,.0f} AUD  
-    • Weeks Simulated: {summary['weeks_simulated']}  
-    • Average Buy Price: ${summary['avg_price']:,.2f} USD  
-    • Current BTC Price: ${summary['current_price']:,.2f} USD  
-    • Cash Remaining: ${summary['cash_remaining']:,.0f} AUD  
-    • Final Composite: {summary['latest_composite']:.3f}  
+    **Summary:** Total Capital: ${summary['total_capital']:,.0f} AUD | 
+    Weeks Simulated: {summary['weeks']} | 
+    Avg Buy: ${summary['avg_price']:,.2f} USD | 
+    Current Price: ${summary['current_price']:,.2f} USD
     """
 )
 st.caption(
     "⚠️ **Disclaimer:** Past performance is not indicative of future results. "
-    "Future dates are projected using flat last-known price (no price movement). "
-    "This simulation uses Price vs 200-day SMA as a proxy for the full 5-indicator composite. "
-    "Real results using MVRV, Puell, AHR999, Power-law, and Realised Price may vary."
+    "Future dates use flat last-known price. The fundamental proxy uses Price vs 200-day SMA. "
+    "Adjust the sliders to see how different risk tolerances affect your profit."
 )
