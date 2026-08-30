@@ -1,0 +1,41 @@
+name: BTC Composite DCA Monitor
+
+on:
+  schedule:
+    # 11:10am Brisbane time (AEST, UTC+10, no DST in QLD) = 01:10 UTC, every Monday.
+    - cron: "10 1 * * 1"
+  workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: write   # needed so the workflow can commit data/ back to the repo
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packages
+        run: pip install -r requirements.txt
+
+      - name: Run BTC DCA monitor
+        env:
+          BITCOIN_DATA_API_TOKEN: ${{ secrets.BITCOIN_DATA_API_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}   # optional, leave unset for ntfy.sh
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}     # optional, only if your ntfy topic needs auth
+        run: python btc_composite_dca.py
+
+      - name: Save history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/risk_history.csv
+          git diff --cached --quiet || git commit -m "Update BTC DCA monitor history $(date -u +%F)"
+          git push
