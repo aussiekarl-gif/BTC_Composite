@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+# Never commit live credentials or private ntfy details.
+config.json
+
+# Keep a committed .gitkeep only; manual data is local unless you
+# explicitly want GitHub Actions to use a repository-tracked file.
+data/manual_metrics.json
