@@ -6,6 +6,7 @@ BTC Composite DCA Simulator (Risk Band Mapping)
 - Define specific investment amounts for 10 risk bands (0.0–1.0).
 - Frequency: Daily, Weekly, or Monthly. 
 - Backtest from 2009 to the future (flat projection).
+- Scrollable chart with TradingView-style slider.
 """
 
 import datetime
@@ -251,7 +252,6 @@ with st.sidebar:
 
     # Generate 10 bands: 0.0–0.1, 0.1–0.2, ..., 0.9–1.0
     risk_bands = []
-    cols = st.columns(2)
     for i in range(10):
         low = round(i * 0.1, 1)
         high = round((i + 1) * 0.1, 1)
@@ -354,9 +354,11 @@ with comp3:
     st.metric("💥 Lump Sum (Day 1)", f"${lump_summary['portfolio']:,.0f} USD", f"{lump_summary['return']:+.2f}%")
 
 # ================================================================
-# CHART – UPDATED COLORS
+# CHART – SCROLLABLE (TradingView-style) + Updated Colors
 # ================================================================
 st.subheader("📈 Portfolio Value, Price & Composite Over Time")
+st.caption("🖱️ Drag the chart left/right to scroll, or use the slider below. Scroll to zoom.")
+
 fig = go.Figure()
 
 # Portfolio Value – BLUE
@@ -372,7 +374,7 @@ fig.add_trace(go.Scatter(
     yaxis="y2"
 ))
 
-# Total Invested – GREEN (unchanged)
+# Total Invested – GREEN
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["total_invested"],
     mode="lines", name="Total Invested (USD)", line=dict(color="#2ECC71", width=2, dash="dash")
@@ -385,11 +387,38 @@ fig.add_trace(go.Scatter(
     yaxis="y3"
 ))
 
+# --- UPDATED LAYOUT: Scrollable + Pan ---
 fig.update_layout(
-    xaxis=dict(title="Date", gridcolor="rgba(128,128,128,0.2)"),
-    yaxis=dict(title="Portfolio / Invested ($)", tickprefix="$", gridcolor="rgba(128,128,128,0.2)"),
-    yaxis2=dict(title="BTC Price ($)", tickprefix="$", overlaying="y", side="right", gridcolor="rgba(128,128,128,0)"),
-    yaxis3=dict(title="Composite Score", overlaying="y", side="right", position=0.85, range=[0, 1.1], gridcolor="rgba(128,128,128,0)"),
+    dragmode="pan",  # Click and drag to pan left/right (TradingView style)
+    xaxis=dict(
+        title="Date",
+        gridcolor="rgba(128,128,128,0.2)",
+        rangeslider=dict(
+            visible=True,
+            thickness=0.05,  # Thin slider bar at the bottom
+        ),
+        type="date"
+    ),
+    yaxis=dict(
+        title="Portfolio / Invested ($)",
+        tickprefix="$",
+        gridcolor="rgba(128,128,128,0.2)"
+    ),
+    yaxis2=dict(
+        title="BTC Price ($)",
+        tickprefix="$",
+        overlaying="y",
+        side="right",
+        gridcolor="rgba(128,128,128,0)"
+    ),
+    yaxis3=dict(
+        title="Composite Score",
+        overlaying="y",
+        side="right",
+        position=0.85,
+        range=[0, 1.1],
+        gridcolor="rgba(128,128,128,0)"
+    ),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     hovermode="x unified",
     template="plotly_dark",
