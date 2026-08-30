@@ -9,7 +9,7 @@
   "expensive_residual": 0.35,
 
   "cryptoquant_base_url": "https://api.cryptoquant.com",
-  "cryptoquant_api_key": "CRYPTOQUANT_API-KEY",
+  "cryptoquant_api_key": "CRYPTOQUANT_API_KEY",
   "cryptoquant_mvrv_endpoint": "/v2/community/bitcoin-mvrv-z-score",
 
   "coinglass_base_url": "https://open-api-v4.coinglass.com",
