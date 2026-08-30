@@ -37,7 +37,7 @@ import requests
 
 # Force UTF-8 for standard output to prevent encoding crashes on runners
 if hasattr(sys.stdout, "reconfigure"):
-  sys.stdout.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
 
 # ================================================================
 # File locations
@@ -515,31 +515,31 @@ def main() -> int:
         message = (
             "BTC COMPOSITE DCA RISK PROXY\n"
             "============================\n\n"
-            f"Date (UTC):              {utc_today()}\n"
-            f"BTC price:               {format_usd(current_price)}\n"
-            f"Power-law trend:         {format_usd(fitted_price)}\n"
-            f"Price vs trend:          {pct_from_trend:+.1f}%\n"
-            f"Power-law residual:      {residual:+.4f}\n\n"
+            f"Date (UTC):             {utc_today()}\n"
+            f"BTC price:              {format_usd(current_price)}\n"
+            f"Power-law trend:        {format_usd(fitted_price)}\n"
+            f"Price vs trend:         {pct_from_trend:+.1f}%\n"
+            f"Power-law residual:     {residual:+.4f}\n\n"
             "MANUAL METRICS\n"
-            f"MVRV Z-Score:            {mvrv_z:.3f}\n"
-            f"AHR999:                  {ahr999:.3f}\n"
-            f"Realised price:          {format_usd(realised_price)}\n"
-            f"Price / realised price:  {price_realised_ratio:.3f}x\n"
-            f"Puell Multiple:          {puell_multiple:.3f}\n\n"
+            f"MVRV Z-Score:           {mvrv_z:.3f}\n"
+            f"AHR999:                 {ahr999:.3f}\n"
+            f"Realised price:         {format_usd(realised_price)}\n"
+            f"Price / realised price: {price_realised_ratio:.3f}x\n"
+            f"Puell Multiple:         {puell_multiple:.3f}\n\n"
             "COMPOSITE VALUE SCORES\n"
-            f"Power law (25%):         {scores['powerlaw']:.3f}\n"
-            f"MVRV Z (25%):            {scores['mvrv_z']:.3f}\n"
-            f"AHR999 (20%):            {scores['ahr999']:.3f}\n"
-            f"Price / realised (20%):  {scores['price_realised']:.3f}\n"
-            f"Puell (10%):             {scores['puell']:.3f}\n\n"
-            f"Composite value:         {composite_value:.3f}\n"
-            f"Composite proxy risk:    {composite_risk:.3f}\n\n"
+            f"Power law (25%):        {scores['powerlaw']:.3f}\n"
+            f"MVRV Z (25%):           {scores['mvrv_z']:.3f}\n"
+            f"AHR999 (20%):           {scores['ahr999']:.3f}\n"
+            f"Price / realised (20%): {scores['price_realised']:.3f}\n"
+            f"Puell (10%):            {scores['puell']:.3f}\n\n"
+            f"Composite value:        {composite_value:.3f}\n"
+            f"Composite proxy risk:   {composite_risk:.3f}\n\n"
             "YOUR ENTRY RULE\n"
             f"BTC <= {format_usd(config.entry_price_usd)}: "
             f"{'PASS' if price_gate_passed else 'WAIT'}\n"
             f"Risk <= {config.risk_start_threshold:.2f}: "
             f"{'PASS' if risk_gate_passed else 'WAIT'}\n"
-            f"Confirmation:            "
+            f"Confirmation:           "
             f"{consecutive_days}/{config.confirmation_days} days\n\n"
             f"STATUS: {signal}\n\n"
             "This is your own transparent composite risk proxy. "
@@ -547,7 +547,7 @@ def main() -> int:
             "No trades are executed."
         )
 
-if signal == "START_DCA":
+        if signal == "START_DCA":
             title = (
                 f"BTC DCA START - Risk {composite_risk:.3f}, "
                 f"BTC {format_usd(current_price)}"
@@ -575,6 +575,9 @@ if signal == "START_DCA":
             )
             priority = "low"
             tags = "bitcoin,bar_chart"
+
+        print(message)
+        send_ntfy(config, title, message, priority, tags)
 
         return 0
 
