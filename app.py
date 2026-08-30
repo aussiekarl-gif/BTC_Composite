@@ -107,7 +107,6 @@ def simulate_dca(df, params):
     data["composite"] = data["composite"].clip(0.0, 1.0)
 
     # --- Risk Band Mapping: assign AUD amount per period based on composite ---
-    # params["risk_bands"] is a list of (min_risk, max_risk, amount)
     def get_band_amount(comp):
         for min_r, max_r, amount in params["risk_bands"]:
             if min_r <= comp <= max_r:
@@ -259,7 +258,6 @@ with st.sidebar:
         if i == 9:
             high = 1.0  # Fix floating point
         label = f"{low:.1f}–{high:.1f}"
-        # Use a number input with a default: ramp up from low amounts at high risk to high amounts at low risk
         # Default: risk 1.0 (expensive) -> $100, risk 0.0 (cheap) -> $1000, scaled linearly.
         default_amt = int(100 + (900 * (1 - (low + high) / 2)))
         amt = st.number_input(
@@ -356,27 +354,34 @@ with comp3:
     st.metric("💥 Lump Sum (Day 1)", f"${lump_summary['portfolio']:,.0f} USD", f"{lump_summary['return']:+.2f}%")
 
 # ================================================================
-# CHART
+# CHART – UPDATED COLORS
 # ================================================================
 st.subheader("📈 Portfolio Value, Price & Composite Over Time")
 fig = go.Figure()
 
+# Portfolio Value – BLUE
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["btc_held"] * trade_df["price"],
-    mode="lines", name="Portfolio (USD)", line=dict(color="#F7931A", width=3)
+    mode="lines", name="Portfolio (USD)", line=dict(color="#3498DB", width=3)
 ))
+
+# BTC Price – YELLOW
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["price"],
-    mode="lines", name="BTC Price (USD)", line=dict(color="#2E86C1", width=2, dash="dot"),
+    mode="lines", name="BTC Price (USD)", line=dict(color="#F1C40F", width=2, dash="dot"),
     yaxis="y2"
 ))
+
+# Total Invested – GREEN (unchanged)
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["total_invested"],
-    mode="lines", name="Total Invested (USD)", line=dict(color="#28B463", width=2, dash="dash")
+    mode="lines", name="Total Invested (USD)", line=dict(color="#2ECC71", width=2, dash="dash")
 ))
+
+# Composite Score – RED
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["composite"],
-    mode="lines", name="Composite Score (0-1)", line=dict(color="#9B59B6", width=2, dash="dot"),
+    mode="lines", name="Composite Score (0-1)", line=dict(color="#E74C3C", width=2, dash="dot"),
     yaxis="y3"
 ))
 
