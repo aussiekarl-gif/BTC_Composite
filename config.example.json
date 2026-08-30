@@ -1,6 +1,9 @@
 {
   "max_metric_age_hours": 60,
 
+  "price_max_dca_usd": 45000,
+  "price_min_dca_usd": 65000,
+
   "cheap_residual": -0.10,
   "neutral_residual": 0.00,
   "expensive_residual": 0.20,
