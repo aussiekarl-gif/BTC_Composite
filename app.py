@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
 """
-BTC Composite DCA Simulator (Risk Band % of Capital)
-====================================================
-- Total Capital: your full pool (e.g., 10,000 AUD).
-- Risk bands defined as percentages of Total Capital.
-- Per period, you invest band% of Total Capital when composite falls in that band.
+BTC Composite DCA & Rebalancing Simulator (Risk Band % of Capital & Profit Taking)
+=================================================================================
+- Total Capital: your full starting pool (e.g., 10,000 AUD).
+- Risk bands defined as percentages of capital deployment/liquidation.
+- Two-way logic: 
+  * Low composite scores (cheap) -> BUY Bitcoin.
+  * High composite scores (expensive) -> SELL a portion of Bitcoin back to AUD cash.
 - Reset button to restore default band allocation.
 - Default start date: 01/01/2020 (can go back to 2009).
 - Frequency: Daily, Weekly, Monthly.
 - TWO FUNDAMENTAL MODELS:
-  1) SMA Ratio (200-day) – original, lags in bear markets.
-  2) Power Law Trend – non-lagging, aligns with absolute price bottoms.
-- Risk curve parameters are HARDCODED to the original script's values:
-    - Power Law: cheap=-0.10, expensive=0.20, bias=1.0
-    - SMA: cheap=1.0, expensive=1.5, bias=1.0
-- AUD/USD conversion, error handling, full timeline even after cash exhaustion.
+  1) SMA Ratio (200-day)
+  2) Power Law Trend
+- AUD/USD conversion, error handling, full timeline tracking.
 - Dates in dd/mm/yyyy format.
-- Buy/Sell labels on chart with toggle.
-- Customizable chart colors and line styles.
-- Comprehensive explanation section at bottom.
 """
 
 import datetime
@@ -35,25 +31,22 @@ import streamlit as st
 # ================================================================
 GENESIS_DATE = datetime.datetime(2009, 1, 3, tzinfo=timezone.utc)
 
-# Hardcoded risk curve parameters (as per original script)
-# Power Law
 DEFAULT_PL_CHEAP = -0.10
 DEFAULT_PL_EXPENSIVE = 0.20
-# SMA
 DEFAULT_FUND_CHEAP = 1.0
 DEFAULT_FUND_EXPENSIVE = 1.5
-# Composite Bias (always 1.0)
 DEFAULT_BIAS = 1.0
 
-# Default band percentages (curated for aggressive buying at cheap levels)
-DEFAULT_BAND_PCTS = [50.0, 25.0, 13.0, 7.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# Default band percentages across 10 deciles (0.0 to 1.0)
+# Lower deciles buy aggressively; upper deciles sell portions of holdings
+# Format: + values = buy % of total capital; - values = sell % of holdings
+DEFAULT_BAND_PCTS = [40.0, 25.0, 15.0, 5.0, 0.0, 0.0, 10.0, 20.0, 30.0, 50.0]
 
 # ================================================================
-# Data Fetcher (with future projection and SMA buffer)
+# Data Fetcher
 # ================================================================
 @st.cache_data(ttl=3600)
 def fetch_btc_history(start_date, end_date):
-    """Fetch daily BTC prices with a 300-day buffer before start_date for SMA."""
     buffer_days = 300
     fetch_start = start_date - timedelta(days=buffer_days)
     
@@ -66,7 +59,6 @@ def fetch_btc_history(start_date, end_date):
         return pd.DataFrame()
 
     data = resp.json()["values"]
-
     prices = []
     for point in data:
         dt = datetime.datetime.fromtimestamp(point["x"], tz=timezone.utc)
@@ -76,7 +68,6 @@ def fetch_btc_history(start_date, end_date):
 
     df = pd.DataFrame(prices)
     df = df.set_index("date").sort_index()
-
     df = df[(df.index >= fetch_start) & (df.index <= end_date)]
 
     if end_date and end_date > df.index[-1]:
@@ -97,12 +88,8 @@ def fetch_btc_history(start_date, end_date):
     return df
 
 
-# ================================================================
-# Historical AUD/USD Exchange Rate (daily)
-# ================================================================
 @st.cache_data(ttl=86400)
 def fetch_aud_usd_rates(start_date, end_date):
-    """Fetch daily AUD/USD rates from Frankfurter API."""
     url = f"https://api.frankfurter.app/{start_date.strftime('%Y-%m-%d')}..{end_date.strftime('%Y-%m-%d')}?from=USD&to=AUD"
     try:
         resp = requests.get(url, timeout=30)
@@ -120,7 +107,7 @@ def fetch_aud_usd_rates(start_date, end_date):
 
 
 # ================================================================
-# Core Simulation
+# Core Simulation (Buy & Sell Engine)
 # ================================================================
 def simulate_dca(df_full, params):
     df = df_full[(df_full.index >= params["start_date"]) & (df_full.index <= params["end_date"])].copy()
@@ -145,7 +132,6 @@ def simulate_dca(df_full, params):
             fair_value_log = 5.84 * math.log10(days) - 17.01
             log_price = math.log10(price)
             residual = log_price - fair_value_log
-            # Use hardcoded cheap/expensive thresholds
             score = (params["pl_expensive"] - residual) / (params["pl_expensive"] - params["pl_cheap"])
             return max(0.0, min(1.0, score))
 
@@ -155,7 +141,7 @@ def simulate_dca(df_full, params):
         )
         data["sma_200"] = 0.0
 
-    else:  # SMA Ratio (200-day)
+    else:
         sma_series = df_full["price"].rolling(window=200).mean()
         data["sma_200"] = sma_series.reindex(data.index)
         if data["sma_200"].isna().any():
@@ -176,7 +162,6 @@ def simulate_dca(df_full, params):
             axis=1,
         )
 
-    # Hardcoded bias = 1.0
     data["composite"] = data["f_score"] * params["composite_bias"]
     data["composite"] = data["composite"].clip(0.0, 1.0)
 
@@ -186,47 +171,71 @@ def simulate_dca(df_full, params):
     else:
         data["usd_per_aud"] = 1.0
 
-    def get_band_pct(comp):
+    def get_band_action(comp):
         for min_r, max_r, pct in params["risk_bands"]:
             if min_r <= comp <= max_r:
                 return pct
         return 0.0
 
-    data["band_pct"] = data["composite"].apply(get_band_pct)
+    data["band_action"] = data["composite"].apply(get_band_action)
 
-    total_capital_aud = params["total_capital_aud"]
-    cash_remaining_aud = total_capital_aud
+    cash_remaining_aud = params["total_capital_aud"]
     btc_held = 0.0
-    total_invested_aud = 0.0
+    total_invested_aud = params["total_capital_aud"]
+    total_realized_profit_aud = 0.0
     trades = []
 
     for idx, row in data.iterrows():
-        aud_buy = (row["band_pct"] / 100.0) * total_capital_aud
-        aud_buy = min(aud_buy, cash_remaining_aud)
-        aud_buy = max(aud_buy, 0.0)
+        action_val = row["band_action"]  # Positive = Buy %, Negative = Sell % of holdings
+        aud_flow = 0.0
+        usd_flow = 0.0
+        btc_change = 0.0
+        trade_type = "HOLD"
 
-        usd_buy = aud_buy * row["usd_per_aud"]
+        current_price_usd = row["price"]
+        usd_per_aud = row["usd_per_aud"]
+        current_price_aud = current_price_usd / usd_per_aud if usd_per_aud > 0 else current_price_usd
 
-        if usd_buy > 0.01 and row["price"] > 0:
-            btc_bought = usd_buy / row["price"]
-            btc_held += btc_bought
-            total_invested_aud += aud_buy
-            cash_remaining_aud -= aud_buy
-        else:
-            btc_bought = 0.0
+        if action_val > 0:
+            # BUY Logic (% of initial capital pool)
+            aud_buy = (action_val / 100.0) * params["total_capital_aud"]
+            aud_buy = min(aud_buy, cash_remaining_aud)
+            if aud_buy > 0.01 and current_price_usd > 0:
+                usd_buy = aud_buy * usd_per_aud
+                btc_bought = usd_buy / current_price_usd
+                btc_held += btc_bought
+                cash_remaining_aud -= aud_buy
+                aud_flow = aud_buy
+                usd_flow = usd_buy
+                btc_change = btc_bought
+                trade_type = "BUY"
+        elif action_val < 0:
+            # SELL Logic (% of currently held BTC)
+            sell_pct = abs(action_val) / 100.0
+            btc_to_sell = btc_held * sell_pct
+            if btc_to_sell > 0.00000001 and current_price_usd > 0:
+                usd_sale = btc_to_sell * current_price_usd
+                aud_sale = usd_sale / usd_per_aud if usd_per_aud > 0 else usd_sale
+                btc_held -= btc_to_sell
+                cash_remaining_aud += aud_sale
+                total_realized_profit_aud += aud_sale
+                aud_flow = aud_sale
+                usd_flow = usd_sale
+                btc_change = -btc_to_sell
+                trade_type = "SELL"
 
         trades.append({
             "date": idx,
-            "price": row["price"],
+            "price": current_price_usd,
             "sma_200": row.get("sma_200", 0.0),
             "f_score": row["f_score"],
             "composite": row["composite"],
-            "band_pct": row["band_pct"],
-            "aud_buy": aud_buy,
-            "usd_buy": usd_buy,
-            "btc_bought": btc_bought,
+            "band_action": action_val,
+            "trade_type": trade_type,
+            "aud_flow": aud_flow,
+            "usd_flow": usd_flow,
+            "btc_change": btc_change,
             "btc_held": btc_held,
-            "total_invested_aud": total_invested_aud,
             "cash_remaining_aud": cash_remaining_aud,
         })
 
@@ -238,20 +247,17 @@ def simulate_dca(df_full, params):
     portfolio_value_usd = btc_held * current_price
     last_usd_per_aud = data["usd_per_aud"].iloc[-1] if not data.empty else 1.0
     portfolio_value_aud = portfolio_value_usd / last_usd_per_aud
-
-    total_invested_usd = trade_df["usd_buy"].sum() if not trade_df.empty else 0
-    avg_price_usd = total_invested_usd / btc_held if btc_held > 0 else 0
+    total_net_wealth_aud = portfolio_value_aud + cash_remaining_aud
 
     summary = {
-        "total_capital_aud": total_capital_aud,
-        "total_invested_aud": total_invested_aud,
+        "total_capital_aud": params["total_capital_aud"],
         "cash_remaining_aud": cash_remaining_aud,
         "btc_held": btc_held,
-        "avg_price_usd": avg_price_usd,
         "current_price_usd": current_price,
         "portfolio_value_usd": portfolio_value_usd,
         "portfolio_value_aud": portfolio_value_aud,
-        "return_pct": ((portfolio_value_usd / total_invested_usd) - 1) * 100 if total_invested_usd > 0 else 0,
+        "total_net_wealth_aud": total_net_wealth_aud,
+        "net_return_pct": ((total_net_wealth_aud / params["total_capital_aud"]) - 1) * 100,
         "periods": len(trade_df),
         "final_composite": data["composite"].iloc[-1] if not data.empty else 0,
     }
@@ -261,21 +267,21 @@ def simulate_dca(df_full, params):
 # ================================================================
 # Comparison Strategies
 # ================================================================
-def compare_strategies(df, frequency, day_of_week, total_invested_aud, fx_series):
+def compare_strategies(df, frequency, day_of_week, total_capital_aud, fx_series):
     data = df.copy()
     if frequency == "Weekly":
         data = data[data.index.dayofweek == day_of_week]
     elif frequency == "Monthly":
         data = data[data.index.day == 1]
 
-    if data.empty or total_invested_aud == 0:
+    if data.empty or total_capital_aud == 0:
         return {}, {}
 
     periods = len(data)
     if periods == 0:
         return {}, {}
 
-    equal_per_period_aud = total_invested_aud / periods
+    equal_per_period_aud = total_capital_aud / periods
 
     if fx_series is not None:
         data["usd_per_aud"] = fx_series.reindex(data.index).ffill().fillna(0.7)
@@ -293,73 +299,52 @@ def compare_strategies(df, frequency, day_of_week, total_invested_aud, fx_series
 
     first_price = data["price"].iloc[0]
     first_usd_per_aud = data["usd_per_aud"].iloc[0]
-    total_invested_usd = total_invested_aud * first_usd_per_aud
+    total_invested_usd = total_capital_aud * first_usd_per_aud
     btc_lump = total_invested_usd / first_price if first_price > 0 else 0
     port_lump_usd = btc_lump * current_price
     return_lump = ((port_lump_usd / total_invested_usd) - 1) * 100 if total_invested_usd > 0 else 0
 
-    equal_summary = {"btc": btc_equal, "invested_aud": total_invested_aud, "portfolio_usd": port_equal_usd, "return": return_equal}
-    lump_summary = {"btc": btc_lump, "invested_aud": total_invested_aud, "portfolio_usd": port_lump_usd, "return": return_lump}
+    equal_summary = {"btc": btc_equal, "portfolio_usd": port_equal_usd, "return": return_equal}
+    lump_summary = {"btc": btc_lump, "portfolio_usd": port_lump_usd, "return": return_lump}
     return equal_summary, lump_summary
 
 
-# ================================================================
-# Reset function for bands only
-# ================================================================
 def reset_band_pcts():
-    """Reset the band percentage sliders back to the curated default set."""
     st.session_state.band_pcts = DEFAULT_BAND_PCTS.copy()
 
 
 # ================================================================
-# Streamlit UI
+# Streamlit UI Configuration
 # ================================================================
-st.set_page_config(page_title="BTC DCA Simulator (Risk Bands %)", layout="wide")
+st.set_page_config(page_title="BTC Dynamic DCA & Rebalancing Simulator", layout="wide")
 
 if "band_pcts" not in st.session_state:
     st.session_state.band_pcts = DEFAULT_BAND_PCTS.copy()
 if "show_buy_sell_labels" not in st.session_state:
     st.session_state.show_buy_sell_labels = True
 
-if "portfolio_color" not in st.session_state:
-    st.session_state.portfolio_color = "#3498DB"
-if "portfolio_style" not in st.session_state:
-    st.session_state.portfolio_style = "solid"
-if "btc_price_color" not in st.session_state:
-    st.session_state.btc_price_color = "#F1C40F"
-if "btc_price_style" not in st.session_state:
-    st.session_state.btc_price_style = "dash"
-if "invested_color" not in st.session_state:
-    st.session_state.invested_color = "#2ECC71"
-if "invested_style" not in st.session_state:
-    st.session_state.invested_style = "dash"
-if "composite_color" not in st.session_state:
-    st.session_state.composite_color = "#E74C3C"
-if "composite_style" not in st.session_state:
-    st.session_state.composite_style = "dot"
-
-st.title("Bitcoin DCA Simulator (Risk Band % of Capital)")
+st.title("Bitcoin Dynamic DCA & Profit-Taking Rebalancer")
 st.markdown(
     """
-    Define **percentages of your total capital** to invest per period for each risk band (0.0-1.0). 
-    Use the **Reset** button to restore the curated default allocation.
+    Configure your strategy across risk bands (0.0 to 1.0). **Positive values (+)** deploy cash to buy Bitcoin; 
+    **negative values (-)** sell portions of your accumulated Bitcoin back to cash during market blow-off tops.
     """
 )
 
 with st.sidebar:
-    st.header("Total Capital")
+    st.header("Capital Setup")
     total_capital_aud = st.number_input(
-        "Total Capital (AUD)",
+        "Total Starting Capital (AUD)",
         min_value=1000,
         max_value=100_000_000,
         value=10000,
         step=1000,
-        help="Your full pool of capital to deploy (in AUD).",
+        help="Initial pool of fiat cash.",
     )
 
     st.divider()
     st.header("Frequency")
-    frequency = st.selectbox("Repeat Purchase", ["Daily", "Weekly", "Monthly"], index=1)
+    frequency = st.selectbox("Execution Frequency", ["Daily", "Weekly", "Monthly"], index=1)
     day_map = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6}
     day_of_week = st.selectbox(
         "Day of Week",
@@ -372,42 +357,29 @@ with st.sidebar:
     st.divider()
     st.header("Fundamental Model")
     risk_model = st.radio(
-        "Risk Model",
+        "Risk Metric",
         ["SMA Ratio (200-day)", "Power Law Trend"],
         index=1,
-        help="SMA lags; Power Law aligns with absolute price bottoms.",
     )
 
-    # Display the hardcoded parameters for transparency
-    if risk_model == "SMA Ratio (200-day)":
-        st.caption("Fixed parameters (original script):")
-        st.caption(f"Cheap threshold: {DEFAULT_FUND_CHEAP:.2f} (SMA multiple)")
-        st.caption(f"Expensive threshold: {DEFAULT_FUND_EXPENSIVE:.2f} (SMA multiple)")
-    else:
-        st.caption("Fixed parameters (original script):")
-        st.caption(f"Power Law cheap residual: {DEFAULT_PL_CHEAP:.2f}")
-        st.caption(f"Power Law expensive residual: {DEFAULT_PL_EXPENSIVE:.2f}")
-    st.caption(f"Composite bias: {DEFAULT_BIAS:.2f} (fixed)")
-
     st.divider()
-    st.subheader("Risk Band Investment Map (% of Total Capital)")
-    st.caption("Set the percentage of your total capital to invest per period for each composite score range.")
+    st.subheader("Risk Band Allocations")
+    st.caption("(+) = % of initial capital to BUY per interval\n(-) = % of holdings to SELL per interval")
 
     band_labels = [
-        "0.0-0.1", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5",
-        "0.5-0.6", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1.0",
+        "0.0-0.1 (Cheapest)", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5",
+        "0.5-0.6", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1.0 (Peak)"
     ]
 
     col1, col2 = st.columns(2)
-
     for i in range(10):
         with col1 if i % 2 == 0 else col2:
             st.session_state.band_pcts[i] = st.slider(
                 band_labels[i],
-                min_value=0.0,
+                min_value=-50.0,
                 max_value=100.0,
-                value=st.session_state.band_pcts[i],
-                step=0.5,
+                value=float(st.session_state.band_pcts[i]),
+                step=1.0,
                 key=f"slider_{i}",
             )
 
@@ -415,72 +387,29 @@ with st.sidebar:
         reset_band_pcts()
         st.rerun()
 
-    current_sum = sum(st.session_state.band_pcts)
-    if abs(current_sum - 100) < 0.01:
-        st.success(f"Total = {current_sum:.1f}%")
-    else:
-        st.warning(f"Total = {current_sum:.1f}% (click Reset to restore the default allocation)")
-
-    st.caption("Current Allocation by Risk Band")
-    allocation_df = pd.DataFrame({
-        "Band": band_labels,
-        "Allocation %": st.session_state.band_pcts,
-    })
-    st.bar_chart(allocation_df.set_index("Band"))
-
     st.divider()
     st.subheader("Date Range")
     genesis = datetime.date(2009, 1, 3)
     today = datetime.datetime.now(timezone.utc).date()
-
     default_start = datetime.date(2020, 1, 1)
 
-    start_date = st.date_input(
-        "Start Date",
-        value=default_start,
-        min_value=genesis,
-        max_value=today,
-        format="DD/MM/YYYY",
-        help="Default: 01/01/2020. You can still go back to 2009.",
-    )
-    end_date = st.date_input(
-        "End Date",
-        value=today + timedelta(days=90),
-        min_value=start_date,
-        format="DD/MM/YYYY",
-    )
+    start_date = st.date_input("Start Date", value=default_start, min_value=genesis, max_value=today, format="DD/MM/YYYY")
+    end_date = st.date_input("End Date", value=today + timedelta(days=90), min_value=start_date, format="DD/MM/YYYY")
 
     st.divider()
-    st.subheader("Chart Customization")
-    st.caption("Customize colors and line styles for each trace.")
-
-    st.session_state.portfolio_color = st.color_picker("Portfolio Color", st.session_state.portfolio_color, key="portfolio_color_picker")
-    st.session_state.portfolio_style = st.selectbox("Portfolio Style", ["solid", "dash", "dot", "dashdot"], index=0, key="portfolio_style_sel")
-
-    st.session_state.btc_price_color = st.color_picker("BTC Price Color", st.session_state.btc_price_color, key="btc_price_color_picker")
-    st.session_state.btc_price_style = st.selectbox("BTC Price Style", ["solid", "dash", "dot", "dashdot"], index=1, key="btc_price_style_sel")
-
-    st.session_state.invested_color = st.color_picker("Total Invested Color", st.session_state.invested_color, key="invested_color_picker")
-    st.session_state.invested_style = st.selectbox("Total Invested Style", ["solid", "dash", "dot", "dashdot"], index=1, key="invested_style_sel")
-
-    st.session_state.composite_color = st.color_picker("Composite Color", st.session_state.composite_color, key="composite_color_picker")
-    st.session_state.composite_style = st.selectbox("Composite Style", ["solid", "dash", "dot", "dashdot"], index=2, key="composite_style_sel")
-
-    st.divider()
-    st.subheader("Chart Labels")
-    st.session_state.show_buy_sell_labels = st.checkbox("Show Buy/Sell Labels", value=st.session_state.show_buy_sell_labels, key="show_labels_checkbox")
-
-    st.caption("Data: blockchain.com. Future dates = flat projection (no price change).")
+    st.subheader("Chart Toggles")
+    st.session_state.show_buy_sell_labels = st.checkbox("Show Extreme Zones", value=st.session_state.show_buy_sell_labels)
 
 if end_date <= start_date:
-    st.error("End Date must be after Start Date. Please adjust.")
+    st.error("End Date must follow Start Date.")
     st.stop()
 
 start_dt = datetime.datetime.combine(start_date, datetime.datetime.min.time(), tzinfo=timezone.utc)
 end_dt = datetime.datetime.combine(end_date, datetime.datetime.max.time(), tzinfo=timezone.utc)
 df_full = fetch_btc_history(start_dt, end_dt)
+
 if df_full.empty:
-    st.error("No data found. Try a wider range.")
+    st.error("No historical data available for selected parameters.")
     st.stop()
 
 risk_bands = []
@@ -492,29 +421,15 @@ for i in range(10):
     pct = st.session_state.band_pcts[i]
     risk_bands.append((low, high, pct))
 
-# Hardcoded parameters – no sliders
-if risk_model == "Power Law Trend":
-    fund_cheap = 0.0       # not used
-    fund_expensive = 0.0   # not used
-    pl_cheap = DEFAULT_PL_CHEAP
-    pl_expensive = DEFAULT_PL_EXPENSIVE
-else:
-    fund_cheap = DEFAULT_FUND_CHEAP
-    fund_expensive = DEFAULT_FUND_EXPENSIVE
-    pl_cheap = 0.0
-    pl_expensive = 0.0
-
-composite_bias = DEFAULT_BIAS
-
 params = {
     "risk_model": risk_model,
     "frequency": frequency,
     "day_of_week": selected_day,
-    "fund_cheap": fund_cheap,
-    "fund_expensive": fund_expensive,
-    "pl_cheap": pl_cheap,
-    "pl_expensive": pl_expensive,
-    "composite_bias": composite_bias,
+    "fund_cheap": DEFAULT_FUND_CHEAP,
+    "fund_expensive": DEFAULT_FUND_EXPENSIVE,
+    "pl_cheap": DEFAULT_PL_CHEAP,
+    "pl_expensive": DEFAULT_PL_EXPENSIVE,
+    "composite_bias": DEFAULT_BIAS,
     "total_capital_aud": total_capital_aud,
     "risk_bands": risk_bands,
     "start_date": start_dt,
@@ -523,292 +438,92 @@ params = {
 
 trade_df, summary = simulate_dca(df_full, params)
 if trade_df.empty:
-    st.warning("No trades executed. Adjust frequency or date range.")
+    st.warning("Simulation produced no trading metrics. Adjust date or frequency settings.")
     st.stop()
 
 fx_series = fetch_aud_usd_rates(start_dt, end_dt)
 equal_summary, lump_summary = compare_strategies(
     df_full[(df_full.index >= start_dt) & (df_full.index <= end_dt)],
-    frequency, selected_day, summary["total_invested_aud"], fx_series
+    frequency, selected_day, total_capital_aud, fx_series
 )
 
-st.subheader("Your Risk-Band DCA Performance")
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("Periods", f"{summary['periods']}")
-col2.metric("Invested (AUD)", f"${summary['total_invested_aud']:,.0f} AUD")
-col3.metric("BTC Accumulated", f"{summary['btc_held']:.6f} BTC")
-col4.metric("Avg Price", f"${summary['avg_price_usd']:,.2f} USD/BTC")
-col5.metric("Portfolio Value", f"${summary['portfolio_value_aud']:,.0f} AUD",
-            delta=f"{summary['return_pct']:+.2f}%")
+# ================================================================
+# Output Metrics & Visualization
+# ================================================================
+st.subheader("Dynamic Rebalancing Performance")
+m1, m2, m3, m4, m5 = st.columns(5)
+m1.metric("Periods Run", f"{summary['periods']}")
+m2.metric("Ending Cash (AUD)", f"${summary['cash_remaining_aud']:,.0f} AUD")
+m3.metric("BTC Held", f"{summary['btc_held']:.6f} BTC")
+m4.metric("Current Portfolio Value", f"${summary['portfolio_value_aud']:,.0f} AUD")
+m5.metric("Total Net Wealth", f"${summary['total_net_wealth_aud']:,.0f} AUD", delta=f"{summary['net_return_pct']:+.2f}%")
 
-st.subheader("Strategy Comparison (Same Total Invested)")
+st.subheader("Strategy Benchmark Comparison")
+if equal_summary and lump_summary:
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Dynamic Rebalancer (Yours)", f"${summary['total_net_wealth_aud']:,.0f} AUD", f"{summary['net_return_pct']:+.2f}%")
+    c2.metric("Standard Equal DCA", f"${equal_summary['portfolio_usd']:,.0f} USD", f"{equal_summary['return']:+.2f}%")
+    c3.metric("Lump Sum", f"${lump_summary['portfolio_usd']:,.0f} USD", f"{lump_summary['return']:+.2f}%")
 
-if equal_summary and lump_summary and summary["total_invested_aud"] > 0:
-    comp1, comp2, comp3 = st.columns(3)
-    with comp1:
-        st.metric("Risk-Band (Yours)", f"${summary['portfolio_value_aud']:,.0f} AUD", f"{summary['return_pct']:+.2f}%")
-    with comp2:
-        st.metric("Equal DCA", f"${equal_summary['portfolio_usd']:,.0f} USD", f"{equal_summary['return']:+.2f}%")
-    with comp3:
-        st.metric("Lump Sum", f"${lump_summary['portfolio_usd']:,.0f} USD", f"{lump_summary['return']:+.2f}%")
-else:
-    st.info("Not enough invested capital ($0) to compare strategies. Try adjusting your risk bands so the model invests during the selected period.")
-
-st.subheader("Portfolio Value, Price & Composite Over Time")
-st.caption("Drag the chart left/right to scroll, or use the slider below. Scroll to zoom.")
-
+st.subheader("Portfolio Wealth, Price & Trade Markers")
 fig = go.Figure()
 
 dates = trade_df["date"]
 prices = trade_df["price"]
 portfolio_usd = trade_df["btc_held"] * trade_df["price"]
-total_invested_usd = trade_df["usd_buy"].cumsum()
-composite = trade_df["composite"]
+cash_aud = trade_df["cash_remaining_aud"]
 
 fig.add_trace(go.Scatter(
-    x=dates, y=portfolio_usd,
-    mode="lines",
-    name="Portfolio (USD)",
-    line=dict(
-        color=st.session_state.portfolio_color,
-        width=3,
-        dash=st.session_state.portfolio_style
-    )
+    x=dates, y=portfolio_usd, mode="lines", name="BTC Holdings Value (USD)",
+    line=dict(color="#3498DB", width=2)
 ))
 
 fig.add_trace(go.Scatter(
-    x=dates, y=prices,
-    mode="lines",
-    name="BTC Price (USD)",
-    line=dict(
-        color=st.session_state.btc_price_color,
-        width=2,
-        dash=st.session_state.btc_price_style
-    ),
-    yaxis="y2"
+    x=dates, y=cash_aud, mode="lines", name="Cash Reserve (AUD)",
+    line=dict(color="#2ECC71", width=2, dash="dash")
 ))
 
 fig.add_trace(go.Scatter(
-    x=dates, y=total_invested_usd,
-    mode="lines",
-    name="Total Invested (USD)",
-    line=dict(
-        color=st.session_state.invested_color,
-        width=2,
-        dash=st.session_state.invested_style
-    )
+    x=dates, y=prices, mode="lines", name="BTC Price (USD)",
+    line=dict(color="#F1C40F", width=1), yaxis="y2"
+))
+
+# Plot buy and sell transaction points
+buys = trade_df[trade_df["trade_type"] == "BUY"]
+sells = trade_df[trade_df["trade_type"] == "SELL"]
+
+fig.add_trace(go.Scatter(
+    x=buys["date"], y=buys["price"], mode="markers", name="Execution: BUY",
+    marker=dict(color="#00FF00", size=8, symbol="triangle-up"), yaxis="y2"
 ))
 
 fig.add_trace(go.Scatter(
-    x=dates, y=composite,
-    mode="lines",
-    name="Composite Score (0-1)",
-    line=dict(
-        color=st.session_state.composite_color,
-        width=2,
-        dash=st.session_state.composite_style
-    ),
-    yaxis="y3"
+    x=sells["date"], y=sells["price"], mode="markers", name="Execution: SELL (Take Profit)",
+    marker=dict(color="#FF4444", size=8, symbol="triangle-down"), yaxis="y2"
 ))
-
-if st.session_state.show_buy_sell_labels:
-    min_price = prices.min()
-    max_price = prices.max()
-    price_range = max_price - min_price
-    if price_range == 0:
-        buy_level = min_price
-        sell_level = max_price
-    else:
-        buy_level = min_price + (price_range * 0.05)
-        sell_level = max_price - (price_range * 0.05)
-
-    fig.add_shape(
-        type="line",
-        xref="paper",
-        yref="y2",
-        x0=0,
-        y0=buy_level,
-        x1=1,
-        y1=buy_level,
-        line=dict(color="#00FF00", width=2, dash="solid"),
-        opacity=0.5,
-    )
-    fig.add_annotation(
-        xref="paper",
-        yref="y2",
-        x=1,
-        y=buy_level,
-        text="BUY ZONE",
-        showarrow=False,
-        font=dict(color="#00FF00", size=14),
-        xanchor="right",
-        yanchor="bottom",
-    )
-
-    fig.add_shape(
-        type="line",
-        xref="paper",
-        yref="y2",
-        x0=0,
-        y0=sell_level,
-        x1=1,
-        y1=sell_level,
-        line=dict(color="#FF4444", width=2, dash="solid"),
-        opacity=0.5,
-    )
-    fig.add_annotation(
-        xref="paper",
-        yref="y2",
-        x=1,
-        y=sell_level,
-        text="SELL ZONE",
-        showarrow=False,
-        font=dict(color="#FF4444", size=14),
-        xanchor="right",
-        yanchor="top",
-    )
 
 fig.update_layout(
     dragmode="pan",
-    xaxis=dict(
-        title="Date",
-        gridcolor="rgba(128,128,128,0.2)",
-        rangeslider=dict(visible=True, thickness=0.05),
-        type="date",
-        tickformat="%d/%m/%Y",
-    ),
-    yaxis=dict(
-        title="Portfolio / Invested ($)",
-        tickprefix="$",
-        gridcolor="rgba(128,128,128,0.2)"
-    ),
-    yaxis2=dict(
-        title="BTC Price ($)",
-        tickprefix="$",
-        overlaying="y",
-        side="right",
-        gridcolor="rgba(128,128,128,0)"
-    ),
-    yaxis3=dict(
-        title="Composite Score",
-        overlaying="y",
-        side="right",
-        position=0.85,
-        range=[0, 1.1],
-        gridcolor="rgba(128,128,128,0)"
-    ),
+    xaxis=dict(title="Date", gridcolor="rgba(128,128,128,0.2)", rangeslider=dict(visible=True)),
+    yaxis=dict(title="Value ($)", tickprefix="$", gridcolor="rgba(128,128,128,0.2)"),
+    yaxis2=dict(title="BTC Price ($)", tickprefix="$", overlaying="y", side="right", gridcolor="rgba(128,128,128,0)"),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     hovermode="x unified",
     template="plotly_dark",
-    height=500,
+    height=550,
 )
 st.plotly_chart(fig, use_container_width=True)
 
-st.subheader("Detailed Trade History")
-display_df = trade_df.copy()
+st.subheader("Detailed Activity History")
+display_df = trade_df[["date", "trade_type", "price", "composite", "band_action", "aud_flow", "btc_change", "btc_held", "cash_remaining_aud"]].copy()
 display_df["date"] = display_df["date"].dt.strftime("%d/%m/%Y")
 display_df["price"] = display_df["price"].map("${:,.0f}".format)
-display_df["f_score"] = display_df["f_score"].map("{:.3f}".format)
 display_df["composite"] = display_df["composite"].map("{:.3f}".format)
-display_df["band_pct"] = display_df["band_pct"].map("{:.1f}%".format)
-display_df["aud_buy"] = display_df["aud_buy"].map("${:,.2f}".format)
-display_df["usd_buy"] = display_df["usd_buy"].map("${:,.2f}".format)
-display_df["btc_bought"] = display_df["btc_bought"].map("{:.8f}".format)
-display_df["btc_held"] = display_df["btc_held"].map("{:.8f}".format)
+display_df["band_action"] = display_df["band_action"].map("{:+.1f}%".format)
+display_df["aud_flow"] = display_df["aud_flow"].map("${:,.2f}".format)
+display_df["btc_change"] = display_df["btc_change"].map("{:+.6f}".format)
+display_df["btc_held"] = display_df["btc_held"].map("{:.6f}".format)
 display_df["cash_remaining_aud"] = display_df["cash_remaining_aud"].map("${:,.0f}".format)
 
-cols = ["date", "price", "f_score", "composite", "band_pct", "aud_buy", "usd_buy", "btc_bought", "btc_held", "cash_remaining_aud"]
-display_df = display_df[cols]
-display_df.columns = ["Date", "BTC Price", "Fund. Score", "Composite", "Band %", "AUD Buy", "USD Buy", "BTC Bought", "BTC Held", "Cash Left (AUD)"]
+display_df.columns = ["Date", "Action", "BTC Price", "Composite", "Band Rule", "Cash Flow", "BTC Delta", "BTC Balance", "Cash Pool"]
 st.dataframe(display_df, use_container_width=True, height=400)
-
-st.divider()
-st.header("How the Risk Model Works")
-
-with st.expander("What is the Composite Score?", expanded=False):
-    st.markdown("""
-    The **Composite Score** is a number between **0 and 1** that tells you how "cheap" or "expensive" Bitcoin is at any given time:
-    
-    - **1.0** = Maximum cheap (ideal time to buy aggressively)
-    - **0.5** = Neutral (average valuation)
-    - **0.0** = Maximum expensive (avoid buying)
-    
-    It is calculated by taking a **Fundamental Score** (based on price relative to a long-term trend) and multiplying it by a **Composite Bias** (fixed at 1.0).
-    """)
-
-with st.expander("How do the Risk Bands work?", expanded=False):
-    st.markdown("""
-    The **Risk Bands** are your **investment rules**. For each band (0.0-0.1, 0.1-0.2, ... 0.9-1.0), you set:
-    
-    - **What % of your total capital** to invest in each period when the Composite Score falls into that band.
-    
-    **Example:**
-    - Composite Score = 0.8 -> falls into band 0.8-0.9 -> you invest 10% of your capital that period.
-    - Composite Score = 0.2 -> falls into band 0.2-0.3 -> you invest 30% of your capital.
-    
-    This lets you **customize your risk profile** – invest heavily when the market is cheap, and sit out when it's expensive.
-    """)
-
-with st.expander("SMA vs Power Law – Which model should I use?", expanded=False):
-    st.markdown("""
-    **SMA Ratio (200-day)**
-    - Compares price to the 200-day moving average.
-    - Simple and well-known, but **lags** in bear markets.
-    - The SMA drops during a bear market, so the `Price/SMA` ratio bottoms *before* the price does.
-    - Result: you buy too early, and at the true bottom the model looks only neutral.
-    
-    **Power Law Trend (RECOMMENDED)**
-    - Compares price to a long-term logarithmic growth curve (5.84 * log10(days_since_genesis) - 17.01).
-    - The trend line **continues to rise** even during bear markets.
-    - The residual (`price - trend`) is at its absolute minimum **exactly when the price is at its lowest**.
-    - This gives a much better buy signal at the true bottom.
-    
-    **The parameters used for both models are hardcoded to the values from the original script:**
-    - Power Law: cheap residual = -0.10, expensive residual = 0.20
-    - SMA: cheap = 1.0 (SMA multiple), expensive = 1.5
-    - Composite Bias = 1.0 (no scaling)
-    """)
-
-with st.expander("How to read the chart", expanded=False):
-    st.markdown("""
-    The chart shows four key elements over time:
-    
-    1. **Portfolio Value (Blue)** – The current USD value of your accumulated BTC holdings.
-    2. **BTC Price (Yellow)** – The actual Bitcoin price in USD.
-    3. **Total Invested (Green)** – The cumulative amount you've invested (in USD).
-    4. **Composite Score (Red)** – The risk signal (0-1). When it's near 1.0, you're buying heavily.
-    
-    **Buy/Sell Labels:** these mark a point 5% above the lowest price and 5% below the highest price
-    *shown in your selected date range* – they are a visual reference for where the range's extremes sit,
-    not a model-driven trading signal. They will move if you change the date range.
-    
-    Toggle these labels on/off in the sidebar.
-    """)
-
-with st.expander("How to customize this tool", expanded=False):
-    st.markdown("""
-    1. **Adjust Risk Bands** – Change the % allocated to each composite score range.
-    2. **Reset Bands to Default** – Restore the curated default allocation (50/25/13/7/5/0/0/0/0/0).
-    3. **Chart Colors** – Pick any color and line style for each trace.
-    4. **Date Range** – Backtest from 2009 to the present, or project into the future.
-    5. **Frequency** – Choose Daily, Weekly, or Monthly DCA.
-    6. **Fundamental Model** – Switch between SMA and Power Law (both use hardcoded parameters).
-    """)
-
-st.divider()
-st.caption(
-    f"""
-    **Summary:** Total Capital: ${summary['total_capital_aud']:,.0f} AUD | 
-    Invested: ${summary['total_invested_aud']:,.0f} AUD | 
-    Cash Remaining: ${summary['cash_remaining_aud']:,.0f} AUD | 
-    Avg Price: ${summary['avg_price_usd']:,.2f} USD | 
-    Current Price: ${summary['current_price_usd']:,.2f} USD | 
-    Final Composite: {summary['final_composite']:.3f}
-    """
-)
-st.caption(
-    "Disclaimer: Past performance is not indicative of future results. "
-    "The Power Law model is a contested, unproven framework, not a scientific consensus. "
-    "Future dates are flat projections (no price movement). "
-    "AUD/USD exchange rates are fetched from the Frankfurter API."
-)
