@@ -8,19 +8,26 @@ BTC Composite DCA Simulator (Risk Band % of Capital)
 - Normalize button to auto-scale all bands to sum to 100% (optional).
 - Default start date: 01/01/2020 (can go back to 2009).
 - Frequency: Daily, Weekly, Monthly.
-- Backtest from 2009 to future (flat projection).
-- All bugs fixed: SMA buffer, slider overlap, AUD/USD conversion, error handling, cash exhaustion, NaN warnings.
-- Dates displayed in dd/mm/yyyy format.
-- No 500k reference anywhere.
+- TWO FUNDAMENTAL MODELS:
+  1) SMA Ratio (200-day) – original, lags in bear markets.
+  2) Power Law Trend – non-lagging, aligns with absolute price bottoms.
+- AUD/USD conversion, error handling, full timeline even after cash exhaustion.
+- Dates in dd/mm/yyyy format.
 """
 
 import datetime
+import math
 from datetime import timedelta, timezone
 
 import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+
+# ================================================================
+# Constants
+# ================================================================
+GENESIS_DATE = datetime.datetime(2009, 1, 3, tzinfo=timezone.utc)
 
 # ================================================================
 # Data Fetcher (with future projection and SMA buffer)
@@ -111,34 +118,60 @@ def simulate_dca(df_full, params):
     if data.empty:
         return pd.DataFrame(), {}
 
-    sma_series = df_full["price"].rolling(window=200).mean()
-    data["sma_200"] = sma_series.reindex(data.index)
-    if data["sma_200"].isna().any():
-        data["sma_200"] = data["sma_200"].fillna(df_full["price"].expanding().mean().reindex(data.index))
+    # --- Compute Fundamental Score ---
+    if params["risk_model"] == "Power Law Trend":
+        # Non-lagging: compute power law residual directly from date
+        def calc_fundamental_pl(date, price):
+            days = (date - GENESIS_DATE).days
+            if days <= 0:
+                return 0.5
+            fair_value_log = 5.84 * math.log10(days) - 17.01
+            log_price = math.log10(price)
+            residual = log_price - fair_value_log
+            # Map residual to 0-1:
+            # cheap_residual (e.g. -0.4) -> 1.0
+            # expensive_residual (e.g. +0.4) -> 0.0
+            score = (params["pl_expensive"] - residual) / (params["pl_expensive"] - params["pl_cheap"])
+            return max(0.0, min(1.0, score))
 
-    def calc_fundamental(price, sma):
-        if sma <= 0:
-            return 0.5
-        ratio = price / sma
-        if ratio <= params["fund_cheap"]:
-            return 1.0
-        if ratio >= params["fund_expensive"]:
-            return 0.0
-        return (params["fund_expensive"] - ratio) / (params["fund_expensive"] - params["fund_cheap"])
+        data["f_score"] = data.apply(
+            lambda row: calc_fundamental_pl(row.name, row["price"]),
+            axis=1,
+        )
+        data["sma_200"] = 0.0  # dummy for display, not used
 
-    data["f_score"] = data.apply(
-        lambda row: calc_fundamental(row["price"], row["sma_200"]),
-        axis=1,
-    )
+    else:  # SMA Ratio (200-day)
+        sma_series = df_full["price"].rolling(window=200).mean()
+        data["sma_200"] = sma_series.reindex(data.index)
+        if data["sma_200"].isna().any():
+            data["sma_200"] = data["sma_200"].fillna(df_full["price"].expanding().mean().reindex(data.index))
+
+        def calc_fundamental_sma(price, sma):
+            if sma <= 0:
+                return 0.5
+            ratio = price / sma
+            if ratio <= params["fund_cheap"]:
+                return 1.0
+            if ratio >= params["fund_expensive"]:
+                return 0.0
+            return (params["fund_expensive"] - ratio) / (params["fund_expensive"] - params["fund_cheap"])
+
+        data["f_score"] = data.apply(
+            lambda row: calc_fundamental_sma(row["price"], row["sma_200"]),
+            axis=1,
+        )
+
     data["composite"] = data["f_score"] * params["composite_bias"]
     data["composite"] = data["composite"].clip(0.0, 1.0)
 
+    # --- AUD/USD conversion ---
     fx_series = fetch_aud_usd_rates(params["start_date"], params["end_date"])
     if fx_series is not None:
         data["usd_per_aud"] = fx_series.reindex(data.index).ffill().fillna(0.7)
     else:
         data["usd_per_aud"] = 1.0
 
+    # --- Risk Band Mapping ---
     def get_band_pct(comp):
         for min_r, max_r, pct in params["risk_bands"]:
             if min_r <= comp <= max_r:
@@ -147,6 +180,7 @@ def simulate_dca(df_full, params):
 
     data["band_pct"] = data["composite"].apply(get_band_pct)
 
+    # --- Run simulation ---
     total_capital_aud = params["total_capital_aud"]
     cash_remaining_aud = total_capital_aud
     btc_held = 0.0
@@ -171,7 +205,7 @@ def simulate_dca(df_full, params):
         trades.append({
             "date": idx,
             "price": row["price"],
-            "sma_200": row["sma_200"],
+            "sma_200": row.get("sma_200", 0.0),
             "f_score": row["f_score"],
             "composite": row["composite"],
             "band_pct": row["band_pct"],
@@ -278,7 +312,7 @@ with st.sidebar:
         "Total Capital (AUD)",
         min_value=1000,
         max_value=100_000_000,
-        value=10000,        # 👈 changed from 500000
+        value=10000,
         step=1000,
         help="Your full pool of capital to deploy (in AUD).",
     )
@@ -296,20 +330,46 @@ with st.sidebar:
     selected_day = day_map[day_of_week] if frequency == "Weekly" else 0
 
     st.divider()
-    st.header("🧠 Risk Curve Parameters")
-    fund_cheap = st.slider(
-        "Cheap Threshold (SMA multiple)",
-        0.7, 1.3, 1.0, 0.01,
-        help="Price/SMA ≤ this → Fundamental Score = 1.0 (max cheap).",
+    st.header("🧠 Fundamental Model")
+    risk_model = st.radio(
+        "Risk Model",
+        ["SMA Ratio (200-day)", "Power Law Trend"],
+        index=1,  # default to Power Law, because it fixes the bear-market issue
+        help="SMA lags; Power Law aligns with absolute price bottoms.",
     )
-    fund_expensive = st.slider(
-        "Expensive Threshold (SMA multiple)",
-        1.2, 2.5, 1.5, 0.01,
-        help="Price/SMA ≥ this → Fundamental Score = 0.0 (max expensive).",
-    )
-    if fund_cheap >= fund_expensive:
-        st.warning(f"⚠️ Cheap threshold ({fund_cheap:.2f}) must be less than expensive ({fund_expensive:.2f}). Auto-adjusting.")
-        fund_expensive = fund_cheap + 0.05
+
+    st.subheader("Risk Curve Parameters")
+    if risk_model == "SMA Ratio (200-day)":
+        fund_cheap = st.slider(
+            "Cheap Threshold (SMA multiple)",
+            0.7, 1.3, 1.0, 0.01,
+            help="Price/SMA ≤ this → Fundamental Score = 1.0 (max cheap).",
+        )
+        fund_expensive = st.slider(
+            "Expensive Threshold (SMA multiple)",
+            1.2, 2.5, 1.5, 0.01,
+            help="Price/SMA ≥ this → Fundamental Score = 0.0 (max expensive).",
+        )
+        if fund_cheap >= fund_expensive:
+            st.warning(f"⚠️ Cheap ({fund_cheap:.2f}) must be < Expensive ({fund_expensive:.2f}). Auto-adjusting.")
+            fund_expensive = fund_cheap + 0.05
+        pl_cheap, pl_expensive = 0.0, 0.0  # placeholders
+    else:  # Power Law Trend
+        st.caption("Residual = log10(price) - log10(power law fair value)")
+        pl_cheap = st.slider(
+            "Power Law Cheap Residual",
+            -0.8, 0.0, -0.4, 0.01,
+            help="Residual ≤ this → Fundamental Score = 1.0 (max cheap).",
+        )
+        pl_expensive = st.slider(
+            "Power Law Expensive Residual",
+            0.0, 0.8, 0.4, 0.01,
+            help="Residual ≥ this → Fundamental Score = 0.0 (max expensive).",
+        )
+        if pl_cheap >= pl_expensive:
+            st.warning(f"⚠️ Cheap residual ({pl_cheap:.2f}) must be < Expensive ({pl_expensive:.2f}). Auto-adjusting.")
+            pl_expensive = pl_cheap + 0.05
+        fund_cheap, fund_expensive = 0.0, 0.0  # placeholders
 
     composite_bias = st.slider(
         "Composite Bias (Aggressiveness)",
@@ -339,7 +399,7 @@ with st.sidebar:
                 key=f"slider_{i}",
             )
 
-    # Custom CSS for button
+    # Normalize button (styled)
     st.markdown(
         """
         <style>
@@ -397,7 +457,6 @@ with st.sidebar:
 
     default_start = datetime.date(2020, 1, 1)
 
-    # Use format="DD/MM/YYYY" for dd/mm/yyyy display
     start_date = st.date_input(
         "Start Date",
         value=default_start,
@@ -439,10 +498,13 @@ for i in range(10):
     risk_bands.append((low, high, pct))
 
 params = {
+    "risk_model": risk_model,
     "frequency": frequency,
     "day_of_week": selected_day,
     "fund_cheap": fund_cheap,
     "fund_expensive": fund_expensive,
+    "pl_cheap": pl_cheap,
+    "pl_expensive": pl_expensive,
     "composite_bias": composite_bias,
     "total_capital_aud": total_capital_aud,
     "risk_bands": risk_bands,
@@ -492,7 +554,7 @@ else:
     st.info("ℹ️ Not enough invested capital ($0) to compare strategies. Try adjusting your risk bands so the model invests during the selected period.")
 
 # ================================================================
-# CHART (dates formatted in tooltip)
+# CHART
 # ================================================================
 st.subheader("📈 Portfolio Value, Price & Composite Over Time")
 st.caption("🖱️ Drag the chart left/right to scroll, or use the slider below. Scroll to zoom.")
@@ -527,7 +589,7 @@ fig.update_layout(
         gridcolor="rgba(128,128,128,0.2)",
         rangeslider=dict(visible=True, thickness=0.05),
         type="date",
-        tickformat="%d/%m/%Y",   # dd/mm/yyyy on axis
+        tickformat="%d/%m/%Y",
     ),
     yaxis=dict(title="Portfolio / Invested ($)", tickprefix="$", gridcolor="rgba(128,128,128,0.2)"),
     yaxis2=dict(title="BTC Price ($)", tickprefix="$", overlaying="y", side="right", gridcolor="rgba(128,128,128,0)"),
@@ -540,11 +602,11 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 # ================================================================
-# TRADE HISTORY (dates formatted)
+# TRADE HISTORY
 # ================================================================
 st.subheader("📋 Detailed Trade History")
 display_df = trade_df.copy()
-display_df["date"] = display_df["date"].dt.strftime("%d/%m/%Y")  # dd/mm/yyyy
+display_df["date"] = display_df["date"].dt.strftime("%d/%m/%Y")
 display_df["price"] = display_df["price"].map("${:,.0f}".format)
 display_df["f_score"] = display_df["f_score"].map("{:.3f}".format)
 display_df["composite"] = display_df["composite"].map("{:.3f}".format)
