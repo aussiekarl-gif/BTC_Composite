@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-BTC Composite DCA Simulator (Risk Band Mapping)
-=================================================
-- Choose ANY start and end date (end_date > start_date).
-- Define specific investment amounts for 10 risk bands (0.0–1.0).
-- Frequency: Daily, Weekly, or Monthly. 
-- Backtest from 2009 to the future (flat projection).
-- Scrollable chart with TradingView-style slider.
+BTC Composite DCA Simulator (Risk Band %)
+==========================================
+- Total Capital: your full pool (e.g., 500,000 AUD).
+- Risk bands defined as percentages of Total Capital.
+- Per period, you invest band% of Total Capital when composite falls in that band.
+- Sum of all band percentages ≤ 100% (enforced).
+- Frequency: Daily, Weekly, Monthly.
+- Backtest from 2009 to future (flat projection).
 """
 
 import datetime
 from datetime import timedelta, timezone
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import requests
@@ -65,14 +65,15 @@ def fetch_btc_history(start_date, end_date):
 
 
 # ================================================================
-# Core Simulation (with Risk Band Mapping)
+# Core Simulation (with % of Total Capital per band)
 # ================================================================
 def simulate_dca(df, params):
     """
     params: dict with keys:
         frequency, day_of_week,
         fund_cheap, fund_expensive, composite_bias,
-        risk_bands: list of (min_risk, max_risk, amount_aud)
+        total_capital,
+        risk_bands: list of (min_risk, max_risk, pct_of_capital)
     """
     data = df.copy()
     
@@ -107,26 +108,32 @@ def simulate_dca(df, params):
     data["composite"] = data["f_score"] * params["composite_bias"]
     data["composite"] = data["composite"].clip(0.0, 1.0)
 
-    # --- Risk Band Mapping: assign AUD amount per period based on composite ---
-    def get_band_amount(comp):
-        for min_r, max_r, amount in params["risk_bands"]:
+    # --- Risk Band Mapping: get percentage of total capital ---
+    def get_band_pct(comp):
+        for min_r, max_r, pct in params["risk_bands"]:
             if min_r <= comp <= max_r:
-                return amount
+                return pct
         return 0.0
 
-    data["aud_buy"] = data["composite"].apply(get_band_amount)
+    data["band_pct"] = data["composite"].apply(get_band_pct)
 
-    # --- Run simulation ---
+    # --- Run simulation with total capital cap ---
+    total_capital = params["total_capital"]
+    cash_remaining = total_capital
     btc_held = 0.0
     total_invested = 0.0
     trades = []
 
     for idx, row in data.iterrows():
-        aud_buy = row["aud_buy"]
+        aud_buy = (row["band_pct"] / 100.0) * total_capital
+        aud_buy = min(aud_buy, cash_remaining)  # cannot spend more than left
+        aud_buy = max(aud_buy, 0.0)
+
         if aud_buy > 0.01 and row["price"] > 0:
             btc_bought = aud_buy / row["price"]
             btc_held += btc_bought
             total_invested += aud_buy
+            cash_remaining -= aud_buy
         else:
             btc_bought = 0.0
 
@@ -136,22 +143,30 @@ def simulate_dca(df, params):
             "sma_200": row["sma_200"],
             "f_score": row["f_score"],
             "composite": row["composite"],
+            "band_pct": row["band_pct"],
             "aud_buy": aud_buy,
             "btc_bought": btc_bought,
             "btc_held": btc_held,
             "total_invested": total_invested,
+            "cash_remaining": cash_remaining,
         })
+
+        # stop if cash is exhausted
+        if cash_remaining <= 0:
+            break
 
     trade_df = pd.DataFrame(trades)
     if trade_df.empty:
         return trade_df, {}
 
-    current_price = data["price"].iloc[-1]
+    current_price = data["price"].iloc[-1] if not data.empty else 0
     portfolio_value = btc_held * current_price
     avg_price = total_invested / btc_held if btc_held > 0 else 0
 
     summary = {
+        "total_capital": total_capital,
         "total_invested": total_invested,
+        "cash_remaining": cash_remaining,
         "btc_held": btc_held,
         "avg_price": avg_price,
         "current_price": current_price,
@@ -167,7 +182,7 @@ def simulate_dca(df, params):
 # Comparison Strategies (Equal DCA & Lump Sum)
 # ================================================================
 def compare_strategies(df, frequency, day_of_week, total_invested):
-    """Equal DCA = exactly the same as our periodic buys, but 100% slice."""
+    """Equal DCA = evenly split total_invested across all periods."""
     data = df.copy()
     if frequency == "Weekly":
         data = data[data.index.dayofweek == day_of_week]
@@ -183,7 +198,6 @@ def compare_strategies(df, frequency, day_of_week, total_invested):
 
     equal_per_period = total_invested / periods
 
-    # Equal DCA
     btc_equal = 0.0
     for idx, row in data.iterrows():
         if row["price"] > 0:
@@ -206,17 +220,28 @@ def compare_strategies(df, frequency, day_of_week, total_invested):
 # ================================================================
 # Streamlit UI
 # ================================================================
-st.set_page_config(page_title="BTC DCA Simulator (Risk Bands)", layout="wide")
-st.title("₿ Bitcoin DCA Simulator (Risk Band Mapping)")
+st.set_page_config(page_title="BTC DCA Simulator (Risk Bands %)", layout="wide")
+st.title("₿ Bitcoin DCA Simulator (Risk Band % of Capital)")
 st.markdown(
     """
-    Define **exactly how much** to invest per period for each risk band (0.0–1.0). 
-    No formulas, no spread weeks – just your manual risk allocation.
+    Define **percentages of your total capital** to invest per period for each risk band (0.0–1.0). 
+    The sum of all band percentages must be ≤ 100%. The simulation will invest that percentage of your total capital when the composite falls into the band.
     """
 )
 
 # --- SIDEBAR ---
 with st.sidebar:
+    st.header("💰 Total Capital")
+    total_capital = st.number_input(
+        "Total Capital (AUD)",
+        min_value=1000,
+        max_value=100_000_000,
+        value=500000,
+        step=10000,
+        help="Your full pool of capital to deploy.",
+    )
+
+    st.divider()
     st.header("📅 Frequency")
     frequency = st.selectbox("Repeat Purchase", ["Daily", "Weekly", "Monthly"], index=1)
     day_map = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6}
@@ -247,56 +272,65 @@ with st.sidebar:
     )
 
     st.divider()
-    st.subheader("📊 Risk Band Investment Map")
-    st.caption("Set the AUD amount to invest per period for each composite score range.")
+    st.subheader("📊 Risk Band Investment Map (% of Total Capital)")
+    st.caption("Set the percentage of your total capital to invest per period for each composite score range.")
+    st.caption("Sum of all percentages must be ≤ 100%.")
 
     # Generate 10 bands: 0.0–0.1, 0.1–0.2, ..., 0.9–1.0
     risk_bands = []
+    total_pct = 0.0
+    # Default percentages: more aggressive at low risk (cheap) – e.g., 15% for 0-0.1, 12% for 0.1-0.2, ... down to 1% for 0.9-1.0
+    default_pcts = [15, 12, 10, 8, 6, 4, 3, 2, 1, 1]  # sum = 62%
     for i in range(10):
         low = round(i * 0.1, 1)
         high = round((i + 1) * 0.1, 1)
         if i == 9:
-            high = 1.0  # Fix floating point
+            high = 1.0
         label = f"{low:.1f}–{high:.1f}"
-        # Default: risk 1.0 (expensive) -> $100, risk 0.0 (cheap) -> $1000, scaled linearly.
-        default_amt = int(100 + (900 * (1 - (low + high) / 2)))
-        amt = st.number_input(
+        default_val = default_pcts[i]
+        pct = st.number_input(
             label,
             min_value=0,
-            max_value=1_000_000,
-            value=default_amt,
-            step=50,
-            key=f"band_{i}",
+            max_value=100,
+            value=default_val,
+            step=1,
+            key=f"band_pct_{i}",
         )
-        risk_bands.append((low, high, float(amt)))
+        risk_bands.append((low, high, float(pct)))
+        total_pct += pct
+
+    # Show sum warning
+    if total_pct > 100:
+        st.error(f"⚠️ Total percentage = {total_pct}% exceeds 100%! Please reduce some bands.")
+    else:
+        st.success(f"Total percentage = {total_pct}% (≤ 100%)")
 
     st.divider()
     st.subheader("📅 Date Range")
     genesis = datetime.datetime(2009, 1, 3, tzinfo=timezone.utc)
     today = datetime.datetime.now(timezone.utc)
 
-    # START DATE: completely flexible, can go back to genesis
     start_date = st.date_input(
         "Start Date",
         value=genesis,
         min_value=genesis,
         max_value=today,
-        help="Can be any date from 2009-01-03 to today.",
     )
-
-    # END DATE: min_value = start_date (no arbitrary "today" lock!)
     end_date = st.date_input(
         "End Date",
         value=today + timedelta(days=90),
         min_value=start_date,
-        help="Can be any date AFTER the start date (past, present, or future).",
     )
 
     st.caption("🔬 Data: blockchain.com. Future dates = flat projection (no price change).")
 
-# --- Validation: Ensure start < end ---
+# --- Validation ---
 if end_date <= start_date:
     st.error("❌ End Date must be after Start Date. Please adjust.")
+    st.stop()
+
+if total_pct > 100:
+    st.error("❌ Total percentage exceeds 100%. Please adjust your risk band percentages.")
     st.stop()
 
 # --- Load Data ---
@@ -314,6 +348,7 @@ params = {
     "fund_cheap": fund_cheap,
     "fund_expensive": fund_expensive,
     "composite_bias": composite_bias,
+    "total_capital": total_capital,
     "risk_bands": risk_bands,
 }
 
@@ -354,71 +389,43 @@ with comp3:
     st.metric("💥 Lump Sum (Day 1)", f"${lump_summary['portfolio']:,.0f} USD", f"{lump_summary['return']:+.2f}%")
 
 # ================================================================
-# CHART – SCROLLABLE (TradingView-style) + Updated Colors
+# CHART – Scrollable with Updated Colors
 # ================================================================
 st.subheader("📈 Portfolio Value, Price & Composite Over Time")
 st.caption("🖱️ Drag the chart left/right to scroll, or use the slider below. Scroll to zoom.")
 
 fig = go.Figure()
 
-# Portfolio Value – BLUE
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["btc_held"] * trade_df["price"],
     mode="lines", name="Portfolio (USD)", line=dict(color="#3498DB", width=3)
 ))
-
-# BTC Price – YELLOW
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["price"],
     mode="lines", name="BTC Price (USD)", line=dict(color="#F1C40F", width=2, dash="dot"),
     yaxis="y2"
 ))
-
-# Total Invested – GREEN
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["total_invested"],
     mode="lines", name="Total Invested (USD)", line=dict(color="#2ECC71", width=2, dash="dash")
 ))
-
-# Composite Score – RED
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["composite"],
     mode="lines", name="Composite Score (0-1)", line=dict(color="#E74C3C", width=2, dash="dot"),
     yaxis="y3"
 ))
 
-# --- UPDATED LAYOUT: Scrollable + Pan ---
 fig.update_layout(
-    dragmode="pan",  # Click and drag to pan left/right (TradingView style)
+    dragmode="pan",
     xaxis=dict(
         title="Date",
         gridcolor="rgba(128,128,128,0.2)",
-        rangeslider=dict(
-            visible=True,
-            thickness=0.05,  # Thin slider bar at the bottom
-        ),
+        rangeslider=dict(visible=True, thickness=0.05),
         type="date"
     ),
-    yaxis=dict(
-        title="Portfolio / Invested ($)",
-        tickprefix="$",
-        gridcolor="rgba(128,128,128,0.2)"
-    ),
-    yaxis2=dict(
-        title="BTC Price ($)",
-        tickprefix="$",
-        overlaying="y",
-        side="right",
-        gridcolor="rgba(128,128,128,0)"
-    ),
-    yaxis3=dict(
-        title="Composite Score",
-        overlaying="y",
-        side="right",
-        position=0.85,
-        range=[0, 1.1],
-        gridcolor="rgba(128,128,128,0)"
-    ),
+    yaxis=dict(title="Portfolio / Invested ($)", tickprefix="$", gridcolor="rgba(128,128,128,0.2)"),
+    yaxis2=dict(title="BTC Price ($)", tickprefix="$", overlaying="y", side="right", gridcolor="rgba(128,128,128,0)"),
+    yaxis3=dict(title="Composite Score", overlaying="y", side="right", position=0.85, range=[0, 1.1], gridcolor="rgba(128,128,128,0)"),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     hovermode="x unified",
     template="plotly_dark",
@@ -435,13 +442,15 @@ display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
 display_df["price"] = display_df["price"].map("${:,.0f}".format)
 display_df["f_score"] = display_df["f_score"].map("{:.3f}".format)
 display_df["composite"] = display_df["composite"].map("{:.3f}".format)
+display_df["band_pct"] = display_df["band_pct"].map("{:.1f}%".format)
 display_df["aud_buy"] = display_df["aud_buy"].map("${:,.2f}".format)
 display_df["btc_bought"] = display_df["btc_bought"].map("{:.8f}".format)
 display_df["btc_held"] = display_df["btc_held"].map("{:.8f}".format)
+display_df["cash_remaining"] = display_df["cash_remaining"].map("${:,.0f}".format)
 
-cols = ["date", "price", "f_score", "composite", "aud_buy", "btc_bought", "btc_held"]
+cols = ["date", "price", "f_score", "composite", "band_pct", "aud_buy", "btc_bought", "btc_held", "cash_remaining"]
 display_df = display_df[cols]
-display_df.columns = ["Date", "BTC Price", "Fund. Score", "Composite", "AUD Buy", "BTC Bought", "BTC Held"]
+display_df.columns = ["Date", "BTC Price", "Fund. Score", "Composite", "Band %", "AUD Buy", "BTC Bought", "BTC Held", "Cash Left"]
 st.dataframe(display_df, use_container_width=True, height=400)
 
 # ================================================================
@@ -450,7 +459,9 @@ st.dataframe(display_df, use_container_width=True, height=400)
 st.divider()
 st.caption(
     f"""
-    **Summary:** Periods: {summary['periods']} | 
+    **Summary:** Total Capital: ${summary['total_capital']:,.0f} AUD | 
+    Invested: ${summary['total_invested']:,.0f} AUD | 
+    Cash Remaining: ${summary['cash_remaining']:,.0f} AUD | 
     Avg Price: ${summary['avg_price']:,.2f} USD | 
     Current Price: ${summary['current_price']:,.2f} USD | 
     Final Composite: {summary['final_composite']:.3f}
