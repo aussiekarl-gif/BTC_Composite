@@ -5,16 +5,18 @@ BTC Composite DCA Simulator (Risk Band % of Capital)
 - Total Capital: your full pool (e.g., 10,000 AUD).
 - Risk bands defined as percentages of Total Capital.
 - Per period, you invest band% of Total Capital when composite falls in that band.
-- Normalize button to auto-scale all bands to sum to 100%.
+- Reset button to restore default band allocation.
 - Default start date: 01/01/2020 (can go back to 2009).
 - Frequency: Daily, Weekly, Monthly.
 - TWO FUNDAMENTAL MODELS:
-  1) SMA Ratio (200-day) - original, lags in bear markets.
-  2) Power Law Trend - non-lagging, aligns with absolute price bottoms.
+  1) SMA Ratio (200-day) – original, lags in bear markets.
+  2) Power Law Trend – non-lagging, aligns with absolute price bottoms.
+- Risk curve parameters are HARDCODED to the original script's values:
+    - Power Law: cheap=-0.10, expensive=0.20, bias=1.0
+    - SMA: cheap=1.0, expensive=1.5, bias=1.0
 - AUD/USD conversion, error handling, full timeline even after cash exhaustion.
 - Dates in dd/mm/yyyy format.
-- Buy/Sell labels on chart with toggle (using add_shape to avoid Plotly bug).
-- Reset button only resets risk curve parameters (not band percentages).
+- Buy/Sell labels on chart with toggle.
 - Customizable chart colors and line styles.
 - Comprehensive explanation section at bottom.
 """
@@ -33,12 +35,18 @@ import streamlit as st
 # ================================================================
 GENESIS_DATE = datetime.datetime(2009, 1, 3, tzinfo=timezone.utc)
 
-DEFAULT_BAND_PCTS = [50.0, 25.0, 13.0, 7.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# Hardcoded risk curve parameters (as per original script)
+# Power Law
+DEFAULT_PL_CHEAP = -0.10
+DEFAULT_PL_EXPENSIVE = 0.20
+# SMA
 DEFAULT_FUND_CHEAP = 1.0
 DEFAULT_FUND_EXPENSIVE = 1.5
-DEFAULT_PL_CHEAP = -0.4
-DEFAULT_PL_EXPENSIVE = 0.4
+# Composite Bias (always 1.0)
 DEFAULT_BIAS = 1.0
+
+# Default band percentages (curated for aggressive buying at cheap levels)
+DEFAULT_BAND_PCTS = [50.0, 25.0, 13.0, 7.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 # ================================================================
 # Data Fetcher (with future projection and SMA buffer)
@@ -137,6 +145,7 @@ def simulate_dca(df_full, params):
             fair_value_log = 5.84 * math.log10(days) - 17.01
             log_price = math.log10(price)
             residual = log_price - fair_value_log
+            # Use hardcoded cheap/expensive thresholds
             score = (params["pl_expensive"] - residual) / (params["pl_expensive"] - params["pl_cheap"])
             return max(0.0, min(1.0, score))
 
@@ -146,7 +155,7 @@ def simulate_dca(df_full, params):
         )
         data["sma_200"] = 0.0
 
-    else:
+    else:  # SMA Ratio (200-day)
         sma_series = df_full["price"].rolling(window=200).mean()
         data["sma_200"] = sma_series.reindex(data.index)
         if data["sma_200"].isna().any():
@@ -167,6 +176,7 @@ def simulate_dca(df_full, params):
             axis=1,
         )
 
+    # Hardcoded bias = 1.0
     data["composite"] = data["f_score"] * params["composite_bias"]
     data["composite"] = data["composite"].clip(0.0, 1.0)
 
@@ -294,17 +304,8 @@ def compare_strategies(df, frequency, day_of_week, total_invested_aud, fx_series
 
 
 # ================================================================
-# Reset functions
+# Reset function for bands only
 # ================================================================
-def reset_risk_curve_params():
-    """Reset ONLY the risk curve parameters (not the band percentages)."""
-    st.session_state.fund_cheap = DEFAULT_FUND_CHEAP
-    st.session_state.fund_expensive = DEFAULT_FUND_EXPENSIVE
-    st.session_state.pl_cheap = DEFAULT_PL_CHEAP
-    st.session_state.pl_expensive = DEFAULT_PL_EXPENSIVE
-    st.session_state.composite_bias = DEFAULT_BIAS
-
-
 def reset_band_pcts():
     """Reset the band percentage sliders back to the curated default set."""
     st.session_state.band_pcts = DEFAULT_BAND_PCTS.copy()
@@ -317,16 +318,6 @@ st.set_page_config(page_title="BTC DCA Simulator (Risk Bands %)", layout="wide")
 
 if "band_pcts" not in st.session_state:
     st.session_state.band_pcts = DEFAULT_BAND_PCTS.copy()
-if "fund_cheap" not in st.session_state:
-    st.session_state.fund_cheap = DEFAULT_FUND_CHEAP
-if "fund_expensive" not in st.session_state:
-    st.session_state.fund_expensive = DEFAULT_FUND_EXPENSIVE
-if "pl_cheap" not in st.session_state:
-    st.session_state.pl_cheap = DEFAULT_PL_CHEAP
-if "pl_expensive" not in st.session_state:
-    st.session_state.pl_expensive = DEFAULT_PL_EXPENSIVE
-if "composite_bias" not in st.session_state:
-    st.session_state.composite_bias = DEFAULT_BIAS
 if "show_buy_sell_labels" not in st.session_state:
     st.session_state.show_buy_sell_labels = True
 
@@ -387,67 +378,16 @@ with st.sidebar:
         help="SMA lags; Power Law aligns with absolute price bottoms.",
     )
 
-    st.subheader("Risk Curve Parameters")
-    
+    # Display the hardcoded parameters for transparency
     if risk_model == "SMA Ratio (200-day)":
-        fund_cheap = st.slider(
-            "Cheap Threshold (SMA multiple)",
-            0.7, 1.3, st.session_state.fund_cheap, 0.01,
-            help="Price/SMA <= this -> Fundamental Score = 1.0 (max cheap).",
-            key="fund_cheap_slider",
-        )
-        st.session_state.fund_cheap = fund_cheap
-        
-        fund_expensive = st.slider(
-            "Expensive Threshold (SMA multiple)",
-            1.2, 2.5, st.session_state.fund_expensive, 0.01,
-            help="Price/SMA >= this -> Fundamental Score = 0.0 (max expensive).",
-            key="fund_expensive_slider",
-        )
-        st.session_state.fund_expensive = fund_expensive
-        
-        if fund_cheap >= fund_expensive:
-            st.warning(f"Cheap ({fund_cheap:.2f}) must be < Expensive ({fund_expensive:.2f}). Auto-adjusting.")
-            fund_expensive = fund_cheap + 0.05
-            st.session_state.fund_expensive = fund_expensive
-        
-        pl_cheap, pl_expensive = 0.0, 0.0
+        st.caption("Fixed parameters (original script):")
+        st.caption(f"Cheap threshold: {DEFAULT_FUND_CHEAP:.2f} (SMA multiple)")
+        st.caption(f"Expensive threshold: {DEFAULT_FUND_EXPENSIVE:.2f} (SMA multiple)")
     else:
-        st.caption("Residual = log10(price) - log10(power law fair value)")
-        pl_cheap = st.slider(
-            "Power Law Cheap Residual",
-            -0.8, 0.0, st.session_state.pl_cheap, 0.01,
-            help="Residual <= this -> Fundamental Score = 1.0 (max cheap).",
-            key="pl_cheap_slider",
-        )
-        st.session_state.pl_cheap = pl_cheap
-        
-        pl_expensive = st.slider(
-            "Power Law Expensive Residual",
-            0.0, 0.8, st.session_state.pl_expensive, 0.01,
-            help="Residual >= this -> Fundamental Score = 0.0 (max expensive).",
-            key="pl_expensive_slider",
-        )
-        st.session_state.pl_expensive = pl_expensive
-        
-        if pl_cheap >= pl_expensive:
-            st.warning(f"Cheap residual ({pl_cheap:.2f}) must be < Expensive ({pl_expensive:.2f}). Auto-adjusting.")
-            pl_expensive = pl_cheap + 0.05
-            st.session_state.pl_expensive = pl_expensive
-        
-        fund_cheap, fund_expensive = 0.0, 0.0
-
-    composite_bias = st.slider(
-        "Composite Bias (Aggressiveness)",
-        0.5, 1.5, st.session_state.composite_bias, 0.05,
-        help="Scale the final composite up (bullish) or down (bearish).",
-        key="bias_slider",
-    )
-    st.session_state.composite_bias = composite_bias
-
-    if st.button("Reset Risk Curve Parameters to Defaults", use_container_width=True):
-        reset_risk_curve_params()
-        st.rerun()
+        st.caption("Fixed parameters (original script):")
+        st.caption(f"Power Law cheap residual: {DEFAULT_PL_CHEAP:.2f}")
+        st.caption(f"Power Law expensive residual: {DEFAULT_PL_EXPENSIVE:.2f}")
+    st.caption(f"Composite bias: {DEFAULT_BIAS:.2f} (fixed)")
 
     st.divider()
     st.subheader("Risk Band Investment Map (% of Total Capital)")
@@ -551,6 +491,20 @@ for i in range(10):
         high = 1.0
     pct = st.session_state.band_pcts[i]
     risk_bands.append((low, high, pct))
+
+# Hardcoded parameters – no sliders
+if risk_model == "Power Law Trend":
+    fund_cheap = 0.0       # not used
+    fund_expensive = 0.0   # not used
+    pl_cheap = DEFAULT_PL_CHEAP
+    pl_expensive = DEFAULT_PL_EXPENSIVE
+else:
+    fund_cheap = DEFAULT_FUND_CHEAP
+    fund_expensive = DEFAULT_FUND_EXPENSIVE
+    pl_cheap = 0.0
+    pl_expensive = 0.0
+
+composite_bias = DEFAULT_BIAS
 
 params = {
     "risk_model": risk_model,
@@ -779,7 +733,7 @@ with st.expander("What is the Composite Score?", expanded=False):
     - **0.5** = Neutral (average valuation)
     - **0.0** = Maximum expensive (avoid buying)
     
-    It is calculated by taking a **Fundamental Score** (based on price relative to a long-term trend) and multiplying it by a **Composite Bias** (your personal aggressiveness setting).
+    It is calculated by taking a **Fundamental Score** (based on price relative to a long-term trend) and multiplying it by a **Composite Bias** (fixed at 1.0).
     """)
 
 with st.expander("How do the Risk Bands work?", expanded=False):
@@ -792,10 +746,10 @@ with st.expander("How do the Risk Bands work?", expanded=False):
     - Composite Score = 0.8 -> falls into band 0.8-0.9 -> you invest 10% of your capital that period.
     - Composite Score = 0.2 -> falls into band 0.2-0.3 -> you invest 30% of your capital.
     
-    This lets you **customize your risk profile** - invest heavily when the market is cheap, and sit out when it's expensive.
+    This lets you **customize your risk profile** – invest heavily when the market is cheap, and sit out when it's expensive.
     """)
 
-with st.expander("SMA vs Power Law - Which model should I use?", expanded=False):
+with st.expander("SMA vs Power Law – Which model should I use?", expanded=False):
     st.markdown("""
     **SMA Ratio (200-day)**
     - Compares price to the 200-day moving average.
@@ -803,26 +757,29 @@ with st.expander("SMA vs Power Law - Which model should I use?", expanded=False)
     - The SMA drops during a bear market, so the `Price/SMA` ratio bottoms *before* the price does.
     - Result: you buy too early, and at the true bottom the model looks only neutral.
     
-    **Power Law Trend**
+    **Power Law Trend (RECOMMENDED)**
     - Compares price to a long-term logarithmic growth curve (5.84 * log10(days_since_genesis) - 17.01).
     - The trend line **continues to rise** even during bear markets.
     - The residual (`price - trend`) is at its absolute minimum **exactly when the price is at its lowest**.
+    - This gives a much better buy signal at the true bottom.
     
-    This is a contested, unproven framework among analysts, not an established fact - different published
-    sources fit meaningfully different constants for this same model. Treat it as one lens, not a guarantee.
+    **The parameters used for both models are hardcoded to the values from the original script:**
+    - Power Law: cheap residual = -0.10, expensive residual = 0.20
+    - SMA: cheap = 1.0 (SMA multiple), expensive = 1.5
+    - Composite Bias = 1.0 (no scaling)
     """)
 
 with st.expander("How to read the chart", expanded=False):
     st.markdown("""
     The chart shows four key elements over time:
     
-    1. **Portfolio Value (Blue)** - The current USD value of your accumulated BTC holdings.
-    2. **BTC Price (Yellow)** - The actual Bitcoin price in USD.
-    3. **Total Invested (Green)** - The cumulative amount you've invested (in USD).
-    4. **Composite Score (Red)** - The risk signal (0-1). When it's near 1.0, you're buying heavily.
+    1. **Portfolio Value (Blue)** – The current USD value of your accumulated BTC holdings.
+    2. **BTC Price (Yellow)** – The actual Bitcoin price in USD.
+    3. **Total Invested (Green)** – The cumulative amount you've invested (in USD).
+    4. **Composite Score (Red)** – The risk signal (0-1). When it's near 1.0, you're buying heavily.
     
     **Buy/Sell Labels:** these mark a point 5% above the lowest price and 5% below the highest price
-    *shown in your selected date range* - they are a visual reference for where the range's extremes sit,
+    *shown in your selected date range* – they are a visual reference for where the range's extremes sit,
     not a model-driven trading signal. They will move if you change the date range.
     
     Toggle these labels on/off in the sidebar.
@@ -830,12 +787,12 @@ with st.expander("How to read the chart", expanded=False):
 
 with st.expander("How to customize this tool", expanded=False):
     st.markdown("""
-    1. **Adjust Risk Bands** - Change the % allocated to each composite score range.
-    2. **Reset Bands to Default** - Restore the curated default allocation (50/25/13/7/5/0/0/0/0/0).
-    3. **Reset Risk Curve Parameters** - Restore only the cheap/expensive thresholds and bias to defaults.
-    4. **Chart Colors** - Pick any color and line style for each trace.
-    5. **Date Range** - Backtest from 2009 to the present, or project into the future.
-    6. **Frequency** - Choose Daily, Weekly, or Monthly DCA.
+    1. **Adjust Risk Bands** – Change the % allocated to each composite score range.
+    2. **Reset Bands to Default** – Restore the curated default allocation (50/25/13/7/5/0/0/0/0/0).
+    3. **Chart Colors** – Pick any color and line style for each trace.
+    4. **Date Range** – Backtest from 2009 to the present, or project into the future.
+    5. **Frequency** – Choose Daily, Weekly, or Monthly DCA.
+    6. **Fundamental Model** – Switch between SMA and Power Law (both use hardcoded parameters).
     """)
 
 st.divider()
