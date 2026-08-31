@@ -1,20 +1,11 @@
 #!/usr/bin/env python3
 """
-BTC Composite DCA & Rebalancing Simulator (Risk Band % of Capital & Profit Taking)
+BTC Composite DCA & Rebalancing Simulator (Corrected Risk Bands & Profit Taking)
 =================================================================================
-- Total Capital: your full starting pool (e.g., 10,000 AUD).
-- Risk bands defined as percentages of capital deployment/liquidation.
-- Two-way logic: 
-  * Low composite scores (cheap) -> BUY Bitcoin.
-  * High composite scores (expensive) -> SELL a portion of Bitcoin back to AUD cash.
-- Reset button to restore default band allocation.
-- Default start date: 01/01/2020 (can go back to 2009).
-- Frequency: Daily, Weekly, Monthly.
-- TWO FUNDAMENTAL MODELS:
-  1) SMA Ratio (200-day)
-  2) Power Law Trend
-- AUD/USD conversion, error handling, full timeline tracking.
-- Dates in dd/mm/yyyy format.
+- Risk Score: 0.0 = Absolute Bottom (Cheap), 1.0 = Absolute Top (Expensive).
+- Bands 0.0-0.4: Positive percentages (+) to BUY Bitcoin.
+- Bands 0.6-1.0: Negative percentages (-) to SELL / Take Profit into cash.
+- Dynamic price-deviation multiplier scales purchase size during deep discounts.
 """
 
 import datetime
@@ -38,9 +29,7 @@ DEFAULT_FUND_EXPENSIVE = 1.5
 DEFAULT_BIAS = 1.0
 
 # Default band percentages across 10 deciles (0.0 to 1.0)
-# Lower deciles buy aggressively; upper deciles sell portions of holdings
-# Format: + values = buy % of total capital; - values = sell % of holdings
-DEFAULT_BAND_PCTS = [40.0, 25.0, 15.0, 5.0, 0.0, 0.0, 10.0, 20.0, 30.0, 50.0]
+DEFAULT_BAND_PCTS = [50.0, 25.0, 10.0, 5.0, 0.0, 0.0, -10.0, -20.0, -35.0, -50.0]
 
 # ================================================================
 # Data Fetcher
@@ -107,7 +96,7 @@ def fetch_aud_usd_rates(start_date, end_date):
 
 
 # ================================================================
-# Core Simulation (Enhanced with Price-Deviation Multiplier)
+# Core Simulation
 # ================================================================
 def simulate_dca(df_full, params):
     df = df_full[(df_full.index >= params["start_date"]) & (df_full.index <= params["end_date"])].copy()
@@ -124,7 +113,6 @@ def simulate_dca(df_full, params):
     if data.empty:
         return pd.DataFrame(), {}
 
-    # Calculate Fundamental Score and Fair Value Reference
     if params["risk_model"] == "Power Law Trend":
         def calc_fundamental_pl(date, price):
             days = (date - GENESIS_DATE).days
@@ -134,7 +122,8 @@ def simulate_dca(df_full, params):
             fair_value = 10 ** fair_value_log
             log_price = math.log10(price)
             residual = log_price - fair_value_log
-            score = (params["pl_expensive"] - residual) / (params["pl_expensive"] - params["pl_cheap"])
+            
+            score = (residual - params["pl_cheap"]) / (params["pl_expensive"] - params["pl_cheap"])
             return max(0.0, min(1.0, score)), fair_value
 
         results = data.apply(lambda row: calc_fundamental_pl(row.name, row["price"]), axis=1)
@@ -151,13 +140,8 @@ def simulate_dca(df_full, params):
             if sma <= 0:
                 return 0.5, sma
             ratio = price / sma
-            if ratio <= params["fund_cheap"]:
-                score = 1.0
-            elif ratio >= params["fund_expensive"]:
-                score = 0.0
-            else:
-                score = (params["fund_expensive"] - ratio) / (params["fund_expensive"] - params["fund_cheap"])
-            return score, sma
+            score = (ratio - params["fund_cheap"]) / (params["fund_expensive"] - params["fund_cheap"])
+            return max(0.0, min(1.0, score)), sma
 
         results = data.apply(lambda row: calc_fundamental_sma(row["price"], row["sma_200"]), axis=1)
         data["f_score"] = [r[0] for r in results]
@@ -196,16 +180,12 @@ def simulate_dca(df_full, params):
         fair_value = row["fair_value"]
         usd_per_aud = row["usd_per_aud"]
 
-        # --- DYNAMIC PRICE-DEVIATION MULTIPLIER ---
-        # Calculates how far price is below fair value. If price < fair value, multiplier > 1.
-        # This makes lower prices actively scale up the investment size.
         price_ratio = fair_value / current_price_usd if current_price_usd > 0 else 1.0
-        price_multiplier = max(0.5, price_ratio)  # Scales up when undervalued, caps reduction when overvalued
+        price_multiplier = max(0.5, price_ratio)
 
         if action_val > 0:
-            # BUY Logic scaled dynamically by price discount
             base_aud_buy = (action_val / 100.0) * params["total_capital_aud"]
-            aud_buy = base_aud_buy * price_multiplier  # Scales order size based on how cheap BTC is!
+            aud_buy = base_aud_buy * price_multiplier
             aud_buy = min(aud_buy, cash_remaining_aud)
 
             if aud_buy > 0.01 and current_price_usd > 0:
@@ -218,7 +198,6 @@ def simulate_dca(df_full, params):
                 btc_change = btc_bought
                 trade_type = "BUY"
         elif action_val < 0:
-            # SELL Logic (% of currently held BTC)
             sell_pct = abs(action_val) / 100.0
             btc_to_sell = btc_held * sell_pct
             if btc_to_sell > 0.00000001 and current_price_usd > 0:
@@ -272,8 +251,9 @@ def simulate_dca(df_full, params):
     }
     return trade_df, summary
 
+
 # ================================================================
-# Comparison Strategies
+# Comparison Strategies & UI Layout
 # ================================================================
 def compare_strategies(df, frequency, day_of_week, total_capital_aud, fx_series):
     data = df.copy()
@@ -312,18 +292,14 @@ def compare_strategies(df, frequency, day_of_week, total_capital_aud, fx_series)
     port_lump_usd = btc_lump * current_price
     return_lump = ((port_lump_usd / total_invested_usd) - 1) * 100 if total_invested_usd > 0 else 0
 
-    equal_summary = {"btc": btc_equal, "portfolio_usd": port_equal_usd, "return": return_equal}
-    lump_summary = {"btc": btc_lump, "portfolio_usd": port_lump_usd, "return": return_lump}
-    return equal_summary, lump_summary
+    return {"btc": btc_equal, "portfolio_usd": port_equal_usd, "return": return_equal}, \
+           {"btc": btc_lump, "portfolio_usd": port_lump_usd, "return": return_lump}
 
 
 def reset_band_pcts():
     st.session_state.band_pcts = DEFAULT_BAND_PCTS.copy()
 
 
-# ================================================================
-# Streamlit UI Configuration
-# ================================================================
 st.set_page_config(page_title="BTC Dynamic DCA & Rebalancing Simulator", layout="wide")
 
 if "band_pcts" not in st.session_state:
@@ -332,63 +308,32 @@ if "show_buy_sell_labels" not in st.session_state:
     st.session_state.show_buy_sell_labels = True
 
 st.title("Bitcoin Dynamic DCA & Profit-Taking Rebalancer")
-st.markdown(
-    """
-    Configure your strategy across risk bands (0.0 to 1.0). **Positive values (+)** deploy cash to buy Bitcoin; 
-    **negative values (-)** sell portions of your accumulated Bitcoin back to cash during market blow-off tops.
-    """
-)
 
 with st.sidebar:
     st.header("Capital Setup")
-    total_capital_aud = st.number_input(
-        "Total Starting Capital (AUD)",
-        min_value=1000,
-        max_value=100_000_000,
-        value=10000,
-        step=1000,
-        help="Initial pool of fiat cash.",
-    )
+    total_capital_aud = st.number_input("Total Starting Capital (AUD)", min_value=1000, max_value=100_000_000, value=10000, step=1000)
 
     st.divider()
-    st.header("Frequency")
     frequency = st.selectbox("Execution Frequency", ["Daily", "Weekly", "Monthly"], index=1)
     day_map = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6}
-    day_of_week = st.selectbox(
-        "Day of Week",
-        list(day_map.keys()),
-        index=0,
-        disabled=(frequency != "Weekly"),
-    )
+    day_of_week = st.selectbox("Day of Week", list(day_map.keys()), index=0, disabled=(frequency != "Weekly"))
     selected_day = day_map[day_of_week] if frequency == "Weekly" else 0
 
-    st.divider()
-    st.header("Fundamental Model")
-    risk_model = st.radio(
-        "Risk Metric",
-        ["SMA Ratio (200-day)", "Power Law Trend"],
-        index=1,
-    )
+    risk_model = st.radio("Risk Metric", ["SMA Ratio (200-day)", "Power Law Trend"], index=1)
 
     st.divider()
     st.subheader("Risk Band Allocations")
-    st.caption("(+) = % of initial capital to BUY per interval\n(-) = % of holdings to SELL per interval")
-
     band_labels = [
-        "0.0-0.1 (Cheapest)", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5",
-        "0.5-0.6", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1.0 (Peak)"
+        "0.0-0.1 (Cheapest / Bottom)", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5 (Neutral)",
+        "0.5-0.6 (Neutral)", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1.0 (Peak / Expensive)"
     ]
 
     col1, col2 = st.columns(2)
     for i in range(10):
         with col1 if i % 2 == 0 else col2:
             st.session_state.band_pcts[i] = st.slider(
-                band_labels[i],
-                min_value=-50.0,
-                max_value=100.0,
-                value=float(st.session_state.band_pcts[i]),
-                step=1.0,
-                key=f"slider_{i}",
+                band_labels[i], min_value=-50.0, max_value=100.0,
+                value=float(st.session_state.band_pcts[i]), step=1.0, key=f"slider_{i}"
             )
 
     if st.button("Reset Bands to Default", use_container_width=True):
@@ -396,17 +341,10 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-    st.subheader("Date Range")
     genesis = datetime.date(2009, 1, 3)
     today = datetime.datetime.now(timezone.utc).date()
-    default_start = datetime.date(2020, 1, 1)
-
-    start_date = st.date_input("Start Date", value=default_start, min_value=genesis, max_value=today, format="DD/MM/YYYY")
+    start_date = st.date_input("Start Date", value=datetime.date(2020, 1, 1), min_value=genesis, max_value=today, format="DD/MM/YYYY")
     end_date = st.date_input("End Date", value=today + timedelta(days=90), min_value=start_date, format="DD/MM/YYYY")
-
-    st.divider()
-    st.subheader("Chart Toggles")
-    st.session_state.show_buy_sell_labels = st.checkbox("Show Extreme Zones", value=st.session_state.show_buy_sell_labels)
 
 if end_date <= start_date:
     st.error("End Date must follow Start Date.")
@@ -426,38 +364,23 @@ for i in range(10):
     high = round((i + 1) * 0.1, 1)
     if i == 9:
         high = 1.0
-    pct = st.session_state.band_pcts[i]
-    risk_bands.append((low, high, pct))
+    risk_bands.append((low, high, st.session_state.band_pcts[i]))
 
 params = {
-    "risk_model": risk_model,
-    "frequency": frequency,
-    "day_of_week": selected_day,
-    "fund_cheap": DEFAULT_FUND_CHEAP,
-    "fund_expensive": DEFAULT_FUND_EXPENSIVE,
-    "pl_cheap": DEFAULT_PL_CHEAP,
-    "pl_expensive": DEFAULT_PL_EXPENSIVE,
-    "composite_bias": DEFAULT_BIAS,
-    "total_capital_aud": total_capital_aud,
-    "risk_bands": risk_bands,
-    "start_date": start_dt,
-    "end_date": end_dt,
+    "risk_model": risk_model, "frequency": frequency, "day_of_week": selected_day,
+    "fund_cheap": DEFAULT_FUND_CHEAP, "fund_expensive": DEFAULT_FUND_EXPENSIVE,
+    "pl_cheap": DEFAULT_PL_CHEAP, "pl_expensive": DEFAULT_PL_EXPENSIVE,
+    "composite_bias": DEFAULT_BIAS, "total_capital_aud": total_capital_aud,
+    "risk_bands": risk_bands, "start_date": start_dt, "end_date": end_dt,
 }
 
 trade_df, summary = simulate_dca(df_full, params)
-if trade_df.empty:
-    st.warning("Simulation produced no trading metrics. Adjust date or frequency settings.")
-    st.stop()
-
 fx_series = fetch_aud_usd_rates(start_dt, end_dt)
 equal_summary, lump_summary = compare_strategies(
     df_full[(df_full.index >= start_dt) & (df_full.index <= end_dt)],
     frequency, selected_day, total_capital_aud, fx_series
 )
 
-# ================================================================
-# Output Metrics & Visualization
-# ================================================================
 st.subheader("Dynamic Rebalancing Performance")
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("Periods Run", f"{summary['periods']}")
@@ -469,69 +392,28 @@ m5.metric("Total Net Wealth", f"${summary['total_net_wealth_aud']:,.0f} AUD", de
 st.subheader("Strategy Benchmark Comparison")
 if equal_summary and lump_summary:
     c1, c2, c3 = st.columns(3)
-    c1.metric("Dynamic Rebalancer (Yours)", f"${summary['total_net_wealth_aud']:,.0f} AUD", f"{summary['net_return_pct']:+.2f}%")
+    c1.metric("Dynamic Rebalancer", f"${summary['total_net_wealth_aud']:,.0f} AUD", f"{summary['net_return_pct']:+.2f}%")
     c2.metric("Standard Equal DCA", f"${equal_summary['portfolio_usd']:,.0f} USD", f"{equal_summary['return']:+.2f}%")
     c3.metric("Lump Sum", f"${lump_summary['portfolio_usd']:,.0f} USD", f"{lump_summary['return']:+.2f}%")
 
 st.subheader("Portfolio Wealth, Price & Trade Markers")
 fig = go.Figure()
+fig.add_trace(go.Scatter(x=trade_df["date"], y=trade_df["btc_held"] * trade_df["price"], name="BTC Holdings Value (USD)", line=dict(color="#3498DB", width=2)))
+fig.add_trace(go.Scatter(x=trade_df["date"], y=trade_df["cash_remaining_aud"], name="Cash Reserve (AUD)", line=dict(color="#2ECC71", width=2, dash="dash")))
+fig.add_trace(go.Scatter(x=trade_df["date"], y=trade_df["price"], name="BTC Price (USD)", line=dict(color="#F1C40F", width=1), yaxis="y2"))
 
-dates = trade_df["date"]
-prices = trade_df["price"]
-portfolio_usd = trade_df["btc_held"] * trade_df["price"]
-cash_aud = trade_df["cash_remaining_aud"]
-
-fig.add_trace(go.Scatter(
-    x=dates, y=portfolio_usd, mode="lines", name="BTC Holdings Value (USD)",
-    line=dict(color="#3498DB", width=2)
-))
-
-fig.add_trace(go.Scatter(
-    x=dates, y=cash_aud, mode="lines", name="Cash Reserve (AUD)",
-    line=dict(color="#2ECC71", width=2, dash="dash")
-))
-
-fig.add_trace(go.Scatter(
-    x=dates, y=prices, mode="lines", name="BTC Price (USD)",
-    line=dict(color="#F1C40F", width=1), yaxis="y2"
-))
-
-# Plot buy and sell transaction points
 buys = trade_df[trade_df["trade_type"] == "BUY"]
 sells = trade_df[trade_df["trade_type"] == "SELL"]
-
-fig.add_trace(go.Scatter(
-    x=buys["date"], y=buys["price"], mode="markers", name="Execution: BUY",
-    marker=dict(color="#00FF00", size=8, symbol="triangle-up"), yaxis="y2"
-))
-
-fig.add_trace(go.Scatter(
-    x=sells["date"], y=sells["price"], mode="markers", name="Execution: SELL (Take Profit)",
-    marker=dict(color="#FF4444", size=8, symbol="triangle-down"), yaxis="y2"
-))
+fig.add_trace(go.Scatter(x=buys["date"], y=buys["price"], mode="markers", name="Execution: BUY", marker=dict(color="#00FF00", size=8, symbol="triangle-up"), yaxis="y2"))
+fig.add_trace(go.Scatter(x=sells["date"], y=sells["price"], mode="markers", name="Execution: SELL (Take Profit)", marker=dict(color="#FF4444", size=8, symbol="triangle-down"), yaxis="y2"))
 
 fig.update_layout(
     dragmode="pan",
-    xaxis=dict(title="Date", gridcolor="rgba(128,128,128,0.2)", rangeslider=dict(visible=True)),
-    yaxis=dict(title="Value ($)", tickprefix="$", gridcolor="rgba(128,128,128,0.2)"),
-    yaxis2=dict(title="BTC Price ($)", tickprefix="$", overlaying="y", side="right", gridcolor="rgba(128,128,128,0)"),
+    xaxis=dict(title="Date", rangeslider=dict(visible=True)),
+    yaxis=dict(title="Value ($)", tickprefix="$"),
+    yaxis2=dict(title="BTC Price ($)", tickprefix="$", overlaying="y", side="right"),
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    hovermode="x unified",
     template="plotly_dark",
     height=550,
 )
 st.plotly_chart(fig, use_container_width=True)
-
-st.subheader("Detailed Activity History")
-display_df = trade_df[["date", "trade_type", "price", "composite", "band_action", "aud_flow", "btc_change", "btc_held", "cash_remaining_aud"]].copy()
-display_df["date"] = display_df["date"].dt.strftime("%d/%m/%Y")
-display_df["price"] = display_df["price"].map("${:,.0f}".format)
-display_df["composite"] = display_df["composite"].map("{:.3f}".format)
-display_df["band_action"] = display_df["band_action"].map("{:+.1f}%".format)
-display_df["aud_flow"] = display_df["aud_flow"].map("${:,.2f}".format)
-display_df["btc_change"] = display_df["btc_change"].map("{:+.6f}".format)
-display_df["btc_held"] = display_df["btc_held"].map("{:.6f}".format)
-display_df["cash_remaining_aud"] = display_df["cash_remaining_aud"].map("${:,.0f}".format)
-
-display_df.columns = ["Date", "Action", "BTC Price", "Composite", "Band Rule", "Cash Flow", "BTC Delta", "BTC Balance", "Cash Pool"]
-st.dataframe(display_df, use_container_width=True, height=400)
