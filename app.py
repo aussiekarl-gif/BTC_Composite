@@ -2,10 +2,10 @@
 """
 BTC Composite DCA Simulator (Risk Band % of Capital)
 ====================================================
-- Total Capital: your full pool (e.g., 500,000 AUD).
+- Total Capital: your full pool (e.g., 5,000 AUD).
 - Risk bands defined as percentages of Total Capital.
 - Per period, you invest band% of Total Capital when composite falls in that band.
-- Sliders auto-sum to 100% with a single click.
+- Normalize button to auto-scale all bands to sum to 100%.
 - Default start date: 01/01/2020 (can go back to 2009).
 - Frequency: Daily, Weekly, Monthly.
 - Backtest from 2009 to future (flat projection).
@@ -218,22 +218,15 @@ def compare_strategies(df, frequency, day_of_week, total_invested):
 
 
 # ================================================================
-# Normalization function for the sliders
-# ================================================================
-def normalize_bands():
-    """Scale all 10 risk-band percentages so they sum to exactly 100%."""
-    vals = [st.session_state.get(f"band_pct_{i}", 0) for i in range(10)]
-    total = sum(vals)
-    if total > 0:
-        scaled = [v / total * 100 for v in vals]
-        for i in range(10):
-            st.session_state[f"band_pct_{i}"] = round(scaled[i], 2)
-
-
-# ================================================================
 # Streamlit UI
 # ================================================================
 st.set_page_config(page_title="BTC DCA Simulator (Risk Bands %)", layout="wide")
+
+# --- Initialize session state for band percentages ---
+if "band_pcts" not in st.session_state:
+    # Default: more aggressive at low risk (cheap)
+    st.session_state.band_pcts = [15.0, 12.0, 10.0, 8.0, 6.0, 4.0, 3.0, 2.0, 1.0, 1.0]
+
 st.title("₿ Bitcoin DCA Simulator (Risk Band % of Capital)")
 st.markdown(
     """
@@ -288,57 +281,56 @@ with st.sidebar:
     st.subheader("📊 Risk Band Investment Map (% of Total Capital)")
     st.caption("Set the percentage of your total capital to invest per period for each composite score range.")
 
-    # Generate 10 bands: 0.0–0.1, 0.1–0.2, ..., 0.9–1.0
-    # Default values: more aggressive at low risk (cheap)
-    default_pcts = [15, 12, 10, 8, 6, 4, 3, 2, 1, 1]  # sum = 62%
-    risk_bands = []
+    # --- Sliders for each band (using session state list) ---
+    band_labels = [
+        "0.0–0.1", "0.1–0.2", "0.2–0.3", "0.3–0.4", "0.4–0.5",
+        "0.5–0.6", "0.6–0.7", "0.7–0.8", "0.8–0.9", "0.9–1.0",
+    ]
 
+    # We'll use 2 columns for the sliders
     col1, col2 = st.columns(2)
+
     for i in range(10):
-        low = round(i * 0.1, 1)
-        high = round((i + 1) * 0.1, 1)
-        if i == 9:
-            high = 1.0
-        label = f"{low:.1f}–{high:.1f}"
-        
-        # Use session state to persist values across reruns
-        key = f"band_pct_{i}"
-        if key not in st.session_state:
-            st.session_state[key] = float(default_pcts[i])
-        
-        # Place in columns for compact layout
         with col1 if i % 2 == 0 else col2:
-            pct = st.number_input(
-                label,
+            st.session_state.band_pcts[i] = st.slider(
+                band_labels[i],
                 min_value=0.0,
                 max_value=100.0,
-                value=st.session_state[key],
+                value=st.session_state.band_pcts[i],
                 step=0.5,
-                key=key,
-                format="%.1f",
+                key=f"slider_{i}",
             )
-        risk_bands.append((low, high, float(pct)))
 
     # --- Normalize Button ---
     col1, col2 = st.columns([1, 3])
     with col1:
         if st.button("⚖️ Normalize to 100%"):
-            normalize_bands()
-            st.rerun()
-    
-    # Show current sum
-    current_sum = sum(st.session_state.get(f"band_pct_{i}", 0) for i in range(10))
+            total = sum(st.session_state.band_pcts)
+            if total > 0:
+                scaled = [v / total * 100 for v in st.session_state.band_pcts]
+                st.session_state.band_pcts = [round(v, 2) for v in scaled]
+                st.rerun()
+
+    # Show current sum and a bar chart
+    current_sum = sum(st.session_state.band_pcts)
     if abs(current_sum - 100) < 0.01:
         st.success(f"✅ Total = {current_sum:.1f}%")
     else:
         st.warning(f"⚠️ Total = {current_sum:.1f}% (click Normalize to fix)")
+
+    # --- Allocation Bar Chart (like the image) ---
+    st.caption("Current Allocation by Risk Band")
+    allocation_df = pd.DataFrame({
+        "Band": band_labels,
+        "Allocation %": st.session_state.band_pcts,
+    })
+    st.bar_chart(allocation_df.set_index("Band"))
 
     st.divider()
     st.subheader("📅 Date Range")
     genesis = datetime.datetime(2009, 1, 3, tzinfo=timezone.utc)
     today = datetime.datetime.now(timezone.utc)
 
-    # DEFAULT START DATE: 01/01/2020 (but user can still go back to 2009)
     default_start = datetime.date(2020, 1, 1)
 
     start_date = st.date_input(
@@ -361,7 +353,7 @@ if end_date <= start_date:
     st.error("❌ End Date must be after Start Date. Please adjust.")
     st.stop()
 
-current_sum = sum(st.session_state.get(f"band_pct_{i}", 0) for i in range(10))
+current_sum = sum(st.session_state.band_pcts)
 if abs(current_sum - 100) > 0.5:
     st.error(f"❌ Total percentage = {current_sum:.1f}% – please click 'Normalize to 100%' in the sidebar.")
     st.stop()
@@ -374,14 +366,14 @@ if df.empty:
     st.error("No data found. Try a wider range.")
     st.stop()
 
-# --- Build Params (using current session state values) ---
+# --- Build Params (from session state) ---
 risk_bands = []
 for i in range(10):
     low = round(i * 0.1, 1)
     high = round((i + 1) * 0.1, 1)
     if i == 9:
         high = 1.0
-    pct = st.session_state.get(f"band_pct_{i}", 0.0)
+    pct = st.session_state.band_pcts[i]
     risk_bands.append((low, high, pct))
 
 params = {
