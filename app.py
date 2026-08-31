@@ -5,7 +5,7 @@ BTC Composite DCA Simulator (Risk Band % of Capital)
 - Total Capital: your full pool (e.g., 10,000 AUD).
 - Risk bands defined as percentages of Total Capital.
 - Per period, you invest band% of Total Capital when composite falls in that band.
-- Normalize button to auto-scale all bands to sum to 100% (optional).
+- Normalize button to auto-scale all bands to sum to 100%.
 - Default start date: 01/01/2020 (can go back to 2009).
 - Frequency: Daily, Weekly, Monthly.
 - TWO FUNDAMENTAL MODELS:
@@ -13,8 +13,8 @@ BTC Composite DCA Simulator (Risk Band % of Capital)
   2) Power Law Trend – non-lagging, aligns with absolute price bottoms.
 - AUD/USD conversion, error handling, full timeline even after cash exhaustion.
 - Dates in dd/mm/yyyy format.
-- Buy/Sell labels on chart with toggle.
-- Risk curve parameters reset button.
+- Buy/Sell labels on chart with toggle (using add_shape to avoid Plotly bug).
+- Reset button only resets risk curve parameters (not band percentages).
 - Customizable chart colors and line styles.
 - Comprehensive explanation section at bottom.
 """
@@ -298,17 +298,15 @@ def compare_strategies(df, frequency, day_of_week, total_invested_aud, fx_series
 
 
 # ================================================================
-# Reset function
+# Reset function – ONLY for risk curve parameters
 # ================================================================
-def reset_params():
-    """Reset all risk curve parameters and band percentages to defaults."""
-    st.session_state.band_pcts = DEFAULT_BAND_PCTS.copy()
+def reset_risk_curve_params():
+    """Reset ONLY the risk curve parameters (not the band percentages)."""
     st.session_state.fund_cheap = DEFAULT_FUND_CHEAP
     st.session_state.fund_expensive = DEFAULT_FUND_EXPENSIVE
     st.session_state.pl_cheap = DEFAULT_PL_CHEAP
     st.session_state.pl_expensive = DEFAULT_PL_EXPENSIVE
     st.session_state.composite_bias = DEFAULT_BIAS
-    st.session_state.show_buy_sell_labels = True
 
 
 # ================================================================
@@ -449,9 +447,9 @@ with st.sidebar:
     )
     st.session_state.composite_bias = composite_bias
 
-    # --- Reset Button ---
-    if st.button("🔄 Reset Parameters to Defaults", use_container_width=True):
-        reset_params()
+    # --- Reset Button – ONLY resets risk curve parameters, NOT band percentages ---
+    if st.button("🔄 Reset Risk Curve to Defaults", use_container_width=True):
+        reset_risk_curve_params()
         st.rerun()
 
     st.divider()
@@ -463,7 +461,6 @@ with st.sidebar:
         "0.5–0.6", "0.6–0.7", "0.7–0.8", "0.8–0.9", "0.9–1.0",
     ]
 
-    # Two columns for sliders
     col1, col2 = st.columns(2)
 
     for i in range(10):
@@ -477,7 +474,7 @@ with st.sidebar:
                 key=f"slider_{i}",
             )
 
-    # --- Normalize Button (FIXED) ---
+    # --- Normalize Button (only affects band percentages) ---
     if st.button("⚖️ Normalize to 100%", use_container_width=True):
         total = sum(st.session_state.band_pcts)
         if total > 0:
@@ -485,14 +482,12 @@ with st.sidebar:
             st.session_state.band_pcts = [round(v, 2) for v in scaled]
             st.rerun()
 
-    # Show current sum
     current_sum = sum(st.session_state.band_pcts)
     if abs(current_sum - 100) < 0.01:
         st.success(f"✅ Total = {current_sum:.1f}%")
     else:
         st.warning(f"⚠️ Total = {current_sum:.1f}% (click Normalize to scale to 100%)")
 
-    # --- Allocation Bar Chart ---
     st.caption("Current Allocation by Risk Band")
     allocation_df = pd.DataFrame({
         "Band": band_labels,
@@ -624,7 +619,7 @@ else:
     st.info("ℹ️ Not enough invested capital ($0) to compare strategies. Try adjusting your risk bands so the model invests during the selected period.")
 
 # ================================================================
-# CHART – with Buy/Sell Labels, Customizable Colors & Styles
+# CHART – with Buy/Sell Labels (using add_shape, no add_hline bug)
 # ================================================================
 st.subheader("📈 Portfolio Value, Price & Composite Over Time")
 st.caption("🖱️ Drag the chart left/right to scroll, or use the slider below. Scroll to zoom.")
@@ -693,14 +688,19 @@ if st.session_state.show_buy_sell_labels:
     min_price = prices.min()
     max_price = prices.max()
     price_range = max_price - min_price
-    buy_level = min_price + (price_range * 0.05)
-    sell_level = max_price - (price_range * 0.05)
+    # Avoid zero division if range is 0
+    if price_range == 0:
+        buy_level = min_price
+        sell_level = max_price
+    else:
+        buy_level = min_price + (price_range * 0.05)
+        sell_level = max_price - (price_range * 0.05)
 
     # BUY line (green)
     fig.add_shape(
         type="line",
-        xref="paper",        # spans the entire x-axis regardless of zoom
-        yref="y2",           # reference the secondary y-axis (BTC Price)
+        xref="paper",
+        yref="y2",
         x0=0,
         y0=buy_level,
         x1=1,
@@ -870,7 +870,7 @@ with st.expander("⚙️ How to customize this tool", expanded=False):
     st.markdown("""
     1. **Adjust Risk Bands** – Change the % allocated to each composite score range.
     2. **Normalize** – Click to automatically scale all bands to sum to 100%.
-    3. **Reset Parameters** – Restore all sliders to their default values.
+    3. **Reset Risk Curve** – Restore only the risk curve parameters to defaults (does not affect band percentages).
     4. **Chart Colors** – Pick any color and line style for each trace.
     5. **Date Range** – Backtest from 2009 to the present, or project into the future.
     6. **Frequency** – Choose Daily, Weekly, or Monthly DCA.
