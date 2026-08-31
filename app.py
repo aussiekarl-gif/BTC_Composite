@@ -321,7 +321,7 @@ with st.sidebar:
 
     risk_model = st.radio("Risk Metric", ["SMA Ratio (200-day)", "Power Law Trend"], index=1)
 
-    st.divider()
+   st.divider()
     st.subheader("Risk Band Allocations")
     st.caption("(+) = % of capital to BUY | (-) = % of BTC to SELL")
 
@@ -338,7 +338,7 @@ with st.sidebar:
         "0.9-1.0 (Peak / Expensive)"
     ]
 
-    # Render sliders in a single clean vertical stack
+    # Render sliders cleanly in a single vertical column
     for i in range(10):
         st.session_state.band_pcts[i] = st.slider(
             band_labels[i],
@@ -349,11 +349,8 @@ with st.sidebar:
             key=f"slider_{i}",
         )
 
-    if st.button("Reset Bands to Default", use_container_width=True):
-        reset_band_pcts()
-        st.rerun()
-
-    if st.button("Reset Bands to Default", use_container_width=True):
+    # Added a unique key to prevent duplicate element ID conflicts
+    if st.button("Reset Bands to Default", key="reset_bands_btn", use_container_width=True):
         reset_band_pcts()
         st.rerun()
 
