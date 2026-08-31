@@ -301,15 +301,44 @@ with st.sidebar:
                 key=f"slider_{i}",
             )
 
-    # --- Normalize Button ---
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if st.button("⚖️ Normalize to 100%"):
-            total = sum(st.session_state.band_pcts)
-            if total > 0:
-                scaled = [v / total * 100 for v in st.session_state.band_pcts]
-                st.session_state.band_pcts = [round(v, 2) for v in scaled]
-                st.rerun()
+    # --- Custom CSS for the Normalize Button (Full-width Bitcoin Orange) ---
+    st.markdown(
+        """
+        <style>
+        div.stButton > button:has(.normalize-text) {
+            background-color: #F7931A !important;
+            color: white !important;
+            font-weight: bold !important;
+            border-radius: 8px !important;
+            border: none !important;
+            padding: 0.6rem 1rem !important;
+            width: 100% !important;
+            font-size: 1.05rem !important;
+            box-shadow: 0 2px 8px rgba(247, 147, 26, 0.4) !important;
+            transition: all 0.25s ease !important;
+            white-space: nowrap !important;
+            letter-spacing: 0.5px !important;
+        }
+        div.stButton > button:has(.normalize-text):hover {
+            background-color: #d9821a !important;
+            transform: translateY(-2px) !important;
+            box-shadow: 0 6px 16px rgba(247, 147, 26, 0.6) !important;
+        }
+        div.stButton > button:has(.normalize-text):active {
+            transform: translateY(0px) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # --- Normalize Button (styled with the custom class) ---
+    if st.button("⚖️ Normalize to 100%", key="normalize_btn", use_container_width=True):
+        total = sum(st.session_state.band_pcts)
+        if total > 0:
+            scaled = [v / total * 100 for v in st.session_state.band_pcts]
+            st.session_state.band_pcts = [round(v, 2) for v in scaled]
+            st.rerun()
 
     # Show current sum (WARNING ONLY – NO HARD STOP)
     current_sum = sum(st.session_state.band_pcts)
