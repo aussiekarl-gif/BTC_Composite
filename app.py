@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-BTC Composite DCA Simulator (Risk Band %)
-==========================================
+BTC Composite DCA Simulator (Risk Band % of Capital)
+====================================================
 - Total Capital: your full pool (e.g., 500,000 AUD).
 - Risk bands defined as percentages of Total Capital.
 - Per period, you invest band% of Total Capital when composite falls in that band.
-- Sum of all band percentages ≤ 100% (enforced).
+- Sliders auto-sum to 100% with a single click.
+- Default start date: 01/01/2020 (can go back to 2009).
 - Frequency: Daily, Weekly, Monthly.
 - Backtest from 2009 to future (flat projection).
 """
@@ -126,7 +127,7 @@ def simulate_dca(df, params):
 
     for idx, row in data.iterrows():
         aud_buy = (row["band_pct"] / 100.0) * total_capital
-        aud_buy = min(aud_buy, cash_remaining)  # cannot spend more than left
+        aud_buy = min(aud_buy, cash_remaining)
         aud_buy = max(aud_buy, 0.0)
 
         if aud_buy > 0.01 and row["price"] > 0:
@@ -151,7 +152,6 @@ def simulate_dca(df, params):
             "cash_remaining": cash_remaining,
         })
 
-        # stop if cash is exhausted
         if cash_remaining <= 0:
             break
 
@@ -218,6 +218,19 @@ def compare_strategies(df, frequency, day_of_week, total_invested):
 
 
 # ================================================================
+# Normalization function for the sliders
+# ================================================================
+def normalize_bands():
+    """Scale all 10 risk-band percentages so they sum to exactly 100%."""
+    vals = [st.session_state.get(f"band_pct_{i}", 0) for i in range(10)]
+    total = sum(vals)
+    if total > 0:
+        scaled = [v / total * 100 for v in vals]
+        for i in range(10):
+            st.session_state[f"band_pct_{i}"] = round(scaled[i], 2)
+
+
+# ================================================================
 # Streamlit UI
 # ================================================================
 st.set_page_config(page_title="BTC DCA Simulator (Risk Bands %)", layout="wide")
@@ -225,7 +238,7 @@ st.title("₿ Bitcoin DCA Simulator (Risk Band % of Capital)")
 st.markdown(
     """
     Define **percentages of your total capital** to invest per period for each risk band (0.0–1.0). 
-    The sum of all band percentages must be ≤ 100%. The simulation will invest that percentage of your total capital when the composite falls into the band.
+    Use the **Normalize** button to automatically scale all bands to sum to 100%.
     """
 )
 
@@ -274,51 +287,70 @@ with st.sidebar:
     st.divider()
     st.subheader("📊 Risk Band Investment Map (% of Total Capital)")
     st.caption("Set the percentage of your total capital to invest per period for each composite score range.")
-    st.caption("Sum of all percentages must be ≤ 100%.")
 
     # Generate 10 bands: 0.0–0.1, 0.1–0.2, ..., 0.9–1.0
-    risk_bands = []
-    total_pct = 0.0
-    # Default percentages: more aggressive at low risk (cheap) – e.g., 15% for 0-0.1, 12% for 0.1-0.2, ... down to 1% for 0.9-1.0
+    # Default values: more aggressive at low risk (cheap)
     default_pcts = [15, 12, 10, 8, 6, 4, 3, 2, 1, 1]  # sum = 62%
+    risk_bands = []
+
+    col1, col2 = st.columns(2)
     for i in range(10):
         low = round(i * 0.1, 1)
         high = round((i + 1) * 0.1, 1)
         if i == 9:
             high = 1.0
         label = f"{low:.1f}–{high:.1f}"
-        default_val = default_pcts[i]
-        pct = st.number_input(
-            label,
-            min_value=0,
-            max_value=100,
-            value=default_val,
-            step=1,
-            key=f"band_pct_{i}",
-        )
+        
+        # Use session state to persist values across reruns
+        key = f"band_pct_{i}"
+        if key not in st.session_state:
+            st.session_state[key] = float(default_pcts[i])
+        
+        # Place in columns for compact layout
+        with col1 if i % 2 == 0 else col2:
+            pct = st.number_input(
+                label,
+                min_value=0.0,
+                max_value=100.0,
+                value=st.session_state[key],
+                step=0.5,
+                key=key,
+                format="%.1f",
+            )
         risk_bands.append((low, high, float(pct)))
-        total_pct += pct
 
-    # Show sum warning
-    if total_pct > 100:
-        st.error(f"⚠️ Total percentage = {total_pct}% exceeds 100%! Please reduce some bands.")
+    # --- Normalize Button ---
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        if st.button("⚖️ Normalize to 100%"):
+            normalize_bands()
+            st.rerun()
+    
+    # Show current sum
+    current_sum = sum(st.session_state.get(f"band_pct_{i}", 0) for i in range(10))
+    if abs(current_sum - 100) < 0.01:
+        st.success(f"✅ Total = {current_sum:.1f}%")
     else:
-        st.success(f"Total percentage = {total_pct}% (≤ 100%)")
+        st.warning(f"⚠️ Total = {current_sum:.1f}% (click Normalize to fix)")
 
     st.divider()
     st.subheader("📅 Date Range")
     genesis = datetime.datetime(2009, 1, 3, tzinfo=timezone.utc)
     today = datetime.datetime.now(timezone.utc)
 
+    # DEFAULT START DATE: 01/01/2020 (but user can still go back to 2009)
+    default_start = datetime.date(2020, 1, 1)
+
     start_date = st.date_input(
         "Start Date",
-        value=genesis,
-        min_value=genesis,
-        max_value=today,
+        value=default_start,
+        min_value=genesis.date(),
+        max_value=today.date(),
+        help="Default: 01/01/2020. You can still go back to 2009.",
     )
     end_date = st.date_input(
         "End Date",
-        value=today + timedelta(days=90),
+        value=today.date() + timedelta(days=90),
         min_value=start_date,
     )
 
@@ -329,8 +361,9 @@ if end_date <= start_date:
     st.error("❌ End Date must be after Start Date. Please adjust.")
     st.stop()
 
-if total_pct > 100:
-    st.error("❌ Total percentage exceeds 100%. Please adjust your risk band percentages.")
+current_sum = sum(st.session_state.get(f"band_pct_{i}", 0) for i in range(10))
+if abs(current_sum - 100) > 0.5:
+    st.error(f"❌ Total percentage = {current_sum:.1f}% – please click 'Normalize to 100%' in the sidebar.")
     st.stop()
 
 # --- Load Data ---
@@ -341,7 +374,16 @@ if df.empty:
     st.error("No data found. Try a wider range.")
     st.stop()
 
-# --- Build Params ---
+# --- Build Params (using current session state values) ---
+risk_bands = []
+for i in range(10):
+    low = round(i * 0.1, 1)
+    high = round((i + 1) * 0.1, 1)
+    if i == 9:
+        high = 1.0
+    pct = st.session_state.get(f"band_pct_{i}", 0.0)
+    risk_bands.append((low, high, pct))
+
 params = {
     "frequency": frequency,
     "day_of_week": selected_day,
@@ -377,16 +419,20 @@ col5.metric("📈 Portfolio Value", f"${summary['portfolio_value']:,.0f} USD",
             delta=f"{summary['return_pct']:+.2f}%")
 
 # ================================================================
-# COMPARISON CARDS
+# COMPARISON CARDS – FIXED: only show if data exists
 # ================================================================
 st.subheader("⚔️ Strategy Comparison (Same Total Invested)")
-comp1, comp2, comp3 = st.columns(3)
-with comp1:
-    st.metric("🚀 Risk-Band (Yours)", f"${summary['portfolio_value']:,.0f} USD", f"{summary['return_pct']:+.2f}%")
-with comp2:
-    st.metric("📅 Equal DCA (Fixed $)", f"${equal_summary['portfolio']:,.0f} USD", f"{equal_summary['return']:+.2f}%")
-with comp3:
-    st.metric("💥 Lump Sum (Day 1)", f"${lump_summary['portfolio']:,.0f} USD", f"{lump_summary['return']:+.2f}%")
+
+if equal_summary and lump_summary and summary["total_invested"] > 0:
+    comp1, comp2, comp3 = st.columns(3)
+    with comp1:
+        st.metric("🚀 Risk-Band (Yours)", f"${summary['portfolio_value']:,.0f} USD", f"{summary['return_pct']:+.2f}%")
+    with comp2:
+        st.metric("📅 Equal DCA (Fixed $)", f"${equal_summary['portfolio']:,.0f} USD", f"{equal_summary['return']:+.2f}%")
+    with comp3:
+        st.metric("💥 Lump Sum (Day 1)", f"${lump_summary['portfolio']:,.0f} USD", f"{lump_summary['return']:+.2f}%")
+else:
+    st.info("ℹ️ Not enough invested capital ($0) to compare strategies. Try adjusting your risk bands so the model invests during the selected period.")
 
 # ================================================================
 # CHART – Scrollable with Updated Colors
