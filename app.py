@@ -2,15 +2,16 @@
 """
 BTC Composite DCA Simulator (Risk Band % of Capital)
 ====================================================
-- Total Capital: your full pool (e.g., 500,000 AUD).
+- Total Capital: your full pool (e.g., 10,000 AUD).
 - Risk bands defined as percentages of Total Capital.
 - Per period, you invest band% of Total Capital when composite falls in that band.
 - Normalize button to auto-scale all bands to sum to 100% (optional).
-- Simulation runs even if percentages don't sum to 100% (just shows a warning).
 - Default start date: 01/01/2020 (can go back to 2009).
 - Frequency: Daily, Weekly, Monthly.
 - Backtest from 2009 to future (flat projection).
 - All bugs fixed: SMA buffer, slider overlap, AUD/USD conversion, error handling, cash exhaustion, NaN warnings.
+- Dates displayed in dd/mm/yyyy format.
+- No 500k reference anywhere.
 """
 
 import datetime
@@ -27,7 +28,6 @@ import streamlit as st
 @st.cache_data(ttl=3600)
 def fetch_btc_history(start_date, end_date):
     """Fetch daily BTC prices with a 300-day buffer before start_date for SMA."""
-    # We need extra days before start_date to compute the 200-day SMA
     buffer_days = 300
     fetch_start = start_date - timedelta(days=buffer_days)
     
@@ -51,10 +51,8 @@ def fetch_btc_history(start_date, end_date):
     df = pd.DataFrame(prices)
     df = df.set_index("date").sort_index()
 
-    # Filter to the extended range (including buffer)
     df = df[(df.index >= fetch_start) & (df.index <= end_date)]
 
-    # Future projection (flat price) if end_date > last available date
     if end_date and end_date > df.index[-1]:
         last_price = df["price"].iloc[-1]
         last_date = df.index[-1]
@@ -70,15 +68,13 @@ def fetch_btc_history(start_date, end_date):
             )
             df = pd.concat([df, future_df])
 
-    # Now we have a full dataframe from fetch_start to end_date.
-    # We'll keep the full range; simulation will slice later.
     return df
 
 
 # ================================================================
 # Historical AUD/USD Exchange Rate (daily)
 # ================================================================
-@st.cache_data(ttl=86400)  # cache for 24 hours
+@st.cache_data(ttl=86400)
 def fetch_aud_usd_rates(start_date, end_date):
     """Fetch daily AUD/USD rates from Frankfurter API."""
     url = f"https://api.frankfurter.app/{start_date.strftime('%Y-%m-%d')}..{end_date.strftime('%Y-%m-%d')}?from=USD&to=AUD"
@@ -87,64 +83,39 @@ def fetch_aud_usd_rates(start_date, end_date):
         resp.raise_for_status()
         data = resp.json()
         rates = data["rates"]
-        # rates is dict: {'2020-01-01': {'AUD': 1.43}, ...}
-        # We want AUD per 1 USD, but we need USD per 1 AUD (i.e., how many USD for 1 AUD)
-        # The API gives AUD per USD, so USD per AUD = 1 / that value.
-        # However, we can also get USD per AUD directly by flipping the pair? Frankfurter supports 'from=AUD&to=USD'.
-        # Let's fetch the other way: from=AUD&to=USD.
-        # But we already have the data, we'll convert.
         aud_per_usd = {k: v["AUD"] for k, v in rates.items()}
-        # Convert to USD per AUD
         usd_per_aud = {k: 1.0 / v for k, v in aud_per_usd.items()}
-        # Create a Series with date index
         fx_series = pd.Series(usd_per_aud)
         fx_series.index = pd.to_datetime(fx_series.index)
         return fx_series
     except Exception as e:
         st.warning(f"⚠️ Could not fetch AUD/USD rates: {e}. Using 1:1 as fallback.")
-        # Fallback: assume 1 AUD = 1 USD (which is incorrect but avoids crash)
         return None
 
 
 # ================================================================
-# Core Simulation (with % of Total Capital per band)
+# Core Simulation
 # ================================================================
 def simulate_dca(df_full, params):
-    """
-    params: dict with keys:
-        frequency, day_of_week,
-        fund_cheap, fund_expensive, composite_bias,
-        total_capital_aud,
-        risk_bands: list of (min_risk, max_risk, pct_of_capital),
-        start_date, end_date (to slice the full dataframe)
-    """
-    # Slice to the actual user window
     df = df_full[(df_full.index >= params["start_date"]) & (df_full.index <= params["end_date"])].copy()
     if df.empty:
         return pd.DataFrame(), {}
 
-    # --- Filter by frequency ---
     if params["frequency"] == "Weekly":
         data = df[df.index.dayofweek == params["day_of_week"]]
     elif params["frequency"] == "Monthly":
         data = df[df.index.day == 1]
-    else:  # Daily
+    else:
         data = df
 
     if data.empty:
         return pd.DataFrame(), {}
 
-    # --- Compute SMA on the FULL dataframe (including buffer) so we don't get NaNs ---
     sma_series = df_full["price"].rolling(window=200).mean()
-    # Now align to our data index
     data["sma_200"] = sma_series.reindex(data.index)
-
-    # For any remaining NaN (if start_date is very early and buffer wasn't enough), use expanding mean
     if data["sma_200"].isna().any():
-        # Use expanding mean for those periods
         data["sma_200"] = data["sma_200"].fillna(df_full["price"].expanding().mean().reindex(data.index))
 
-    # --- Fundamental Score ---
     def calc_fundamental(price, sma):
         if sma <= 0:
             return 0.5
@@ -162,19 +133,12 @@ def simulate_dca(df_full, params):
     data["composite"] = data["f_score"] * params["composite_bias"]
     data["composite"] = data["composite"].clip(0.0, 1.0)
 
-    # --- AUD/USD conversion ---
-    # Fetch FX rates from start_date to end_date
     fx_series = fetch_aud_usd_rates(params["start_date"], params["end_date"])
     if fx_series is not None:
-        # Align FX to data index, forward fill
-        data["usd_per_aud"] = fx_series.reindex(data.index).ffill()
-        # If still NaN (e.g., future dates), use last known rate
-        data["usd_per_aud"] = data["usd_per_aud"].fillna(data["usd_per_aud"].iloc[-1] if not data.empty else 0.7)
+        data["usd_per_aud"] = fx_series.reindex(data.index).ffill().fillna(0.7)
     else:
-        # Fallback: assume 1:1 (but we'll warn)
         data["usd_per_aud"] = 1.0
 
-    # --- Risk Band Mapping: get percentage of total capital ---
     def get_band_pct(comp):
         for min_r, max_r, pct in params["risk_bands"]:
             if min_r <= comp <= max_r:
@@ -183,7 +147,6 @@ def simulate_dca(df_full, params):
 
     data["band_pct"] = data["composite"].apply(get_band_pct)
 
-    # --- Run simulation with total capital cap ---
     total_capital_aud = params["total_capital_aud"]
     cash_remaining_aud = total_capital_aud
     btc_held = 0.0
@@ -191,12 +154,10 @@ def simulate_dca(df_full, params):
     trades = []
 
     for idx, row in data.iterrows():
-        # Convert band% to AUD investment
         aud_buy = (row["band_pct"] / 100.0) * total_capital_aud
         aud_buy = min(aud_buy, cash_remaining_aud)
         aud_buy = max(aud_buy, 0.0)
 
-        # Convert AUD to USD using the exchange rate
         usd_buy = aud_buy * row["usd_per_aud"]
 
         if usd_buy > 0.01 and row["price"] > 0:
@@ -222,24 +183,16 @@ def simulate_dca(df_full, params):
             "cash_remaining_aud": cash_remaining_aud,
         })
 
-        # If cash is exhausted, we continue but with zero buys (don't break)
-        if cash_remaining_aud <= 0:
-            # Continue to record zero buys for remaining periods
-            pass
-
     trade_df = pd.DataFrame(trades)
     if trade_df.empty:
         return trade_df, {}
 
     current_price = data["price"].iloc[-1] if not data.empty else 0
     portfolio_value_usd = btc_held * current_price
-    # For display, we convert portfolio value to AUD at the last exchange rate
     last_usd_per_aud = data["usd_per_aud"].iloc[-1] if not data.empty else 1.0
     portfolio_value_aud = portfolio_value_usd / last_usd_per_aud
 
-    avg_price_usd = total_invested_aud / btc_held if btc_held > 0 else 0
-    # Convert avg price to USD per BTC: total invested in USD / BTC held
-    total_invested_usd = (trade_df["usd_buy"].sum())
+    total_invested_usd = trade_df["usd_buy"].sum() if not trade_df.empty else 0
     avg_price_usd = total_invested_usd / btc_held if btc_held > 0 else 0
 
     summary = {
@@ -259,10 +212,9 @@ def simulate_dca(df_full, params):
 
 
 # ================================================================
-# Comparison Strategies (Equal DCA & Lump Sum)
+# Comparison Strategies
 # ================================================================
 def compare_strategies(df, frequency, day_of_week, total_invested_aud, fx_series):
-    """Equal DCA = evenly split total_invested across all periods."""
     data = df.copy()
     if frequency == "Weekly":
         data = data[data.index.dayofweek == day_of_week]
@@ -278,7 +230,6 @@ def compare_strategies(df, frequency, day_of_week, total_invested_aud, fx_series
 
     equal_per_period_aud = total_invested_aud / periods
 
-    # Align FX rates
     if fx_series is not None:
         data["usd_per_aud"] = fx_series.reindex(data.index).ffill().fillna(0.7)
     else:
@@ -293,7 +244,6 @@ def compare_strategies(df, frequency, day_of_week, total_invested_aud, fx_series
     port_equal_usd = btc_equal * current_price
     return_equal = ((port_equal_usd / (equal_per_period_aud * periods)) - 1) * 100 if equal_per_period_aud > 0 else 0
 
-    # Lump Sum (invest total_invested_aud on first day)
     first_price = data["price"].iloc[0]
     first_usd_per_aud = data["usd_per_aud"].iloc[0]
     total_invested_usd = total_invested_aud * first_usd_per_aud
@@ -311,7 +261,6 @@ def compare_strategies(df, frequency, day_of_week, total_invested_aud, fx_series
 # ================================================================
 st.set_page_config(page_title="BTC DCA Simulator (Risk Bands %)", layout="wide")
 
-# --- Initialize session state for band percentages ---
 if "band_pcts" not in st.session_state:
     st.session_state.band_pcts = [15.0, 12.0, 10.0, 8.0, 6.0, 4.0, 3.0, 2.0, 1.0, 1.0]
 
@@ -323,15 +272,14 @@ st.markdown(
     """
 )
 
-# --- SIDEBAR ---
 with st.sidebar:
     st.header("💰 Total Capital")
     total_capital_aud = st.number_input(
         "Total Capital (AUD)",
         min_value=1000,
         max_value=100_000_000,
-        value=500000,
-        step=10000,
+        value=10000,        # 👈 changed from 500000
+        step=1000,
         help="Your full pool of capital to deploy (in AUD).",
     )
 
@@ -359,18 +307,9 @@ with st.sidebar:
         1.2, 2.5, 1.5, 0.01,
         help="Price/SMA ≥ this → Fundamental Score = 0.0 (max expensive).",
     )
-    # --- Enforce cheap < expensive with a gap ---
     if fund_cheap >= fund_expensive:
         st.warning(f"⚠️ Cheap threshold ({fund_cheap:.2f}) must be less than expensive ({fund_expensive:.2f}). Auto-adjusting.")
         fund_expensive = fund_cheap + 0.05
-        # Force update the slider value by re-running? We'll just show a message and set the variable.
-        # But since sliders are read-only after, we can use a session state trick.
-        # For simplicity, we'll just warn and set a local variable.
-        # We'll also allow the user to fix it manually; the warning stays.
-
-    # We'll pass the values; simulation will handle if cheap >= expensive by swapping or clamping.
-    # But better to prevent: we can use st.slider with dynamic max for cheap and min for expensive.
-    # However, we'll keep simple and add validation in simulation.
 
     composite_bias = st.slider(
         "Composite Bias (Aggressiveness)",
@@ -382,7 +321,6 @@ with st.sidebar:
     st.subheader("📊 Risk Band Investment Map (% of Total Capital)")
     st.caption("Set the percentage of your total capital to invest per period for each composite score range.")
 
-    # --- Sliders for each band (using session state list) ---
     band_labels = [
         "0.0–0.1", "0.1–0.2", "0.2–0.3", "0.3–0.4", "0.4–0.5",
         "0.5–0.6", "0.6–0.7", "0.7–0.8", "0.8–0.9", "0.9–1.0",
@@ -401,7 +339,7 @@ with st.sidebar:
                 key=f"slider_{i}",
             )
 
-    # --- Custom CSS for the Normalize Button (Full-width Bitcoin Orange) ---
+    # Custom CSS for button
     st.markdown(
         """
         <style>
@@ -432,7 +370,6 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # --- Normalize Button ---
     if st.button("⚖️ Normalize to 100%", key="normalize_btn", use_container_width=True):
         total = sum(st.session_state.band_pcts)
         if total > 0:
@@ -440,14 +377,12 @@ with st.sidebar:
             st.session_state.band_pcts = [round(v, 2) for v in scaled]
             st.rerun()
 
-    # Show current sum (WARNING ONLY – NO HARD STOP)
     current_sum = sum(st.session_state.band_pcts)
     if abs(current_sum - 100) < 0.01:
         st.success(f"✅ Total = {current_sum:.1f}%")
     else:
         st.warning(f"⚠️ Total = {current_sum:.1f}% (click Normalize to scale to 100%)")
 
-    # --- Allocation Bar Chart ---
     st.caption("Current Allocation by Risk Band")
     allocation_df = pd.DataFrame({
         "Band": band_labels,
@@ -462,17 +397,20 @@ with st.sidebar:
 
     default_start = datetime.date(2020, 1, 1)
 
+    # Use format="DD/MM/YYYY" for dd/mm/yyyy display
     start_date = st.date_input(
         "Start Date",
         value=default_start,
         min_value=genesis,
         max_value=today,
+        format="DD/MM/YYYY",
         help="Default: 01/01/2020. You can still go back to 2009.",
     )
     end_date = st.date_input(
         "End Date",
         value=today + timedelta(days=90),
         min_value=start_date,
+        format="DD/MM/YYYY",
     )
 
     st.caption("🔬 Data: blockchain.com. Future dates = flat projection (no price change).")
@@ -512,19 +450,17 @@ params = {
     "end_date": end_dt,
 }
 
-# --- Run Simulations ---
+# --- Run Simulation ---
 trade_df, summary = simulate_dca(df_full, params)
 if trade_df.empty:
     st.warning("No trades executed. Adjust frequency or date range.")
     st.stop()
 
-# --- Get total invested for comparisons ---
-total_invested_aud = summary["total_invested_aud"]
-# Fetch FX rates for comparison
+# --- Comparisons ---
 fx_series = fetch_aud_usd_rates(start_dt, end_dt)
 equal_summary, lump_summary = compare_strategies(
     df_full[(df_full.index >= start_dt) & (df_full.index <= end_dt)],
-    frequency, selected_day, total_invested_aud, fx_series
+    frequency, selected_day, summary["total_invested_aud"], fx_series
 )
 
 # ================================================================
@@ -556,33 +492,28 @@ else:
     st.info("ℹ️ Not enough invested capital ($0) to compare strategies. Try adjusting your risk bands so the model invests during the selected period.")
 
 # ================================================================
-# CHART – Scrollable with Updated Colors
+# CHART (dates formatted in tooltip)
 # ================================================================
 st.subheader("📈 Portfolio Value, Price & Composite Over Time")
 st.caption("🖱️ Drag the chart left/right to scroll, or use the slider below. Scroll to zoom.")
 
-# We'll plot in USD for simplicity, but we can also show AUD portfolio value.
 fig = go.Figure()
 
-# Portfolio Value (USD)
 portfolio_usd = trade_df["btc_held"] * trade_df["price"]
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=portfolio_usd,
     mode="lines", name="Portfolio (USD)", line=dict(color="#3498DB", width=3)
 ))
-# BTC Price
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["price"],
     mode="lines", name="BTC Price (USD)", line=dict(color="#F1C40F", width=2, dash="dot"),
     yaxis="y2"
 ))
-# Total Invested (USD)
 total_invested_usd = trade_df["usd_buy"].cumsum()
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=total_invested_usd,
     mode="lines", name="Total Invested (USD)", line=dict(color="#2ECC71", width=2, dash="dash")
 ))
-# Composite Score
 fig.add_trace(go.Scatter(
     x=trade_df["date"], y=trade_df["composite"],
     mode="lines", name="Composite Score (0-1)", line=dict(color="#E74C3C", width=2, dash="dot"),
@@ -595,7 +526,8 @@ fig.update_layout(
         title="Date",
         gridcolor="rgba(128,128,128,0.2)",
         rangeslider=dict(visible=True, thickness=0.05),
-        type="date"
+        type="date",
+        tickformat="%d/%m/%Y",   # dd/mm/yyyy on axis
     ),
     yaxis=dict(title="Portfolio / Invested ($)", tickprefix="$", gridcolor="rgba(128,128,128,0.2)"),
     yaxis2=dict(title="BTC Price ($)", tickprefix="$", overlaying="y", side="right", gridcolor="rgba(128,128,128,0)"),
@@ -608,11 +540,11 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 # ================================================================
-# TRADE HISTORY
+# TRADE HISTORY (dates formatted)
 # ================================================================
 st.subheader("📋 Detailed Trade History")
 display_df = trade_df.copy()
-display_df["date"] = display_df["date"].dt.strftime("%Y-%m-%d")
+display_df["date"] = display_df["date"].dt.strftime("%d/%m/%Y")  # dd/mm/yyyy
 display_df["price"] = display_df["price"].map("${:,.0f}".format)
 display_df["f_score"] = display_df["f_score"].map("{:.3f}".format)
 display_df["composite"] = display_df["composite"].map("{:.3f}".format)
