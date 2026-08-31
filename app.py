@@ -107,7 +107,7 @@ def fetch_aud_usd_rates(start_date, end_date):
 
 
 # ================================================================
-# Core Simulation (Buy & Sell Engine)
+# Core Simulation (Enhanced with Price-Deviation Multiplier)
 # ================================================================
 def simulate_dca(df_full, params):
     df = df_full[(df_full.index >= params["start_date"]) & (df_full.index <= params["end_date"])].copy()
@@ -124,23 +124,23 @@ def simulate_dca(df_full, params):
     if data.empty:
         return pd.DataFrame(), {}
 
+    # Calculate Fundamental Score and Fair Value Reference
     if params["risk_model"] == "Power Law Trend":
         def calc_fundamental_pl(date, price):
             days = (date - GENESIS_DATE).days
             if days <= 0:
-                return 0.5
+                return 0.5, 1.0
             fair_value_log = 5.84 * math.log10(days) - 17.01
+            fair_value = 10 ** fair_value_log
             log_price = math.log10(price)
             residual = log_price - fair_value_log
             score = (params["pl_expensive"] - residual) / (params["pl_expensive"] - params["pl_cheap"])
-            return max(0.0, min(1.0, score))
+            return max(0.0, min(1.0, score)), fair_value
 
-        data["f_score"] = data.apply(
-            lambda row: calc_fundamental_pl(row.name, row["price"]),
-            axis=1,
-        )
+        results = data.apply(lambda row: calc_fundamental_pl(row.name, row["price"]), axis=1)
+        data["f_score"] = [r[0] for r in results]
+        data["fair_value"] = [r[1] for r in results]
         data["sma_200"] = 0.0
-
     else:
         sma_series = df_full["price"].rolling(window=200).mean()
         data["sma_200"] = sma_series.reindex(data.index)
@@ -149,18 +149,19 @@ def simulate_dca(df_full, params):
 
         def calc_fundamental_sma(price, sma):
             if sma <= 0:
-                return 0.5
+                return 0.5, sma
             ratio = price / sma
             if ratio <= params["fund_cheap"]:
-                return 1.0
-            if ratio >= params["fund_expensive"]:
-                return 0.0
-            return (params["fund_expensive"] - ratio) / (params["fund_expensive"] - params["fund_cheap"])
+                score = 1.0
+            elif ratio >= params["fund_expensive"]:
+                score = 0.0
+            else:
+                score = (params["fund_expensive"] - ratio) / (params["fund_expensive"] - params["fund_cheap"])
+            return score, sma
 
-        data["f_score"] = data.apply(
-            lambda row: calc_fundamental_sma(row["price"], row["sma_200"]),
-            axis=1,
-        )
+        results = data.apply(lambda row: calc_fundamental_sma(row["price"], row["sma_200"]), axis=1)
+        data["f_score"] = [r[0] for r in results]
+        data["fair_value"] = [r[1] for r in results]
 
     data["composite"] = data["f_score"] * params["composite_bias"]
     data["composite"] = data["composite"].clip(0.0, 1.0)
@@ -181,25 +182,32 @@ def simulate_dca(df_full, params):
 
     cash_remaining_aud = params["total_capital_aud"]
     btc_held = 0.0
-    total_invested_aud = params["total_capital_aud"]
     total_realized_profit_aud = 0.0
     trades = []
 
     for idx, row in data.iterrows():
-        action_val = row["band_action"]  # Positive = Buy %, Negative = Sell % of holdings
+        action_val = row["band_action"]
         aud_flow = 0.0
         usd_flow = 0.0
         btc_change = 0.0
         trade_type = "HOLD"
 
         current_price_usd = row["price"]
+        fair_value = row["fair_value"]
         usd_per_aud = row["usd_per_aud"]
-        current_price_aud = current_price_usd / usd_per_aud if usd_per_aud > 0 else current_price_usd
+
+        # --- DYNAMIC PRICE-DEVIATION MULTIPLIER ---
+        # Calculates how far price is below fair value. If price < fair value, multiplier > 1.
+        # This makes lower prices actively scale up the investment size.
+        price_ratio = fair_value / current_price_usd if current_price_usd > 0 else 1.0
+        price_multiplier = max(0.5, price_ratio)  # Scales up when undervalued, caps reduction when overvalued
 
         if action_val > 0:
-            # BUY Logic (% of initial capital pool)
-            aud_buy = (action_val / 100.0) * params["total_capital_aud"]
+            # BUY Logic scaled dynamically by price discount
+            base_aud_buy = (action_val / 100.0) * params["total_capital_aud"]
+            aud_buy = base_aud_buy * price_multiplier  # Scales order size based on how cheap BTC is!
             aud_buy = min(aud_buy, cash_remaining_aud)
+
             if aud_buy > 0.01 and current_price_usd > 0:
                 usd_buy = aud_buy * usd_per_aud
                 btc_bought = usd_buy / current_price_usd
@@ -227,6 +235,7 @@ def simulate_dca(df_full, params):
         trades.append({
             "date": idx,
             "price": current_price_usd,
+            "fair_value": fair_value,
             "sma_200": row.get("sma_200", 0.0),
             "f_score": row["f_score"],
             "composite": row["composite"],
@@ -262,7 +271,6 @@ def simulate_dca(df_full, params):
         "final_composite": data["composite"].iloc[-1] if not data.empty else 0,
     }
     return trade_df, summary
-
 
 # ================================================================
 # Comparison Strategies
