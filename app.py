@@ -323,18 +323,35 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Risk Band Allocations")
+    st.caption("(+) = % of capital to BUY | (-) = % of BTC to SELL")
+
     band_labels = [
-        "0.0-0.1 (Cheapest / Bottom)", "0.1-0.2", "0.2-0.3", "0.3-0.4", "0.4-0.5 (Neutral)",
-        "0.5-0.6 (Neutral)", "0.6-0.7", "0.7-0.8", "0.8-0.9", "0.9-1.0 (Peak / Expensive)"
+        "0.0-0.1 (Cheapest / Bottom)", 
+        "0.1-0.2", 
+        "0.2-0.3", 
+        "0.3-0.4", 
+        "0.4-0.5 (Neutral)",
+        "0.5-0.6 (Neutral)", 
+        "0.6-0.7", 
+        "0.7-0.8", 
+        "0.8-0.9", 
+        "0.9-1.0 (Peak / Expensive)"
     ]
 
-    col1, col2 = st.columns(2)
+    # Render sliders in a single clean vertical stack
     for i in range(10):
-        with col1 if i % 2 == 0 else col2:
-            st.session_state.band_pcts[i] = st.slider(
-                band_labels[i], min_value=-50.0, max_value=100.0,
-                value=float(st.session_state.band_pcts[i]), step=1.0, key=f"slider_{i}"
-            )
+        st.session_state.band_pcts[i] = st.slider(
+            band_labels[i],
+            min_value=-50.0,
+            max_value=100.0,
+            value=float(st.session_state.band_pcts[i]),
+            step=1.0,
+            key=f"slider_{i}",
+        )
+
+    if st.button("Reset Bands to Default", use_container_width=True):
+        reset_band_pcts()
+        st.rerun()
 
     if st.button("Reset Bands to Default", use_container_width=True):
         reset_band_pcts()
