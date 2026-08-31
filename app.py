@@ -2,10 +2,11 @@
 """
 BTC Composite DCA Simulator (Risk Band % of Capital)
 ====================================================
-- Total Capital: your full pool (e.g., 5,000 AUD).
+- Total Capital: your full pool (e.g., 500,000 AUD).
 - Risk bands defined as percentages of Total Capital.
 - Per period, you invest band% of Total Capital when composite falls in that band.
-- Normalize button to auto-scale all bands to sum to 100%.
+- Normalize button to auto-scale all bands to sum to 100% (optional).
+- Simulation runs even if percentages don't sum to 100% (just shows a warning).
 - Default start date: 01/01/2020 (can go back to 2009).
 - Frequency: Daily, Weekly, Monthly.
 - Backtest from 2009 to future (flat projection).
@@ -231,7 +232,7 @@ st.title("₿ Bitcoin DCA Simulator (Risk Band % of Capital)")
 st.markdown(
     """
     Define **percentages of your total capital** to invest per period for each risk band (0.0–1.0). 
-    Use the **Normalize** button to automatically scale all bands to sum to 100%.
+    Use the **Normalize** button to automatically scale all bands to sum to 100% (optional).
     """
 )
 
@@ -287,7 +288,6 @@ with st.sidebar:
         "0.5–0.6", "0.6–0.7", "0.7–0.8", "0.8–0.9", "0.9–1.0",
     ]
 
-    # We'll use 2 columns for the sliders
     col1, col2 = st.columns(2)
 
     for i in range(10):
@@ -311,12 +311,12 @@ with st.sidebar:
                 st.session_state.band_pcts = [round(v, 2) for v in scaled]
                 st.rerun()
 
-    # Show current sum and a bar chart
+    # Show current sum (WARNING ONLY – NO HARD STOP)
     current_sum = sum(st.session_state.band_pcts)
     if abs(current_sum - 100) < 0.01:
         st.success(f"✅ Total = {current_sum:.1f}%")
     else:
-        st.warning(f"⚠️ Total = {current_sum:.1f}% (click Normalize to fix)")
+        st.warning(f"⚠️ Total = {current_sum:.1f}% (click Normalize to scale to 100%)")
 
     # --- Allocation Bar Chart (like the image) ---
     st.caption("Current Allocation by Risk Band")
@@ -348,14 +348,9 @@ with st.sidebar:
 
     st.caption("🔬 Data: blockchain.com. Future dates = flat projection (no price change).")
 
-# --- Validation ---
+# --- Validation: only check that end_date > start_date (no hard stop for percentages) ---
 if end_date <= start_date:
     st.error("❌ End Date must be after Start Date. Please adjust.")
-    st.stop()
-
-current_sum = sum(st.session_state.band_pcts)
-if abs(current_sum - 100) > 0.5:
-    st.error(f"❌ Total percentage = {current_sum:.1f}% – please click 'Normalize to 100%' in the sidebar.")
     st.stop()
 
 # --- Load Data ---
@@ -411,7 +406,7 @@ col5.metric("📈 Portfolio Value", f"${summary['portfolio_value']:,.0f} USD",
             delta=f"{summary['return_pct']:+.2f}%")
 
 # ================================================================
-# COMPARISON CARDS – FIXED: only show if data exists
+# COMPARISON CARDS
 # ================================================================
 st.subheader("⚔️ Strategy Comparison (Same Total Invested)")
 
