@@ -688,44 +688,62 @@ fig.add_trace(go.Scatter(
     yaxis="y3"
 ))
 
-# --- Buy/Sell Labels (Horizontal lines) ---
+# --- Buy/Sell Labels (Horizontal lines) – FIXED using add_shape ---
 if st.session_state.show_buy_sell_labels:
-    # Calculate buy and sell levels
     min_price = prices.min()
     max_price = prices.max()
     price_range = max_price - min_price
-    
-    # Buy level: 10% above absolute minimum (or at the minimum)
     buy_level = min_price + (price_range * 0.05)
-    # Sell level: 10% below absolute maximum
     sell_level = max_price - (price_range * 0.05)
-    
-    # Add horizontal line for BUY
-    fig.add_hline(
-        y=buy_level,
-        line_dash="solid",
-        line_color="#00FF00",
+
+    # BUY line (green)
+    fig.add_shape(
+        type="line",
+        xref="paper",        # spans the entire x-axis regardless of zoom
+        yref="y2",           # reference the secondary y-axis (BTC Price)
+        x0=0,
+        y0=buy_level,
+        x1=1,
+        y1=buy_level,
+        line=dict(color="#00FF00", width=2, dash="solid"),
         opacity=0.5,
-        line_width=2,
-        annotation_text="🔽 BUY ZONE",
-        annotation_position="bottom right",
-        annotation_font_size=14,
-        annotation_font_color="#00FF00",
-        yaxis="y2"
     )
-    
-    # Add horizontal line for SELL
-    fig.add_hline(
-        y=sell_level,
-        line_dash="solid",
-        line_color="#FF4444",
+    # BUY annotation
+    fig.add_annotation(
+        xref="paper",
+        yref="y2",
+        x=1,
+        y=buy_level,
+        text="🔽 BUY ZONE",
+        showarrow=False,
+        font=dict(color="#00FF00", size=14),
+        xanchor="right",
+        yanchor="bottom",
+    )
+
+    # SELL line (red)
+    fig.add_shape(
+        type="line",
+        xref="paper",
+        yref="y2",
+        x0=0,
+        y0=sell_level,
+        x1=1,
+        y1=sell_level,
+        line=dict(color="#FF4444", width=2, dash="solid"),
         opacity=0.5,
-        line_width=2,
-        annotation_text="🔼 SELL ZONE",
-        annotation_position="top right",
-        annotation_font_size=14,
-        annotation_font_color="#FF4444",
-        yaxis="y2"
+    )
+    # SELL annotation
+    fig.add_annotation(
+        xref="paper",
+        yref="y2",
+        x=1,
+        y=sell_level,
+        text="🔼 SELL ZONE",
+        showarrow=False,
+        font=dict(color="#FF4444", size=14),
+        xanchor="right",
+        yanchor="top",
     )
 
 fig.update_layout(
