@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.4.1 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.4.2 FULL
 ====================================================
 
 Designed for:
@@ -110,7 +110,7 @@ DEFAULT_PRESSURE_CAP = 2.50
 DEFAULT_MIN_DAYS_BETWEEN_SALES = 21
 
 # V3.4 strict valuation-zone execution defaults.
-DEFAULT_BUY_THRESHOLD = 0.40
+DEFAULT_BUY_THRESHOLD = 0.25
 DEFAULT_SELL_RISK_THRESHOLD = 0.75
 DEFAULT_MIN_TRADE_AUD = 100.0
 DEFAULT_MIN_RISK_COMPONENTS = 3
@@ -686,7 +686,7 @@ def _trend_factor(state, bull, neutral, bear):
 
 
 def simulate_dynamic_dca(df_full, params):
-    """V3.4.1: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
+    """V3.4.2: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
     if df_full.empty: return pd.DataFrame(), {}
     df=df_full[(df_full.index>=params["start_date"]) & (df_full.index<=params["end_date"])].copy()
     if df.empty: return pd.DataFrame(), {}
@@ -753,9 +753,9 @@ def simulate_dynamic_dca(df_full, params):
     result=pd.DataFrame(trades)
     if result.empty: return result,{}
 
-    # V3.4.1 execution invariants.
+    # V3.4.2 execution invariants.
     if ((result["buy_aud"] > 0) & (result["sell_btc"] > 0)).any():
-        raise RuntimeError("V3.4.1 invariant failed: simultaneous BUY and SELL.")
+        raise RuntimeError("V3.4.2 invariant failed: simultaneous BUY and SELL.")
 
     if (
         (result["buy_aud"] > 0)
@@ -764,7 +764,7 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] > buy_th)
         )
     ).any():
-        raise RuntimeError("V3.4.1 invariant failed: BUY outside BUY zone.")
+        raise RuntimeError("V3.4.2 invariant failed: BUY outside BUY zone.")
 
     if (
         (result["sell_btc"] > 0)
@@ -773,14 +773,14 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] < sell_th)
         )
     ).any():
-        raise RuntimeError("V3.4.1 invariant failed: SELL outside SELL zone.")
+        raise RuntimeError("V3.4.2 invariant failed: SELL outside SELL zone.")
 
     if (result["cash_aud"] < -0.01).any() or (result["btc_held"] < -1e-12).any():
-        raise RuntimeError("V3.4.1 invariant failed: negative cash or BTC.")
+        raise RuntimeError("V3.4.2 invariant failed: negative cash or BTC.")
 
     hard_buy_cap = capital * float(params.get("max_period_pct", DEFAULT_MAX_PERIOD_PCT))
     if (result["buy_aud"] > hard_buy_cap + 0.01).any():
-        raise RuntimeError("V3.4.1 invariant failed: BUY above hard cap.")
+        raise RuntimeError("V3.4.2 invariant failed: BUY above hard cap.")
     final=result.iloc[-1]; years=max((result.date.iloc[-1]-result.date.iloc[0]).days/365.25,1/365.25); endw=float(final.total_wealth_aud)
     rets=result.total_wealth_aud.pct_change().dropna(); ppy={"Daily":365.0,"Weekly":52.0,"Monthly":12.0}.get(params["frequency"],52.0)
     sharpe=float(rets.mean()/rets.std()*np.sqrt(ppy)) if len(rets)>1 and rets.std()>0 else np.nan; down=rets[rets<0]; sortino=float(rets.mean()/down.std()*np.sqrt(ppy)) if len(down)>1 and down.std()>0 else np.nan
@@ -973,7 +973,7 @@ def build_forward_plan(
 
 
 # ================================================================
-# Walk-forward Optimisation (V3.4.1)
+# Walk-forward Optimisation (V3.4.2)
 # ================================================================
 
 def normalized_percentile_score(frame):
@@ -1020,11 +1020,11 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.4.1 FULL",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.4.2 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.4.1 FULL — Buy Low / Sell High")
+st.title("Bitcoin Dynamic DCA V3.4.2 FULL — Buy Low / Sell High")
 st.caption("Version 3.4.1 FULL • STRICT BUY-LOW / HOLD / SELL-HIGH • Optimized Trend Replica ENABLED • Build 2026-09-02")
 st.caption(
     "Composite on-chain/technical risk + valuation + time deployment + deployment pressure + "
@@ -1090,7 +1090,7 @@ with st.sidebar:
     risk_model = st.radio(
         "Risk Metric",
         [
-            "Composite V3.4.1",
+            "Composite V3.4.2",
             "Power Law Trend",
             "SMA Ratio (200-day)",
         ],
@@ -1102,7 +1102,7 @@ with st.sidebar:
         "1 = very expensive / low allocation."
     )
 
-    st.subheader("V3.4.1 Valuation Risk Weights")
+    st.subheader("V3.4.2 Valuation Risk Weights")
     weight_mvrv = st.slider("MVRV Z-Score Weight", 0.0, 1.0, 0.30, 0.05)
     weight_power_law = st.slider("Power Law Weight", 0.0, 1.0, 0.25, 0.05)
     weight_mayer = st.slider("Mayer Multiple Weight", 0.0, 1.0, 0.20, 0.05)
@@ -1198,13 +1198,126 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("V3.4.1 Buy / Sell Zones")
-    st.caption("Low risk buys only; high risk sells only; middle zone holds. No forced catch-up deployment.")
-    buy_threshold = st.slider("BUY when risk <=", 0.10, 0.60, DEFAULT_BUY_THRESHOLD, 0.01)
-    sell_risk_threshold = st.slider("SELL when risk >=", 0.50, 0.95, DEFAULT_SELL_RISK_THRESHOLD, 0.01)
-    min_trade_aud = st.number_input("Minimum Trade (AUD)", 0.0, 100000.0, DEFAULT_MIN_TRADE_AUD, 100.0)
-    min_risk_components = st.slider("Minimum Composite Inputs", 1, 5, DEFAULT_MIN_RISK_COMPONENTS, 1)
-    require_weak_trend_for_sell = st.checkbox("Require Optimized Trend to stop being bullish before SELL", value=False)
+    st.header("Risk Thresholds & Decision Bands")
+    st.caption(
+        "Adjust when the strategy buys, holds, or sells. "
+        "Composite Risk runs from 0.00 = lowest risk / cheapest to 1.00 = highest risk / most expensive."
+    )
+
+    # Initialise slider state only once.
+    if "buy_threshold_widget" not in st.session_state:
+        st.session_state["buy_threshold_widget"] = DEFAULT_BUY_THRESHOLD
+    if "sell_threshold_widget" not in st.session_state:
+        st.session_state["sell_threshold_widget"] = DEFAULT_SELL_RISK_THRESHOLD
+
+    st.markdown("**Quick Presets**")
+    p1, p2 = st.columns(2)
+    p3, p4 = st.columns(2)
+
+    if p1.button("Wide  0.20 / 0.80", use_container_width=True):
+        st.session_state["buy_threshold_widget"] = 0.20
+        st.session_state["sell_threshold_widget"] = 0.80
+        st.rerun()
+
+    if p2.button("Balanced  0.25 / 0.75", use_container_width=True):
+        st.session_state["buy_threshold_widget"] = 0.25
+        st.session_state["sell_threshold_widget"] = 0.75
+        st.rerun()
+
+    if p3.button("Narrow  0.30 / 0.70", use_container_width=True):
+        st.session_state["buy_threshold_widget"] = 0.30
+        st.session_state["sell_threshold_widget"] = 0.70
+        st.rerun()
+
+    if p4.button("Aggressive  0.15 / 0.85", use_container_width=True):
+        st.session_state["buy_threshold_widget"] = 0.15
+        st.session_state["sell_threshold_widget"] = 0.85
+        st.rerun()
+
+    buy_threshold = st.slider(
+        "BUY when risk ≤",
+        min_value=0.00,
+        max_value=1.00,
+        step=0.01,
+        key="buy_threshold_widget",
+        help="The strategy may BUY only at or below this risk level. Lower risk increases buy size.",
+    )
+
+    sell_risk_threshold = st.slider(
+        "SELL when risk ≥",
+        min_value=0.00,
+        max_value=1.00,
+        step=0.01,
+        key="sell_threshold_widget",
+        help="The strategy may SELL only at or above this risk level. Higher risk increases sell size.",
+    )
+
+    # Protect the strict HOLD band.
+    if buy_threshold >= sell_risk_threshold:
+        st.error(
+            "BUY threshold must be lower than SELL threshold. "
+            "Adjust the sliders so there is a HOLD zone between them."
+        )
+
+    hold_low = min(buy_threshold, sell_risk_threshold)
+    hold_high = max(buy_threshold, sell_risk_threshold)
+
+    # Visual decision-band bar. Widths are calculated from the live thresholds.
+    buy_w = max(0.0, min(100.0, buy_threshold * 100.0))
+    hold_w = max(0.0, min(100.0, (sell_risk_threshold - buy_threshold) * 100.0))
+    sell_w = max(0.0, min(100.0, (1.0 - sell_risk_threshold) * 100.0))
+
+    st.markdown(
+        f"""
+        <div style="margin-top:0.4rem;margin-bottom:0.35rem;font-weight:600;">
+            Risk Decision Bands
+        </div>
+        <div style="display:flex;width:100%;height:34px;border-radius:7px;overflow:hidden;
+                    border:1px solid rgba(255,255,255,0.18);font-size:12px;font-weight:700;text-align:center;">
+            <div style="width:{buy_w:.2f}%;background:rgba(46,160,67,0.75);display:flex;align-items:center;justify-content:center;">
+                BUY
+            </div>
+            <div style="width:{hold_w:.2f}%;background:rgba(31,111,235,0.70);display:flex;align-items:center;justify-content:center;">
+                HOLD
+            </div>
+            <div style="width:{sell_w:.2f}%;background:rgba(218,98,0,0.82);display:flex;align-items:center;justify-content:center;">
+                SELL
+            </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;opacity:0.78;margin-top:3px;">
+            <span>0.00</span>
+            <span>BUY ≤ {buy_threshold:.2f}</span>
+            <span>SELL ≥ {sell_risk_threshold:.2f}</span>
+            <span>1.00</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.info(
+        f"BUY zone: 0.00–{buy_threshold:.2f}  •  "
+        f"HOLD zone: {buy_threshold:.2f}–{sell_risk_threshold:.2f}  •  "
+        f"SELL zone: {sell_risk_threshold:.2f}–1.00"
+    )
+
+    min_trade_aud = st.number_input(
+        "Minimum Trade (AUD)",
+        0.0,
+        100000.0,
+        DEFAULT_MIN_TRADE_AUD,
+        100.0,
+    )
+    min_risk_components = st.slider(
+        "Minimum Composite Inputs",
+        1,
+        5,
+        DEFAULT_MIN_RISK_COMPONENTS,
+        1,
+    )
+    require_weak_trend_for_sell = st.checkbox(
+        "Require Optimized Trend to stop being bullish before SELL",
+        value=False,
+    )
 
     st.subheader("Optimized Trend Replica")
     trend_er_period = st.slider("Trend efficiency lookback",10,60,DEFAULT_TREND_ER_PERIOD,1)
@@ -1426,6 +1539,15 @@ params = {
         tzinfo=timezone.utc,
     ),
 }
+
+
+# Hard UI guard: strict BUY/HOLD/SELL requires a non-overlapping HOLD zone.
+if buy_threshold >= sell_risk_threshold:
+    st.error(
+        "Invalid risk bands: BUY threshold must be lower than SELL threshold. "
+        "Please adjust the sidebar controls."
+    )
+    st.stop()
 
 
 # ================================================================
