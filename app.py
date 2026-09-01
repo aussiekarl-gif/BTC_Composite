@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator v2
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.2 FULL
 ====================================================
 
 Designed for:
+- Derived from the original full Streamlit simulator, preserving its workflow and extending it.
 - Historical backtesting
 - Risk-weighted DCA
 - Time-based deployment
@@ -29,6 +30,9 @@ Important:
 
 import datetime as dt
 import math
+import os
+
+import numpy as np
 from datetime import timedelta, timezone
 
 import pandas as pd
@@ -88,7 +92,22 @@ DEFAULT_MAX_SELL_PCT_PERIOD = 0.25  # Avoid dumping >25% of BTC in one period
 DEFAULT_SELL_THRESHOLD = 0.03       # Rebalance only if target weight differs by 3%+
 DEFAULT_FEE_PCT = 0.00
 
-REQUEST_HEADERS = {"User-Agent": "BTC-DCA-Simulator/2.0"}
+REQUEST_HEADERS = {"User-Agent": "BTC-DCA-Simulator/3.2"}
+
+BGEOMETRICS_BASE = "https://bitcoin-data.com/v1"
+DEFAULT_COMPOSITE_WEIGHTS = {
+    "mvrv": 0.30,
+    "power_law": 0.25,
+    "mayer": 0.20,
+    "fear_greed": 0.15,
+    "rsi": 0.10,
+}
+DEFAULT_REGIME_OVERLAY = 0.25
+DEFAULT_VALUATION_STRENGTH = 0.75
+DEFAULT_MIN_VALUATION_MULT = 0.50
+DEFAULT_MAX_VALUATION_MULT = 2.50
+DEFAULT_PRESSURE_CAP = 2.50
+DEFAULT_MIN_DAYS_BETWEEN_SALES = 21
 
 
 # ================================================================
@@ -260,6 +279,138 @@ def fetch_aud_usd_rates(start_date, end_date):
         return None
 
 
+def get_bgeometrics_token():
+    """Read the token from Streamlit Secrets first, then environment."""
+    try:
+        token = st.secrets.get("BGEOMETRICS_TOKEN", "")
+        if token:
+            return str(token).strip()
+    except Exception:
+        pass
+    return os.getenv("BGEOMETRICS_TOKEN", "").strip()
+
+
+def _pick_api_column(frame, aliases):
+    if frame is None or frame.empty:
+        return None
+    lower = {str(c).lower(): c for c in frame.columns}
+    for alias in aliases:
+        if alias.lower() in lower:
+            return lower[alias.lower()]
+    for alias in aliases:
+        for col in frame.columns:
+            if alias.lower() in str(col).lower():
+                return col
+    return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_bgeometrics_endpoint(endpoint, start_date, end_date, token=""):
+    params = {
+        "startday": start_date.strftime("%Y-%m-%d"),
+        "endday": end_date.strftime("%Y-%m-%d"),
+    }
+    headers = dict(REQUEST_HEADERS)
+    headers["Accept"] = "application/json"
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    resp = requests.get(
+        f"{BGEOMETRICS_BASE}/{endpoint}",
+        params=params,
+        headers=headers,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+
+    if isinstance(payload, dict):
+        for key in ("data", "results", "items", "values"):
+            if isinstance(payload.get(key), list):
+                payload = payload[key]
+                break
+    if isinstance(payload, dict):
+        payload = [payload]
+
+    rows = []
+    for item in payload if isinstance(payload, list) else []:
+        if not isinstance(item, dict):
+            continue
+        d = (
+            item.get("d") or item.get("date") or item.get("day")
+            or item.get("theDate")
+        )
+        if d is None:
+            continue
+        row = dict(item)
+        row["date"] = pd.to_datetime(d, utc=True)
+        rows.append(row)
+
+    if not rows:
+        return pd.DataFrame()
+    return (
+        pd.DataFrame(rows)
+        .set_index("date")
+        .sort_index()
+        .loc[lambda x: ~x.index.duplicated(keep="last")]
+    )
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_bgeometrics_bundle(start_date, end_date, token=""):
+    """Fetch the V3.2 external risk inputs; failures remain visible as missing data."""
+    result = pd.DataFrame()
+    endpoints = {
+        "mvrv_z": ("mvrv-zscore", ["mvrvZScore", "mvrv_zscore", "zscore", "mvrvZ"]),
+        "fear_greed": ("fear-greed", ["fearGreed", "fearAndGreed", "fear_greed", "value", "score"]),
+    }
+    for dest, (endpoint, aliases) in endpoints.items():
+        try:
+            frame = fetch_bgeometrics_endpoint(endpoint, start_date, end_date, token)
+            col = _pick_api_column(frame, aliases)
+            if col is not None:
+                series = pd.to_numeric(frame[col], errors="coerce").rename(dest)
+                result = result.join(series, how="outer") if not result.empty else series.to_frame()
+        except Exception:
+            pass
+
+    # Subscriber endpoint. Absence never breaks the transparent local composite.
+    try:
+        frame = fetch_bgeometrics_endpoint("regime-score", start_date, end_date, token)
+        mapping = {
+            "regime_score": ["regimeScore"],
+            "regime_delta_30d": ["regimeDelta30d"],
+            "regime_active_weight": ["activeWeight"],
+            "regime": ["regime"],
+        }
+        for dest, aliases in mapping.items():
+            col = _pick_api_column(frame, aliases)
+            if col is None:
+                continue
+            series = frame[col].rename(dest)
+            if dest != "regime":
+                series = pd.to_numeric(series, errors="coerce")
+            result = result.join(series, how="outer") if not result.empty else series.to_frame()
+    except Exception:
+        pass
+
+    return result.sort_index() if not result.empty else pd.DataFrame()
+
+
+def merge_bgeometrics(data, external):
+    result = data.copy()
+    for col in ["mvrv_z", "fear_greed", "regime_score", "regime_delta_30d", "regime_active_weight", "regime"]:
+        if col not in result.columns:
+            result[col] = np.nan if col != "regime" else ""
+    if external is None or external.empty:
+        return result
+    union = result.index.union(external.index).sort_values()
+    ext = external.reindex(union).ffill().reindex(result.index)
+    for col in ext.columns:
+        result[col] = ext[col]
+    return result
+
+
 def align_fx_to_dates(data, fx_series, fallback=0.70):
     """Align business-day FX rates to BTC dates."""
     result = data.copy()
@@ -330,55 +481,77 @@ def sma_score(price, sma, cheap=1.0, expensive=1.5):
 
 
 def add_risk_indicators(data, risk_model, params):
+    """Calculate legacy or V3.2 composite risk without future-data leakage."""
     result = data.copy()
+    result["sma_200"] = result["price"].rolling(window=200, min_periods=100).mean()
+    result["mayer"] = result["price"] / result["sma_200"]
 
-    # Important: rolling SMA is calculated on the complete available
-    # historical series, not only the execution rows.
-    result["sma_200"] = (
-        result["price"]
-        .rolling(window=200, min_periods=1)
-        .mean()
-    )
+    delta = result["price"].diff()
+    gain = delta.clip(lower=0).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+    loss = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+    rs = gain / loss.replace(0, np.nan)
+    result["rsi_14"] = 100 - 100 / (1 + rs)
 
-    scores = []
-    fair_values = []
-
+    pl_scores, fair_values, pl_residuals = [], [], []
     for timestamp, row in result.iterrows():
-        price = float(row["price"])
-
-        if risk_model == "Power Law Trend":
-            score, fair_value = power_law_score(
-                timestamp,
-                price,
-                params["pl_cheap"],
-                params["pl_expensive"],
-            )
-        else:
-            score, fair_value = sma_score(
-                price,
-                float(row["sma_200"]),
-                params["fund_cheap"],
-                params["fund_expensive"],
-            )
-
-        scores.append(score)
+        score, fair_value = power_law_score(
+            timestamp, float(row["price"]), params["pl_cheap"], params["pl_expensive"]
+        )
+        pl_scores.append(score)
         fair_values.append(fair_value)
-
-    result["risk_score"] = scores
+        if fair_value > 0 and row["price"] > 0:
+            pl_residuals.append(math.log10(float(row["price"]) / fair_value))
+        else:
+            pl_residuals.append(np.nan)
+    result["power_law_score"] = pl_scores
     result["fair_value"] = fair_values
+    result["power_law_residual"] = pl_residuals
+    result["price_to_fair"] = result["price"] / result["fair_value"].replace(0, np.nan)
 
-    result["price_to_fair"] = (
-        result["price"] / result["fair_value"].replace(0, pd.NA)
+    result["mayer_score"] = ((result["mayer"] - 0.70) / 1.00).clip(0, 1)
+    result["rsi_score"] = ((result["rsi_14"] - 25.0) / 50.0).clip(0, 1)
+    result["mvrv_score"] = ((pd.to_numeric(result.get("mvrv_z"), errors="coerce") + 0.5) / 6.5).clip(0, 1)
+    result["fear_greed_score"] = (pd.to_numeric(result.get("fear_greed"), errors="coerce") / 100.0).clip(0, 1)
+
+    if risk_model == "Power Law Trend":
+        result["risk_score"] = result["power_law_score"]
+    elif risk_model == "SMA Ratio (200-day)":
+        result["risk_score"] = ((result["mayer"] - params["fund_cheap"]) / (params["fund_expensive"] - params["fund_cheap"])).clip(0,1)
+    else:
+        component_map = {
+            "mvrv": "mvrv_score",
+            "power_law": "power_law_score",
+            "mayer": "mayer_score",
+            "fear_greed": "fear_greed_score",
+            "rsi": "rsi_score",
+        }
+        numerator = pd.Series(0.0, index=result.index)
+        denominator = pd.Series(0.0, index=result.index)
+        for key, col in component_map.items():
+            weight = float(params["composite_weights"].get(key, 0.0))
+            values = pd.to_numeric(result[col], errors="coerce")
+            numerator += values.fillna(0.0) * weight
+            denominator += values.notna().astype(float) * weight
+        result["core_risk_score"] = (numerator / denominator.replace(0, np.nan)).clip(0,1)
+
+        regime = (pd.to_numeric(result.get("regime_score"), errors="coerce") / 100.0).clip(0,1)
+        active = pd.to_numeric(result.get("regime_active_weight"), errors="coerce")
+        active = active.where(active <= 1.0, active / 100.0).clip(0,1).fillna(1.0)
+        overlay = float(params.get("regime_overlay", 0.0)) * active
+        result["risk_score"] = (
+            (1.0 - overlay) * result["core_risk_score"] + overlay * regime
+        ).where(regime.notna(), result["core_risk_score"]).clip(0,1)
+
+    result["risk_score"] = result["risk_score"].fillna(0.5).clip(0,1)
+    result["dca_multiplier"] = result["risk_score"].apply(lambda x: interpolate(DEFAULT_RISK_POINTS, x))
+    result["target_btc_weight"] = result["risk_score"].apply(lambda x: interpolate(DEFAULT_TARGET_BTC_POINTS, x))
+    result["valuation_multiplier"] = (
+        (result["fair_value"] / result["price"].replace(0, np.nan))
+        .pow(float(params.get("valuation_strength", DEFAULT_VALUATION_STRENGTH)))
+        .clip(float(params.get("min_valuation_mult", DEFAULT_MIN_VALUATION_MULT)),
+              float(params.get("max_valuation_mult", DEFAULT_MAX_VALUATION_MULT)))
+        .fillna(1.0)
     )
-
-    result["dca_multiplier"] = result["risk_score"].apply(
-        lambda x: interpolate(DEFAULT_RISK_POINTS, x)
-    )
-
-    result["target_btc_weight"] = result["risk_score"].apply(
-        lambda x: interpolate(DEFAULT_TARGET_BTC_POINTS, x)
-    )
-
     return result
 
 
@@ -484,6 +657,7 @@ def simulate_dynamic_dca(df_full, params):
     cumulative_sold_proceeds = 0.0
     cumulative_realized_profit = 0.0
     cumulative_fees = 0.0
+    last_sale_date = None
 
     trades = []
 
@@ -502,7 +676,8 @@ def simulate_dynamic_dca(df_full, params):
 
         risk = float(row["risk_score"])
         risk_multiplier = float(row["dca_multiplier"])
-        target_btc_weight = float(row["target_btc_weight"])
+        target_btc_weight = min(float(row["target_btc_weight"]), float(params.get("max_btc_weight", 1.0)))
+        valuation_multiplier = float(row.get("valuation_multiplier", 1.0))
 
         # ------------------------------------------------------------
         # Time target
@@ -526,16 +701,18 @@ def simulate_dynamic_dca(df_full, params):
             ) * params["pressure_strength"]
         )
 
-        pressure = clamp(pressure, 0.50, 1.75)
+        pressure = clamp(pressure, 0.50, float(params.get("pressure_cap", DEFAULT_PRESSURE_CAP)))
 
         # ------------------------------------------------------------
         # Dynamic DCA purchase
         # ------------------------------------------------------------
-        base_period_amount = total_capital / n_periods
+        remaining_periods = max(1, n_periods - period_number + 1)
+        base_period_amount = cash / remaining_periods
 
         desired_buy = (
             base_period_amount
             * risk_multiplier
+            * valuation_multiplier
             * pressure
         )
 
@@ -580,6 +757,12 @@ def simulate_dynamic_dca(df_full, params):
             else 0.0
         )
 
+        # Do not let a large multiplier blindly push BTC above the risk-derived target.
+        target_btc_value_before = portfolio_before * target_btc_weight
+        allocation_room = max(0.0, target_btc_value_before - current_btc_value)
+        overshoot_allowance = total_capital * 0.005
+        desired_buy = min(desired_buy, allocation_room + overshoot_allowance)
+
         target_difference = (
             current_btc_weight - target_btc_weight
         )
@@ -587,9 +770,14 @@ def simulate_dynamic_dca(df_full, params):
         desired_sell = 0.0
 
         # Only sell if BTC allocation is materially above target.
+        sale_gap_ok = (
+            last_sale_date is None
+            or (timestamp - last_sale_date).days >= int(params.get("min_days_between_sales", 0))
+        )
         if (
             btc > 0
             and target_difference >= params["sell_threshold"]
+            and sale_gap_ok
         ):
             target_btc_value = (
                 portfolio_before * target_btc_weight
@@ -645,6 +833,7 @@ def simulate_dynamic_dca(df_full, params):
             cumulative_sold_proceeds += sell_proceeds
             cumulative_realized_profit += realized_profit
             cumulative_fees += sell_fee
+            last_sale_date = timestamp
 
         # ------------------------------------------------------------
         # Execute BUY.
@@ -704,7 +893,14 @@ def simulate_dynamic_dca(df_full, params):
                 "fair_value_usd": float(row["fair_value"]),
                 "risk_score": risk,
                 "dca_multiplier": risk_multiplier,
+                "valuation_multiplier": valuation_multiplier,
                 "target_btc_weight": target_btc_weight,
+                "mvrv_score": float(row.get("mvrv_score", np.nan)),
+                "power_law_score": float(row.get("power_law_score", np.nan)),
+                "mayer_score": float(row.get("mayer_score", np.nan)),
+                "fear_greed_score": float(row.get("fear_greed_score", np.nan)),
+                "rsi_score": float(row.get("rsi_score", np.nan)),
+                "regime_score": float(row.get("regime_score", np.nan)) if pd.notna(row.get("regime_score", np.nan)) else np.nan,
                 "actual_btc_weight": actual_btc_weight,
                 "time_progress": time_progress,
                 "target_cumulative_invested": target_cumulative_invested,
@@ -763,6 +959,16 @@ def simulate_dynamic_dca(df_full, params):
         years,
     )
 
+    period_returns = result["total_wealth_aud"].pct_change().dropna()
+    periods_per_year = {"Daily": 365.0, "Weekly": 52.0, "Monthly": 12.0}.get(params["frequency"], 52.0)
+    sharpe = np.nan
+    sortino = np.nan
+    if len(period_returns) > 1 and period_returns.std() > 0:
+        sharpe = float(period_returns.mean() / period_returns.std() * np.sqrt(periods_per_year))
+    downside = period_returns[period_returns < 0]
+    if len(downside) > 1 and downside.std() > 0:
+        sortino = float(period_returns.mean() / downside.std() * np.sqrt(periods_per_year))
+
     summary = {
         "starting_capital_aud": starting_capital,
         "ending_wealth_aud": ending_wealth,
@@ -789,6 +995,8 @@ def simulate_dynamic_dca(df_full, params):
         "final_btc_weight": float(final["actual_btc_weight"]),
         "final_target_weight": float(final["target_btc_weight"]),
         "final_avg_cost_aud": float(final["btc_avg_cost_aud"]),
+        "sharpe": sharpe,
+        "sortino": sortino,
     }
 
     return result, summary
@@ -963,7 +1171,7 @@ def build_forward_plan(
             clamp(gap / capital, -0.50, 1.00)
             * DEFAULT_PRESSURE_STRENGTH
         )
-        pressure = clamp(pressure, 0.50, 1.75)
+        pressure = clamp(pressure, 0.50, float(params.get("pressure_cap", DEFAULT_PRESSURE_CAP)))
 
         planned = min(
             base * risk_multiplier * pressure,
@@ -997,17 +1205,65 @@ def build_forward_plan(
 
 
 # ================================================================
+# Walk-forward Optimisation (V3.2)
+# ================================================================
+
+def normalized_percentile_score(frame):
+    """Heuristic multi-objective score using comparable 0..1 percentile ranks."""
+    if frame.empty:
+        return frame
+    out = frame.copy()
+    out["return_rank"] = out["return_pct"].rank(pct=True)
+    out["drawdown_rank"] = (-out["max_drawdown_pct"].abs()).rank(pct=True)
+    out["risk_adjusted_rank"] = out["sortino"].fillna(out["sharpe"]).fillna(-999).rank(pct=True)
+    out["btc_rank"] = out["btc_held"].rank(pct=True)
+    out["score"] = 0.40*out["return_rank"] + 0.25*out["drawdown_rank"] + 0.20*out["risk_adjusted_rank"] + 0.15*out["btc_rank"]
+    return out
+
+
+def walk_forward_optimise(df_full, base_params):
+    """70/30 train/validation search. Risk weights stay fixed to limit overfitting."""
+    if df_full.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    start=base_params["start_date"]; end=base_params["end_date"]
+    span=end-start
+    split=start + span*0.70
+    candidates=[]
+    for max_buy in (0.05,0.08,0.12):
+        for pressure in (0.50,0.75,1.00):
+            for val_strength in (0.50,0.75,1.00):
+                p=dict(base_params)
+                p.update({"max_period_pct":max_buy,"pressure_strength":pressure,"valuation_strength":val_strength,"end_date":split})
+                trades, sm=simulate_dynamic_dca(df_full,p)
+                if not sm: continue
+                candidates.append({"max_buy_pct":max_buy,"pressure_strength":pressure,"valuation_strength":val_strength,
+                    "return_pct":sm["return_pct"],"max_drawdown_pct":sm["max_drawdown_pct"],"sharpe":sm.get("sharpe",np.nan),"sortino":sm.get("sortino",np.nan),"btc_held":sm["btc_held"]})
+    train=normalized_percentile_score(pd.DataFrame(candidates)).sort_values("score",ascending=False)
+    if train.empty: return train,pd.DataFrame()
+    validations=[]
+    for _,row in train.head(min(5,len(train))).iterrows():
+        p=dict(base_params)
+        p.update({"max_period_pct":float(row.max_buy_pct),"pressure_strength":float(row.pressure_strength),"valuation_strength":float(row.valuation_strength),"start_date":split,"end_date":end})
+        trades, sm=simulate_dynamic_dca(df_full,p)
+        if not sm: continue
+        validations.append({"max_buy_pct":row.max_buy_pct,"pressure_strength":row.pressure_strength,"valuation_strength":row.valuation_strength,
+            "return_pct":sm["return_pct"],"max_drawdown_pct":sm["max_drawdown_pct"],"sharpe":sm.get("sharpe",np.nan),"sortino":sm.get("sortino",np.nan),"btc_held":sm["btc_held"]})
+    validation=normalized_percentile_score(pd.DataFrame(validations)).sort_values("score",ascending=False)
+    return train,validation
+
+
+# ================================================================
 # Streamlit UI
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer v2",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.2 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA & Tactical Rebalancer v2")
+st.title("Bitcoin Dynamic DCA & Tactical Rebalancer V3.2 FULL")
 st.caption(
-    "Risk-weighted DCA + time deployment + deployment pressure + "
+    "Composite on-chain/technical risk + valuation + time deployment + deployment pressure + "
     "portfolio-target rebalancing"
 )
 
@@ -1070,15 +1326,25 @@ with st.sidebar:
     risk_model = st.radio(
         "Risk Metric",
         [
+            "Composite V3.2",
             "Power Law Trend",
             "SMA Ratio (200-day)",
         ],
+        index=0,
     )
 
     st.caption(
         "Risk score: 0 = very cheap / high allocation, "
         "1 = very expensive / low allocation."
     )
+
+    st.subheader("V3.2 Composite Weights")
+    weight_mvrv = st.slider("MVRV Z-Score Weight", 0.0, 1.0, 0.30, 0.05)
+    weight_power_law = st.slider("Power Law Weight", 0.0, 1.0, 0.25, 0.05)
+    weight_mayer = st.slider("Mayer Multiple Weight", 0.0, 1.0, 0.20, 0.05)
+    weight_fear_greed = st.slider("Fear & Greed Weight", 0.0, 1.0, 0.15, 0.05)
+    weight_rsi = st.slider("RSI Weight", 0.0, 1.0, 0.10, 0.05)
+    regime_overlay = st.slider("BGeometrics Regime Overlay", 0.0, 0.50, DEFAULT_REGIME_OVERLAY, 0.05)
 
     st.divider()
 
@@ -1103,6 +1369,14 @@ with st.sidebar:
         value=DEFAULT_MAX_PERIOD_PCT * 100,
         step=1.0,
     ) / 100.0
+
+    valuation_strength = st.slider(
+        "Valuation Multiplier Strength", 0.25, 1.50, DEFAULT_VALUATION_STRENGTH, 0.05,
+        help="Scales buys using Power Law fair value / current price."
+    )
+    min_valuation_mult = st.slider("Minimum Valuation Multiplier", 0.25, 1.00, DEFAULT_MIN_VALUATION_MULT, 0.05)
+    max_valuation_mult = st.slider("Maximum Valuation Multiplier", 1.00, 4.00, DEFAULT_MAX_VALUATION_MULT, 0.10)
+    pressure_cap = st.slider("Maximum Deployment Pressure", 1.0, 4.0, DEFAULT_PRESSURE_CAP, 0.1)
 
     min_cash_reserve_pct = st.slider(
         "Minimum Cash Reserve (%)",
@@ -1135,6 +1409,9 @@ with st.sidebar:
         value=DEFAULT_MAX_SELL_PCT_PERIOD * 100,
         step=1.0,
     ) / 100.0
+
+    max_btc_weight = st.slider("Maximum BTC Portfolio Weight", 0.25, 1.00, 1.00, 0.05)
+    min_days_between_sales = st.number_input("Minimum Days Between Sales", min_value=0, max_value=365, value=DEFAULT_MIN_DAYS_BETWEEN_SALES, step=1)
 
     fee_pct = st.number_input(
         "Trading Fee (%)",
@@ -1231,6 +1508,20 @@ params = {
     "sell_threshold": sell_threshold,
     "max_sell_pct_period": max_sell_pct_period,
     "fee_pct": fee_pct,
+    "composite_weights": {
+        "mvrv": weight_mvrv,
+        "power_law": weight_power_law,
+        "mayer": weight_mayer,
+        "fear_greed": weight_fear_greed,
+        "rsi": weight_rsi,
+    },
+    "regime_overlay": regime_overlay,
+    "valuation_strength": valuation_strength,
+    "min_valuation_mult": min_valuation_mult,
+    "max_valuation_mult": max_valuation_mult,
+    "pressure_cap": pressure_cap,
+    "max_btc_weight": max_btc_weight,
+    "min_days_between_sales": min_days_between_sales,
     "start_date": dt.datetime.combine(
         start_date,
         dt.time.min,
@@ -1261,6 +1552,13 @@ if mode == "Historical Backtest":
             params["end_date"],
         )
 
+        bg_token = get_bgeometrics_token()
+        bg_data = fetch_bgeometrics_bundle(
+            params["start_date"] - timedelta(days=300),
+            params["end_date"],
+            bg_token,
+        )
+
     if df_full.empty:
         st.error("No BTC price data was returned.")
         st.stop()
@@ -1269,6 +1567,7 @@ if mode == "Historical Backtest":
         df_full,
         fx_series,
     )
+    df_full = merge_bgeometrics(df_full, bg_data)
 
     # Run strategy.
     trade_df, summary = simulate_dynamic_dca(
@@ -1310,6 +1609,12 @@ if mode == "Historical Backtest":
     # ------------------------------------------------------------
 
     st.subheader("Dynamic Strategy")
+
+    signal_cols = st.columns(4)
+    signal_cols[0].metric("Current Composite Risk", f"{summary['final_risk']:.3f}")
+    signal_cols[1].metric("Target BTC Weight", f"{summary['final_target_weight']:.1%}")
+    signal_cols[2].metric("Sharpe", "n/a" if pd.isna(summary.get('sharpe')) else f"{summary['sharpe']:.2f}")
+    signal_cols[3].metric("Sortino", "n/a" if pd.isna(summary.get('sortino')) else f"{summary['sortino']:.2f}")
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
 
@@ -1642,6 +1947,7 @@ if mode == "Historical Backtest":
             "price_usd",
             "risk_score",
             "dca_multiplier",
+            "valuation_multiplier",
             "target_btc_weight",
             "actual_btc_weight",
             "pressure",
@@ -1671,6 +1977,8 @@ if mode == "Historical Backtest":
     display_df["dca_multiplier"] = display_df[
         "dca_multiplier"
     ].map(lambda x: f"{x:.2f}x")
+
+    display_df["valuation_multiplier"] = display_df["valuation_multiplier"].map(lambda x: f"{x:.2f}x")
 
     display_df["target_btc_weight"] = display_df[
         "target_btc_weight"
@@ -1710,6 +2018,7 @@ if mode == "Historical Backtest":
         "BTC USD",
         "Risk",
         "DCA Mult.",
+        "Valuation Mult.",
         "Target BTC %",
         "Actual BTC %",
         "Pressure",
@@ -1737,9 +2046,27 @@ if mode == "Historical Backtest":
     st.download_button(
         "Download Full Backtest CSV",
         data=trade_df.to_csv(index=False).encode("utf-8"),
-        file_name="btc_dynamic_dca_backtest.csv",
+        file_name="btc_dynamic_dca_v3_2_full_backtest.csv",
         mime="text/csv",
     )
+
+    st.subheader("Data Quality")
+    quality_rows=[]
+    for col,label in [("price","BTC price"),("usd_per_aud","AUD/USD"),("mvrv_z","MVRV Z-Score"),("fear_greed","Fear & Greed"),("regime_score","Regime Score")]:
+        coverage = float(df_full[col].notna().mean()*100) if col in df_full.columns else 0.0
+        quality_rows.append({"Series":label,"Coverage %":coverage})
+    st.dataframe(pd.DataFrame(quality_rows),hide_index=True,use_container_width=True)
+    st.caption(f"BGeometrics token: {'loaded' if get_bgeometrics_token() else 'not loaded'} • No future BTC prices are fabricated in historical mode.")
+
+    with st.expander("Walk-forward Optimisation (advanced)"):
+        st.write("Searches a deliberately small parameter grid on the first 70% of the period and validates the best candidates on the untouched final 30%.")
+        if st.button("Run Walk-forward Optimiser", type="secondary"):
+            with st.spinner("Running train/validation parameter search..."):
+                train_opt, validation_opt = walk_forward_optimise(df_full, params)
+            st.markdown("**Training leaders**")
+            st.dataframe(train_opt.head(10),hide_index=True,use_container_width=True)
+            st.markdown("**Out-of-sample validation**")
+            st.dataframe(validation_opt,hide_index=True,use_container_width=True)
 
 
 # ================================================================
