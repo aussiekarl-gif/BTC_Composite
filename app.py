@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.4.2 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.5 FULL
 ====================================================
 
 Designed for:
@@ -114,6 +114,12 @@ DEFAULT_BUY_THRESHOLD = 0.25
 DEFAULT_SELL_RISK_THRESHOLD = 0.75
 DEFAULT_MIN_TRADE_AUD = 100.0
 DEFAULT_MIN_RISK_COMPONENTS = 3
+
+DEFAULT_PRICE_POSITION_WINDOW = 365
+DEFAULT_RISK_CALIBRATION_MIN_PERIODS = 180
+DEFAULT_RISK_CALIBRATION_WINDOW = 1460  # ~4 years
+DEFAULT_RISK_CALIBRATION_BLEND = 0.85
+DEFAULT_PRICE_POSITION_WEIGHT = 0.20
 DEFAULT_BUY_POINTS = [
     (0.00, 4.00), (0.10, 3.25), (0.20, 2.50), (0.30, 1.65),
     (0.35, 1.20), (0.40, 0.60), (0.45, 0.00), (1.00, 0.00),
@@ -555,86 +561,425 @@ def add_optimized_trend_replica(data, er_period=20, fast=2, slow=30, range_perio
     return x
 
 
+def _piecewise_score(points, value):
+    """Interpolate a monotonic 0..1 score from x/y points."""
+    if value is None or not np.isfinite(value):
+        return np.nan
+    return float(interpolate(points, float(value)))
+
+
+def _expanding_percentile(series, min_periods=180, rolling_window=1460):
+    """
+    Historical percentile without look-ahead.
+
+    For each date, compare the current raw composite only with values available
+    up to and including that date. A rolling cap can be used so very old cycle
+    history does not dominate forever.
+    """
+    values = pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
+    out = np.full(len(values), np.nan, dtype=float)
+
+    for i, x in enumerate(values):
+        if not np.isfinite(x):
+            continue
+
+        start = max(0, i - int(rolling_window) + 1)
+        hist = values[start:i+1]
+        hist = hist[np.isfinite(hist)]
+
+        if len(hist) < int(min_periods):
+            continue
+
+        # Mid-rank percentile gives stable 0..1 calibration.
+        less = np.sum(hist < x)
+        equal = np.sum(hist == x)
+        out[i] = (less + 0.5 * equal) / len(hist)
+
+    return pd.Series(out, index=series.index)
+
+
 def add_risk_indicators(data, risk_model, params):
-    """Calculate legacy or V3.2 composite risk without future-data leakage."""
+    """
+    V3.5 valuation risk engine.
+
+    Design goals:
+      * stronger relationship with BTC valuation / price regime
+      * use the full 0.00..1.00 trading band
+      * no look-ahead in historical calibration
+      * keep Regime Score separate from valuation risk
+      * preserve raw composite for auditability
+    """
     result = data.copy()
-    result["sma_200"] = result["price"].rolling(window=200, min_periods=100).mean()
+
+    # -------------------------
+    # Core market calculations
+    # -------------------------
+    result["sma_200"] = result["price"].rolling(
+        window=200, min_periods=100
+    ).mean()
     result["mayer"] = result["price"] / result["sma_200"]
 
     delta = result["price"].diff()
-    gain = delta.clip(lower=0).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
-    loss = (-delta.clip(upper=0)).ewm(alpha=1/14, adjust=False, min_periods=14).mean()
+    gain = delta.clip(lower=0).ewm(
+        alpha=1/14, adjust=False, min_periods=14
+    ).mean()
+    loss = (-delta.clip(upper=0)).ewm(
+        alpha=1/14, adjust=False, min_periods=14
+    ).mean()
     rs = gain / loss.replace(0, np.nan)
     result["rsi_14"] = 100 - 100 / (1 + rs)
 
+    # -------------------------
+    # Power-law valuation
+    # -------------------------
     pl_scores, fair_values, pl_residuals = [], [], []
     for timestamp, row in result.iterrows():
         score, fair_value = power_law_score(
-            timestamp, float(row["price"]), params["pl_cheap"], params["pl_expensive"]
+            timestamp,
+            float(row["price"]),
+            params["pl_cheap"],
+            params["pl_expensive"],
         )
         pl_scores.append(score)
         fair_values.append(fair_value)
+
         if fair_value > 0 and row["price"] > 0:
-            pl_residuals.append(math.log10(float(row["price"]) / fair_value))
+            pl_residuals.append(
+                math.log10(float(row["price"]) / fair_value)
+            )
         else:
             pl_residuals.append(np.nan)
-    result["power_law_score"] = pl_scores
+
+    result["power_law_score"] = pd.Series(
+        pl_scores, index=result.index, dtype=float
+    )
     result["fair_value"] = fair_values
     result["power_law_residual"] = pl_residuals
-    result["price_to_fair"] = result["price"] / result["fair_value"].replace(0, np.nan)
+    result["price_to_fair"] = (
+        result["price"] / result["fair_value"].replace(0, np.nan)
+    )
 
-    result["mayer_score"] = ((result["mayer"] - 0.70) / 1.00).clip(0, 1)
-    result["rsi_score"] = ((result["rsi_14"] - 25.0) / 50.0).clip(0, 1)
-    result["mvrv_score"] = ((pd.to_numeric(result.get("mvrv_z"), errors="coerce") + 0.5) / 6.5).clip(0, 1)
-    result["fear_greed_score"] = (pd.to_numeric(result.get("fear_greed"), errors="coerce") / 100.0).clip(0, 1)
+    # -------------------------
+    # Stronger piecewise mappings
+    # -------------------------
+    # MVRV-Z: nonlinear so elevated readings can actually approach 1.0.
+    mvrv_z_points = [
+        (-1.0, 0.00),
+        (-0.5, 0.05),
+        (0.0, 0.12),
+        (0.5, 0.22),
+        (1.0, 0.34),
+        (1.5, 0.50),
+        (2.0, 0.66),
+        (2.5, 0.78),
+        (3.0, 0.87),
+        (4.0, 0.95),
+        (5.0, 1.00),
+    ]
 
+    # Mayer: mature-market valuation bands.
+    mayer_points = [
+        (0.55, 0.00),
+        (0.70, 0.08),
+        (0.85, 0.18),
+        (1.00, 0.30),
+        (1.20, 0.45),
+        (1.40, 0.60),
+        (1.60, 0.74),
+        (1.80, 0.84),
+        (2.10, 0.93),
+        (2.50, 1.00),
+    ]
+
+    rsi_points = [
+        (15, 0.00),
+        (25, 0.08),
+        (35, 0.20),
+        (45, 0.36),
+        (55, 0.52),
+        (65, 0.70),
+        (75, 0.86),
+        (85, 0.96),
+        (95, 1.00),
+    ]
+
+    fear_points = [
+        (0, 0.00),
+        (10, 0.05),
+        (20, 0.12),
+        (30, 0.22),
+        (40, 0.34),
+        (50, 0.48),
+        (60, 0.62),
+        (70, 0.76),
+        (80, 0.88),
+        (90, 0.96),
+        (100, 1.00),
+    ]
+
+    result["mvrv_score"] = pd.to_numeric(
+        result.get("mvrv_z"), errors="coerce"
+    ).apply(lambda x: _piecewise_score(mvrv_z_points, x))
+
+    result["mayer_score"] = pd.to_numeric(
+        result["mayer"], errors="coerce"
+    ).apply(lambda x: _piecewise_score(mayer_points, x))
+
+    result["rsi_score"] = pd.to_numeric(
+        result["rsi_14"], errors="coerce"
+    ).apply(lambda x: _piecewise_score(rsi_points, x))
+
+    result["fear_greed_score"] = pd.to_numeric(
+        result.get("fear_greed"), errors="coerce"
+    ).apply(lambda x: _piecewise_score(fear_points, x))
+
+    # -------------------------
+    # 365-day price-position score
+    # -------------------------
+    pp_window = int(
+        params.get(
+            "price_position_window",
+            DEFAULT_PRICE_POSITION_WINDOW,
+        )
+    )
+    rolling_low = result["price"].rolling(
+        pp_window, min_periods=max(90, pp_window // 4)
+    ).min()
+    rolling_high = result["price"].rolling(
+        pp_window, min_periods=max(90, pp_window // 4)
+    ).max()
+
+    result["price_position_365"] = (
+        (result["price"] - rolling_low)
+        / (rolling_high - rolling_low).replace(0, np.nan)
+    ).clip(0, 1)
+
+    # Slight convexity so the top quartile matters more.
+    result["price_position_score"] = (
+        result["price_position_365"].pow(1.25)
+    ).clip(0, 1)
+
+    # -------------------------
+    # Legacy single-factor modes
+    # -------------------------
     if risk_model == "Power Law Trend":
-        result["risk_score"] = result["power_law_score"]
+        result["raw_risk_score"] = result["power_law_score"]
+        result["risk_components_available"] = 1
+
     elif risk_model == "SMA Ratio (200-day)":
-        result["risk_score"] = ((result["mayer"] - params["fund_cheap"]) / (params["fund_expensive"] - params["fund_cheap"])).clip(0,1)
+        result["raw_risk_score"] = result["mayer_score"]
+        result["risk_components_available"] = (
+            result["mayer"].notna().astype(int)
+        )
+
     else:
+        # New recommended weights:
+        # 25% power law
+        # 25% MVRV-Z
+        # 20% 365d price position
+        # 15% Mayer
+        # 10% Fear & Greed
+        #  5% RSI
+        weights = {
+            "power_law": 0.25,
+            "mvrv": 0.25,
+            "price_position": 0.20,
+            "mayer": 0.15,
+            "fear_greed": 0.10,
+            "rsi": 0.05,
+        }
+
         component_map = {
-            "mvrv": "mvrv_score",
             "power_law": "power_law_score",
+            "mvrv": "mvrv_score",
+            "price_position": "price_position_score",
             "mayer": "mayer_score",
             "fear_greed": "fear_greed_score",
             "rsi": "rsi_score",
         }
+
         numerator = pd.Series(0.0, index=result.index)
         denominator = pd.Series(0.0, index=result.index)
-        for key, col in component_map.items():
-            weight = float(params["composite_weights"].get(key, 0.0))
-            values = pd.to_numeric(result[col], errors="coerce")
-            numerator += values.fillna(0.0) * weight
-            denominator += values.notna().astype(float) * weight
-        result["core_risk_score"] = (numerator / denominator.replace(0, np.nan)).clip(0,1)
-        available = pd.Series(0, index=result.index, dtype=int)
-        for col in component_map.values():
-            available += pd.to_numeric(result[col], errors="coerce").notna().astype(int)
-        result["risk_components_available"] = available
-        result["risk_score"] = result["core_risk_score"]
-        result.loc[available < int(params.get("min_risk_components", DEFAULT_MIN_RISK_COMPONENTS)), "risk_score"] = np.nan
+        available_count = pd.Series(
+            0, index=result.index, dtype=int
+        )
 
-    if "risk_components_available" not in result.columns:
-        result["risk_components_available"] = result["risk_score"].notna().astype(int)
-    result["risk_score"] = pd.to_numeric(result["risk_score"], errors="coerce").clip(0,1)
-    result["dca_multiplier"] = result["risk_score"].apply(lambda x: interpolate(DEFAULT_BUY_POINTS, x) if pd.notna(x) else 0.0)
-    result["target_btc_weight"] = result["risk_score"].apply(lambda x: interpolate(DEFAULT_TARGET_BTC_POINTS, x))
+        for key, col in component_map.items():
+            weight = float(weights[key])
+            values = pd.to_numeric(
+                result[col], errors="coerce"
+            )
+            available = values.notna()
+
+            numerator += values.fillna(0.0) * weight
+            denominator += available.astype(float) * weight
+            available_count += available.astype(int)
+
+        result["raw_risk_score"] = (
+            numerator / denominator.replace(0, np.nan)
+        ).clip(0, 1)
+        result["risk_components_available"] = available_count
+
+        min_components = int(
+            params.get(
+                "min_risk_components",
+                DEFAULT_MIN_RISK_COMPONENTS,
+            )
+        )
+        result.loc[
+            result["risk_components_available"] < min_components,
+            "raw_risk_score",
+        ] = np.nan
+
+    # -------------------------
+    # Historical calibration
+    # -------------------------
+    min_periods = int(
+        params.get(
+            "risk_calibration_min_periods",
+            DEFAULT_RISK_CALIBRATION_MIN_PERIODS,
+        )
+    )
+    cal_window = int(
+        params.get(
+            "risk_calibration_window",
+            DEFAULT_RISK_CALIBRATION_WINDOW,
+        )
+    )
+    cal_blend = float(
+        params.get(
+            "risk_calibration_blend",
+            DEFAULT_RISK_CALIBRATION_BLEND,
+        )
+    )
+
+    result["risk_percentile"] = _expanding_percentile(
+        result["raw_risk_score"],
+        min_periods=min_periods,
+        rolling_window=cal_window,
+    )
+
+    # Blend percentile calibration with raw risk so the score still preserves
+    # absolute valuation information while expanding to the full 0..1 range.
+    result["risk_score"] = (
+        cal_blend * result["risk_percentile"]
+        + (1.0 - cal_blend) * result["raw_risk_score"]
+    )
+
+    # During early warmup where percentile is unavailable, fall back to raw.
+    result["risk_score"] = result["risk_score"].where(
+        result["risk_score"].notna(),
+        result["raw_risk_score"],
+    ).clip(0, 1)
+
+    # -------------------------
+    # Context kept separate
+    # -------------------------
+    result["regime_context_score"] = (
+        pd.to_numeric(
+            result.get("regime_score"), errors="coerce"
+        )
+        / 100.0
+    ).clip(0, 1)
+
+    # Trading curves use calibrated risk.
+    result["dca_multiplier"] = result["risk_score"].apply(
+        lambda x: (
+            interpolate(DEFAULT_BUY_POINTS, x)
+            if pd.notna(x)
+            else 0.0
+        )
+    )
+
+    result["target_btc_weight"] = result["risk_score"].apply(
+        lambda x: (
+            interpolate(
+                DEFAULT_REFERENCE_TARGET_BTC_POINTS, x
+            )
+            if pd.notna(x)
+            else np.nan
+        )
+    )
+
     result["valuation_multiplier"] = (
-        (result["fair_value"] / result["price"].replace(0, np.nan))
-        .pow(float(params.get("valuation_strength", DEFAULT_VALUATION_STRENGTH)))
-        .clip(float(params.get("min_valuation_mult", DEFAULT_MIN_VALUATION_MULT)),
-              float(params.get("max_valuation_mult", DEFAULT_MAX_VALUATION_MULT)))
+        (
+            result["fair_value"]
+            / result["price"].replace(0, np.nan)
+        )
+        .pow(
+            float(
+                params.get(
+                    "valuation_strength",
+                    DEFAULT_VALUATION_STRENGTH,
+                )
+            )
+        )
+        .clip(
+            float(
+                params.get(
+                    "min_valuation_mult",
+                    DEFAULT_MIN_VALUATION_MULT,
+                )
+            ),
+            float(
+                params.get(
+                    "max_valuation_mult",
+                    DEFAULT_MAX_VALUATION_MULT,
+                )
+            ),
+        )
         .fillna(1.0)
     )
+
     result = add_optimized_trend_replica(
         result,
-        er_period=int(params.get("trend_er_period", DEFAULT_TREND_ER_PERIOD)),
-        fast=int(params.get("trend_fast", DEFAULT_TREND_FAST)),
-        slow=int(params.get("trend_slow", DEFAULT_TREND_SLOW)),
-        range_period=int(params.get("trend_range_period", DEFAULT_TREND_RANGE_PERIOD)),
-        band_mult=float(params.get("trend_band_mult", DEFAULT_TREND_BAND_MULT)),
+        er_period=int(
+            params.get(
+                "trend_er_period",
+                DEFAULT_TREND_ER_PERIOD,
+            )
+        ),
+        fast=int(
+            params.get(
+                "trend_fast",
+                DEFAULT_TREND_FAST,
+            )
+        ),
+        slow=int(
+            params.get(
+                "trend_slow",
+                DEFAULT_TREND_SLOW,
+            )
+        ),
+        range_period=int(
+            params.get(
+                "trend_range_period",
+                DEFAULT_TREND_RANGE_PERIOD,
+            )
+        ),
+        band_mult=float(
+            params.get(
+                "trend_band_mult",
+                DEFAULT_TREND_BAND_MULT,
+            )
+        ),
     )
+
+    result["risk_zone"] = pd.cut(
+        result["risk_score"],
+        bins=[
+            -np.inf, 0.15, 0.30, 0.50, 0.70, 0.85, np.inf
+        ],
+        labels=[
+            "DEEP VALUE",
+            "VALUE",
+            "LOW / NEUTRAL",
+            "ELEVATED",
+            "HIGH",
+            "EXTREME",
+        ],
+    ).astype(str)
+
     return result
 
 
@@ -686,7 +1031,7 @@ def _trend_factor(state, bull, neutral, bear):
 
 
 def simulate_dynamic_dca(df_full, params):
-    """V3.4.2: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
+    """V3.5: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
     if df_full.empty: return pd.DataFrame(), {}
     df=df_full[(df_full.index>=params["start_date"]) & (df_full.index<=params["end_date"])].copy()
     if df.empty: return pd.DataFrame(), {}
@@ -753,9 +1098,9 @@ def simulate_dynamic_dca(df_full, params):
     result=pd.DataFrame(trades)
     if result.empty: return result,{}
 
-    # V3.4.2 execution invariants.
+    # V3.5 execution invariants.
     if ((result["buy_aud"] > 0) & (result["sell_btc"] > 0)).any():
-        raise RuntimeError("V3.4.2 invariant failed: simultaneous BUY and SELL.")
+        raise RuntimeError("V3.5 invariant failed: simultaneous BUY and SELL.")
 
     if (
         (result["buy_aud"] > 0)
@@ -764,7 +1109,7 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] > buy_th)
         )
     ).any():
-        raise RuntimeError("V3.4.2 invariant failed: BUY outside BUY zone.")
+        raise RuntimeError("V3.5 invariant failed: BUY outside BUY zone.")
 
     if (
         (result["sell_btc"] > 0)
@@ -773,14 +1118,14 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] < sell_th)
         )
     ).any():
-        raise RuntimeError("V3.4.2 invariant failed: SELL outside SELL zone.")
+        raise RuntimeError("V3.5 invariant failed: SELL outside SELL zone.")
 
     if (result["cash_aud"] < -0.01).any() or (result["btc_held"] < -1e-12).any():
-        raise RuntimeError("V3.4.2 invariant failed: negative cash or BTC.")
+        raise RuntimeError("V3.5 invariant failed: negative cash or BTC.")
 
     hard_buy_cap = capital * float(params.get("max_period_pct", DEFAULT_MAX_PERIOD_PCT))
     if (result["buy_aud"] > hard_buy_cap + 0.01).any():
-        raise RuntimeError("V3.4.2 invariant failed: BUY above hard cap.")
+        raise RuntimeError("V3.5 invariant failed: BUY above hard cap.")
     final=result.iloc[-1]; years=max((result.date.iloc[-1]-result.date.iloc[0]).days/365.25,1/365.25); endw=float(final.total_wealth_aud)
     rets=result.total_wealth_aud.pct_change().dropna(); ppy={"Daily":365.0,"Weekly":52.0,"Monthly":12.0}.get(params["frequency"],52.0)
     sharpe=float(rets.mean()/rets.std()*np.sqrt(ppy)) if len(rets)>1 and rets.std()>0 else np.nan; down=rets[rets<0]; sortino=float(rets.mean()/down.std()*np.sqrt(ppy)) if len(down)>1 and down.std()>0 else np.nan
@@ -973,7 +1318,7 @@ def build_forward_plan(
 
 
 # ================================================================
-# Walk-forward Optimisation (V3.4.2)
+# Walk-forward Optimisation (V3.5)
 # ================================================================
 
 def normalized_percentile_score(frame):
@@ -1020,12 +1365,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.4.2 FULL",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.5 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.4.2 FULL — Buy Low / Sell High")
-st.caption("Version 3.4.1 FULL • STRICT BUY-LOW / HOLD / SELL-HIGH • Optimized Trend Replica ENABLED • Build 2026-09-02")
+st.title("Bitcoin Dynamic DCA V3.5 FULL — Buy Low / Sell High")
+st.caption("Version 3.4.1 FULL • CALIBRATED 0–1 RISK • STRICT BUY-LOW / HOLD / SELL-HIGH • Optimized Trend Replica ENABLED • Build 2026-09-02")
 st.caption(
     "Composite on-chain/technical risk + valuation + time deployment + deployment pressure + "
     "portfolio-target rebalancing"
@@ -1090,7 +1435,7 @@ with st.sidebar:
     risk_model = st.radio(
         "Risk Metric",
         [
-            "Composite V3.4.2",
+            "Composite V3.5",
             "Power Law Trend",
             "SMA Ratio (200-day)",
         ],
@@ -1102,7 +1447,7 @@ with st.sidebar:
         "1 = very expensive / low allocation."
     )
 
-    st.subheader("V3.4.2 Valuation Risk Weights")
+    st.subheader("V3.5 Valuation Risk Weights")
     weight_mvrv = st.slider("MVRV Z-Score Weight", 0.0, 1.0, 0.30, 0.05)
     weight_power_law = st.slider("Power Law Weight", 0.0, 1.0, 0.25, 0.05)
     weight_mayer = st.slider("Mayer Multiple Weight", 0.0, 1.0, 0.20, 0.05)
@@ -1516,6 +1861,10 @@ params = {
     "sell_risk_threshold": sell_risk_threshold,
     "min_trade_aud": min_trade_aud,
     "min_risk_components": min_risk_components,
+    "price_position_window": DEFAULT_PRICE_POSITION_WINDOW,
+    "risk_calibration_min_periods": DEFAULT_RISK_CALIBRATION_MIN_PERIODS,
+    "risk_calibration_window": DEFAULT_RISK_CALIBRATION_WINDOW,
+    "risk_calibration_blend": DEFAULT_RISK_CALIBRATION_BLEND,
     "require_weak_trend_for_sell": require_weak_trend_for_sell,
     "trend_er_period": trend_er_period,
     "trend_fast": trend_fast,
@@ -1745,11 +2094,21 @@ if mode == "Historical Backtest":
 
     fig_risk = go.Figure()
 
+    if "raw_risk_score" in trade_df.columns:
+        fig_risk.add_trace(
+            go.Scatter(
+                x=trade_df["date"],
+                y=trade_df["raw_risk_score"],
+                name="Raw Composite Risk",
+                line=dict(width=1, dash="dot"),
+            )
+        )
+
     fig_risk.add_trace(
         go.Scatter(
             x=trade_df["date"],
             y=trade_df["risk_score"],
-            name="Risk Score",
+            name="Calibrated Risk",
             line=dict(width=2),
         )
     )
