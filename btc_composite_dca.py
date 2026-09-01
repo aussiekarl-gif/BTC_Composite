@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.2.1 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.4 FULL
 ====================================================
 
 Designed for:
@@ -92,7 +92,7 @@ DEFAULT_MAX_SELL_PCT_PERIOD = 0.25  # Avoid dumping >25% of BTC in one period
 DEFAULT_SELL_THRESHOLD = 0.03       # Rebalance only if target weight differs by 3%+
 DEFAULT_FEE_PCT = 0.00
 
-REQUEST_HEADERS = {"User-Agent": "BTC-DCA-Simulator/3.2"}
+REQUEST_HEADERS = {"User-Agent": "BTC-DCA-Simulator/3.4"}
 
 BGEOMETRICS_BASE = "https://bitcoin-data.com/v1"
 DEFAULT_COMPOSITE_WEIGHTS = {
@@ -108,6 +108,31 @@ DEFAULT_MIN_VALUATION_MULT = 0.50
 DEFAULT_MAX_VALUATION_MULT = 2.50
 DEFAULT_PRESSURE_CAP = 2.50
 DEFAULT_MIN_DAYS_BETWEEN_SALES = 21
+
+# V3.4 strict valuation-zone execution defaults.
+DEFAULT_BUY_THRESHOLD = 0.40
+DEFAULT_SELL_RISK_THRESHOLD = 0.75
+DEFAULT_MIN_TRADE_AUD = 100.0
+DEFAULT_MIN_RISK_COMPONENTS = 3
+DEFAULT_BUY_POINTS = [
+    (0.00, 4.00), (0.10, 3.25), (0.20, 2.50), (0.30, 1.65),
+    (0.35, 1.20), (0.40, 0.60), (0.45, 0.00), (1.00, 0.00),
+]
+DEFAULT_SELL_POINTS = [
+    (0.00, 0.00), (0.69, 0.00), (0.70, 0.02), (0.75, 0.04),
+    (0.80, 0.07), (0.85, 0.11), (0.90, 0.16), (0.95, 0.22), (1.00, 0.30),
+]
+DEFAULT_TREND_ER_PERIOD = 20
+DEFAULT_TREND_FAST = 2
+DEFAULT_TREND_SLOW = 30
+DEFAULT_TREND_RANGE_PERIOD = 14
+DEFAULT_TREND_BAND_MULT = 2.0
+DEFAULT_TREND_BUY_BULL = 1.10
+DEFAULT_TREND_BUY_NEUTRAL = 1.00
+DEFAULT_TREND_BUY_BEAR = 0.90
+DEFAULT_TREND_SELL_BULL = 0.50
+DEFAULT_TREND_SELL_NEUTRAL = 1.00
+DEFAULT_TREND_SELL_BEAR = 1.25
 
 
 # ================================================================
@@ -481,6 +506,55 @@ def sma_score(price, sma, cheap=1.0, expensive=1.5):
     return score, sma
 
 
+def _adaptive_ma(close, er_period=20, fast=2, slow=30):
+    c = pd.to_numeric(close, errors="coerce").astype(float)
+    change = c.diff(er_period).abs()
+    volatility = c.diff().abs().rolling(er_period, min_periods=er_period).sum()
+    er = (change / volatility.replace(0, np.nan)).clip(0, 1).fillna(0)
+    fast_sc = 2.0 / (fast + 1.0)
+    slow_sc = 2.0 / (slow + 1.0)
+    alpha = (er * (fast_sc - slow_sc) + slow_sc) ** 2
+    vals = c.to_numpy(); alphas = alpha.to_numpy()
+    out = np.full(len(c), np.nan, dtype=float)
+    valid = np.where(np.isfinite(vals))[0]
+    if len(valid) == 0:
+        return pd.Series(out, index=c.index)
+    first = int(valid[0]); out[first] = vals[first]
+    for i in range(first + 1, len(vals)):
+        prev = out[i-1] if np.isfinite(out[i-1]) else vals[i]
+        price = vals[i]
+        if not np.isfinite(price):
+            out[i] = prev; continue
+        a = alphas[i] if np.isfinite(alphas[i]) else slow_sc ** 2
+        out[i] = prev + a * (price - prev)
+    return pd.Series(out, index=c.index)
+
+
+def add_optimized_trend_replica(data, er_period=20, fast=2, slow=30, range_period=14, band_mult=2.0):
+    """Non-proprietary BTC-adaptive trend approximation; not the proprietary InvestAnswers formula."""
+    x = data.copy()
+    close = pd.to_numeric(x["price"], errors="coerce").astype(float)
+    ama = _adaptive_ma(close, er_period, fast, slow)
+    rng = close.diff().abs().ewm(span=range_period, adjust=False, min_periods=range_period).mean()
+    floor = close * close.pct_change().rolling(30, min_periods=10).std().fillna(0) * 0.35
+    ar = pd.concat([rng, floor], axis=1).max(axis=1)
+    upper = ama + band_mult * ar; lower = ama - band_mult * ar; slope = ama.diff(5)
+    state=[]; current=0
+    for i in range(len(x)):
+        p,u,l,sl = close.iloc[i],upper.iloc[i],lower.iloc[i],slope.iloc[i]
+        if np.isfinite(p) and np.isfinite(u) and np.isfinite(l):
+            if p > u and (not np.isfinite(sl) or sl >= 0): current=1
+            elif p < l and (not np.isfinite(sl) or sl <= 0): current=-1
+        state.append(current)
+    denom=(band_mult*ar).replace(0,np.nan)
+    x["optimized_trend_ma"]=ama; x["optimized_trend_upper"]=upper; x["optimized_trend_lower"]=lower
+    x["optimized_trend_state"]=pd.Series(state,index=x.index,dtype=int)
+    x["optimized_trend"]=x["optimized_trend_state"].map({1:"BULLISH / BLUE",0:"NEUTRAL",-1:"BEARISH / ORANGE"})
+    x["optimized_trend_strength"]=((close-ama)/denom).clip(-2,2).fillna(0)
+    x["optimized_trend_flip"]=x["optimized_trend_state"].diff().fillna(0).astype(int)
+    return x
+
+
 def add_risk_indicators(data, risk_model, params):
     """Calculate legacy or V3.2 composite risk without future-data leakage."""
     result = data.copy()
@@ -534,17 +608,17 @@ def add_risk_indicators(data, risk_model, params):
             numerator += values.fillna(0.0) * weight
             denominator += values.notna().astype(float) * weight
         result["core_risk_score"] = (numerator / denominator.replace(0, np.nan)).clip(0,1)
+        available = pd.Series(0, index=result.index, dtype=int)
+        for col in component_map.values():
+            available += pd.to_numeric(result[col], errors="coerce").notna().astype(int)
+        result["risk_components_available"] = available
+        result["risk_score"] = result["core_risk_score"]
+        result.loc[available < int(params.get("min_risk_components", DEFAULT_MIN_RISK_COMPONENTS)), "risk_score"] = np.nan
 
-        regime = (pd.to_numeric(result.get("regime_score"), errors="coerce") / 100.0).clip(0,1)
-        active = pd.to_numeric(result.get("regime_active_weight"), errors="coerce")
-        active = active.where(active <= 1.0, active / 100.0).clip(0,1).fillna(1.0)
-        overlay = float(params.get("regime_overlay", 0.0)) * active
-        result["risk_score"] = (
-            (1.0 - overlay) * result["core_risk_score"] + overlay * regime
-        ).where(regime.notna(), result["core_risk_score"]).clip(0,1)
-
-    result["risk_score"] = result["risk_score"].fillna(0.5).clip(0,1)
-    result["dca_multiplier"] = result["risk_score"].apply(lambda x: interpolate(DEFAULT_RISK_POINTS, x))
+    if "risk_components_available" not in result.columns:
+        result["risk_components_available"] = result["risk_score"].notna().astype(int)
+    result["risk_score"] = pd.to_numeric(result["risk_score"], errors="coerce").clip(0,1)
+    result["dca_multiplier"] = result["risk_score"].apply(lambda x: interpolate(DEFAULT_BUY_POINTS, x) if pd.notna(x) else 0.0)
     result["target_btc_weight"] = result["risk_score"].apply(lambda x: interpolate(DEFAULT_TARGET_BTC_POINTS, x))
     result["valuation_multiplier"] = (
         (result["fair_value"] / result["price"].replace(0, np.nan))
@@ -552,6 +626,14 @@ def add_risk_indicators(data, risk_model, params):
         .clip(float(params.get("min_valuation_mult", DEFAULT_MIN_VALUATION_MULT)),
               float(params.get("max_valuation_mult", DEFAULT_MAX_VALUATION_MULT)))
         .fillna(1.0)
+    )
+    result = add_optimized_trend_replica(
+        result,
+        er_period=int(params.get("trend_er_period", DEFAULT_TREND_ER_PERIOD)),
+        fast=int(params.get("trend_fast", DEFAULT_TREND_FAST)),
+        slow=int(params.get("trend_slow", DEFAULT_TREND_SLOW)),
+        range_period=int(params.get("trend_range_period", DEFAULT_TREND_RANGE_PERIOD)),
+        band_mult=float(params.get("trend_band_mult", DEFAULT_TREND_BAND_MULT)),
     )
     return result
 
@@ -599,408 +681,82 @@ def select_execution_dates(df, frequency, day_of_week):
 # Portfolio Engine
 # ================================================================
 
+def _trend_factor(state, bull, neutral, bear):
+    return float(bull if state > 0 else bear if state < 0 else neutral)
+
+
 def simulate_dynamic_dca(df_full, params):
-    """
-    Core historical backtest.
-
-    The strategy has three interacting components:
-
-    1. Time target:
-       How much capital would normally have been deployed by now?
-
-    2. Risk multiplier:
-       Cheap BTC gets a larger DCA allocation.
-
-    3. Deployment pressure:
-       If the strategy is behind its time target, purchases increase.
-       If it is ahead, purchases decrease.
-
-    Profit-taking is portfolio-target based rather than "sell X% of all BTC"
-    because that makes the sell logic respond to the actual BTC/cash mix.
-    """
-    if df_full.empty:
-        return pd.DataFrame(), {}
-
-    start = params["start_date"]
-    end = params["end_date"]
-
-    df = df_full[
-        (df_full.index >= start) &
-        (df_full.index <= end)
-    ].copy()
-
-    if df.empty:
-        return pd.DataFrame(), {}
-
-    df = add_risk_indicators(
-        df,
-        params["risk_model"],
-        params,
-    )
-
-    execution = select_execution_dates(
-        df,
-        params["frequency"],
-        params["day_of_week"],
-    )
-
-    if execution.empty:
-        return pd.DataFrame(), {}
-
-    total_capital = float(params["total_capital_aud"])
-    cash = total_capital
-    btc = 0.0
-
-    # Weighted-average BTC acquisition cost in AUD/BTC.
-    btc_cost_basis_aud = 0.0
-
-    cumulative_invested = 0.0
-    cumulative_sold_proceeds = 0.0
-    cumulative_realized_profit = 0.0
-    cumulative_fees = 0.0
-    last_sale_date = None
-
-    trades = []
-
-    n_periods = len(execution)
-
-    for period_number, (timestamp, row) in enumerate(
-        execution.iterrows(), start=1
-    ):
-        price_usd = float(row["price"])
-        usd_per_aud = float(row["usd_per_aud"])
-
-        if price_usd <= 0 or usd_per_aud <= 0:
-            continue
-
-        btc_price_aud = price_usd / usd_per_aud
-
-        risk = float(row["risk_score"])
-        risk_multiplier = float(row["dca_multiplier"])
-        target_btc_weight = min(float(row["target_btc_weight"]), float(params.get("max_btc_weight", 1.0)))
-        valuation_multiplier = float(row.get("valuation_multiplier", 1.0))
-
-        # ------------------------------------------------------------
-        # Time target
-        # ------------------------------------------------------------
-        time_progress = period_number / n_periods
-        target_cumulative_invested = total_capital * time_progress
-
-        deployment_gap = (
-            target_cumulative_invested - cumulative_invested
-        )
-
-        # Convert the gap into a normalized pressure value.
-        # Positive = behind schedule.
-        gap_pct = deployment_gap / total_capital
-
-        pressure = 1.0 + (
-            clamp(
-                gap_pct,
-                -0.50,
-                1.00,
-            ) * params["pressure_strength"]
-        )
-
-        pressure = clamp(pressure, 0.50, float(params.get("pressure_cap", DEFAULT_PRESSURE_CAP)))
-
-        # ------------------------------------------------------------
-        # Dynamic DCA purchase
-        # ------------------------------------------------------------
-        remaining_periods = max(1, n_periods - period_number + 1)
-        base_period_amount = cash / remaining_periods
-
-        desired_buy = (
-            base_period_amount
-            * risk_multiplier
-            * valuation_multiplier
-            * pressure
-        )
-
-        # Never exceed configured percentage of original capital in one
-        # period.
-        max_period_buy = (
-            total_capital * params["max_period_pct"]
-        )
-
-        desired_buy = min(
-            desired_buy,
-            max_period_buy,
-        )
-
-        # Maintain minimum cash reserve.
-        minimum_cash = (
-            total_capital * params["min_cash_reserve_pct"]
-        )
-
-        available_for_buy = max(
-            0.0,
-            cash - minimum_cash,
-        )
-
-        desired_buy = min(
-            desired_buy,
-            available_for_buy,
-        )
-
-        # ------------------------------------------------------------
-        # Portfolio-target rebalancing / profit taking
-        # ------------------------------------------------------------
-        portfolio_before = (
-            cash + btc * btc_price_aud
-        )
-
-        current_btc_value = btc * btc_price_aud
-
-        current_btc_weight = (
-            current_btc_value / portfolio_before
-            if portfolio_before > 0
-            else 0.0
-        )
-
-        # Do not let a large multiplier blindly push BTC above the risk-derived target.
-        target_btc_value_before = portfolio_before * target_btc_weight
-        allocation_room = max(0.0, target_btc_value_before - current_btc_value)
-        overshoot_allowance = total_capital * 0.005
-        desired_buy = min(desired_buy, allocation_room + overshoot_allowance)
-
-        target_difference = (
-            current_btc_weight - target_btc_weight
-        )
-
-        desired_sell = 0.0
-
-        # Only sell if BTC allocation is materially above target.
-        sale_gap_ok = (
-            last_sale_date is None
-            or (timestamp - last_sale_date).days >= int(params.get("min_days_between_sales", 0))
-        )
-        if (
-            btc > 0
-            and target_difference >= params["sell_threshold"]
-            and sale_gap_ok
-        ):
-            target_btc_value = (
-                portfolio_before * target_btc_weight
-            )
-
-            excess_btc_value = max(
-                0.0,
-                current_btc_value - target_btc_value,
-            )
-
-            desired_sell = (
-                excess_btc_value
-                / btc_price_aud
-            )
-
-            max_btc_sell = btc * params["max_sell_pct_period"]
-
-            desired_sell = min(
-                desired_sell,
-                max_btc_sell,
-            )
-
-        # ------------------------------------------------------------
-        # Execute SELL first when over target.
-        # ------------------------------------------------------------
-        sell_proceeds = 0.0
-        sell_fee = 0.0
-        realized_profit = 0.0
-
-        if desired_sell > 0:
-            sell_value_gross = desired_sell * btc_price_aud
-            sell_fee = sell_value_gross * params["fee_pct"]
-            sell_proceeds = sell_value_gross - sell_fee
-
-            # Weighted average cost basis of BTC sold.
-            avg_cost_per_btc = (
-                btc_cost_basis_aud / btc
-                if btc > 0
-                else 0.0
-            )
-
-            sold_cost_basis = desired_sell * avg_cost_per_btc
-            realized_profit = (
-                sell_proceeds - sold_cost_basis
-            )
-
-            btc -= desired_sell
-            btc_cost_basis_aud -= sold_cost_basis
-            btc_cost_basis_aud = max(0.0, btc_cost_basis_aud)
-
-            cash += sell_proceeds
-
-            cumulative_sold_proceeds += sell_proceeds
-            cumulative_realized_profit += realized_profit
-            cumulative_fees += sell_fee
-            last_sale_date = timestamp
-
-        # ------------------------------------------------------------
-        # Execute BUY.
-        # ------------------------------------------------------------
-        buy_amount = desired_buy
-        buy_fee = buy_amount * params["fee_pct"]
-        total_cash_used = buy_amount
-
-        # If fee is charged in AUD, reduce actual BTC purchase amount.
-        net_buy_amount = max(
-            0.0,
-            buy_amount - buy_fee,
-        )
-
-        btc_bought = (
-            net_buy_amount / btc_price_aud
-            if btc_price_aud > 0
-            else 0.0
-        )
-
-        if btc_bought > 0:
-            btc += btc_bought
-            btc_cost_basis_aud += net_buy_amount
-            cash -= total_cash_used
-            cash = max(0.0, cash)
-
-            cumulative_invested += net_buy_amount
-            cumulative_fees += buy_fee
-
-        # ------------------------------------------------------------
-        # Portfolio after transactions.
-        # ------------------------------------------------------------
-        btc_value_aud = btc * btc_price_aud
-        total_wealth_aud = cash + btc_value_aud
-
-        actual_btc_weight = (
-            btc_value_aud / total_wealth_aud
-            if total_wealth_aud > 0
-            else 0.0
-        )
-
-        avg_cost = (
-            btc_cost_basis_aud / btc
-            if btc > 0
-            else 0.0
-        )
-
-        unrealized_profit = (
-            btc_value_aud - btc_cost_basis_aud
-        )
-
-        trades.append(
-            {
-                "date": timestamp,
-                "price_usd": price_usd,
-                "btc_price_aud": btc_price_aud,
-                "fair_value_usd": float(row["fair_value"]),
-                "risk_score": risk,
-                "dca_multiplier": risk_multiplier,
-                "valuation_multiplier": valuation_multiplier,
-                "target_btc_weight": target_btc_weight,
-                "mvrv_score": float(row.get("mvrv_score", np.nan)),
-                "power_law_score": float(row.get("power_law_score", np.nan)),
-                "mayer_score": float(row.get("mayer_score", np.nan)),
-                "fear_greed_score": float(row.get("fear_greed_score", np.nan)),
-                "rsi_score": float(row.get("rsi_score", np.nan)),
-                "regime_score": float(row.get("regime_score", np.nan)) if pd.notna(row.get("regime_score", np.nan)) else np.nan,
-                "actual_btc_weight": actual_btc_weight,
-                "time_progress": time_progress,
-                "target_cumulative_invested": target_cumulative_invested,
-                "cumulative_invested": cumulative_invested,
-                "deployment_gap": (
-                    target_cumulative_invested
-                    - cumulative_invested
-                ),
-                "pressure": pressure,
-                "buy_aud": buy_amount if btc_bought > 0 else 0.0,
-                "btc_bought": btc_bought,
-                "sell_btc": desired_sell,
-                "sell_proceeds_aud": sell_proceeds,
-                "realized_profit_aud": realized_profit,
-                "fees_aud": buy_fee + sell_fee,
-                "btc_held": btc,
-                "btc_cost_basis_aud": btc_cost_basis_aud,
-                "btc_avg_cost_aud": avg_cost,
-                "cash_aud": cash,
-                "btc_value_aud": btc_value_aud,
-                "total_wealth_aud": total_wealth_aud,
-                "unrealized_profit_aud": unrealized_profit,
-                "trade": (
-                    "BUY+SELL"
-                    if btc_bought > 0 and desired_sell > 0
-                    else "BUY"
-                    if btc_bought > 0
-                    else "SELL"
-                    if desired_sell > 0
-                    else "HOLD"
-                ),
-            }
-        )
-
-    result = pd.DataFrame(trades)
-
-    if result.empty:
-        return result, {}
-
-    final = result.iloc[-1]
-
-    first_date = result["date"].iloc[0]
-    last_date = result["date"].iloc[-1]
-
-    years = max(
-        (last_date - first_date).days / 365.25,
-        1 / 365.25,
-    )
-
-    starting_capital = total_capital
-    ending_wealth = float(final["total_wealth_aud"])
-
-    cagr = annualized_return(
-        starting_capital,
-        ending_wealth,
-        years,
-    )
-
-    period_returns = result["total_wealth_aud"].pct_change().dropna()
-    periods_per_year = {"Daily": 365.0, "Weekly": 52.0, "Monthly": 12.0}.get(params["frequency"], 52.0)
-    sharpe = np.nan
-    sortino = np.nan
-    if len(period_returns) > 1 and period_returns.std() > 0:
-        sharpe = float(period_returns.mean() / period_returns.std() * np.sqrt(periods_per_year))
-    downside = period_returns[period_returns < 0]
-    if len(downside) > 1 and downside.std() > 0:
-        sortino = float(period_returns.mean() / downside.std() * np.sqrt(periods_per_year))
-
-    summary = {
-        "starting_capital_aud": starting_capital,
-        "ending_wealth_aud": ending_wealth,
-        "cash_aud": float(final["cash_aud"]),
-        "btc_held": float(final["btc_held"]),
-        "btc_value_aud": float(final["btc_value_aud"]),
-        "cumulative_invested_aud": float(final["cumulative_invested"]),
-        "realized_profit_aud": float(
-            result["realized_profit_aud"].sum()
-        ),
-        "unrealized_profit_aud": float(
-            final["unrealized_profit_aud"]
-        ),
-        "fees_aud": float(result["fees_aud"].sum()),
-        "return_pct": (
-            ending_wealth / starting_capital - 1.0
-        ) * 100.0,
-        "cagr_pct": cagr * 100.0,
-        "max_drawdown_pct": max_drawdown(
-            result["total_wealth_aud"]
-        ) * 100.0,
-        "periods": len(result),
-        "final_risk": float(final["risk_score"]),
-        "final_btc_weight": float(final["actual_btc_weight"]),
-        "final_target_weight": float(final["target_btc_weight"]),
-        "final_avg_cost_aud": float(final["btc_avg_cost_aud"]),
-        "sharpe": sharpe,
-        "sortino": sortino,
-    }
-
-    return result, summary
+    """V3.4: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
+    if df_full.empty: return pd.DataFrame(), {}
+    df=df_full[(df_full.index>=params["start_date"]) & (df_full.index<=params["end_date"])].copy()
+    if df.empty: return pd.DataFrame(), {}
+    df=add_risk_indicators(df,params["risk_model"],params)
+    execution=select_execution_dates(df,params["frequency"],params["day_of_week"])
+    if execution.empty: return pd.DataFrame(), {}
+
+    capital=float(params["total_capital_aud"]); cash=capital; btc=0.0; basis=0.0
+    invested=sold_total=realized_total=fees_total=0.0; last_sale=None; peak=capital; trades=[]
+    n=len(execution); base=capital/max(n,1)
+    buy_th=float(params.get("buy_threshold",DEFAULT_BUY_THRESHOLD)); sell_th=float(params.get("sell_risk_threshold",DEFAULT_SELL_RISK_THRESHOLD))
+
+    for i,(ts,row) in enumerate(execution.iterrows(),start=1):
+        price_usd=float(row["price"]); fx=float(row["usd_per_aud"])
+        if price_usd<=0 or fx<=0: continue
+        paud=price_usd/fx
+        risk=float(row["risk_score"]) if pd.notna(row["risk_score"]) else np.nan
+        trend=int(row.get("optimized_trend_state",0)) if pd.notna(row.get("optimized_trend_state",0)) else 0
+        if not np.isfinite(risk): zone="HOLD"; reason="Insufficient risk components"
+        elif risk<=buy_th: zone="BUY"; reason=f"Risk {risk:.3f} <= BUY threshold {buy_th:.2f}"
+        elif risk>=sell_th and params.get("require_weak_trend_for_sell",False) and trend>0: zone="HOLD"; reason="High valuation but trend remains bullish"
+        elif risk>=sell_th: zone="SELL"; reason=f"Risk {risk:.3f} >= SELL threshold {sell_th:.2f}"
+        else: zone="HOLD"; reason="Risk between BUY and SELL zones"
+
+        buy_mult=interpolate(DEFAULT_BUY_POINTS,risk) if np.isfinite(risk) else 0.0
+        sell_frac=interpolate(DEFAULT_SELL_POINTS,risk) if np.isfinite(risk) else 0.0
+        val_mult=float(row.get("valuation_multiplier",1.0))
+        buy_tf=_trend_factor(trend,params.get("trend_buy_bull",DEFAULT_TREND_BUY_BULL),params.get("trend_buy_neutral",DEFAULT_TREND_BUY_NEUTRAL),params.get("trend_buy_bear",DEFAULT_TREND_BUY_BEAR))
+        sell_tf=_trend_factor(trend,params.get("trend_sell_bull",DEFAULT_TREND_SELL_BULL),params.get("trend_sell_neutral",DEFAULT_TREND_SELL_NEUTRAL),params.get("trend_sell_bear",DEFAULT_TREND_SELL_BEAR))
+        min_trade=float(params.get("min_trade_aud",DEFAULT_MIN_TRADE_AUD))
+        buy=btc_bought=sell_btc=sell_proceeds=rp=buy_fee=sell_fee=0.0; action="HOLD"
+
+        if zone=="BUY":
+            reserve=capital*float(params.get("min_cash_reserve_pct",0.0)); available=max(0.0,cash-reserve)
+            raw=base*buy_mult*val_mult*buy_tf; cap=capital*float(params.get("max_period_pct",DEFAULT_MAX_PERIOD_PCT))
+            buy=min(raw,cap,available)
+            if buy>=min_trade:
+                buy_fee=buy*float(params.get("fee_pct",0.0)); net=max(0.0,buy-buy_fee); btc_bought=net/paud
+                btc+=btc_bought; basis+=net; cash-=buy; invested+=net; fees_total+=buy_fee; action="BUY"
+                reason+=f" | {buy_mult:.2f}x risk × {val_mult:.2f}x valuation × {buy_tf:.2f}x trend"
+            else: buy=0.0
+        elif zone=="SELL" and btc>0:
+            allowed=last_sale is None or (ts-last_sale).days>=int(params.get("min_days_between_sales",DEFAULT_MIN_DAYS_BETWEEN_SALES))
+            if allowed:
+                btc_value=btc*paud; gross=min(btc_value*sell_frac*sell_tf,btc_value*float(params.get("max_sell_pct_period",DEFAULT_MAX_SELL_PCT_PERIOD)),btc_value)
+                if gross>=min_trade:
+                    sell_btc=gross/paud; sell_fee=gross*float(params.get("fee_pct",0.0)); sell_proceeds=gross-sell_fee
+                    basis_sold=basis*(sell_btc/btc) if btc>0 else 0.0; rp=sell_proceeds-basis_sold
+                    btc-=sell_btc; basis=max(0.0,basis-basis_sold); cash+=sell_proceeds; sold_total+=sell_proceeds; realized_total+=rp; fees_total+=sell_fee; last_sale=ts; action="SELL"
+                    reason+=f" | sell curve {sell_frac:.1%} × trend {sell_tf:.2f}x"
+
+        btc_value=btc*paud; wealth=cash+btc_value; peak=max(peak,wealth); weight=btc_value/wealth if wealth>0 else 0.0; avg=basis/btc if btc>0 else 0.0
+        ref_target=interpolate(DEFAULT_TARGET_BTC_POINTS,risk) if np.isfinite(risk) else np.nan
+        target_ref=capital*(i/n)
+        trades.append({
+            "date":ts,"price_usd":price_usd,"btc_price_aud":paud,"fair_value_usd":float(row["fair_value"]),
+            "risk_score":risk,"risk_zone":("DEEP VALUE" if np.isfinite(risk) and risk<=.2 else "VALUE" if np.isfinite(risk) and risk<=buy_th else "EXTREME" if np.isfinite(risk) and risk>=.9 else "HIGH" if np.isfinite(risk) and risk>=sell_th else "NEUTRAL"),
+            "risk_components":int(row.get("risk_components_available",0)),"dca_multiplier":buy_mult,"sell_fraction":sell_frac,"valuation_multiplier":val_mult,
+            "target_btc_weight":ref_target,"actual_btc_weight":weight,"optimized_trend":row.get("optimized_trend","NEUTRAL"),"optimized_trend_state":trend,"trend_strength":float(row.get("optimized_trend_strength",0.0)),
+            "decision_zone":zone,"decision_reason":reason,"time_progress":i/n,"target_cumulative_invested":target_ref,"cumulative_invested":invested,"deployment_gap":target_ref-invested,"pressure":1.0,
+            "buy_aud":buy if action=="BUY" else 0.0,"btc_bought":btc_bought,"sell_btc":sell_btc,"sell_proceeds_aud":sell_proceeds,"realized_profit_aud":rp,"fees_aud":buy_fee+sell_fee,
+            "btc_held":btc,"btc_cost_basis_aud":basis,"btc_avg_cost_aud":avg,"cash_aud":cash,"btc_value_aud":btc_value,"total_wealth_aud":wealth,"unrealized_profit_aud":btc_value-basis,"trade":action
+        })
+    result=pd.DataFrame(trades)
+    if result.empty: return result,{}
+    final=result.iloc[-1]; years=max((result.date.iloc[-1]-result.date.iloc[0]).days/365.25,1/365.25); endw=float(final.total_wealth_aud)
+    rets=result.total_wealth_aud.pct_change().dropna(); ppy={"Daily":365.0,"Weekly":52.0,"Monthly":12.0}.get(params["frequency"],52.0)
+    sharpe=float(rets.mean()/rets.std()*np.sqrt(ppy)) if len(rets)>1 and rets.std()>0 else np.nan; down=rets[rets<0]; sortino=float(rets.mean()/down.std()*np.sqrt(ppy)) if len(down)>1 and down.std()>0 else np.nan
+    summary={"starting_capital_aud":capital,"ending_wealth_aud":endw,"cash_aud":float(final.cash_aud),"btc_held":float(final.btc_held),"btc_value_aud":float(final.btc_value_aud),"cumulative_invested_aud":float(final.cumulative_invested),"realized_profit_aud":float(result.realized_profit_aud.sum()),"unrealized_profit_aud":float(final.unrealized_profit_aud),"fees_aud":float(result.fees_aud.sum()),"return_pct":(endw/capital-1)*100,"cagr_pct":annualized_return(capital,endw,years)*100,"max_drawdown_pct":max_drawdown(result.total_wealth_aud)*100,"periods":len(result),"final_risk":float(final.risk_score) if pd.notna(final.risk_score) else np.nan,"final_btc_weight":float(final.actual_btc_weight),"final_target_weight":float(final.target_btc_weight) if pd.notna(final.target_btc_weight) else np.nan,"final_avg_cost_aud":float(final.btc_avg_cost_aud),"final_trend":str(final.optimized_trend),"final_decision":str(final.decision_zone),"sharpe":sharpe,"sortino":sortino,"buy_count":int((result.trade=="BUY").sum()),"sell_count":int((result.trade=="SELL").sum())}
+    return result,summary
 
 
 # ================================================================
@@ -1223,34 +979,29 @@ def normalized_percentile_score(frame):
 
 
 def walk_forward_optimise(df_full, base_params):
-    """70/30 train/validation search. Risk weights stay fixed to limit overfitting."""
+    """V3.4 70/30 train/validation search. Valuation weights stay fixed to reduce overfitting."""
     if df_full.empty:
         return pd.DataFrame(), pd.DataFrame()
-    start=base_params["start_date"]; end=base_params["end_date"]
-    span=end-start
-    split=start + span*0.70
+    start=base_params["start_date"]; end=base_params["end_date"]; split=start+(end-start)*0.70
     candidates=[]
     for max_buy in (0.05,0.08,0.12):
-        for pressure in (0.50,0.75,1.00):
-            for val_strength in (0.50,0.75,1.00):
-                p=dict(base_params)
-                p.update({"max_period_pct":max_buy,"pressure_strength":pressure,"valuation_strength":val_strength,"end_date":split})
-                trades, sm=simulate_dynamic_dca(df_full,p)
-                if not sm: continue
-                candidates.append({"max_buy_pct":max_buy,"pressure_strength":pressure,"valuation_strength":val_strength,
-                    "return_pct":sm["return_pct"],"max_drawdown_pct":sm["max_drawdown_pct"],"sharpe":sm.get("sharpe",np.nan),"sortino":sm.get("sortino",np.nan),"btc_held":sm["btc_held"]})
+        for buy_th in (0.35,0.40,0.45):
+            for sell_th in (0.70,0.75,0.80):
+                for val_strength in (0.50,0.75,1.00):
+                    if sell_th <= buy_th: continue
+                    q=dict(base_params); q.update({"max_period_pct":max_buy,"buy_threshold":buy_th,"sell_risk_threshold":sell_th,"valuation_strength":val_strength,"end_date":split})
+                    trades,sm=simulate_dynamic_dca(df_full,q)
+                    if not sm: continue
+                    candidates.append({"max_buy_pct":max_buy,"buy_threshold":buy_th,"sell_threshold":sell_th,"valuation_strength":val_strength,"return_pct":sm["return_pct"],"max_drawdown_pct":sm["max_drawdown_pct"],"sharpe":sm.get("sharpe",np.nan),"sortino":sm.get("sortino",np.nan),"btc_held":sm["btc_held"],"buys":sm.get("buy_count",0),"sells":sm.get("sell_count",0)})
     train=normalized_percentile_score(pd.DataFrame(candidates)).sort_values("score",ascending=False)
     if train.empty: return train,pd.DataFrame()
-    validations=[]
-    for _,row in train.head(min(5,len(train))).iterrows():
-        p=dict(base_params)
-        p.update({"max_period_pct":float(row.max_buy_pct),"pressure_strength":float(row.pressure_strength),"valuation_strength":float(row.valuation_strength),"start_date":split,"end_date":end})
-        trades, sm=simulate_dynamic_dca(df_full,p)
+    vals=[]
+    for _,row in train.head(min(8,len(train))).iterrows():
+        q=dict(base_params); q.update({"max_period_pct":float(row.max_buy_pct),"buy_threshold":float(row.buy_threshold),"sell_risk_threshold":float(row.sell_threshold),"valuation_strength":float(row.valuation_strength),"start_date":split,"end_date":end})
+        trades,sm=simulate_dynamic_dca(df_full,q)
         if not sm: continue
-        validations.append({"max_buy_pct":row.max_buy_pct,"pressure_strength":row.pressure_strength,"valuation_strength":row.valuation_strength,
-            "return_pct":sm["return_pct"],"max_drawdown_pct":sm["max_drawdown_pct"],"sharpe":sm.get("sharpe",np.nan),"sortino":sm.get("sortino",np.nan),"btc_held":sm["btc_held"]})
-    validation=normalized_percentile_score(pd.DataFrame(validations)).sort_values("score",ascending=False)
-    return train,validation
+        vals.append({"max_buy_pct":row.max_buy_pct,"buy_threshold":row.buy_threshold,"sell_threshold":row.sell_threshold,"valuation_strength":row.valuation_strength,"return_pct":sm["return_pct"],"max_drawdown_pct":sm["max_drawdown_pct"],"sharpe":sm.get("sharpe",np.nan),"sortino":sm.get("sortino",np.nan),"btc_held":sm["btc_held"],"buys":sm.get("buy_count",0),"sells":sm.get("sell_count",0)})
+    return train, normalized_percentile_score(pd.DataFrame(vals)).sort_values("score",ascending=False)
 
 
 # ================================================================
@@ -1258,11 +1009,11 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.2.1 FULL",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.4 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA & Tactical Rebalancer V3.2.1 FULL")
+st.title("Bitcoin Dynamic DCA V3.4 FULL — Buy Low / Sell High")
 st.caption(
     "Composite on-chain/technical risk + valuation + time deployment + deployment pressure + "
     "portfolio-target rebalancing"
@@ -1327,7 +1078,7 @@ with st.sidebar:
     risk_model = st.radio(
         "Risk Metric",
         [
-            "Composite V3.2",
+            "Composite V3.4",
             "Power Law Trend",
             "SMA Ratio (200-day)",
         ],
@@ -1345,7 +1096,7 @@ with st.sidebar:
     weight_mayer = st.slider("Mayer Multiple Weight", 0.0, 1.0, 0.20, 0.05)
     weight_fear_greed = st.slider("Fear & Greed Weight", 0.0, 1.0, 0.15, 0.05)
     weight_rsi = st.slider("RSI Weight", 0.0, 1.0, 0.10, 0.05)
-    regime_overlay = st.slider("BGeometrics Regime Overlay", 0.0, 0.50, DEFAULT_REGIME_OVERLAY, 0.05)
+    regime_overlay = st.slider("BGeometrics Regime Overlay (context only in V3.4)", 0.0, 0.50, 0.0, 0.05, disabled=True)
 
     st.divider()
 
@@ -1421,6 +1172,28 @@ with st.sidebar:
         value=DEFAULT_FEE_PCT * 100,
         step=0.01,
     ) / 100.0
+
+    st.divider()
+    st.header("V3.4 Buy / Sell Zones")
+    st.caption("Low risk buys only; high risk sells only; middle zone holds. No forced catch-up deployment.")
+    buy_threshold = st.slider("BUY when risk <=", 0.10, 0.60, DEFAULT_BUY_THRESHOLD, 0.01)
+    sell_risk_threshold = st.slider("SELL when risk >=", 0.50, 0.95, DEFAULT_SELL_RISK_THRESHOLD, 0.01)
+    min_trade_aud = st.number_input("Minimum Trade (AUD)", 0.0, 100000.0, DEFAULT_MIN_TRADE_AUD, 100.0)
+    min_risk_components = st.slider("Minimum Composite Inputs", 1, 5, DEFAULT_MIN_RISK_COMPONENTS, 1)
+    require_weak_trend_for_sell = st.checkbox("Require Optimized Trend to stop being bullish before SELL", value=False)
+
+    st.subheader("Optimized Trend Replica")
+    trend_er_period = st.slider("Trend efficiency lookback",10,60,DEFAULT_TREND_ER_PERIOD,1)
+    trend_fast = st.slider("Trend fast response",2,10,DEFAULT_TREND_FAST,1)
+    trend_slow = st.slider("Trend slow response",15,80,DEFAULT_TREND_SLOW,1)
+    trend_range_period = st.slider("Trend range lookback",7,40,DEFAULT_TREND_RANGE_PERIOD,1)
+    trend_band_mult = st.slider("Trend band multiplier",0.5,4.0,DEFAULT_TREND_BAND_MULT,0.1)
+    trend_buy_bull = st.slider("BUY factor: bullish trend",0.0,2.0,DEFAULT_TREND_BUY_BULL,0.05)
+    trend_buy_neutral = st.slider("BUY factor: neutral trend",0.0,2.0,DEFAULT_TREND_BUY_NEUTRAL,0.05)
+    trend_buy_bear = st.slider("BUY factor: bearish trend",0.0,2.0,DEFAULT_TREND_BUY_BEAR,0.05)
+    trend_sell_bull = st.slider("SELL factor: bullish trend",0.0,2.0,DEFAULT_TREND_SELL_BULL,0.05)
+    trend_sell_neutral = st.slider("SELL factor: neutral trend",0.0,2.0,DEFAULT_TREND_SELL_NEUTRAL,0.05)
+    trend_sell_bear = st.slider("SELL factor: bearish trend",0.0,2.0,DEFAULT_TREND_SELL_BEAR,0.05)
 
 
 # ================================================================
@@ -1601,6 +1374,22 @@ params = {
     "pressure_cap": pressure_cap,
     "max_btc_weight": max_btc_weight,
     "min_days_between_sales": min_days_between_sales,
+    "buy_threshold": buy_threshold,
+    "sell_risk_threshold": sell_risk_threshold,
+    "min_trade_aud": min_trade_aud,
+    "min_risk_components": min_risk_components,
+    "require_weak_trend_for_sell": require_weak_trend_for_sell,
+    "trend_er_period": trend_er_period,
+    "trend_fast": trend_fast,
+    "trend_slow": trend_slow,
+    "trend_range_period": trend_range_period,
+    "trend_band_mult": trend_band_mult,
+    "trend_buy_bull": trend_buy_bull,
+    "trend_buy_neutral": trend_buy_neutral,
+    "trend_buy_bear": trend_buy_bear,
+    "trend_sell_bull": trend_sell_bull,
+    "trend_sell_neutral": trend_sell_neutral,
+    "trend_sell_bear": trend_sell_bear,
     "start_date": dt.datetime.combine(
         start_date,
         dt.time.min,
@@ -1689,11 +1478,12 @@ if mode == "Historical Backtest":
 
     st.subheader("Dynamic Strategy")
 
-    signal_cols = st.columns(4)
-    signal_cols[0].metric("Current Composite Risk", f"{summary['final_risk']:.3f}")
-    signal_cols[1].metric("Target BTC Weight", f"{summary['final_target_weight']:.1%}")
-    signal_cols[2].metric("Sharpe", "n/a" if pd.isna(summary.get('sharpe')) else f"{summary['sharpe']:.2f}")
-    signal_cols[3].metric("Sortino", "n/a" if pd.isna(summary.get('sortino')) else f"{summary['sortino']:.2f}")
+    signal_cols = st.columns(5)
+    signal_cols[0].metric("Current Valuation Risk", "n/a" if pd.isna(summary['final_risk']) else f"{summary['final_risk']:.3f}")
+    signal_cols[1].metric("Decision", summary.get("final_decision","HOLD"))
+    signal_cols[2].metric("Optimized Trend", summary.get("final_trend","NEUTRAL"))
+    signal_cols[3].metric("Sharpe", "n/a" if pd.isna(summary.get('sharpe')) else f"{summary['sharpe']:.2f}")
+    signal_cols[4].metric("Sortino", "n/a" if pd.isna(summary.get('sortino')) else f"{summary['sortino']:.2f}")
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
 
@@ -1827,6 +1617,9 @@ if mode == "Historical Backtest":
         )
     )
 
+    fig_risk.add_hline(y=buy_threshold, line_dash="dot", annotation_text="BUY threshold")
+    fig_risk.add_hline(y=sell_risk_threshold, line_dash="dot", annotation_text="SELL threshold")
+
     fig_risk.update_layout(
         height=500,
         template="plotly_dark",
@@ -1849,6 +1642,18 @@ if mode == "Historical Backtest":
         fig_risk,
         use_container_width=True,
     )
+
+    # ------------------------------------------------------------
+    # Optimized Trend Replica
+    # ------------------------------------------------------------
+    st.subheader("Optimized Trend Replica")
+    fig_trend = go.Figure()
+    fig_trend.add_trace(go.Scatter(x=trade_df["date"], y=trade_df["price_usd"], name="BTC Price (USD)", line=dict(width=2)))
+    bulls=trade_df[trade_df["optimized_trend_state"]>0]; bears=trade_df[trade_df["optimized_trend_state"]<0]
+    if not bulls.empty: fig_trend.add_trace(go.Scatter(x=bulls["date"],y=bulls["price_usd"],mode="markers",name="Bullish / Blue",marker=dict(size=5)))
+    if not bears.empty: fig_trend.add_trace(go.Scatter(x=bears["date"],y=bears["price_usd"],mode="markers",name="Bearish / Orange",marker=dict(size=5)))
+    fig_trend.update_layout(height=500,template="plotly_dark",xaxis=dict(title="Date",rangeslider=dict(visible=True)),yaxis=dict(title="BTC Price (USD)",tickprefix="$"),hovermode="x unified")
+    st.plotly_chart(fig_trend,use_container_width=True)
 
     # ------------------------------------------------------------
     # Portfolio chart
@@ -1973,7 +1778,7 @@ if mode == "Historical Backtest":
     # Deployment pressure chart
     # ------------------------------------------------------------
 
-    st.subheader("Deployment Pressure")
+    st.subheader("Reference Deployment vs Actual (No Catch-up)")
 
     fig_pressure = go.Figure()
 
@@ -1981,7 +1786,7 @@ if mode == "Historical Backtest":
         go.Scatter(
             x=trade_df["date"],
             y=trade_df["target_cumulative_invested"],
-            name="Time Target",
+            name="Equal-Time Reference",
             line=dict(width=2, dash="dash"),
         )
     )
@@ -2023,6 +1828,8 @@ if mode == "Historical Backtest":
         [
             "date",
             "trade",
+            "decision_zone",
+            "optimized_trend",
             "price_usd",
             "risk_score",
             "dca_multiplier",
@@ -2094,6 +1901,8 @@ if mode == "Historical Backtest":
     display_df.columns = [
         "Date",
         "Action",
+        "Decision Zone",
+        "Optimized Trend",
         "BTC USD",
         "Risk",
         "DCA Mult.",
@@ -2125,7 +1934,7 @@ if mode == "Historical Backtest":
     st.download_button(
         "Download Full Backtest CSV",
         data=trade_df.to_csv(index=False).encode("utf-8"),
-        file_name="btc_dynamic_dca_v3_2_full_backtest.csv",
+        file_name="btc_dynamic_dca_v3_4_full_backtest.csv",
         mime="text/csv",
     )
 
@@ -2138,7 +1947,7 @@ if mode == "Historical Backtest":
     st.caption(f"BGeometrics token: {'loaded' if get_bgeometrics_token() else 'not loaded'} • No future BTC prices are fabricated in historical mode.")
 
     with st.expander("Walk-forward Optimisation (advanced)"):
-        st.write("Searches a deliberately small parameter grid on the first 70% of the period and validates the best candidates on the untouched final 30%.")
+        st.write("Searches V3.4 BUY threshold, SELL threshold, maximum buy size and valuation strength on the first 70% of the period, then validates leaders on the untouched final 30%.")
         if st.button("Run Walk-forward Optimiser", type="secondary"):
             with st.spinner("Running train/validation parameter search..."):
                 train_opt, validation_opt = walk_forward_optimise(df_full, params)
@@ -2239,7 +2048,7 @@ else:
         go.Scatter(
             x=plan["date"],
             y=plan["target_cumulative_aud"],
-            name="Time Target",
+            name="Equal-Time Reference",
             line=dict(width=2, dash="dash"),
         )
     )
