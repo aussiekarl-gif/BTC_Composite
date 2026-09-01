@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.4 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.4.1 FULL
 ====================================================
 
 Designed for:
@@ -686,7 +686,7 @@ def _trend_factor(state, bull, neutral, bear):
 
 
 def simulate_dynamic_dca(df_full, params):
-    """V3.4: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
+    """V3.4.1: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
     if df_full.empty: return pd.DataFrame(), {}
     df=df_full[(df_full.index>=params["start_date"]) & (df_full.index<=params["end_date"])].copy()
     if df.empty: return pd.DataFrame(), {}
@@ -696,7 +696,7 @@ def simulate_dynamic_dca(df_full, params):
 
     capital=float(params["total_capital_aud"]); cash=capital; btc=0.0; basis=0.0
     invested=sold_total=realized_total=fees_total=0.0; last_sale=None; peak=capital; trades=[]
-    n=len(execution); base=capital/max(n,1)
+    n=len(execution); base=capital*float(params.get("base_dca_pct",0.01))
     buy_th=float(params.get("buy_threshold",DEFAULT_BUY_THRESHOLD)); sell_th=float(params.get("sell_risk_threshold",DEFAULT_SELL_RISK_THRESHOLD))
 
     for i,(ts,row) in enumerate(execution.iterrows(),start=1):
@@ -752,6 +752,35 @@ def simulate_dynamic_dca(df_full, params):
         })
     result=pd.DataFrame(trades)
     if result.empty: return result,{}
+
+    # V3.4.1 execution invariants.
+    if ((result["buy_aud"] > 0) & (result["sell_btc"] > 0)).any():
+        raise RuntimeError("V3.4.1 invariant failed: simultaneous BUY and SELL.")
+
+    if (
+        (result["buy_aud"] > 0)
+        & (
+            result["risk_score"].isna()
+            | (result["risk_score"] > buy_th)
+        )
+    ).any():
+        raise RuntimeError("V3.4.1 invariant failed: BUY outside BUY zone.")
+
+    if (
+        (result["sell_btc"] > 0)
+        & (
+            result["risk_score"].isna()
+            | (result["risk_score"] < sell_th)
+        )
+    ).any():
+        raise RuntimeError("V3.4.1 invariant failed: SELL outside SELL zone.")
+
+    if (result["cash_aud"] < -0.01).any() or (result["btc_held"] < -1e-12).any():
+        raise RuntimeError("V3.4.1 invariant failed: negative cash or BTC.")
+
+    hard_buy_cap = capital * float(params.get("max_period_pct", DEFAULT_MAX_PERIOD_PCT))
+    if (result["buy_aud"] > hard_buy_cap + 0.01).any():
+        raise RuntimeError("V3.4.1 invariant failed: BUY above hard cap.")
     final=result.iloc[-1]; years=max((result.date.iloc[-1]-result.date.iloc[0]).days/365.25,1/365.25); endw=float(final.total_wealth_aud)
     rets=result.total_wealth_aud.pct_change().dropna(); ppy={"Daily":365.0,"Weekly":52.0,"Monthly":12.0}.get(params["frequency"],52.0)
     sharpe=float(rets.mean()/rets.std()*np.sqrt(ppy)) if len(rets)>1 and rets.std()>0 else np.nan; down=rets[rets<0]; sortino=float(rets.mean()/down.std()*np.sqrt(ppy)) if len(down)>1 and down.std()>0 else np.nan
@@ -872,69 +901,51 @@ def build_forward_plan(
     risk_score,
     btc_price_usd,
     usd_per_aud,
+    buy_threshold,
+    sell_threshold,
+    base_dca_pct,
+    max_period_pct,
 ):
-    """
-    Creates a forward deployment schedule.
-
-    Future BTC price and risk are deliberately NOT forecast.
-    The current supplied risk score is used to calculate the planned
-    DCA intensity for the schedule.
-
-    This is a planning tool, not a price prediction.
-    """
+    """Conditional forward planner with no forced deployment."""
     if end_date <= start_date:
         return pd.DataFrame()
 
-    dates = pd.date_range(
-        start=start_date,
-        end=end_date,
-        freq="D",
-        tz="UTC",
-    )
-
+    dates = pd.date_range(start=start_date, end=end_date, freq="D", tz="UTC")
     if frequency == "Weekly":
         dates = dates[dates.dayofweek == 0]
-
     elif frequency == "Monthly":
-        # First day of each month.
         dates = dates[dates.day == 1]
 
     if len(dates) == 0:
-        dates = pd.DatetimeIndex(
-            [pd.Timestamp(start_date, tz="UTC")]
-        )
+        dates = pd.DatetimeIndex([pd.Timestamp(start_date, tz="UTC")])
 
-    n = len(dates)
+    base = capital * float(base_dca_pct)
+    hard_cap = capital * float(max_period_pct)
 
-    risk_multiplier = interpolate(
-        DEFAULT_RISK_POINTS,
-        clamp(risk_score, 0, 1),
-    )
-
-    base = capital / n
-
-    # Keep the forward schedule conservative and visible.
-    max_period = capital * DEFAULT_MAX_PERIOD_PCT
+    if not np.isfinite(risk_score):
+        decision = "HOLD"
+        buy_multiplier = 0.0
+    elif risk_score <= buy_threshold:
+        decision = "BUY"
+        buy_multiplier = interpolate(DEFAULT_BUY_POINTS, clamp(risk_score, 0, 1))
+    elif risk_score >= sell_threshold:
+        decision = "SELL ZONE — NO BUY"
+        buy_multiplier = 0.0
+    else:
+        decision = "HOLD — NO BUY"
+        buy_multiplier = 0.0
 
     rows = []
     cumulative = 0.0
 
-    for i, date in enumerate(dates, start=1):
-        time_progress = i / n
-        target_cumulative = capital * time_progress
-        gap = target_cumulative - cumulative
-
-        pressure = 1.0 + (
-            clamp(gap / capital, -0.50, 1.00)
-            * DEFAULT_PRESSURE_STRENGTH
-        )
-        pressure = clamp(pressure, 0.50, float(params.get("pressure_cap", DEFAULT_PRESSURE_CAP)))
-
-        planned = min(
-            base * risk_multiplier * pressure,
-            max_period,
-            max(0.0, capital - cumulative),
-        )
+    for date in dates:
+        planned = 0.0
+        if decision == "BUY":
+            planned = min(
+                base * buy_multiplier,
+                hard_cap,
+                max(0.0, capital - cumulative),
+            )
 
         cumulative += planned
 
@@ -942,9 +953,9 @@ def build_forward_plan(
             {
                 "date": date,
                 "risk_score": risk_score,
-                "risk_multiplier": risk_multiplier,
-                "time_progress_pct": time_progress * 100,
-                "target_cumulative_aud": target_cumulative,
+                "decision": decision,
+                "buy_multiplier": buy_multiplier,
+                "base_dca_aud": base,
                 "planned_buy_aud": planned,
                 "cumulative_planned_aud": cumulative,
                 "capital_remaining_aud": capital - cumulative,
@@ -962,7 +973,7 @@ def build_forward_plan(
 
 
 # ================================================================
-# Walk-forward Optimisation (V3.2)
+# Walk-forward Optimisation (V3.4.1)
 # ================================================================
 
 def normalized_percentile_score(frame):
@@ -1009,11 +1020,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.4 FULL",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.4.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.4 FULL — Buy Low / Sell High")
+st.title("Bitcoin Dynamic DCA V3.4.1 FULL — Buy Low / Sell High")
+st.caption("Version 3.4.1 FULL • STRICT BUY-LOW / HOLD / SELL-HIGH • Optimized Trend Replica ENABLED • Build 2026-09-02")
 st.caption(
     "Composite on-chain/technical risk + valuation + time deployment + deployment pressure + "
     "portfolio-target rebalancing"
@@ -1039,10 +1051,10 @@ with st.sidebar:
     st.header("Capital")
 
     total_capital_aud = st.number_input(
-        "Starting Capital (AUD)",
+        "Simulation Capital (AUD)",
         min_value=1000.0,
         max_value=100_000_000.0,
-        value=500_000.0,
+        value=100_000.0,
         step=10_000.0,
     )
 
@@ -1078,7 +1090,7 @@ with st.sidebar:
     risk_model = st.radio(
         "Risk Metric",
         [
-            "Composite V3.4",
+            "Composite V3.4.1",
             "Power Law Trend",
             "SMA Ratio (200-day)",
         ],
@@ -1090,7 +1102,7 @@ with st.sidebar:
         "1 = very expensive / low allocation."
     )
 
-    st.subheader("V3.2 Composite Weights")
+    st.subheader("V3.4.1 Valuation Risk Weights")
     weight_mvrv = st.slider("MVRV Z-Score Weight", 0.0, 1.0, 0.30, 0.05)
     weight_power_law = st.slider("Power Law Weight", 0.0, 1.0, 0.25, 0.05)
     weight_mayer = st.slider("Mayer Multiple Weight", 0.0, 1.0, 0.20, 0.05)
@@ -1100,70 +1112,81 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("Dynamic DCA Controls")
+    st.header("DCA Sizing")
 
-    pressure_strength = st.slider(
-        "Deployment Pressure Strength",
-        min_value=0.0,
-        max_value=1.5,
-        value=DEFAULT_PRESSURE_STRENGTH,
-        step=0.05,
-        help=(
-            "Controls how strongly the strategy catches up when it is "
-            "behind its time-based deployment target."
-        ),
+    st.caption(
+        "Fixed base DCA per execution. No remaining-cash / remaining-period "
+        "formula and no catch-up deployment."
     )
 
+    base_dca_pct = st.slider(
+        "Base DCA Per Execution (% of starting capital)",
+        0.10,
+        5.00,
+        1.00,
+        0.10,
+        help="Default 1%. Cheap valuation can multiply this amount, subject to the hard cap.",
+    ) / 100.0
+
     max_period_pct = st.slider(
-        "Maximum Buy Per Period (% of starting capital)",
-        min_value=1.0,
-        max_value=50.0,
-        value=DEFAULT_MAX_PERIOD_PCT * 100,
-        step=1.0,
+        "Hard Maximum Buy Per Execution (% of starting capital)",
+        0.5,
+        20.0,
+        5.0,
+        0.5,
+        help="Absolute maximum allowed for one BUY execution.",
     ) / 100.0
 
     valuation_strength = st.slider(
-        "Valuation Multiplier Strength", 0.25, 1.50, DEFAULT_VALUATION_STRENGTH, 0.05,
-        help="Scales buys using Power Law fair value / current price."
+        "Valuation Multiplier Strength",
+        0.25,
+        1.50,
+        DEFAULT_VALUATION_STRENGTH,
+        0.05,
     )
-    min_valuation_mult = st.slider("Minimum Valuation Multiplier", 0.25, 1.00, DEFAULT_MIN_VALUATION_MULT, 0.05)
-    max_valuation_mult = st.slider("Maximum Valuation Multiplier", 1.00, 4.00, DEFAULT_MAX_VALUATION_MULT, 0.10)
-    pressure_cap = st.slider("Maximum Deployment Pressure", 1.0, 4.0, DEFAULT_PRESSURE_CAP, 0.1)
+
+    min_valuation_mult = st.slider(
+        "Minimum Valuation Multiplier",
+        0.25,
+        1.00,
+        DEFAULT_MIN_VALUATION_MULT,
+        0.05,
+    )
+
+    max_valuation_mult = st.slider(
+        "Maximum Valuation Multiplier",
+        1.00,
+        3.00,
+        min(DEFAULT_MAX_VALUATION_MULT, 2.0),
+        0.10,
+    )
 
     min_cash_reserve_pct = st.slider(
         "Minimum Cash Reserve (%)",
-        min_value=0.0,
-        max_value=50.0,
-        value=DEFAULT_MIN_CASH_RESERVE_PCT * 100,
-        step=1.0,
+        0.0,
+        50.0,
+        DEFAULT_MIN_CASH_RESERVE_PCT * 100,
+        1.0,
     ) / 100.0
 
     st.divider()
-
-    st.header("Rebalancing / Profit Taking")
-
-    sell_threshold = st.slider(
-        "Rebalance Threshold",
-        min_value=0.0,
-        max_value=0.20,
-        value=DEFAULT_SELL_THRESHOLD,
-        step=0.01,
-        help=(
-            "The strategy only sells when actual BTC portfolio weight "
-            "is this much above its risk-derived target."
-        ),
-    )
+    st.header("Sell-High Controls")
 
     max_sell_pct_period = st.slider(
-        "Maximum BTC Sold Per Period (%)",
-        min_value=1.0,
-        max_value=100.0,
-        value=DEFAULT_MAX_SELL_PCT_PERIOD * 100,
-        step=1.0,
+        "Hard Maximum BTC Sold Per Execution (%)",
+        1.0,
+        50.0,
+        min(DEFAULT_MAX_SELL_PCT_PERIOD * 100, 20.0),
+        1.0,
     ) / 100.0
 
-    max_btc_weight = st.slider("Maximum BTC Portfolio Weight", 0.25, 1.00, 1.00, 0.05)
-    min_days_between_sales = st.number_input("Minimum Days Between Sales", min_value=0, max_value=365, value=DEFAULT_MIN_DAYS_BETWEEN_SALES, step=1)
+    min_days_between_sales = st.number_input(
+        "Minimum Days Between Sales",
+        min_value=0,
+        max_value=365,
+        value=DEFAULT_MIN_DAYS_BETWEEN_SALES,
+        step=1,
+    )
 
     fee_pct = st.number_input(
         "Trading Fee (%)",
@@ -1174,7 +1197,8 @@ with st.sidebar:
     ) / 100.0
 
     st.divider()
-    st.header("V3.4 Buy / Sell Zones")
+
+    st.header("V3.4.1 Buy / Sell Zones")
     st.caption("Low risk buys only; high risk sells only; middle zone holds. No forced catch-up deployment.")
     buy_threshold = st.slider("BUY when risk <=", 0.10, 0.60, DEFAULT_BUY_THRESHOLD, 0.01)
     sell_risk_threshold = st.slider("SELL when risk >=", 0.50, 0.95, DEFAULT_SELL_RISK_THRESHOLD, 0.01)
@@ -1206,7 +1230,7 @@ genesis = dt.date(2009, 1, 3)
 if mode == "Historical Backtest":
     start_date = st.sidebar.date_input(
         "Backtest Start Date",
-        value=dt.date(2020, 1, 1),
+        value=dt.date(2024, 1, 1),
         min_value=genesis,
         max_value=today,
         format="DD/MM/YYYY",
@@ -1354,10 +1378,11 @@ params = {
     "pl_cheap": DEFAULT_PL_CHEAP,
     "pl_expensive": DEFAULT_PL_EXPENSIVE,
     "total_capital_aud": total_capital_aud,
-    "pressure_strength": pressure_strength,
+    "base_dca_pct": base_dca_pct,
+    "pressure_strength": 0.0,
     "max_period_pct": max_period_pct,
     "min_cash_reserve_pct": min_cash_reserve_pct,
-    "sell_threshold": sell_threshold,
+    "sell_threshold": 0.0,
     "max_sell_pct_period": max_sell_pct_period,
     "fee_pct": fee_pct,
     "composite_weights": {
@@ -1371,8 +1396,8 @@ params = {
     "valuation_strength": valuation_strength,
     "min_valuation_mult": min_valuation_mult,
     "max_valuation_mult": max_valuation_mult,
-    "pressure_cap": pressure_cap,
-    "max_btc_weight": max_btc_weight,
+    "pressure_cap": 1.0,
+    "max_btc_weight": 1.0,
     "min_days_between_sales": min_days_between_sales,
     "buy_threshold": buy_threshold,
     "sell_risk_threshold": sell_risk_threshold,
@@ -1611,7 +1636,7 @@ if mode == "Historical Backtest":
         go.Scatter(
             x=trade_df["date"],
             y=trade_df["dca_multiplier"],
-            name="DCA Multiplier",
+            name="BUY Multiplier",
             yaxis="y2",
             line=dict(width=2, dash="dash"),
         )
@@ -1632,7 +1657,7 @@ if mode == "Historical Backtest":
             range=[0, 1],
         ),
         yaxis2=dict(
-            title="DCA Multiplier",
+            title="BUY Multiplier",
             overlaying="y",
             side="right",
         ),
@@ -1970,24 +1995,21 @@ else:
 
     st.subheader("Forward Deployment Plan")
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
 
     c1.metric(
-        "Capital",
-        f"${total_capital_aud:,.0f} AUD",
-    )
-
-    c2.metric(
         "Current Risk Score",
         f"{forward_risk_score:.2f}",
     )
 
-    c3.metric(
-        "DCA Multiplier",
-        f"{risk_multiplier:.2f}x",
+    c2.metric(
+        "Current Decision",
+        "BUY" if forward_risk_score <= buy_threshold
+        else "SELL ZONE" if forward_risk_score >= sell_risk_threshold
+        else "HOLD",
     )
 
-    c4.metric(
+    c3.metric(
         "Reference BTC Price",
         f"${forward_btc_price_usd:,.0f}",
     )
@@ -2000,6 +2022,10 @@ else:
         forward_risk_score,
         forward_btc_price_usd,
         forward_usd_per_aud,
+        buy_threshold,
+        sell_risk_threshold,
+        base_dca_pct,
+        max_period_pct,
     )
 
     if plan.empty:
@@ -2047,7 +2073,7 @@ else:
     fig_plan.add_trace(
         go.Scatter(
             x=plan["date"],
-            y=plan["target_cumulative_aud"],
+            y=plan["cumulative_planned_aud"],
             name="Equal-Time Reference",
             line=dict(width=2, dash="dash"),
         )
@@ -2091,16 +2117,16 @@ else:
         "risk_score"
     ].map(lambda x: f"{x:.2f}")
 
-    display_plan["risk_multiplier"] = display_plan[
-        "risk_multiplier"
+    display_plan["buy_multiplier"] = display_plan[
+        "buy_multiplier"
     ].map(lambda x: f"{x:.2f}x")
 
-    display_plan["time_progress_pct"] = display_plan[
-        "time_progress_pct"
+    display_plan["decision"] = display_plan[
+        "decision"
     ].map(lambda x: f"{x:.1f}%")
 
     for col in [
-        "target_cumulative_aud",
+        "cumulative_planned_aud",
         "planned_buy_aud",
         "cumulative_planned_aud",
         "capital_remaining_aud",
@@ -2113,9 +2139,9 @@ else:
         [
             "date",
             "risk_score",
-            "risk_multiplier",
-            "time_progress_pct",
-            "target_cumulative_aud",
+            "buy_multiplier",
+            "decision",
+            "cumulative_planned_aud",
             "planned_buy_aud",
             "cumulative_planned_aud",
             "capital_remaining_aud",
