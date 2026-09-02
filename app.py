@@ -274,6 +274,52 @@ def interpolate(points, x):
     return points[-1][1]
 
 
+def opportunity_rarity_from_history(risk_series, current_risk):
+    """Estimate how uncommon the current valuation opportunity has been historically.
+
+    Uses only the supplied historical/current risk series. For accumulation, the
+    relevant event is risk <= today's risk: how often has BTC been at least this cheap?
+    A gentle bounded multiplier converts rarity into extra conviction without
+    overwhelming the existing Smart DCA curve.
+    """
+    s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
+    s = s[(s >= 0.0) & (s <= 1.0)]
+    if len(s) < 52 or not np.isfinite(current_risk):
+        return {
+            "percentile": np.nan,
+            "cheap_frequency": np.nan,
+            "rarity_label": "INSUFFICIENT HISTORY",
+            "rarity_multiplier": 1.0,
+            "expected_comparable_weeks_4y": np.nan,
+        }
+
+    cheap_frequency = float((s <= float(current_risk)).mean())
+    percentile = cheap_frequency * 100.0
+
+    # Rarity is deliberately gentle: it modifies, rather than replaces, the
+    # already-tested V5.1 Smart DCA valuation curve.
+    if cheap_frequency <= 0.05:
+        label, mult = "EXTREME", 1.35
+    elif cheap_frequency <= 0.10:
+        label, mult = "VERY HIGH", 1.25
+    elif cheap_frequency <= 0.20:
+        label, mult = "HIGH", 1.15
+    elif cheap_frequency <= 0.35:
+        label, mult = "ABOVE AVERAGE", 1.07
+    elif cheap_frequency <= 0.60:
+        label, mult = "NORMAL", 1.00
+    else:
+        label, mult = "COMMON", 0.95
+
+    return {
+        "percentile": percentile,
+        "cheap_frequency": cheap_frequency,
+        "rarity_label": label,
+        "rarity_multiplier": mult,
+        "expected_comparable_weeks_4y": cheap_frequency * 208.0,
+    }
+
+
 def annualized_return(start_value, end_value, years):
     if start_value <= 0 or end_value <= 0 or years <= 0:
         return 0.0
@@ -2309,12 +2355,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.2.1 FULL",
+    page_title="BTC Dynamic DCA V5.3 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.2.1 FULL — Smart DCA")
-st.caption("Version 5.2.1 FULL • Backtest + DCA Today • Calibrated 0–1 Risk")
+st.title("Bitcoin Dynamic DCA V5.3 FULL — Smart DCA")
+st.caption("Version 5.3 FULL • Backtest + DCA Today • Opportunity Rarity")
 st.caption("Simple two-mode app • test the strategy, then use the same strategy today")
 
 # ------------------------------------------------
@@ -3629,12 +3675,20 @@ elif mode == "DCA Today":
     current_price_aud = current_price_usd / usd_per_aud if np.isfinite(usd_per_aud) and usd_per_aud > 0 else np.nan
 
     risk_weight = float(interpolate(smart_dca_curve, current_risk))
+
+    # Opportunity rarity: use weekly historical risk observations available up
+    # to today. This estimates how often BTC has been at least as cheap as now.
+    rarity_source = valid_today.set_index("date")["risk_score"].resample("W-MON").last().dropna()
+    rarity = opportunity_rarity_from_history(rarity_source, current_risk)
+    rarity_multiplier = float(rarity["rarity_multiplier"])
+    effective_weight = risk_weight * rarity_multiplier
+
     days_remaining = max((target_deployment_date - dt.date.today()).days, 7)
     weeks_remaining = max(days_remaining / 7.0, 1.0)
     normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
     recommended_buy = min(
         float(remaining_capital_aud),
-        max(0.0, normal_weekly_allowance * risk_weight),
+        max(0.0, normal_weekly_allowance * effective_weight),
     )
 
     risk_label = (
@@ -3653,10 +3707,11 @@ elif mode == "DCA Today":
         "The recommendation uses only data available now."
     )
 
-    a, b, c = st.columns(3)
+    a, b, c, d = st.columns(4)
     a.metric("BTC Risk", f"{current_risk:.3f}", risk_label)
     b.metric("BTC Price", "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}")
-    c.metric("Smart Weight", f"{risk_weight:.2f}x")
+    c.metric("Opportunity Rarity", rarity["rarity_label"])
+    d.metric("Effective Weight", f"{effective_weight:.2f}x")
 
     st.subheader("SMART DCA TODAY")
     st.metric("Recommended Buy", f"A${recommended_buy:,.0f}")
@@ -3668,30 +3723,38 @@ elif mode == "DCA Today":
 
     if current_risk <= 0.40:
         st.success(
-            f"BTC valuation is {risk_label.lower()}. The model is allocating "
-            f"{risk_weight:.2f}× the normal weekly allowance."
+            f"BTC valuation is {risk_label.lower()} and opportunity rarity is {rarity['rarity_label'].lower()}. "
+            f"The base Smart weight is {risk_weight:.2f}× and the rarity-adjusted weight is {effective_weight:.2f}×."
         )
     elif current_risk >= 0.60:
         st.info(
-            f"BTC valuation is {risk_label.lower()}. The model is preserving capital by allocating "
-            f"only {risk_weight:.2f}× the normal weekly allowance."
+            f"BTC valuation is {risk_label.lower()} and opportunity rarity is {rarity['rarity_label'].lower()}. "
+            f"The model is preserving capital with an effective weight of {effective_weight:.2f}×."
         )
     else:
         st.info(
-            f"BTC valuation is neutral. The model is allocating about "
-            f"{risk_weight:.2f}× the normal weekly allowance."
+            f"BTC valuation is neutral and opportunity rarity is {rarity['rarity_label'].lower()}. "
+            f"The effective allocation weight is {effective_weight:.2f}×."
         )
 
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
             "Normal weekly allowance = capital remaining ÷ weeks remaining. "
-            "Recommended buy = normal weekly allowance × the Smart DCA risk weight, "
-            "capped at the capital you still have available."
+            "The existing Smart DCA risk weight is then gently adjusted for how uncommon "
+            "the current risk level has been historically, and capped at remaining capital."
         )
         st.write(
             f"A${remaining_capital_aud:,.0f} ÷ {weeks_remaining:.1f} weeks "
-            f"× {risk_weight:.2f} = A${recommended_buy:,.0f}"
+            f"× {risk_weight:.2f} base weight × {rarity_multiplier:.2f} rarity "
+            f"= A${recommended_buy:,.0f}"
         )
+        if np.isfinite(rarity["percentile"]):
+            st.write(
+                f"Historically, only about {rarity['percentile']:.1f}% of weekly observations "
+                f"were at least as cheap as today's risk level. At that historical frequency, "
+                f"a four-year cycle would contain roughly {rarity['expected_comparable_weeks_4y']:.0f} "
+                "comparable-or-cheaper weekly observations."
+            )
         st.caption(
             "This is a live capital-allocation rule, not a future-price forecast. "
             "It does not know future risk scores and does not retrospectively normalize future purchases."
