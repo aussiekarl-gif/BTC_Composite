@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V4.1.2 RECOVERY
+BTC Dynamic DCA & Tactical Rebalancing Simulator V5.0 FULL
 ====================================================
 
 Designed for:
@@ -158,6 +158,16 @@ DEFAULT_OPPORTUNITY_MIN_HISTORY = 120
 DEFAULT_OPPORTUNITY_LEARNED_WEIGHT = 0.70
 DEFAULT_OPPORTUNITY_VALUATION_WEIGHT = 0.30
 DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
+
+SMART_DCA_POINTS = [
+    (0.00, 1.50),
+    (0.20, 1.30),
+    (0.40, 1.10),
+    (0.50, 1.00),
+    (0.60, 0.90),
+    (0.80, 0.80),
+    (1.00, 0.75),
+]
 
 DCA_CURVE_PRESETS = {
     "Conservative": [
@@ -2067,6 +2077,61 @@ def optimise_dca_curve_walk_forward(
     return validation, train_table
 
 
+def validate_smart_dca_recent_period(
+    df_full,
+    params,
+    dca_frequency,
+    total_budget_aud,
+    recent_fraction=0.30,
+):
+    """
+    Compare the same fixed Smart DCA curve with Plain DCA on the most recent
+    portion of the selected history. No curve fitting or optimizer is used.
+    """
+    start = params["start_date"]
+    end = params["end_date"]
+    if end <= start:
+        return {}
+
+    split = start + (end - start) * (1.0 - float(recent_fraction))
+    recent_params = dict(params)
+    recent_params["start_date"] = split
+    recent_params["end_date"] = end
+    recent_budget = float(total_budget_aud) * float(recent_fraction)
+
+    plain_raw, _ = simulate_dca_backtest(
+        df_full, recent_params, DEFAULT_FIXED_DCA_AUD, dca_frequency, "Plain DCA"
+    )
+    smart_raw, _ = simulate_dca_backtest(
+        df_full, recent_params, DEFAULT_FIXED_DCA_AUD, dca_frequency,
+        "Risk-Scaled DCA", risk_curve=SMART_DCA_POINTS
+    )
+
+    _, plain_sm = apply_equal_capital_allocator(
+        plain_raw, total_budget_aud=recent_budget,
+        fee_pct=recent_params.get("fee_pct", 0.0)
+    )
+    _, smart_sm = apply_equal_capital_allocator(
+        smart_raw, total_budget_aud=recent_budget,
+        fee_pct=recent_params.get("fee_pct", 0.0)
+    )
+
+    if not plain_sm or not smart_sm:
+        return {}
+
+    advantage = (
+        (smart_sm["btc_held"] / plain_sm["btc_held"] - 1.0) * 100.0
+        if plain_sm["btc_held"] > 0 else np.nan
+    )
+    return {
+        "split_date": split,
+        "plain_btc": plain_sm["btc_held"],
+        "smart_btc": smart_sm["btc_held"],
+        "btc_advantage_pct": advantage,
+        "budget_aud": recent_budget,
+    }
+
+
 # Benchmark Strategies
 # ================================================================
 
@@ -2306,12 +2371,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V4.1.2 RECOVERY",
+    page_title="BTC Dynamic DCA V5.0 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V4.1.2 RECOVERY — Buy Low / Sell High")
-st.caption("Version 4.1.2 RECOVERY • Opportunity Engine • Walk-Forward Historical Analogues • Calibrated 0–1 Risk")
+st.title("Bitcoin Dynamic DCA V5.0 FULL — Simple Smart DCA")
+st.caption("Version 5.0 FULL • Simple Smart DCA • A$500k Equal-Capital Test • Calibrated 0–1 Risk")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
 # ------------------------------------------------
@@ -2353,101 +2418,17 @@ with st.sidebar:
             key="dca_backtest_frequency",
         )
 
-        dca_base_amount_aud = st.number_input(
-            f"Base {dca_frequency} DCA (AUD)",
-            min_value=10.0,
-            max_value=100_000.0,
-            value=DEFAULT_FIXED_DCA_AUD,
-            step=100.0,
-            key="dca_backtest_base_amount",
-        )
+        # V5 DCA Backtest: fixed-budget research, no base-DCA sizing control.
+        dca_base_amount_aud = DEFAULT_FIXED_DCA_AUD
 
-        dca_strategy_mode = st.radio(
-            "DCA Strategy",
-            [
-                "Plain DCA",
-                "Risk-Scaled DCA",
-                "Opportunity-Scaled DCA",
-                "Risk-Gated DCA",
-            ],
-            index=2,
-            help=(
-                "Plain DCA: same amount every execution. "
-                "Risk-Scaled: always buys, but more at low risk and less at high risk. "
-                "Opportunity-Scaled: walk-forward historical analogue engine learns which "
-                "market states tended to produce stronger forward returns, then sizes the DCA. "
-                "Risk-Gated: buys only inside the BUY zone."
-            ),
-        )
-
-        dca_curve_name = st.selectbox(
-            "Risk-Scaled Curve",
-            ["Conservative", "Current", "Aggressive"],
-            index=1,
-            disabled=(dca_strategy_mode != "Risk-Scaled DCA"),
-            help=(
-                "Controls how strongly DCA size responds to risk. "
-                "Comparison results below always test all three curves."
-            ),
-        )
-
-        dca_run_curve_optimizer = st.toggle(
-            "Run 70/30 Curve Validation",
-            value=False,
-            help=(
-                "Selects the best curve on the first 70% of the period, "
-                "then checks it on the untouched final 30%."
-            ),
-        )
-
-        st.markdown("**Equal-Capital Intelligent Allocator**")
         intelligent_dca_budget_aud = st.number_input(
-            "Total Backtest Budget (AUD)",
-            min_value=10000.0,
-            max_value=10000000.0,
+            "Total Budget (AUD)",
+            min_value=10_000.0,
+            max_value=10_000_000.0,
             value=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD,
-            step=10000.0,
+            step=10_000.0,
             format="%.0f",
-            help=(
-                "Hard lifetime budget used for the equal-capital comparison. "
-                "Default is A$500,000. Every compared strategy is allocated exactly this amount."
-            ),
-        )
-
-        st.markdown("**Opportunity Engine**")
-        opportunity_horizon_days = st.selectbox(
-            "Learning Horizon",
-            [90, 180, 365, 730],
-            index=2,
-            format_func=lambda x: f"{x} days",
-            disabled=(dca_strategy_mode != "Opportunity-Scaled DCA"),
-            help=(
-                "The engine learns from how similar historical conditions performed "
-                "over this forward horizon."
-            ),
-        )
-
-        opportunity_neighbors = st.slider(
-            "Historical Analogues",
-            15,
-            100,
-            DEFAULT_OPPORTUNITY_NEIGHBORS,
-            5,
-            disabled=(dca_strategy_mode != "Opportunity-Scaled DCA"),
-            help="Number of most similar completed historical setups used for each score.",
-        )
-
-        opportunity_min_history = st.slider(
-            "Minimum Training Samples",
-            60,
-            300,
-            DEFAULT_OPPORTUNITY_MIN_HISTORY,
-            20,
-            disabled=(dca_strategy_mode != "Opportunity-Scaled DCA"),
-            help=(
-                "Before enough completed examples exist, the engine falls back to "
-                "valuation rather than inventing a learned signal."
-            ),
+            help="Plain DCA and Smart DCA both receive exactly this total budget.",
         )
 
         dca_backtest_start_date = st.date_input(
@@ -2485,8 +2466,8 @@ with st.sidebar:
         frequency = dca_frequency
 
         st.caption(
-            "No capital limit is used in DCA Backtest. "
-            "The simulation simply sums each historical contribution."
+            "One simple test: same total budget, same dates, same fees. "
+            "Plain DCA invests evenly; Smart DCA mildly tilts toward lower-risk periods."
         )
 
     else:
@@ -2520,311 +2501,317 @@ with st.sidebar:
     # SIMPLE CONTROLS
     # ------------------------------------------------------------
 
-    st.header("Strategy Controls")
-
-    st.caption(
-        "The V3.6 calibrated composite risk model is the standard engine. "
-        "0.00 = cheapest / lowest risk, 1.00 = most expensive / highest risk."
+    strategy_controls_container = (
+        st.expander("Advanced engine settings (optional)", expanded=False)
+        if mode == "DCA Backtest"
+        else st.container()
     )
-
-    # Standard engine. Legacy modes remain available under Advanced Settings.
-    risk_model = "Composite V3.6"
-
-    st.subheader("DCA Size")
-
-    base_dca_pct = st.slider(
-        "Base DCA per execution (% of starting capital)",
-        0.10,
-        5.00,
-        1.00,
-        0.10,
-        help=(
-            "Starting DCA size before valuation and trend adjustments. "
-            "This is not forced deployment."
-        ),
-    ) / 100.0
-
-    max_period_pct = st.slider(
-        "Maximum BUY per execution (%)",
-        0.5,
-        20.0,
-        5.0,
-        0.5,
-        help="Hard safety cap for any single BUY.",
-    ) / 100.0
-
-    max_sell_pct_period = st.slider(
-        "Maximum SELL per execution (% of BTC)",
-        1.0,
-        50.0,
-        min(DEFAULT_MAX_SELL_PCT_PERIOD * 100, 20.0),
-        1.0,
-        help="Hard safety cap for any single SELL.",
-    ) / 100.0
-
-    st.divider()
-
-    st.subheader("BUY / HOLD / SELL Risk Bands")
-
-    if "buy_threshold_widget" not in st.session_state:
-        st.session_state["buy_threshold_widget"] = DEFAULT_BUY_THRESHOLD
-    if "sell_threshold_widget" not in st.session_state:
-        st.session_state["sell_threshold_widget"] = DEFAULT_SELL_RISK_THRESHOLD
-
-    preset_cols = st.columns(2)
-    if preset_cols[0].button("Balanced  0.25 / 0.75", width="stretch"):
-        st.session_state["buy_threshold_widget"] = 0.25
-        st.session_state["sell_threshold_widget"] = 0.75
-        st.rerun()
-    if preset_cols[1].button("Wide  0.20 / 0.80", width="stretch"):
-        st.session_state["buy_threshold_widget"] = 0.20
-        st.session_state["sell_threshold_widget"] = 0.80
-        st.rerun()
-
-    preset_cols2 = st.columns(2)
-    if preset_cols2[0].button("Narrow  0.30 / 0.70", width="stretch"):
-        st.session_state["buy_threshold_widget"] = 0.30
-        st.session_state["sell_threshold_widget"] = 0.70
-        st.rerun()
-    if preset_cols2[1].button("Aggressive  0.15 / 0.85", width="stretch"):
-        st.session_state["buy_threshold_widget"] = 0.15
-        st.session_state["sell_threshold_widget"] = 0.85
-        st.rerun()
-
-    buy_threshold = st.slider(
-        "BUY when risk ≤",
-        0.00,
-        1.00,
-        step=0.01,
-        key="buy_threshold_widget",
-    )
-
-    sell_risk_threshold = st.slider(
-        "SELL when risk ≥",
-        0.00,
-        1.00,
-        step=0.01,
-        key="sell_threshold_widget",
-    )
-
-    if buy_threshold >= sell_risk_threshold:
-        st.error("BUY threshold must be lower than SELL threshold.")
-
-    buy_w = max(0.0, min(100.0, buy_threshold * 100.0))
-    hold_w = max(
-        0.0,
-        min(
-            100.0,
-            (sell_risk_threshold - buy_threshold) * 100.0,
-        ),
-    )
-    sell_w = max(
-        0.0,
-        min(100.0, (1.0 - sell_risk_threshold) * 100.0),
-    )
-
-    st.markdown(
-        f"""
-        <div style="display:flex;width:100%;height:30px;border-radius:7px;overflow:hidden;
-                    border:1px solid rgba(255,255,255,0.18);font-size:11px;font-weight:700;text-align:center;">
-            <div style="width:{buy_w:.2f}%;background:rgba(46,160,67,0.75);display:flex;align-items:center;justify-content:center;">BUY</div>
-            <div style="width:{hold_w:.2f}%;background:rgba(31,111,235,0.70);display:flex;align-items:center;justify-content:center;">HOLD</div>
-            <div style="width:{sell_w:.2f}%;background:rgba(218,98,0,0.82);display:flex;align-items:center;justify-content:center;">SELL</div>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;opacity:0.75;margin-top:3px;">
-            <span>0.00</span><span>{buy_threshold:.2f}</span><span>{sell_risk_threshold:.2f}</span><span>1.00</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # ------------------------------------------------------------
-    # ADVANCED SETTINGS (collapsed by default)
-    # ------------------------------------------------------------
-
-    with st.expander("Advanced Settings", expanded=False):
+    with strategy_controls_container:
+        st.header("Strategy Controls")
 
         st.caption(
-            "Most users can leave these at their defaults. "
-            "BGeometrics Regime is fetched automatically as context and has no manual slider."
+            "The V3.6 calibrated composite risk model is the standard engine. "
+            "0.00 = cheapest / lowest risk, 1.00 = most expensive / highest risk."
         )
 
-        risk_model = st.selectbox(
-            "Risk engine",
-            [
-                "Composite V3.6",
-                "Power Law Trend",
-                "SMA Ratio (200-day)",
-            ],
-            index=0,
-            help="Composite V3.6 is recommended.",
-        )
+        # Standard engine. Legacy modes remain available under Advanced Settings.
+        risk_model = "Composite V3.6"
 
-        st.markdown("**Composite model weights (fixed)**")
-        st.caption(
-            "Power Law 25% • MVRV-Z 25% • 365d Price Position 20% • "
-            "Mayer 15% • Fear & Greed 10% • RSI 5%"
-        )
+        st.subheader("DCA Size")
 
-        # Compatibility variables: the V3.5 engine uses fixed weights internally.
-        weight_mvrv = 0.25
-        weight_power_law = 0.25
-        weight_mayer = 0.15
-        weight_fear_greed = 0.10
-        weight_rsi = 0.05
-        regime_overlay = 0.0
-
-        valuation_strength = st.slider(
-            "Valuation multiplier strength",
-            0.25,
-            1.50,
-            DEFAULT_VALUATION_STRENGTH,
-            0.05,
-        )
-
-        min_valuation_mult = st.slider(
-            "Minimum valuation multiplier",
-            0.25,
-            1.00,
-            DEFAULT_MIN_VALUATION_MULT,
-            0.05,
-        )
-
-        max_valuation_mult = st.slider(
-            "Maximum valuation multiplier",
-            1.00,
-            3.00,
-            min(DEFAULT_MAX_VALUATION_MULT, 2.0),
+        base_dca_pct = st.slider(
+            "Base DCA per execution (% of starting capital)",
             0.10,
-        )
-
-        min_cash_reserve_pct = st.slider(
-            "Minimum cash reserve (%)",
-            0.0,
-            50.0,
-            DEFAULT_MIN_CASH_RESERVE_PCT * 100,
-            1.0,
+            5.00,
+            1.00,
+            0.10,
+            help=(
+                "Starting DCA size before valuation and trend adjustments. "
+                "This is not forced deployment."
+            ),
         ) / 100.0
 
-        min_trade_aud = st.number_input(
-            "Minimum trade (AUD)",
-            0.0,
-            100000.0,
-            DEFAULT_MIN_TRADE_AUD,
-            100.0,
-        )
-
-        fee_pct = st.number_input(
-            "Trading fee (%)",
-            min_value=0.0,
-            max_value=5.0,
-            value=DEFAULT_FEE_PCT * 100,
-            step=0.01,
-        ) / 100.0
-
-        min_days_between_sales = st.number_input(
-            "Minimum days between sales",
-            min_value=0,
-            max_value=365,
-            value=DEFAULT_MIN_DAYS_BETWEEN_SALES,
-            step=1,
-        )
-
-        min_risk_components = st.slider(
-            "Minimum composite inputs",
-            1,
-            6,
-            DEFAULT_MIN_RISK_COMPONENTS,
-            1,
-        )
-
-        require_weak_trend_for_sell = st.checkbox(
-            "Require trend to stop being bullish before SELL",
-            value=False,
-        )
-
-        st.markdown("**Optimized Trend Replica**")
-
-        trend_er_period = st.slider(
-            "Trend efficiency lookback",
-            10,
-            60,
-            DEFAULT_TREND_ER_PERIOD,
-            1,
-        )
-        trend_fast = st.slider(
-            "Trend fast response",
-            2,
-            10,
-            DEFAULT_TREND_FAST,
-            1,
-        )
-        trend_slow = st.slider(
-            "Trend slow response",
-            15,
-            80,
-            DEFAULT_TREND_SLOW,
-            1,
-        )
-        trend_range_period = st.slider(
-            "Trend range lookback",
-            7,
-            40,
-            DEFAULT_TREND_RANGE_PERIOD,
-            1,
-        )
-        trend_band_mult = st.slider(
-            "Trend band multiplier",
+        max_period_pct = st.slider(
+            "Maximum BUY per execution (%)",
             0.5,
-            4.0,
-            DEFAULT_TREND_BAND_MULT,
-            0.1,
-        )
-        trend_buy_bull = st.slider(
-            "BUY factor: bullish",
-            0.0,
-            2.0,
-            DEFAULT_TREND_BUY_BULL,
-            0.05,
-        )
-        trend_buy_neutral = st.slider(
-            "BUY factor: neutral",
-            0.0,
-            2.0,
-            DEFAULT_TREND_BUY_NEUTRAL,
-            0.05,
-        )
-        trend_buy_bear = st.slider(
-            "BUY factor: bearish",
-            0.0,
-            2.0,
-            DEFAULT_TREND_BUY_BEAR,
-            0.05,
-        )
-        trend_sell_bull = st.slider(
-            "SELL factor: bullish",
-            0.0,
-            2.0,
-            DEFAULT_TREND_SELL_BULL,
-            0.05,
-        )
-        trend_sell_neutral = st.slider(
-            "SELL factor: neutral",
-            0.0,
-            2.0,
-            DEFAULT_TREND_SELL_NEUTRAL,
-            0.05,
-        )
-        trend_sell_bear = st.slider(
-            "SELL factor: bearish",
-            0.0,
-            2.0,
-            DEFAULT_TREND_SELL_BEAR,
-            0.05,
+            20.0,
+            5.0,
+            0.5,
+            help="Hard safety cap for any single BUY.",
+        ) / 100.0
+
+        max_sell_pct_period = st.slider(
+            "Maximum SELL per execution (% of BTC)",
+            1.0,
+            50.0,
+            min(DEFAULT_MAX_SELL_PCT_PERIOD * 100, 20.0),
+            1.0,
+            help="Hard safety cap for any single SELL.",
+        ) / 100.0
+
+        st.divider()
+
+        st.subheader("BUY / HOLD / SELL Risk Bands")
+
+        if "buy_threshold_widget" not in st.session_state:
+            st.session_state["buy_threshold_widget"] = DEFAULT_BUY_THRESHOLD
+        if "sell_threshold_widget" not in st.session_state:
+            st.session_state["sell_threshold_widget"] = DEFAULT_SELL_RISK_THRESHOLD
+
+        preset_cols = st.columns(2)
+        if preset_cols[0].button("Balanced  0.25 / 0.75", width="stretch"):
+            st.session_state["buy_threshold_widget"] = 0.25
+            st.session_state["sell_threshold_widget"] = 0.75
+            st.rerun()
+        if preset_cols[1].button("Wide  0.20 / 0.80", width="stretch"):
+            st.session_state["buy_threshold_widget"] = 0.20
+            st.session_state["sell_threshold_widget"] = 0.80
+            st.rerun()
+
+        preset_cols2 = st.columns(2)
+        if preset_cols2[0].button("Narrow  0.30 / 0.70", width="stretch"):
+            st.session_state["buy_threshold_widget"] = 0.30
+            st.session_state["sell_threshold_widget"] = 0.70
+            st.rerun()
+        if preset_cols2[1].button("Aggressive  0.15 / 0.85", width="stretch"):
+            st.session_state["buy_threshold_widget"] = 0.15
+            st.session_state["sell_threshold_widget"] = 0.85
+            st.rerun()
+
+        buy_threshold = st.slider(
+            "BUY when risk ≤",
+            0.00,
+            1.00,
+            step=0.01,
+            key="buy_threshold_widget",
         )
 
+        sell_risk_threshold = st.slider(
+            "SELL when risk ≥",
+            0.00,
+            1.00,
+            step=0.01,
+            key="sell_threshold_widget",
+        )
 
-# ================================================================
+        if buy_threshold >= sell_risk_threshold:
+            st.error("BUY threshold must be lower than SELL threshold.")
+
+        buy_w = max(0.0, min(100.0, buy_threshold * 100.0))
+        hold_w = max(
+            0.0,
+            min(
+                100.0,
+                (sell_risk_threshold - buy_threshold) * 100.0,
+            ),
+        )
+        sell_w = max(
+            0.0,
+            min(100.0, (1.0 - sell_risk_threshold) * 100.0),
+        )
+
+        st.markdown(
+            f"""
+            <div style="display:flex;width:100%;height:30px;border-radius:7px;overflow:hidden;
+                        border:1px solid rgba(255,255,255,0.18);font-size:11px;font-weight:700;text-align:center;">
+                <div style="width:{buy_w:.2f}%;background:rgba(46,160,67,0.75);display:flex;align-items:center;justify-content:center;">BUY</div>
+                <div style="width:{hold_w:.2f}%;background:rgba(31,111,235,0.70);display:flex;align-items:center;justify-content:center;">HOLD</div>
+                <div style="width:{sell_w:.2f}%;background:rgba(218,98,0,0.82);display:flex;align-items:center;justify-content:center;">SELL</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;opacity:0.75;margin-top:3px;">
+                <span>0.00</span><span>{buy_threshold:.2f}</span><span>{sell_risk_threshold:.2f}</span><span>1.00</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # ------------------------------------------------------------
+        # ADVANCED SETTINGS (collapsed by default)
+        # ------------------------------------------------------------
+
+        with st.expander("Advanced Settings", expanded=False):
+
+            st.caption(
+                "Most users can leave these at their defaults. "
+                "BGeometrics Regime is fetched automatically as context and has no manual slider."
+            )
+
+            risk_model = st.selectbox(
+                "Risk engine",
+                [
+                    "Composite V3.6",
+                    "Power Law Trend",
+                    "SMA Ratio (200-day)",
+                ],
+                index=0,
+                help="Composite V3.6 is recommended.",
+            )
+
+            st.markdown("**Composite model weights (fixed)**")
+            st.caption(
+                "Power Law 25% • MVRV-Z 25% • 365d Price Position 20% • "
+                "Mayer 15% • Fear & Greed 10% • RSI 5%"
+            )
+
+            # Compatibility variables: the V3.5 engine uses fixed weights internally.
+            weight_mvrv = 0.25
+            weight_power_law = 0.25
+            weight_mayer = 0.15
+            weight_fear_greed = 0.10
+            weight_rsi = 0.05
+            regime_overlay = 0.0
+
+            valuation_strength = st.slider(
+                "Valuation multiplier strength",
+                0.25,
+                1.50,
+                DEFAULT_VALUATION_STRENGTH,
+                0.05,
+            )
+
+            min_valuation_mult = st.slider(
+                "Minimum valuation multiplier",
+                0.25,
+                1.00,
+                DEFAULT_MIN_VALUATION_MULT,
+                0.05,
+            )
+
+            max_valuation_mult = st.slider(
+                "Maximum valuation multiplier",
+                1.00,
+                3.00,
+                min(DEFAULT_MAX_VALUATION_MULT, 2.0),
+                0.10,
+            )
+
+            min_cash_reserve_pct = st.slider(
+                "Minimum cash reserve (%)",
+                0.0,
+                50.0,
+                DEFAULT_MIN_CASH_RESERVE_PCT * 100,
+                1.0,
+            ) / 100.0
+
+            min_trade_aud = st.number_input(
+                "Minimum trade (AUD)",
+                0.0,
+                100000.0,
+                DEFAULT_MIN_TRADE_AUD,
+                100.0,
+            )
+
+            fee_pct = st.number_input(
+                "Trading fee (%)",
+                min_value=0.0,
+                max_value=5.0,
+                value=DEFAULT_FEE_PCT * 100,
+                step=0.01,
+            ) / 100.0
+
+            min_days_between_sales = st.number_input(
+                "Minimum days between sales",
+                min_value=0,
+                max_value=365,
+                value=DEFAULT_MIN_DAYS_BETWEEN_SALES,
+                step=1,
+            )
+
+            min_risk_components = st.slider(
+                "Minimum composite inputs",
+                1,
+                6,
+                DEFAULT_MIN_RISK_COMPONENTS,
+                1,
+            )
+
+            require_weak_trend_for_sell = st.checkbox(
+                "Require trend to stop being bullish before SELL",
+                value=False,
+            )
+
+            st.markdown("**Optimized Trend Replica**")
+
+            trend_er_period = st.slider(
+                "Trend efficiency lookback",
+                10,
+                60,
+                DEFAULT_TREND_ER_PERIOD,
+                1,
+            )
+            trend_fast = st.slider(
+                "Trend fast response",
+                2,
+                10,
+                DEFAULT_TREND_FAST,
+                1,
+            )
+            trend_slow = st.slider(
+                "Trend slow response",
+                15,
+                80,
+                DEFAULT_TREND_SLOW,
+                1,
+            )
+            trend_range_period = st.slider(
+                "Trend range lookback",
+                7,
+                40,
+                DEFAULT_TREND_RANGE_PERIOD,
+                1,
+            )
+            trend_band_mult = st.slider(
+                "Trend band multiplier",
+                0.5,
+                4.0,
+                DEFAULT_TREND_BAND_MULT,
+                0.1,
+            )
+            trend_buy_bull = st.slider(
+                "BUY factor: bullish",
+                0.0,
+                2.0,
+                DEFAULT_TREND_BUY_BULL,
+                0.05,
+            )
+            trend_buy_neutral = st.slider(
+                "BUY factor: neutral",
+                0.0,
+                2.0,
+                DEFAULT_TREND_BUY_NEUTRAL,
+                0.05,
+            )
+            trend_buy_bear = st.slider(
+                "BUY factor: bearish",
+                0.0,
+                2.0,
+                DEFAULT_TREND_BUY_BEAR,
+                0.05,
+            )
+            trend_sell_bull = st.slider(
+                "SELL factor: bullish",
+                0.0,
+                2.0,
+                DEFAULT_TREND_SELL_BULL,
+                0.05,
+            )
+            trend_sell_neutral = st.slider(
+                "SELL factor: neutral",
+                0.0,
+                2.0,
+                DEFAULT_TREND_SELL_NEUTRAL,
+                0.05,
+            )
+            trend_sell_bear = st.slider(
+                "SELL factor: bearish",
+                0.0,
+                2.0,
+                DEFAULT_TREND_SELL_BEAR,
+                0.05,
+            )
+
+
+    # ================================================================
 # Dates / Parameters
 # ================================================================
 
@@ -3635,28 +3622,16 @@ elif mode == "DCA Backtest":
         st.stop()
 
     params["start_date"] = dt.datetime.combine(
-        dca_backtest_start_date,
-        dt.time.min,
-        tzinfo=timezone.utc,
+        dca_backtest_start_date, dt.time.min, tzinfo=timezone.utc
     )
     params["end_date"] = dt.datetime.combine(
-        dca_backtest_end_date,
-        dt.time.max,
-        tzinfo=timezone.utc,
+        dca_backtest_end_date, dt.time.max, tzinfo=timezone.utc
     )
     params["day_of_week"] = selected_day
 
     with st.spinner("Loading historical BTC and AUD/USD data..."):
-        df_full = fetch_btc_history(
-            params["start_date"],
-            params["end_date"],
-        )
-
-        fx_series = fetch_aud_usd_rates(
-            params["start_date"],
-            params["end_date"],
-        )
-
+        df_full = fetch_btc_history(params["start_date"], params["end_date"])
+        fx_series = fetch_aud_usd_rates(params["start_date"], params["end_date"])
         bg_token = get_bgeometrics_token()
         bg_data = fetch_bgeometrics_bundle(
             params["start_date"] - timedelta(days=300),
@@ -3668,462 +3643,135 @@ elif mode == "DCA Backtest":
         st.error("No BTC price data was returned.")
         st.stop()
 
-    df_full = align_fx_to_dates(
-        df_full,
-        fx_series,
-    )
-    df_full = merge_bgeometrics(
-        df_full,
-        bg_data,
-    )
+    df_full = align_fx_to_dates(df_full, fx_series)
+    df_full = merge_bgeometrics(df_full, bg_data)
 
-    st.header("DCA Backtest Results")
-
-    model_text = dca_strategy_mode
-
-    st.caption(
-        f"Selected strategy: {model_text} • "
-        f"{dca_frequency} base amount ${dca_base_amount_aud:,.0f} AUD • "
-        f"{dca_backtest_start_date.strftime('%d/%m/%Y')} to "
-        f"{dca_backtest_end_date.strftime('%d/%m/%Y')} • "
-        "No starting-capital limit."
-    )
-
-    selected_curve = DCA_CURVE_PRESETS.get(
-        dca_curve_name,
-        DEFAULT_ALWAYS_DCA_POINTS,
-    )
-
-    dca_df, dca_summary = simulate_dca_backtest(
-        df_full,
-        params,
-        dca_base_amount_aud,
-        dca_frequency,
-        dca_strategy_mode,
-        risk_curve=selected_curve,
-        opportunity_horizon_days=opportunity_horizon_days,
-        opportunity_neighbors=opportunity_neighbors,
-        opportunity_min_history=opportunity_min_history,
-    )
-
-    plain_df, plain_summary = simulate_dca_backtest(
-        df_full,
-        params,
-        dca_base_amount_aud,
-        dca_frequency,
-        "Plain DCA",
-    )
-
-    scaled_df, scaled_summary = simulate_dca_backtest(
-        df_full,
-        params,
-        dca_base_amount_aud,
-        dca_frequency,
-        "Risk-Scaled DCA",
-        risk_curve=selected_curve,
-    )
-
-    gated_df, gated_summary = simulate_dca_backtest(
-        df_full,
-        params,
-        dca_base_amount_aud,
-        dca_frequency,
-        "Risk-Gated DCA",
-    )
-
-    opportunity_df, opportunity_summary = simulate_dca_backtest(
-        df_full,
-        params,
-        dca_base_amount_aud,
-        dca_frequency,
-        "Opportunity-Scaled DCA",
-        opportunity_horizon_days=opportunity_horizon_days,
-        opportunity_neighbors=opportunity_neighbors,
-        opportunity_min_history=opportunity_min_history,
-    )
-
-    curve_results = {}
-    for _curve_name, _curve_points in DCA_CURVE_PRESETS.items():
-        _df, _sm = simulate_dca_backtest(
-            df_full,
-            params,
-            dca_base_amount_aud,
-            dca_frequency,
-            "Risk-Scaled DCA",
-            risk_curve=_curve_points,
+    with st.spinner("Running equal-capital Plain DCA vs Smart DCA..."):
+        plain_raw, _ = simulate_dca_backtest(
+            df_full, params, DEFAULT_FIXED_DCA_AUD, dca_frequency, "Plain DCA"
         )
-        curve_results[_curve_name] = (_df, _sm)
-
-    if not dca_df.empty and dca_summary:
-        st.subheader(f"Selected: {model_text}")
-        st.caption(
-            "Raw strategy replay shown below. The hard A$500,000 equal-capital "
-            "comparison is shown in the comparison section further down."
+        smart_raw, _ = simulate_dca_backtest(
+            df_full, params, DEFAULT_FIXED_DCA_AUD, dca_frequency,
+            "Risk-Scaled DCA", risk_curve=SMART_DCA_POINTS
         )
-
-        c1, c2, c3, c4, c5 = st.columns(5)
-
-        c1.metric(
-            "Total Invested",
-            f"${dca_summary['total_invested_aud']:,.0f}",
-        )
-        c2.metric(
-            "BTC Held",
-            f"{dca_summary['btc_held']:.6f}",
-        )
-        c3.metric(
-            "BTC Value",
-            f"${dca_summary['btc_value_aud']:,.0f}",
-        )
-        c4.metric(
-            "Average Cost",
-            f"${dca_summary['avg_cost_aud']:,.0f}",
-        )
-        c5.metric(
-            "ROI",
-            f"{dca_summary['roi_pct']:+.2f}%",
-        )
-
-        if dca_strategy_mode == "Opportunity-Scaled DCA":
-            valid_opp = dca_df["opportunity_score"].dropna()
-            if not valid_opp.empty:
-                last_opp = dca_df.loc[dca_df["opportunity_score"].notna()].iloc[-1]
-                o1, o2, o3, o4 = st.columns(4)
-                o1.metric("Opportunity Score", f"{last_opp['opportunity_score']:.0f}/100")
-                o2.metric("Quality", str(last_opp["opportunity_quality"]))
-                o3.metric("Confidence", f"{last_opp['opportunity_confidence']:.0f}%")
-                if pd.notna(last_opp["opportunity_expected_return"]):
-                    o4.metric(
-                        f"Historical {opportunity_horizon_days}d Analogue Return",
-                        f"{last_opp['opportunity_expected_return']*100:+.1f}%",
-                    )
-                else:
-                    o4.metric("Historical Analogue Return", "Insufficient history")
-
-                st.caption(
-                    "Opportunity Score is walk-forward only: each historical decision "
-                    "uses only analogue outcomes that would already have been known on that date."
-                )
-
-        st.subheader("Capital-Normalized Comparison")
 
         capital_target = float(intelligent_dca_budget_aud)
-
-        st.caption(
-            f"Hard equal-capital test: every strategy receives exactly "
-            f"A${capital_target:,.0f}. The only difference is when that money is deployed."
+        plain_df, plain_sm = apply_equal_capital_allocator(
+            plain_raw, total_budget_aud=capital_target,
+            fee_pct=params.get("fee_pct", 0.0)
+        )
+        smart_df, smart_sm = apply_equal_capital_allocator(
+            smart_raw, total_budget_aud=capital_target,
+            fee_pct=params.get("fee_pct", 0.0)
+        )
+        recent_check = validate_smart_dca_recent_period(
+            df_full, params, dca_frequency, capital_target, recent_fraction=0.30
         )
 
-        _, plain_norm = apply_equal_capital_allocator(
-            plain_df,
-            total_budget_aud=capital_target,
-            fee_pct=params.get("fee_pct", 0.0),
+    if not plain_sm or not smart_sm:
+        st.error("Not enough historical data for this DCA Backtest.")
+        st.stop()
+
+    btc_adv = (
+        (smart_sm["btc_held"] / plain_sm["btc_held"] - 1.0) * 100.0
+        if plain_sm["btc_held"] > 0 else np.nan
+    )
+    cost_adv = (
+        (1.0 - smart_sm["avg_cost_aud"] / plain_sm["avg_cost_aud"]) * 100.0
+        if plain_sm["avg_cost_aud"] > 0 else np.nan
+    )
+    value_adv = (
+        (smart_sm["btc_value_aud"] / plain_sm["btc_value_aud"] - 1.0) * 100.0
+        if plain_sm["btc_value_aud"] > 0 else np.nan
+    )
+
+    st.header("Simple DCA Backtest")
+    st.caption(
+        f"Same A${capital_target:,.0f} budget • {dca_frequency} • "
+        f"{dca_backtest_start_date.strftime('%d/%m/%Y')} to "
+        f"{dca_backtest_end_date.strftime('%d/%m/%Y')}"
+    )
+
+    p1, p2 = st.columns(2)
+    with p1:
+        st.subheader("Plain DCA")
+        st.metric("BTC Accumulated", f"{plain_sm['btc_held']:.6f}")
+        st.metric("Average Cost", f"A${plain_sm['avg_cost_aud']:,.0f}")
+        st.metric("Ending Value", f"A${plain_sm['btc_value_aud']:,.0f}")
+        st.metric("ROI", f"{plain_sm['roi_pct']:+.2f}%")
+
+    with p2:
+        st.subheader("Smart DCA")
+        st.metric(
+            "BTC Accumulated", f"{smart_sm['btc_held']:.6f}",
+            delta=f"{btc_adv:+.2f}% vs Plain"
         )
-        _, gated_norm = apply_equal_capital_allocator(
-            gated_df,
-            total_budget_aud=capital_target,
-            fee_pct=params.get("fee_pct", 0.0),
+        st.metric(
+            "Average Cost", f"A${smart_sm['avg_cost_aud']:,.0f}",
+            delta=f"{cost_adv:+.2f}% advantage"
         )
-
-        normalized_rows = [
-            {
-                "Strategy": "Plain DCA",
-                "Curve": "1.00x fixed",
-                "Invested AUD": capital_target,
-                "BTC Held": plain_norm["btc_held"],
-                "Average Cost AUD": plain_norm["avg_cost_aud"],
-                "BTC Value AUD": plain_norm["btc_value_aud"],
-                "ROI %": plain_norm["roi_pct"],
-                "BTC Advantage %": 0.0,
-                "Avg Cost Advantage %": 0.0,
-                "Value Advantage %": 0.0,
-            }
-        ]
-
-        for _curve_name, (_curve_df, _curve_sm) in curve_results.items():
-            _, _norm = apply_equal_capital_allocator(
-                _curve_df,
-                total_budget_aud=capital_target,
-                fee_pct=params.get("fee_pct", 0.0),
-            )
-            if _norm:
-                normalized_rows.append(
-                    {
-                        "Strategy": "Risk-Scaled DCA",
-                        "Curve": _curve_name,
-                        "Invested AUD": capital_target,
-                        "BTC Held": _norm["btc_held"],
-                        "Average Cost AUD": _norm["avg_cost_aud"],
-                        "BTC Value AUD": _norm["btc_value_aud"],
-                        "ROI %": _norm["roi_pct"],
-                        "BTC Advantage %": (
-                            _norm["btc_held"] / plain_norm["btc_held"] - 1.0
-                        ) * 100.0 if plain_norm["btc_held"] > 0 else np.nan,
-                        "Avg Cost Advantage %": (
-                            1.0 - _norm["avg_cost_aud"] / plain_norm["avg_cost_aud"]
-                        ) * 100.0 if plain_norm["avg_cost_aud"] > 0 else np.nan,
-                        "Value Advantage %": (
-                            _norm["btc_value_aud"] / plain_norm["btc_value_aud"] - 1.0
-                        ) * 100.0 if plain_norm["btc_value_aud"] > 0 else np.nan,
-                    }
-                )
-
-        _, opportunity_norm = apply_equal_capital_allocator(
-            opportunity_df,
-            total_budget_aud=capital_target,
-            fee_pct=params.get("fee_pct", 0.0),
+        st.metric(
+            "Ending Value", f"A${smart_sm['btc_value_aud']:,.0f}",
+            delta=f"{value_adv:+.2f}% vs Plain"
         )
+        st.metric("ROI", f"{smart_sm['roi_pct']:+.2f}%")
 
-        if opportunity_norm:
-            normalized_rows.append(
-                {
-                    "Strategy": "Opportunity-Scaled DCA",
-                    "Curve": f"{opportunity_horizon_days}d analogues",
-                    "Invested AUD": capital_target,
-                    "BTC Held": opportunity_norm["btc_held"],
-                    "Average Cost AUD": opportunity_norm["avg_cost_aud"],
-                    "BTC Value AUD": opportunity_norm["btc_value_aud"],
-                    "ROI %": opportunity_norm["roi_pct"],
-                    "BTC Advantage %": (
-                        opportunity_norm["btc_held"] / plain_norm["btc_held"] - 1.0
-                    ) * 100.0 if plain_norm["btc_held"] > 0 else np.nan,
-                    "Avg Cost Advantage %": (
-                        1.0 - opportunity_norm["avg_cost_aud"] / plain_norm["avg_cost_aud"]
-                    ) * 100.0 if plain_norm["avg_cost_aud"] > 0 else np.nan,
-                    "Value Advantage %": (
-                        opportunity_norm["btc_value_aud"] / plain_norm["btc_value_aud"] - 1.0
-                    ) * 100.0 if plain_norm["btc_value_aud"] > 0 else np.nan,
-                }
-            )
-
-        if gated_norm:
-            normalized_rows.append(
-                {
-                    "Strategy": "Risk-Gated DCA",
-                    "Curve": "BUY-zone only",
-                    "Invested AUD": capital_target,
-                    "BTC Held": gated_norm["btc_held"],
-                    "Average Cost AUD": gated_norm["avg_cost_aud"],
-                    "BTC Value AUD": gated_norm["btc_value_aud"],
-                    "ROI %": gated_norm["roi_pct"],
-                    "BTC Advantage %": (
-                        gated_norm["btc_held"] / plain_norm["btc_held"] - 1.0
-                    ) * 100.0 if plain_norm["btc_held"] > 0 else np.nan,
-                    "Avg Cost Advantage %": (
-                        1.0 - gated_norm["avg_cost_aud"] / plain_norm["avg_cost_aud"]
-                    ) * 100.0 if plain_norm["avg_cost_aud"] > 0 else np.nan,
-                    "Value Advantage %": (
-                        gated_norm["btc_value_aud"] / plain_norm["btc_value_aud"] - 1.0
-                    ) * 100.0 if plain_norm["btc_value_aud"] > 0 else np.nan,
-                }
-            )
-
-        normalized_table = pd.DataFrame(normalized_rows)
-
-        b1, b2, b3 = st.columns(3)
-        b1.metric("Equal-Capital Budget", f"A${capital_target:,.0f}")
-        b2.metric("Plain DCA BTC", f"{plain_norm['btc_held']:.6f}")
-        if opportunity_norm:
-            opp_adv = (
-                opportunity_norm["btc_held"] / plain_norm["btc_held"] - 1.0
-            ) * 100.0 if plain_norm["btc_held"] > 0 else np.nan
-            b3.metric(
-                "Opportunity BTC Advantage",
-                f"{opp_adv:+.2f}%",
-            )
-        else:
-            b3.metric("Opportunity BTC Advantage", "n/a")
-
-        st.dataframe(
-            normalized_table.style.format(
-                {
-                    "Invested AUD": "${:,.0f}",
-                    "BTC Held": "{:.6f}",
-                    "Average Cost AUD": "${:,.0f}",
-                    "BTC Value AUD": "${:,.0f}",
-                    "ROI %": "{:+.2f}%",
-                    "BTC Advantage %": "{:+.2f}%",
-                    "Avg Cost Advantage %": "{:+.2f}%",
-                    "Value Advantage %": "{:+.2f}%",
-                }
-            ),
-            width="stretch",
-            hide_index=True,
+    st.subheader("Verdict")
+    if btc_adv > 0:
+        st.success(
+            f"Smart DCA accumulated {btc_adv:+.2f}% more BTC than Plain DCA "
+            f"for the same A${capital_target:,.0f}."
         )
-
-        if dca_run_curve_optimizer:
-            st.subheader("70/30 Curve Validation")
-            with st.spinner("Testing DCA curves on train/validation periods..."):
-                validation_result, train_table = optimise_dca_curve_walk_forward(
-                    df_full,
-                    params,
-                    dca_base_amount_aud,
-                    dca_frequency,
-                )
-
-            if not train_table.empty:
-                st.dataframe(
-                    train_table.style.format(
-                        {
-                            "Train BTC": "{:.6f}",
-                            "Train ROI %": "{:+.2f}%",
-                        }
-                    ),
-                    width="stretch",
-                    hide_index=True,
-                )
-
-            if validation_result:
-                v1, v2, v3 = st.columns(3)
-                v1.metric(
-                    "Selected Curve",
-                    validation_result["selected_curve"],
-                )
-                v2.metric(
-                    "Validation BTC Advantage",
-                    f"{validation_result['btc_advantage_pct']:+.2f}%",
-                )
-                v3.metric(
-                    "Validation ROI",
-                    f"{validation_result['scaled_roi_pct']:+.2f}%",
-                    delta=(
-                        f"{validation_result['scaled_roi_pct'] - validation_result['plain_roi_pct']:+.2f}% vs Plain"
-                    ),
-                )
-                st.caption(
-                    "The curve is selected only from the first 70% of the chosen period. "
-                    "The reported validation result uses the untouched final 30%."
-                )
-
-        fig_dca = go.Figure()
-
-        fig_dca.add_trace(
-            go.Bar(
-                x=dca_df["date"],
-                y=dca_df["actual_buy_aud"],
-                name=model_text,
-            )
-        )
-
-        fig_dca.add_trace(
-            go.Scatter(
-                x=dca_df["date"],
-                y=dca_df["base_dca_aud"],
-                name="Base DCA",
-                line=dict(dash="dot"),
-            )
-        )
-
-        fig_dca.update_layout(
-            height=420,
-            template="plotly_dark",
-            xaxis_title="Date",
-            yaxis_title="AUD per execution",
-            hovermode="x unified",
-        )
-
-        st.plotly_chart(
-            fig_dca,
-            width="stretch",
-        )
-
-        dca_display = dca_df[
-            [
-                "date",
-                "dca_frequency",
-                "strategy_mode",
-                "price_usd",
-                "risk_score",
-                "opportunity_score",
-                "opportunity_quality",
-                "opportunity_confidence",
-                "dca_multiplier",
-                "base_dca_aud",
-                "actual_buy_aud",
-                "cumulative_invested_aud",
-                "btc_bought",
-                "btc_held",
-                "roi_pct",
-                "signal",
-            ]
-        ].copy()
-
-        dca_display["date"] = pd.to_datetime(
-            dca_display["date"]
-        ).dt.strftime("%d/%m/%Y")
-
-        dca_display["price_usd"] = dca_display[
-            "price_usd"
-        ].map(lambda x: f"${x:,.0f}")
-
-        dca_display["risk_score"] = dca_display[
-            "risk_score"
-        ].map(
-            lambda x: "n/a"
-            if pd.isna(x)
-            else f"{x:.3f}"
-        )
-
-        dca_display["opportunity_score"] = dca_display[
-            "opportunity_score"
-        ].map(lambda x: "n/a" if pd.isna(x) else f"{x:.0f}")
-
-        dca_display["opportunity_confidence"] = dca_display[
-            "opportunity_confidence"
-        ].map(lambda x: "n/a" if pd.isna(x) else f"{x:.0f}%")
-
-        dca_display["dca_multiplier"] = dca_display[
-            "dca_multiplier"
-        ].map(lambda x: f"{x:.2f}x")
-
-        for col in [
-            "base_dca_aud",
-            "actual_buy_aud",
-            "cumulative_invested_aud",
-        ]:
-            dca_display[col] = dca_display[col].map(
-                lambda x: f"${x:,.0f}"
-            )
-
-        for col in [
-            "btc_bought",
-            "btc_held",
-        ]:
-            dca_display[col] = dca_display[col].map(
-                lambda x: f"{x:.6f}"
-            )
-
-        dca_display["roi_pct"] = dca_display[
-            "roi_pct"
-        ].map(lambda x: f"{x:+.2f}%")
-
-        dca_display.columns = [
-            "Date",
-            "Frequency",
-            "Strategy",
-            "BTC USD",
-            "Risk",
-            "Opportunity",
-            "Opp. Quality",
-            "Opp. Confidence",
-            "DCA Mult.",
-            "Base DCA AUD",
-            "Actual Buy AUD",
-            "Total Invested",
-            "BTC Bought",
-            "BTC Held",
-            "ROI",
-            "Signal",
-        ]
-
-        st.dataframe(
-            dca_display,
-            width="stretch",
-            hide_index=True,
-        )
-
     else:
-        st.info("No DCA Backtest rows are available for the selected period.")
+        st.warning(
+            f"Smart DCA accumulated {abs(btc_adv):.2f}% less BTC than Plain DCA. "
+            "For this period, Plain DCA was the better strategy."
+        )
+
+    if recent_check:
+        st.subheader("Recent 30% Validation")
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Validation Budget", f"A${recent_check['budget_aud']:,.0f}")
+        r2.metric("Plain DCA BTC", f"{recent_check['plain_btc']:.6f}")
+        r3.metric(
+            "Smart DCA BTC", f"{recent_check['smart_btc']:.6f}",
+            delta=f"{recent_check['btc_advantage_pct']:+.2f}% vs Plain"
+        )
+        if recent_check["btc_advantage_pct"] > 0:
+            st.success("Smart DCA also beat Plain DCA in the most recent 30% of the test period.")
+        else:
+            st.info("Smart DCA did not beat Plain DCA in the most recent 30% of the test period.")
+
+    with st.expander("How Smart DCA works", expanded=False):
+        st.write(
+            "Smart DCA always buys. It uses the existing calibrated risk score only "
+            "to make a mild sizing tilt. Lower risk gets a little more capital; "
+            "higher risk gets a little less. There is no Opportunity Engine, no "
+            "buy gate, no optimizer and no attempt to predict exact tops or bottoms."
+        )
+        curve_df = pd.DataFrame(SMART_DCA_POINTS, columns=["Risk", "Relative Weight"])
+        curve_df["Relative Weight"] = curve_df["Relative Weight"].map(lambda x: f"{x:.2f}x")
+        st.dataframe(curve_df, width="stretch", hide_index=True)
+
+    with st.expander("Detailed activity", expanded=False):
+        detail_cols = [
+            "date", "price_usd", "risk_score", "actual_buy_aud",
+            "btc_bought", "btc_held", "cumulative_invested_aud", "avg_cost_aud"
+        ]
+        smart_detail = smart_df[[c for c in detail_cols if c in smart_df.columns]].copy()
+        st.dataframe(smart_detail.tail(250), width="stretch", hide_index=True)
+
+    plain_csv = plain_df.to_csv(index=False).encode("utf-8")
+    smart_csv = smart_df.to_csv(index=False).encode("utf-8")
+    d1, d2 = st.columns(2)
+    d1.download_button(
+        "Download Plain DCA CSV", plain_csv,
+        file_name="btc_v5_plain_dca.csv", mime="text/csv"
+    )
+    d2.download_button(
+        "Download Smart DCA CSV", smart_csv,
+        file_name="btc_v5_smart_dca.csv", mime="text/csv"
+    )
 
 
 # ================================================================
