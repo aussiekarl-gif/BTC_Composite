@@ -160,14 +160,42 @@ DEFAULT_OPPORTUNITY_VALUATION_WEIGHT = 0.30
 DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
 
 SMART_DCA_POINTS = [
-    (0.00, 1.50),
-    (0.20, 1.30),
-    (0.40, 1.10),
+    (0.00, 5.00),
+    (0.10, 4.00),
+    (0.20, 3.00),
+    (0.30, 2.20),
+    (0.40, 1.50),
     (0.50, 1.00),
-    (0.60, 0.90),
-    (0.80, 0.80),
-    (1.00, 0.75),
+    (0.60, 0.65),
+    (0.70, 0.40),
+    (0.80, 0.25),
+    (0.90, 0.12),
+    (1.00, 0.10),
 ]
+
+def build_smart_dca_curve(low_risk_weight=5.0, high_risk_weight=0.10):
+    """Build a simple convex Smart DCA curve from two user-facing endpoints.
+
+    Risk 0.50 is anchored at 1.00x. The intermediate shape is fixed so the
+    user only controls how aggressive low-risk buying is and how small
+    high-risk buying becomes.
+    """
+    low = max(1.0, float(low_risk_weight))
+    high = min(1.0, max(0.01, float(high_risk_weight)))
+
+    # Shape fractions chosen to reproduce the V5.1 default conviction curve.
+    low_shape = {0.00: 1.00, 0.10: 0.75, 0.20: 0.50, 0.30: 0.30, 0.40: 0.125, 0.50: 0.00}
+    high_shape = {0.50: 1.00, 0.60: 0.6111111111, 0.70: 0.3333333333,
+                  0.80: 0.1666666667, 0.90: 0.0222222222, 1.00: 0.00}
+
+    points = []
+    for risk in (0.00, 0.10, 0.20, 0.30, 0.40, 0.50):
+        weight = 1.0 + (low - 1.0) * low_shape[risk]
+        points.append((risk, weight))
+    for risk in (0.60, 0.70, 0.80, 0.90, 1.00):
+        weight = high + (1.0 - high) * high_shape[risk]
+        points.append((risk, weight))
+    return points
 
 DCA_CURVE_PRESETS = {
     "Conservative": [
@@ -2083,6 +2111,7 @@ def validate_smart_dca_recent_period(
     dca_frequency,
     total_budget_aud,
     recent_fraction=0.30,
+    risk_curve=None,
 ):
     """
     Compare the same fixed Smart DCA curve with Plain DCA on the most recent
@@ -2104,7 +2133,7 @@ def validate_smart_dca_recent_period(
     )
     smart_raw, _ = simulate_dca_backtest(
         df_full, recent_params, DEFAULT_FIXED_DCA_AUD, dca_frequency,
-        "Risk-Scaled DCA", risk_curve=SMART_DCA_POINTS
+        "Risk-Scaled DCA", risk_curve=(risk_curve or SMART_DCA_POINTS)
     )
 
     _, plain_sm = apply_equal_capital_allocator(
@@ -2233,97 +2262,6 @@ def simulate_lump_sum(data, total_capital):
 
 
 # ================================================================
-# Forward Deployment Planner
-# ================================================================
-
-def build_forward_plan(
-    capital,
-    start_date,
-    end_date,
-    frequency,
-    risk_score,
-    btc_price_usd,
-    usd_per_aud,
-    buy_threshold,
-    sell_threshold,
-    base_dca_pct,
-    max_period_pct,
-):
-    """Conditional forward planner with no forced deployment."""
-    if end_date <= start_date:
-        return pd.DataFrame()
-
-    dates = pd.date_range(start=start_date, end=end_date, freq="D", tz="UTC")
-    if frequency == "Weekly":
-        dates = dates[dates.dayofweek == 0]
-    elif frequency == "Monthly":
-        dates = dates[dates.day == 1]
-
-    if len(dates) == 0:
-        dates = pd.DatetimeIndex([pd.Timestamp(start_date, tz="UTC")])
-
-    base = capital * float(base_dca_pct)
-    hard_cap = capital * float(max_period_pct)
-
-    if not np.isfinite(risk_score):
-        decision = "HOLD"
-        buy_multiplier = 0.0
-    elif risk_score <= buy_threshold:
-        decision = "BUY"
-        buy_multiplier = interpolate(DEFAULT_BUY_POINTS, clamp(risk_score, 0, 1))
-    elif risk_score >= sell_threshold:
-        decision = "SELL ZONE — NO BUY"
-        buy_multiplier = 0.0
-    else:
-        decision = "HOLD — NO BUY"
-        buy_multiplier = 0.0
-
-    current_signal = dca_day_signal(
-        risk_score,
-        buy_threshold,
-        sell_threshold,
-    )
-
-    rows = []
-    cumulative = 0.0
-
-    for date in dates:
-        planned = 0.0
-        if decision == "BUY":
-            planned = min(
-                base * buy_multiplier,
-                hard_cap,
-                max(0.0, capital - cumulative),
-            )
-
-        cumulative += planned
-
-        rows.append(
-            {
-                "date": date,
-                "risk_score": risk_score,
-                "decision": decision,
-                "dca_today": current_signal["label"],
-                "dca_quality": current_signal["quality"],
-                "buy_multiplier": buy_multiplier,
-                "base_dca_aud": base,
-                "planned_buy_aud": planned,
-                "cumulative_planned_aud": cumulative,
-                "capital_remaining_aud": capital - cumulative,
-                "btc_price_usd_reference": btc_price_usd,
-                "usd_per_aud_reference": usd_per_aud,
-                "btc_estimate_at_reference_price": (
-                    planned * usd_per_aud / btc_price_usd
-                    if btc_price_usd > 0
-                    else 0.0
-                ),
-            }
-        )
-
-    return pd.DataFrame(rows)
-
-
-# ================================================================
 # Walk-forward Optimisation (V3.6)
 # ================================================================
 
@@ -2371,13 +2309,13 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.0 FULL",
+    page_title="BTC Dynamic DCA V5.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.0 FULL — Simple Smart DCA")
-st.caption("Version 5.0 FULL • Simple Smart DCA • A$500k Equal-Capital Test • Calibrated 0–1 Risk")
-st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
+st.title("Bitcoin Dynamic DCA V5.0 FULL — Variable Conviction Smart DCA")
+st.caption("Version 5.1 FULL • Variable Conviction Smart DCA • Equal-Capital Test • Calibrated 0–1 Risk")
+st.caption("Two-mode app • variable Smart DCA conviction • no forward planner")
 
 # ------------------------------------------------
 # Sidebar
@@ -2391,7 +2329,6 @@ with st.sidebar:
         [
             "Historical Backtest",
             "DCA Backtest",
-            "Forward Deployment Plan",
         ],
     )
 
@@ -2431,6 +2368,30 @@ with st.sidebar:
             help="Plain DCA and Smart DCA both receive exactly this total budget.",
         )
 
+        st.subheader("Smart DCA Conviction")
+        low_risk_weight = st.slider(
+            "Low-risk buy weight (risk 0.00)",
+            min_value=2.0,
+            max_value=10.0,
+            value=5.0,
+            step=0.25,
+            help="How strongly Smart DCA favors the cheapest valuation periods.",
+        )
+        high_risk_weight = st.slider(
+            "High-risk buy weight (risk 1.00)",
+            min_value=0.01,
+            max_value=0.50,
+            value=0.10,
+            step=0.01,
+            help="Very small values preserve most capital during expensive valuation periods.",
+        )
+        smart_dca_curve = build_smart_dca_curve(low_risk_weight, high_risk_weight)
+        conviction_ratio = low_risk_weight / high_risk_weight
+        st.caption(
+            f"Current low/high allocation ratio: {conviction_ratio:.0f}:1. "
+            "Risk 0.50 remains anchored at 1.00x."
+        )
+
         dca_backtest_start_date = st.date_input(
             "Start Date",
             value=dt.date(2015, 1, 1),
@@ -2467,7 +2428,7 @@ with st.sidebar:
 
         st.caption(
             "One simple test: same total budget, same dates, same fees. "
-            "Plain DCA invests evenly; Smart DCA mildly tilts toward lower-risk periods."
+            "Plain DCA invests evenly; Smart DCA strongly tilts toward lower-risk periods using only two conviction controls."
         )
 
     else:
@@ -2841,132 +2802,6 @@ elif mode == "DCA Backtest":
     # Use only the DCA Backtest dates defined in the left sidebar.
     start_date = dca_backtest_start_date
     end_date = dca_backtest_end_date
-
-else:
-    start_date = st.sidebar.date_input(
-        "Deployment Start Date",
-        value=today,
-        min_value=today,
-        format="DD/MM/YYYY",
-        key="forward_deployment_start_date",
-    )
-
-    end_date = st.sidebar.date_input(
-        "Deployment End Date",
-        value=today + timedelta(days=90),
-        min_value=start_date + timedelta(days=1),
-        format="DD/MM/YYYY",
-        key="forward_deployment_end_date",
-    )
-
-    st.sidebar.divider()
-    st.sidebar.header("Live Market Inputs")
-
-    # Automatically derive today's reference inputs. BGeometrics is preferred
-    # for BTC price and external risk series; Blockchain.com / Frankfurter are
-    # fallbacks so Forward Plan does not require routine manual data entry.
-    snapshot_end = dt.datetime.combine(today, dt.time.max, tzinfo=timezone.utc)
-    snapshot_start = snapshot_end - timedelta(days=450)
-    bg_token = get_bgeometrics_token()
-
-    with st.spinner("Loading current BTC market inputs..."):
-        snapshot_prices = fetch_btc_history(snapshot_start, snapshot_end)
-        snapshot_bg = fetch_bgeometrics_bundle(
-            snapshot_start - timedelta(days=30), snapshot_end, bg_token
-        )
-        snapshot_fx = fetch_aud_usd_rates(
-            (today - timedelta(days=14)), today
-        )
-
-    auto_btc_price = np.nan
-    if snapshot_bg is not None and not snapshot_bg.empty and "bg_btc_price" in snapshot_bg.columns:
-        live_price_series = pd.to_numeric(snapshot_bg["bg_btc_price"], errors="coerce").dropna()
-        if not live_price_series.empty:
-            auto_btc_price = float(live_price_series.iloc[-1])
-    if (not np.isfinite(auto_btc_price) or auto_btc_price <= 0) and not snapshot_prices.empty:
-        auto_btc_price = float(snapshot_prices["price"].dropna().iloc[-1])
-    if not np.isfinite(auto_btc_price) or auto_btc_price <= 0:
-        auto_btc_price = 100_000.0
-
-    auto_usd_per_aud = 0.65
-    if snapshot_fx is not None and not snapshot_fx.empty:
-        fx_valid = pd.to_numeric(snapshot_fx, errors="coerce").dropna()
-        if not fx_valid.empty:
-            auto_usd_per_aud = float(fx_valid.iloc[-1])
-
-    auto_risk_score = 0.50
-    snapshot_signal_date = None
-    if not snapshot_prices.empty:
-        snapshot_market = align_fx_to_dates(snapshot_prices, snapshot_fx, fallback=auto_usd_per_aud)
-        snapshot_market = merge_bgeometrics(snapshot_market, snapshot_bg)
-        snapshot_params = {
-            "pl_cheap": DEFAULT_PL_CHEAP,
-            "pl_expensive": DEFAULT_PL_EXPENSIVE,
-            "fund_cheap": DEFAULT_FUND_CHEAP,
-            "fund_expensive": DEFAULT_FUND_EXPENSIVE,
-            "composite_weights": {
-                "mvrv": weight_mvrv,
-                "power_law": weight_power_law,
-                "mayer": weight_mayer,
-                "fear_greed": weight_fear_greed,
-                "rsi": weight_rsi,
-            },
-            "regime_overlay": regime_overlay,
-            "valuation_strength": valuation_strength,
-            "min_valuation_mult": min_valuation_mult,
-            "max_valuation_mult": max_valuation_mult,
-        }
-        snapshot_market = add_risk_indicators(snapshot_market, risk_model, snapshot_params)
-        valid_risk = pd.to_numeric(snapshot_market["risk_score"], errors="coerce").dropna()
-        if not valid_risk.empty:
-            auto_risk_score = float(valid_risk.iloc[-1])
-            snapshot_signal_date = valid_risk.index[-1]
-
-    st.sidebar.caption(
-        f"Auto BTC: ${auto_btc_price:,.0f} USD • "
-        f"Auto risk: {auto_risk_score:.3f} • "
-        f"USD/AUD: {auto_usd_per_aud:.4f}"
-    )
-
-    override_risk = st.sidebar.checkbox("Override calculated risk score", value=False)
-    if override_risk:
-        forward_risk_score = st.sidebar.slider(
-            "Scenario Risk Score",
-            min_value=0.0,
-            max_value=1.0,
-            value=float(round(auto_risk_score, 2)),
-            step=0.01,
-        )
-    else:
-        forward_risk_score = auto_risk_score
-
-    override_price = st.sidebar.checkbox("Override current BTC price", value=False)
-    if override_price:
-        forward_btc_price_usd = st.sidebar.number_input(
-            "Scenario BTC Price (USD)",
-            min_value=1.0,
-            value=float(round(auto_btc_price, 2)),
-            step=1_000.0,
-        )
-    else:
-        forward_btc_price_usd = auto_btc_price
-
-    override_fx = st.sidebar.checkbox("Override AUD/USD rate", value=False)
-    if override_fx:
-        forward_usd_per_aud = st.sidebar.number_input(
-            "Scenario USD per AUD",
-            min_value=0.10,
-            max_value=2.00,
-            value=float(round(auto_usd_per_aud, 4)),
-            step=0.01,
-        )
-    else:
-        forward_usd_per_aud = auto_usd_per_aud
-
-
-if end_date <= start_date:
-    st.error("End date must be after start date.")
-    st.stop()
 
 
 params = {
@@ -3652,7 +3487,7 @@ elif mode == "DCA Backtest":
         )
         smart_raw, _ = simulate_dca_backtest(
             df_full, params, DEFAULT_FIXED_DCA_AUD, dca_frequency,
-            "Risk-Scaled DCA", risk_curve=SMART_DCA_POINTS
+            "Risk-Scaled DCA", risk_curve=smart_dca_curve
         )
 
         capital_target = float(intelligent_dca_budget_aud)
@@ -3665,7 +3500,8 @@ elif mode == "DCA Backtest":
             fee_pct=params.get("fee_pct", 0.0)
         )
         recent_check = validate_smart_dca_recent_period(
-            df_full, params, dca_frequency, capital_target, recent_fraction=0.30
+            df_full, params, dca_frequency, capital_target, recent_fraction=0.30,
+            risk_curve=smart_dca_curve
         )
 
     if not plain_sm or not smart_sm:
@@ -3744,12 +3580,12 @@ elif mode == "DCA Backtest":
 
     with st.expander("How Smart DCA works", expanded=False):
         st.write(
-            "Smart DCA always buys. It uses the existing calibrated risk score only "
-            "to make a mild sizing tilt. Lower risk gets a little more capital; "
-            "higher risk gets a little less. There is no Opportunity Engine, no "
-            "buy gate, no optimizer and no attempt to predict exact tops or bottoms."
+            "Smart DCA always buys, but conviction is intentionally asymmetric. "
+            "Low-risk periods can receive many times more capital than high-risk periods. "
+            "You control only the two endpoints; risk 0.50 stays anchored at 1.00x. "
+            "The total budget is still normalized to exactly the same amount as Plain DCA."
         )
-        curve_df = pd.DataFrame(SMART_DCA_POINTS, columns=["Risk", "Relative Weight"])
+        curve_df = pd.DataFrame(smart_dca_curve, columns=["Risk", "Relative Weight"])
         curve_df["Relative Weight"] = curve_df["Relative Weight"].map(lambda x: f"{x:.2f}x")
         st.dataframe(curve_df, width="stretch", hide_index=True)
 
@@ -3766,317 +3602,12 @@ elif mode == "DCA Backtest":
     d1, d2 = st.columns(2)
     d1.download_button(
         "Download Plain DCA CSV", plain_csv,
-        file_name="btc_v5_plain_dca.csv", mime="text/csv"
+        file_name="btc_v5_1_plain_dca.csv", mime="text/csv"
     )
     d2.download_button(
         "Download Smart DCA CSV", smart_csv,
-        file_name="btc_v5_smart_dca.csv", mime="text/csv"
+        file_name="btc_v5_1_smart_dca.csv", mime="text/csv"
     )
 
 
 # ================================================================
-# Forward Plan
-# ================================================================
-
-else:
-
-    risk_multiplier = interpolate(
-        DEFAULT_BUY_POINTS,
-        forward_risk_score,
-    )
-
-    st.subheader("Forward Deployment Plan")
-
-    today_signal = dca_day_signal(
-        forward_risk_score,
-        buy_threshold,
-        sell_risk_threshold,
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    c1.metric(
-        "Current Risk Score",
-        f"{forward_risk_score:.2f}",
-    )
-
-    c2.metric(
-        "DCA Today?",
-        today_signal["label"],
-        help="Uses the latest calculated risk available when the app is opened or refreshed.",
-    )
-
-    c3.metric(
-        "DCA Quality",
-        today_signal["quality"],
-    )
-
-    c4.metric(
-        "Reference BTC Price",
-        f"${forward_btc_price_usd:,.0f}",
-    )
-
-    signal_date_text = (
-        snapshot_signal_date.strftime("%d/%m/%Y")
-        if snapshot_signal_date is not None
-        else "latest available data"
-    )
-
-    if today_signal["eligible"]:
-        st.success(
-            f"DCA signal for {signal_date_text}: {today_signal['quality']} "
-            f"(risk {forward_risk_score:.3f}, buy multiplier {today_signal['multiplier']:.2f}x)."
-        )
-    elif today_signal["quality"] == "SELL ZONE":
-        st.warning(
-            f"DCA signal for {signal_date_text}: NO — valuation risk is in the SELL zone "
-            f"({forward_risk_score:.3f})."
-        )
-    else:
-        st.info(
-            f"DCA signal for {signal_date_text}: NO — current valuation risk is in the HOLD zone "
-            f"({forward_risk_score:.3f})."
-        )
-
-    plan = build_forward_plan(
-        total_capital_aud,
-        start_date,
-        end_date,
-        frequency,
-        forward_risk_score,
-        forward_btc_price_usd,
-        forward_usd_per_aud,
-        buy_threshold,
-        sell_risk_threshold,
-        base_dca_pct,
-        max_period_pct,
-    )
-
-    if plan.empty:
-        st.warning("No deployment dates were generated.")
-        st.stop()
-
-    final_planned = float(
-        plan["cumulative_planned_aud"].iloc[-1]
-    )
-
-    remaining = float(
-        plan["capital_remaining_aud"].iloc[-1]
-    )
-
-    p1, p2, p3 = st.columns(3)
-
-    p1.metric(
-        "Planned Deployment",
-        f"${final_planned:,.0f}",
-    )
-
-    p2.metric(
-        "Capital Remaining",
-        f"${remaining:,.0f}",
-    )
-
-    p3.metric(
-        "Number of Purchases",
-        f"{len(plan)}",
-    )
-
-    st.info(
-        "Forward planning warning: future BTC prices and future risk "
-        "scores are unknown. This schedule uses automatically loaded current "
-        "market inputs (or your optional scenario overrides) as reference "
-        "assumptions. It does not predict future prices."
-    )
-
-    # ------------------------------------------------------------
-    # Plan chart
-    # ------------------------------------------------------------
-
-    fig_plan = go.Figure()
-
-    fig_plan.add_trace(
-        go.Scatter(
-            x=plan["date"],
-            y=plan["cumulative_planned_aud"],
-            name="Equal-Time Reference",
-            line=dict(width=2, dash="dash"),
-        )
-    )
-
-    fig_plan.add_trace(
-        go.Scatter(
-            x=plan["date"],
-            y=plan["cumulative_planned_aud"],
-            name="Planned Deployment",
-            line=dict(width=3),
-        )
-    )
-
-    fig_plan.update_layout(
-        height=450,
-        template="plotly_dark",
-        xaxis=dict(title="Date"),
-        yaxis=dict(
-            title="AUD",
-            tickprefix="$",
-        ),
-    )
-
-    st.plotly_chart(
-        fig_plan,
-        use_container_width=True,
-    )
-
-    # ------------------------------------------------------------
-    # Plan table
-    # ------------------------------------------------------------
-
-    display_plan = plan.copy()
-
-    display_plan["date"] = display_plan["date"].dt.strftime(
-        "%d/%m/%Y"
-    )
-
-    display_plan["risk_score"] = display_plan[
-        "risk_score"
-    ].map(lambda x: f"{x:.2f}")
-
-    display_plan["buy_multiplier"] = display_plan[
-        "buy_multiplier"
-    ].map(lambda x: f"{x:.2f}x")
-
-    # Text fields: do not attempt numeric percentage formatting.
-    display_plan["decision"] = display_plan["decision"].astype(str)
-    display_plan["dca_today"] = display_plan["dca_today"].astype(str)
-    display_plan["dca_quality"] = display_plan["dca_quality"].astype(str)
-
-    for col in [
-        "base_dca_aud",
-        "planned_buy_aud",
-        "cumulative_planned_aud",
-        "capital_remaining_aud",
-    ]:
-        display_plan[col] = display_plan[col].map(
-            lambda x: f"${x:,.0f}"
-        )
-
-    display_plan = display_plan[
-        [
-            "date",
-            "risk_score",
-            "dca_today",
-            "dca_quality",
-            "buy_multiplier",
-            "decision",
-            "base_dca_aud",
-            "planned_buy_aud",
-            "cumulative_planned_aud",
-            "capital_remaining_aud",
-        ]
-    ]
-
-    expected_forward_columns = 10
-    if display_plan.shape[1] != expected_forward_columns:
-        st.error(
-            f"Forward table schema mismatch: expected {expected_forward_columns} columns, "
-            f"received {display_plan.shape[1]}."
-        )
-        st.stop()
-
-    display_plan.columns = [
-        "Date",
-        "Risk",
-        "DCA Today?",
-        "DCA Quality",
-        "BUY Mult.",
-        "Decision",
-        "Base DCA",
-        "Planned Buy",
-        "Cumulative Planned",
-        "Capital Remaining",
-    ]
-
-    st.dataframe(
-        display_plan,
-        use_container_width=True,
-        height=500,
-        hide_index=True,
-    )
-
-    st.download_button(
-        "Download Forward Plan CSV",
-        data=plan.to_csv(index=False).encode("utf-8"),
-        file_name="btc_forward_deployment_plan.csv",
-        mime="text/csv",
-    )
-
-
-# ================================================================
-# Methodology Notes
-# ================================================================
-
-with st.expander("How the new Dynamic DCA engine works"):
-    st.markdown(
-        """
-### 1. Fixed base DCA
-
-The model calculates how much of the starting capital would normally
-have been deployed by each point in the selected period.
-
-### 2. Risk-weighted DCA
-
-The risk score is converted into a smooth multiplier:
-
-- Low risk / cheap BTC -> larger purchase
-- Neutral risk -> approximately normal DCA
-- High risk / expensive BTC -> smaller purchase
-- Extreme risk -> potentially zero new purchases
-
-### 3. No forced deployment
-
-The model compares:
-
-**Target cumulative investment**
-
-against
-
-**Actual cumulative investment**
-
-If the strategy is behind schedule, the next purchase is increased.
-
-This prevents the model from simply sitting on cash indefinitely after
-a long expensive period.
-
-### 4. Maximum purchase size
-
-A hard per-period maximum prevents one unusually cheap reading from
-consuming the entire portfolio.
-
-### 5. Portfolio-target profit taking
-
-Instead of automatically selling a fixed percentage of all BTC, the
-model calculates a risk-derived target BTC portfolio weight.
-
-Example:
-
-If the model says the target BTC allocation is 40%, but BTC has risen
-until it represents 60% of the portfolio, the strategy sells enough BTC
-to move toward the 40% target.
-
-### 6. Cost basis
-
-The model tracks the weighted-average AUD acquisition cost of BTC.
-Realized profit is therefore:
-
-**Sale proceeds - cost basis of BTC sold - fees**
-
-rather than incorrectly treating all sale proceeds as profit.
-
-### 7. Forward mode
-
-Forward mode deliberately does not fill future dates with today's BTC
-price and pretend that those are future observations. Future prices and
-future risk scores are unknown, so the forward planner clearly labels
-today's market values as assumptions.
-"""
-    )
