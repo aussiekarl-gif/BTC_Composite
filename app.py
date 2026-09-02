@@ -2355,12 +2355,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.3 FULL",
+    page_title="BTC Dynamic DCA V5.3.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.3 FULL — Smart DCA")
-st.caption("Version 5.3 FULL • Backtest + DCA Today • Opportunity Rarity")
+st.title("Bitcoin Dynamic DCA V5.3.1 FULL — Smart DCA")
+st.caption("Version 5.3.1 FULL • Backtest + DCA Today • Opportunity Rarity")
 st.caption("Simple two-mode app • test the strategy, then use the same strategy today")
 
 # ------------------------------------------------
@@ -3678,7 +3678,13 @@ elif mode == "DCA Today":
 
     # Opportunity rarity: use weekly historical risk observations available up
     # to today. This estimates how often BTC has been at least as cheap as now.
-    rarity_source = valid_today.set_index("date")["risk_score"].resample("W-MON").last().dropna()
+    if isinstance(valid_today.index, pd.DatetimeIndex):
+        rarity_source = valid_today["risk_score"].resample("W-MON").last().dropna()
+    elif "date" in valid_today.columns:
+        rarity_source = valid_today.set_index("date")["risk_score"].resample("W-MON").last().dropna()
+    else:
+        # Safe fallback: use observations in their existing chronological order.
+        rarity_source = valid_today["risk_score"].dropna()
     rarity = opportunity_rarity_from_history(rarity_source, current_risk)
     rarity_multiplier = float(rarity["rarity_multiplier"])
     effective_weight = risk_weight * rarity_multiplier
