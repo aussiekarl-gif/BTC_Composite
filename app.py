@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V4.1 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V4.1.1 FULL
 ====================================================
 
 Designed for:
@@ -2306,12 +2306,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V4.1 FULL",
+    page_title="BTC Dynamic DCA V4.1.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V4.1 FULL — Buy Low / Sell High")
-st.caption("Version 4.1 FULL • Opportunity Engine • Walk-Forward Historical Analogues • Calibrated 0–1 Risk")
+st.title("Bitcoin Dynamic DCA V4.1.1 FULL — Buy Low / Sell High")
+st.caption("Version 4.1.1 FULL • Opportunity Engine • Walk-Forward Historical Analogues • Calibrated 0–1 Risk")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
 # ------------------------------------------------
@@ -3756,6 +3756,10 @@ elif mode == "DCA Backtest":
 
     if not dca_df.empty and dca_summary:
         st.subheader(f"Selected: {model_text}")
+        st.caption(
+            "Raw strategy replay shown below. The hard A$500,000 equal-capital "
+            "comparison is shown in the comparison section further down."
+        )
 
         c1, c2, c3, c4, c5 = st.columns(5)
 
@@ -3802,12 +3806,13 @@ elif mode == "DCA Backtest":
                 )
 
         st.subheader("Capital-Normalized Comparison")
+
+        capital_target = float(intelligent_dca_budget_aud)
+
         st.caption(
             f"Hard equal-capital test: every strategy receives exactly "
             f"A${capital_target:,.0f}. The only difference is when that money is deployed."
         )
-
-        capital_target = float(intelligent_dca_budget_aud)
 
         _, plain_norm = apply_equal_capital_allocator(
             plain_df,
