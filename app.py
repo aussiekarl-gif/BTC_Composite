@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.5.4 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6 FULL
 ====================================================
 
 Designed for:
@@ -109,7 +109,7 @@ DEFAULT_MAX_VALUATION_MULT = 2.50
 DEFAULT_PRESSURE_CAP = 2.50
 DEFAULT_MIN_DAYS_BETWEEN_SALES = 21
 
-# V3.5.4 strict valuation-zone execution defaults.
+# V3.6 strict valuation-zone execution defaults.
 DEFAULT_BUY_THRESHOLD = 0.25
 DEFAULT_SELL_RISK_THRESHOLD = 0.75
 DEFAULT_MIN_TRADE_AUD = 100.0
@@ -120,6 +120,11 @@ DEFAULT_RISK_CALIBRATION_MIN_PERIODS = 180
 DEFAULT_RISK_CALIBRATION_WINDOW = 1460  # ~4 years
 DEFAULT_RISK_CALIBRATION_BLEND = 0.85
 DEFAULT_PRICE_POSITION_WEIGHT = 0.20
+
+DEFAULT_ABSOLUTE_RISK_WEIGHT = 0.60
+DEFAULT_RELATIVE_RISK_WEIGHT = 0.40
+DEFAULT_DRAWDOWN_WINDOW = 365
+DEFAULT_WEEKLY_DCA_AUD = 1000.0
 DEFAULT_BUY_POINTS = [
     (0.00, 4.00), (0.10, 3.25), (0.20, 2.50), (0.30, 1.65),
     (0.35, 1.20), (0.40, 0.60), (0.45, 0.00), (1.00, 0.00),
@@ -600,7 +605,7 @@ def _expanding_percentile(series, min_periods=180, rolling_window=1460):
 
 def add_risk_indicators(data, risk_model, params):
     """
-    V3.5.4 valuation risk engine.
+    V3.6 valuation risk engine.
 
     Design goals:
       * stronger relationship with BTC valuation / price regime
@@ -859,18 +864,60 @@ def add_risk_indicators(data, risk_model, params):
         rolling_window=cal_window,
     )
 
-    # Blend percentile calibration with raw risk so the score still preserves
-    # absolute valuation information while expanding to the full 0..1 range.
-    result["risk_score"] = (
-        cal_blend * result["risk_percentile"]
-        + (1.0 - cal_blend) * result["raw_risk_score"]
+    # V3.6 hybrid calibration.
+    # V3.5 could make risk collapse during a prolonged decline because the
+    # percentile kept comparing the market with its own recent highs.
+    # V3.6 retains an absolute valuation anchor and uses percentile as a
+    # secondary relative-cycle input.
+
+    absolute_weight = float(
+        params.get("absolute_risk_weight", DEFAULT_ABSOLUTE_RISK_WEIGHT)
+    )
+    relative_weight = float(
+        params.get("relative_risk_weight", DEFAULT_RELATIVE_RISK_WEIGHT)
     )
 
-    # During early warmup where percentile is unavailable, fall back to raw.
-    result["risk_score"] = result["risk_score"].where(
-        result["risk_score"].notna(),
-        result["raw_risk_score"],
+    rolling_peak_365 = result["price"].rolling(
+        DEFAULT_DRAWDOWN_WINDOW,
+        min_periods=90,
+    ).max()
+
+    result["drawdown_365"] = (
+        result["price"] / rolling_peak_365.replace(0, np.nan) - 1.0
+    ).clip(-1.0, 0.0)
+
+    # A drawdown reduces risk gradually, but does not make an expensive market
+    # instantly "ultra-cheap".
+    result["drawdown_risk_modifier"] = (
+        1.0 + 0.60 * result["drawdown_365"]
+    ).clip(0.50, 1.00)
+
+    result["absolute_risk_anchor"] = (
+        result["raw_risk_score"] * result["drawdown_risk_modifier"]
     ).clip(0, 1)
+
+    relative_risk = result["risk_percentile"].where(
+        result["risk_percentile"].notna(),
+        result["raw_risk_score"],
+    )
+
+    total_weight = max(absolute_weight + relative_weight, 1e-9)
+
+    result["risk_score"] = (
+        absolute_weight * result["absolute_risk_anchor"]
+        + relative_weight * relative_risk
+    ) / total_weight
+
+    # Guardrail against false ultra-low readings:
+    # final risk cannot sit more than 0.15 below the raw valuation composite.
+    result["risk_floor"] = (
+        result["raw_risk_score"] - 0.15
+    ).clip(0, 1)
+
+    result["risk_score"] = pd.concat(
+        [result["risk_score"], result["risk_floor"]],
+        axis=1,
+    ).max(axis=1).clip(0, 1)
 
     # -------------------------
     # Context kept separate
@@ -1078,7 +1125,7 @@ def dca_day_signal(risk, buy_threshold, sell_threshold):
 
 
 def simulate_dynamic_dca(df_full, params):
-    """V3.5.4: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
+    """V3.6: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
     if df_full.empty: return pd.DataFrame(), {}
     df=df_full[(df_full.index>=params["start_date"]) & (df_full.index<=params["end_date"])].copy()
     if df.empty: return pd.DataFrame(), {}
@@ -1145,9 +1192,9 @@ def simulate_dynamic_dca(df_full, params):
     result=pd.DataFrame(trades)
     if result.empty: return result,{}
 
-    # V3.5.4 execution invariants.
+    # V3.6 execution invariants.
     if ((result["buy_aud"] > 0) & (result["sell_btc"] > 0)).any():
-        raise RuntimeError("V3.5.4 invariant failed: simultaneous BUY and SELL.")
+        raise RuntimeError("V3.6 invariant failed: simultaneous BUY and SELL.")
 
     if (
         (result["buy_aud"] > 0)
@@ -1156,7 +1203,7 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] > buy_th)
         )
     ).any():
-        raise RuntimeError("V3.5.4 invariant failed: BUY outside BUY zone.")
+        raise RuntimeError("V3.6 invariant failed: BUY outside BUY zone.")
 
     if (
         (result["sell_btc"] > 0)
@@ -1165,14 +1212,14 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] < sell_th)
         )
     ).any():
-        raise RuntimeError("V3.5.4 invariant failed: SELL outside SELL zone.")
+        raise RuntimeError("V3.6 invariant failed: SELL outside SELL zone.")
 
     if (result["cash_aud"] < -0.01).any() or (result["btc_held"] < -1e-12).any():
-        raise RuntimeError("V3.5.4 invariant failed: negative cash or BTC.")
+        raise RuntimeError("V3.6 invariant failed: negative cash or BTC.")
 
     hard_buy_cap = capital * float(params.get("max_period_pct", DEFAULT_MAX_PERIOD_PCT))
     if (result["buy_aud"] > hard_buy_cap + 0.01).any():
-        raise RuntimeError("V3.5.4 invariant failed: BUY above hard cap.")
+        raise RuntimeError("V3.6 invariant failed: BUY above hard cap.")
     final=result.iloc[-1]; years=max((result.date.iloc[-1]-result.date.iloc[0]).days/365.25,1/365.25); endw=float(final.total_wealth_aud)
     rets=result.total_wealth_aud.pct_change().dropna(); ppy={"Daily":365.0,"Weekly":52.0,"Monthly":12.0}.get(params["frequency"],52.0)
     sharpe=float(rets.mean()/rets.std()*np.sqrt(ppy)) if len(rets)>1 and rets.std()>0 else np.nan; down=rets[rets<0]; sortino=float(rets.mean()/down.std()*np.sqrt(ppy)) if len(down)>1 and down.std()>0 else np.nan
@@ -1181,6 +1228,90 @@ def simulate_dynamic_dca(df_full, params):
 
 
 # ================================================================
+def simulate_fixed_weekly_risk_dca(df_full, params, weekly_aud):
+    """Accumulation-only weekly DCA scaled by calibrated risk."""
+    if df_full.empty:
+        return pd.DataFrame(), {}
+
+    df = df_full[
+        (df_full.index >= params["start_date"])
+        & (df_full.index <= params["end_date"])
+    ].copy()
+
+    if df.empty:
+        return pd.DataFrame(), {}
+
+    df = add_risk_indicators(df, params["risk_model"], params)
+    execution = select_execution_dates(
+        df, "Weekly", params["day_of_week"]
+    )
+
+    cash = float(params["total_capital_aud"])
+    btc = 0.0
+    rows = []
+
+    for timestamp, row in execution.iterrows():
+        price_usd = float(row["price"])
+        usd_per_aud = float(row["usd_per_aud"])
+        if price_usd <= 0 or usd_per_aud <= 0:
+            continue
+
+        price_aud = price_usd / usd_per_aud
+        risk = (
+            float(row["risk_score"])
+            if pd.notna(row["risk_score"])
+            else np.nan
+        )
+
+        risk_mult = (
+            float(interpolate(DEFAULT_BUY_POINTS, risk))
+            if np.isfinite(risk)
+            else 0.0
+        )
+
+        planned = (
+            float(weekly_aud) * risk_mult
+            if np.isfinite(risk)
+            and risk <= float(params["buy_threshold"])
+            else 0.0
+        )
+
+        buy = min(planned, cash)
+        fee = buy * float(params.get("fee_pct", 0.0))
+        net = max(0.0, buy - fee)
+        btc_bought = net / price_aud if price_aud > 0 else 0.0
+
+        cash -= buy
+        btc += btc_bought
+        wealth = cash + btc * price_aud
+
+        rows.append({
+            "date": timestamp,
+            "price_usd": price_usd,
+            "risk_score": risk,
+            "risk_multiplier": risk_mult,
+            "base_weekly_aud": float(weekly_aud),
+            "actual_buy_aud": buy,
+            "btc_bought": btc_bought,
+            "btc_held": btc,
+            "cash_aud": cash,
+            "total_wealth_aud": wealth,
+            "signal": "BUY" if buy > 0 else "HOLD",
+        })
+
+    result = pd.DataFrame(rows)
+    if result.empty:
+        return result, {}
+
+    return result, {
+        "base_weekly_aud": float(weekly_aud),
+        "total_bought_aud": float(result["actual_buy_aud"].sum()),
+        "ending_wealth_aud": float(result.iloc[-1]["total_wealth_aud"]),
+        "btc_held": float(result.iloc[-1]["btc_held"]),
+        "cash_aud": float(result.iloc[-1]["cash_aud"]),
+    }
+
+
 # Benchmark Strategies
 # ================================================================
 
@@ -1373,7 +1504,7 @@ def build_forward_plan(
 
 
 # ================================================================
-# Walk-forward Optimisation (V3.5.4)
+# Walk-forward Optimisation (V3.6)
 # ================================================================
 
 def normalized_percentile_score(frame):
@@ -1390,7 +1521,7 @@ def normalized_percentile_score(frame):
 
 
 def walk_forward_optimise(df_full, base_params):
-    """V3.5.4 70/30 train/validation search. Valuation weights stay fixed to reduce overfitting."""
+    """V3.6 70/30 train/validation search. Valuation weights stay fixed to reduce overfitting."""
     if df_full.empty:
         return pd.DataFrame(), pd.DataFrame()
     start=base_params["start_date"]; end=base_params["end_date"]; split=start+(end-start)*0.70
@@ -1420,11 +1551,11 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.5.4 FULL",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.6 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.5.4 FULL — Buy Low / Sell High")
+st.title("Bitcoin Dynamic DCA V3.6 FULL — Buy Low / Sell High")
 st.caption("Version 3.5.4 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
@@ -1439,6 +1570,7 @@ with st.sidebar:
         "Analysis Mode",
         [
             "Historical Backtest",
+            "Fixed Weekly Risk DCA",
             "Forward Deployment Plan",
         ],
     )
@@ -1489,12 +1621,12 @@ with st.sidebar:
     st.header("Strategy Controls")
 
     st.caption(
-        "The V3.5.4 calibrated composite risk model is the standard engine. "
+        "The V3.6 calibrated composite risk model is the standard engine. "
         "0.00 = cheapest / lowest risk, 1.00 = most expensive / highest risk."
     )
 
     # Standard engine. Legacy modes remain available under Advanced Settings.
-    risk_model = "Composite V3.5.4"
+    risk_model = "Composite V3.6"
 
     st.subheader("DCA Size")
 
@@ -1618,12 +1750,12 @@ with st.sidebar:
         risk_model = st.selectbox(
             "Risk engine",
             [
-                "Composite V3.5.4",
+                "Composite V3.6",
                 "Power Law Trend",
                 "SMA Ratio (200-day)",
             ],
             index=0,
-            help="Composite V3.5.4 is recommended.",
+            help="Composite V3.6 is recommended.",
         )
 
         st.markdown("**Composite model weights (fixed)**")
@@ -1977,6 +2109,8 @@ params = {
     "risk_calibration_min_periods": DEFAULT_RISK_CALIBRATION_MIN_PERIODS,
     "risk_calibration_window": DEFAULT_RISK_CALIBRATION_WINDOW,
     "risk_calibration_blend": DEFAULT_RISK_CALIBRATION_BLEND,
+    "absolute_risk_weight": DEFAULT_ABSOLUTE_RISK_WEIGHT,
+    "relative_risk_weight": DEFAULT_RELATIVE_RISK_WEIGHT,
     "require_weak_trend_for_sell": require_weak_trend_for_sell,
     "trend_er_period": trend_er_period,
     "trend_fast": trend_fast,
@@ -2450,11 +2584,13 @@ if mode == "Historical Backtest":
             "optimized_trend",
             "price_usd",
             "risk_score",
+            "raw_risk_score",
+            "absolute_risk_anchor",
+            "risk_floor",
             "dca_multiplier",
             "valuation_multiplier",
             "target_btc_weight",
             "actual_btc_weight",
-            "pressure",
             "buy_aud",
             "btc_bought",
             "sell_btc",
@@ -2523,11 +2659,13 @@ if mode == "Historical Backtest":
         "Optimized Trend",
         "BTC USD",
         "Risk",
+        "Raw Risk",
+        "Absolute Anchor",
+        "Risk Floor",
         "DCA Mult.",
         "Valuation Mult.",
-        "Target BTC %",
+        "Reference BTC %",
         "Actual BTC %",
-        "Pressure",
         "Buy AUD",
         "BTC Bought",
         "BTC Sold",
@@ -2565,7 +2703,7 @@ if mode == "Historical Backtest":
     st.caption(f"BGeometrics token: {'loaded' if get_bgeometrics_token() else 'not loaded'} • No future BTC prices are fabricated in historical mode.")
 
     with st.expander("Walk-forward Optimisation (advanced)"):
-        st.write("Searches V3.5.4 BUY threshold, SELL threshold, maximum buy size and valuation strength on the first 70% of the period, then validates leaders on the untouched final 30%.")
+        st.write("Searches V3.6 BUY threshold, SELL threshold, maximum buy size and valuation strength on the first 70% of the period, then validates leaders on the untouched final 30%.")
         if st.button("Run Walk-forward Optimiser", type="secondary"):
             with st.spinner("Running train/validation parameter search..."):
                 train_opt, validation_opt = walk_forward_optimise(df_full, params)
@@ -2573,6 +2711,149 @@ if mode == "Historical Backtest":
             st.dataframe(train_opt.head(10),hide_index=True,use_container_width=True)
             st.markdown("**Out-of-sample validation**")
             st.dataframe(validation_opt,hide_index=True,use_container_width=True)
+
+
+# ================================================================
+# Fixed Weekly Risk DCA
+# ================================================================
+
+elif mode == "Fixed Weekly Risk DCA":
+
+    with st.spinner("Loading BTC and AUD/USD history..."):
+        df_full = fetch_btc_history(
+            params["start_date"],
+            params["end_date"],
+        )
+
+        fx_series = fetch_aud_usd_rates(
+            params["start_date"],
+            params["end_date"],
+        )
+
+        bg_token = get_bgeometrics_token()
+        bg_data = fetch_bgeometrics_bundle(
+            params["start_date"] - timedelta(days=300),
+            params["end_date"],
+            bg_token,
+        )
+
+        df_full = merge_external_data(
+            df_full,
+            fx_series,
+            bg_data,
+        )
+
+    st.header("Fixed Weekly Risk DCA")
+    st.caption(
+        "Choose your normal weekly AUD investment. The amount automatically "
+        "increases when risk is low and decreases to $0 outside the BUY zone. "
+        "This mode never sells."
+    )
+
+    weekly_dca_aud = st.number_input(
+        "Normal Weekly DCA (AUD)",
+        min_value=10.0,
+        max_value=100000.0,
+        value=DEFAULT_WEEKLY_DCA_AUD,
+        step=100.0,
+    )
+
+    weekly_df, weekly_summary = simulate_fixed_weekly_risk_dca(
+        df_full,
+        params,
+        weekly_dca_aud,
+    )
+
+    if not weekly_df.empty:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Base Weekly DCA", f"${weekly_summary['base_weekly_aud']:,.0f}")
+        c2.metric("Total Bought", f"${weekly_summary['total_bought_aud']:,.0f}")
+        c3.metric("BTC Held", f"{weekly_summary['btc_held']:.6f}")
+        c4.metric("Ending Wealth", f"${weekly_summary['ending_wealth_aud']:,.0f}")
+
+        fig_weekly = go.Figure()
+        fig_weekly.add_trace(
+            go.Bar(
+                x=weekly_df["date"],
+                y=weekly_df["actual_buy_aud"],
+                name="Actual Weekly Buy",
+            )
+        )
+        fig_weekly.add_trace(
+            go.Scatter(
+                x=weekly_df["date"],
+                y=weekly_df["base_weekly_aud"],
+                name="Base Weekly Amount",
+                line=dict(dash="dot"),
+            )
+        )
+        fig_weekly.update_layout(
+            height=420,
+            template="plotly_dark",
+            xaxis_title="Date",
+            yaxis_title="AUD",
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig_weekly, width="stretch")
+
+        weekly_display = weekly_df[
+            [
+                "date",
+                "price_usd",
+                "risk_score",
+                "risk_multiplier",
+                "base_weekly_aud",
+                "actual_buy_aud",
+                "btc_bought",
+                "btc_held",
+                "signal",
+            ]
+        ].copy()
+
+        weekly_display["date"] = pd.to_datetime(
+            weekly_display["date"]
+        ).dt.strftime("%d/%m/%Y")
+        weekly_display["price_usd"] = weekly_display["price_usd"].map(
+            lambda x: f"${x:,.0f}"
+        )
+        weekly_display["risk_score"] = weekly_display["risk_score"].map(
+            lambda x: "n/a" if pd.isna(x) else f"{x:.3f}"
+        )
+        weekly_display["risk_multiplier"] = weekly_display["risk_multiplier"].map(
+            lambda x: f"{x:.2f}x"
+        )
+        weekly_display["base_weekly_aud"] = weekly_display["base_weekly_aud"].map(
+            lambda x: f"${x:,.0f}"
+        )
+        weekly_display["actual_buy_aud"] = weekly_display["actual_buy_aud"].map(
+            lambda x: f"${x:,.0f}"
+        )
+        weekly_display["btc_bought"] = weekly_display["btc_bought"].map(
+            lambda x: f"{x:.6f}"
+        )
+        weekly_display["btc_held"] = weekly_display["btc_held"].map(
+            lambda x: f"{x:.6f}"
+        )
+
+        weekly_display.columns = [
+            "Date",
+            "BTC USD",
+            "Risk",
+            "Risk Mult.",
+            "Base Weekly AUD",
+            "Actual Buy AUD",
+            "BTC Bought",
+            "BTC Held",
+            "Signal",
+        ]
+
+        st.dataframe(
+            weekly_display,
+            width="stretch",
+            hide_index=True,
+        )
+    else:
+        st.info("No weekly DCA rows are available for the selected period.")
 
 
 # ================================================================
