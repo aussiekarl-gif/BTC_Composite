@@ -2444,13 +2444,13 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.4 FULL",
+    page_title="BTC Dynamic DCA V5.6 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.4 FULL — Smart DCA")
-st.caption("Version 5.4 FULL • Backtest + DCA Today • Opportunity Probability")
-st.caption("Simple two-mode app • test the strategy, then use the same strategy today")
+st.title("Bitcoin Dynamic DCA V5.6 FULL — Smart DCA")
+st.caption("Version 5.6 FULL • Backtest + DCA Today • Opportunity Probability")
+st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
 # Sidebar
@@ -2464,6 +2464,7 @@ with st.sidebar:
         [
             "DCA Backtest",
             "DCA Today",
+            "My Portfolio",
         ],
     )
 
@@ -2546,7 +2547,7 @@ with st.sidebar:
             "Same budget and dates. Plain DCA invests evenly; Smart DCA tilts capital toward lower-risk periods."
         )
 
-    else:  # DCA Today
+    elif mode == "DCA Today":
         st.header("DCA Today")
 
         starting_capital_aud = st.number_input(
@@ -2558,7 +2559,11 @@ with st.sidebar:
         remaining_capital_aud = st.number_input(
             "Capital Remaining (AUD)",
             min_value=0.0, max_value=float(starting_capital_aud),
-            value=float(starting_capital_aud), step=5_000.0, format="%.0f",
+            value=min(
+                float(starting_capital_aud),
+                float(st.session_state.get("portfolio_capital_remaining", starting_capital_aud))
+            ),
+            step=5_000.0, format="%.0f",
             key="today_remaining_capital",
         )
         target_deployment_date = st.date_input(
@@ -2590,6 +2595,18 @@ with st.sidebar:
         total_capital_aud = float(starting_capital_aud)
         frequency = "Weekly"
         selected_day = dt.date.today().weekday()
+
+    else:  # My Portfolio
+        st.header("My Portfolio")
+        # Compatibility values for the shared engine; portfolio mode does not run market calculations.
+        starting_capital_aud = float(st.session_state.get("portfolio_starting_capital", 500000.0))
+        remaining_capital_aud = float(st.session_state.get("portfolio_capital_remaining", starting_capital_aud))
+        total_capital_aud = starting_capital_aud
+        frequency = "Weekly"
+        selected_day = dt.date.today().weekday()
+        low_risk_weight = 5.0
+        high_risk_weight = 0.10
+        smart_dca_curve = build_smart_dca_curve(low_risk_weight, high_risk_weight)
 
     st.divider()
 
@@ -2915,7 +2932,7 @@ genesis = dt.date(2009, 1, 3)
 if mode == "DCA Backtest":
     start_date = dca_backtest_start_date
     end_date = dca_backtest_end_date
-else:  # DCA Today: use a trailing history window to calculate today's risk.
+else:
     end_date = today
     start_date = today - dt.timedelta(days=365 * 4)
 
@@ -3942,4 +3959,229 @@ elif mode == "DCA Today":
             "The experimental full-deployment gate can only open below risk 0.01 when enough historical "
             "analogues exist and the estimated chance of a materially better entry is low."
         )
+
+# ================================================================
+# My Portfolio
+# ================================================================
+
+elif mode == "My Portfolio":
+    st.header("My Portfolio")
+    st.caption(
+        "Track direct BTC and the Australian iShares Bitcoin ETF (ASX: IBIT). "
+        "IBIT entries are reported as BTC-equivalent exposure — ETF units are not direct ownership of bitcoin."
+    )
+
+    st.info(
+        "Australian IBIT only: iShares Bitcoin ETF, ASX ticker IBIT, Australian domicile, "
+        "ISIN AU0000424780. Default brokerage per ETF buy is A$3."
+    )
+
+    portfolio_cols = [
+        "Date",
+        "Asset",
+        "AUD Spent",
+        "Brokerage / Fee AUD",
+        "Units / BTC Received",
+        "BTC AUD Price",
+    ]
+    portfolio_df = pd.DataFrame(columns=portfolio_cols)
+
+    uploaded_portfolio = st.file_uploader(
+        "Load portfolio CSV (optional)", type=["csv"], key="portfolio_csv_upload"
+    )
+    if uploaded_portfolio is not None:
+        try:
+            portfolio_df = pd.read_csv(uploaded_portfolio)
+            for col in portfolio_cols:
+                if col not in portfolio_df.columns:
+                    if col == "Asset":
+                        portfolio_df[col] = "ASX:IBIT"
+                    elif col == "Date":
+                        portfolio_df[col] = ""
+                    else:
+                        portfolio_df[col] = 0.0
+            portfolio_df = portfolio_df[portfolio_cols]
+        except Exception as exc:
+            st.error(f"Could not read portfolio CSV: {exc}")
+            portfolio_df = pd.DataFrame(columns=portfolio_cols)
+
+    starting_portfolio_capital = st.number_input(
+        "Starting Deployment Capital (AUD)",
+        min_value=0.0,
+        value=float(st.session_state.get("portfolio_starting_capital", 500000.0)),
+        step=10000.0,
+        format="%.2f",
+        key="portfolio_starting_capital_input",
+    )
+
+    st.subheader("Purchases")
+    st.caption(
+        "For ASX:IBIT enter units bought and total AUD trade value. Brokerage defaults to A$3. "
+        "For Direct BTC enter BTC received. BTC AUD Price is used to calculate the ETF's BTC-equivalent exposure."
+    )
+
+    # Seed one convenient blank Australian IBIT row on first use.
+    if portfolio_df.empty:
+        portfolio_df = pd.DataFrame([{
+            "Date": dt.date.today().isoformat(),
+            "Asset": "ASX:IBIT",
+            "AUD Spent": 0.0,
+            "Brokerage / Fee AUD": 3.0,
+            "Units / BTC Received": 0.0,
+            "BTC AUD Price": 0.0,
+        }])
+
+    edited_portfolio = st.data_editor(
+        portfolio_df,
+        num_rows="dynamic",
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "Asset": st.column_config.SelectboxColumn(
+                "Asset",
+                options=["ASX:IBIT", "Direct BTC"],
+                required=True,
+            ),
+            "AUD Spent": st.column_config.NumberColumn(
+                "AUD Spent", min_value=0.0, format="A$%.2f"
+            ),
+            "Brokerage / Fee AUD": st.column_config.NumberColumn(
+                "Brokerage / Fee AUD", min_value=0.0, default=3.0, format="A$%.2f"
+            ),
+            "Units / BTC Received": st.column_config.NumberColumn(
+                "Units / BTC Received", min_value=0.0, format="%.8f"
+            ),
+            "BTC AUD Price": st.column_config.NumberColumn(
+                "BTC AUD Price", min_value=0.0, format="A$%.2f"
+            ),
+        },
+        key="portfolio_editor",
+    )
+
+    clean = edited_portfolio.copy()
+    for col in ["AUD Spent", "Brokerage / Fee AUD", "Units / BTC Received", "BTC AUD Price"]:
+        clean[col] = pd.to_numeric(clean[col], errors="coerce").fillna(0.0)
+
+    # Calculate BTC-equivalent exposure per transaction.
+    #
+    # ASX:IBIT:
+    #   trade value excluding brokerage / BTC-AUD price on transaction date
+    # This is the economic BTC-equivalent represented by the AUD value committed to the ETF.
+    # It is deliberately labelled equivalent exposure, not direct BTC ownership.
+    #
+    # Direct BTC:
+    #   uses the actual BTC received entered by the user.
+    clean["BTC Equivalent"] = 0.0
+    ibit_mask = clean["Asset"].eq("ASX:IBIT")
+    direct_mask = clean["Asset"].eq("Direct BTC")
+
+    # Treat "AUD Spent" as the ETF trade consideration excluding brokerage.
+    valid_ibit = ibit_mask & (clean["BTC AUD Price"] > 0)
+    clean.loc[valid_ibit, "BTC Equivalent"] = (
+        clean.loc[valid_ibit, "AUD Spent"] / clean.loc[valid_ibit, "BTC AUD Price"]
+    )
+    clean.loc[direct_mask, "BTC Equivalent"] = clean.loc[direct_mask, "Units / BTC Received"]
+
+    # Useful audit fields for ETF buys.
+    clean["ETF Unit Price AUD"] = np.nan
+    valid_units = ibit_mask & (clean["Units / BTC Received"] > 0)
+    clean.loc[valid_units, "ETF Unit Price AUD"] = (
+        clean.loc[valid_units, "AUD Spent"] / clean.loc[valid_units, "Units / BTC Received"]
+    )
+    clean["BTC Eq / ETF Unit"] = np.nan
+    valid_eq_unit = valid_units & (clean["BTC AUD Price"] > 0)
+    clean.loc[valid_eq_unit, "BTC Eq / ETF Unit"] = (
+        clean.loc[valid_eq_unit, "ETF Unit Price AUD"] /
+        clean.loc[valid_eq_unit, "BTC AUD Price"]
+    )
+
+    total_trade_value = float(clean["AUD Spent"].sum())
+    total_fees = float(clean["Brokerage / Fee AUD"].sum())
+    total_cash_out = total_trade_value + total_fees
+    total_btc_equivalent = float(clean["BTC Equivalent"].sum())
+    direct_btc = float(clean.loc[direct_mask, "BTC Equivalent"].sum())
+    ibit_btc_equivalent = float(clean.loc[ibit_mask, "BTC Equivalent"].sum())
+    ibit_units = float(clean.loc[ibit_mask, "Units / BTC Received"].sum())
+    capital_remaining = max(0.0, float(starting_portfolio_capital) - total_cash_out)
+    avg_cost = total_cash_out / total_btc_equivalent if total_btc_equivalent > 0 else np.nan
+
+    st.session_state["portfolio_starting_capital"] = float(starting_portfolio_capital)
+    st.session_state["portfolio_capital_remaining"] = float(capital_remaining)
+
+    p1, p2, p3, p4 = st.columns(4)
+    p1.metric("Total BTC Exposure", f"{total_btc_equivalent:.8f} BTC-eq")
+    p2.metric("ASX:IBIT Units", f"{ibit_units:,.4f}")
+    p3.metric("Capital Remaining", f"A${capital_remaining:,.0f}")
+    p4.metric(
+        "Average Cost",
+        "n/a" if not np.isfinite(avg_cost) else f"A${avg_cost:,.0f}/BTC-eq"
+    )
+
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("IBIT BTC-equivalent", f"{ibit_btc_equivalent:.8f}")
+    q2.metric("Direct BTC", f"{direct_btc:.8f}")
+    q3.metric("Trade Value", f"A${total_trade_value:,.0f}")
+    q4.metric("Brokerage / Fees", f"A${total_fees:,.2f}")
+
+    st.subheader("Calculated Transactions")
+    display_cols = [
+        "Date", "Asset", "AUD Spent", "Brokerage / Fee AUD",
+        "Units / BTC Received", "ETF Unit Price AUD", "BTC AUD Price",
+        "BTC Eq / ETF Unit", "BTC Equivalent"
+    ]
+    st.dataframe(clean[display_cols], width="stretch", hide_index=True)
+
+    st.caption(
+        "For ASX:IBIT, BTC-equivalent is calculated from the transaction's AUD trade value divided "
+        "by BTC's AUD price on that date. This measures economic bitcoin exposure at purchase; "
+        "it is not a claim that you directly own that amount of bitcoin inside the ETF."
+    )
+
+    st.download_button(
+        "Download Portfolio CSV",
+        data=clean.to_csv(index=False).encode("utf-8"),
+        file_name="btc_portfolio_asx_ibit.csv",
+        mime="text/csv",
+        key="portfolio_download",
+    )
+
+    st.subheader("Decision History")
+    st.caption("Optional audit trail: what the model showed versus what you actually bought.")
+
+    decision_cols = [
+        "Date", "BTC Price AUD", "Risk", "Better Entry Chance %",
+        "Model Recommendation AUD", "Actual Purchase AUD", "Asset"
+    ]
+    decision_df = pd.DataFrame(columns=decision_cols)
+
+    decision_upload = st.file_uploader(
+        "Load decision-history CSV (optional)", type=["csv"], key="decision_csv_upload"
+    )
+    if decision_upload is not None:
+        try:
+            decision_df = pd.read_csv(decision_upload)
+            for col in decision_cols:
+                if col not in decision_df.columns:
+                    decision_df[col] = ""
+            decision_df = decision_df[decision_cols]
+        except Exception as exc:
+            st.error(f"Could not read decision-history CSV: {exc}")
+            decision_df = pd.DataFrame(columns=decision_cols)
+
+    edited_decisions = st.data_editor(
+        decision_df, num_rows="dynamic", width="stretch", hide_index=True,
+        key="decision_history_editor"
+    )
+    st.download_button(
+        "Download Decision History CSV",
+        data=edited_decisions.to_csv(index=False).encode("utf-8"),
+        file_name="btc_dca_decision_history.csv",
+        mime="text/csv",
+        key="decision_download",
+    )
+
+    st.info(
+        "After updating purchases, download the portfolio CSV. Upload it next time to restore "
+        "your purchases. DCA Today will use the remaining-capital value during the same session."
+    )
 
