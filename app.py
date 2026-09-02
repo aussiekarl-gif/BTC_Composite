@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V4.0 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V4.1 FULL
 ====================================================
 
 Designed for:
@@ -157,6 +157,7 @@ DEFAULT_OPPORTUNITY_NEIGHBORS = 40
 DEFAULT_OPPORTUNITY_MIN_HISTORY = 120
 DEFAULT_OPPORTUNITY_LEARNED_WEIGHT = 0.70
 DEFAULT_OPPORTUNITY_VALUATION_WEIGHT = 0.30
+DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
 
 DCA_CURVE_PRESETS = {
     "Conservative": [
@@ -1774,6 +1775,92 @@ def simulate_dca_backtest(
     return result, summary
 
 
+def apply_equal_capital_allocator(
+    result_df,
+    total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD,
+    fee_pct=0.0,
+):
+    """
+    Allocate a hard fixed lifetime budget across the already-selected historical
+    execution dates using the strategy's relative DCA weights.
+
+    Unlike post-hoc comparison normalization, this produces an explicit
+    contribution schedule whose total contributions equal the chosen budget.
+    The timing weights are preserved, but the strategy cannot invest more than
+    the fixed budget.
+
+    This is a historical research allocator, not a future-price forecast.
+    """
+    if result_df.empty or total_budget_aud <= 0:
+        return pd.DataFrame(), {}
+
+    out = result_df.copy().reset_index(drop=True)
+
+    weights = pd.to_numeric(
+        out["actual_buy_aud"], errors="coerce"
+    ).fillna(0.0).clip(lower=0.0)
+
+    total_weight = float(weights.sum())
+    if total_weight <= 0:
+        return pd.DataFrame(), {}
+
+    contributions = weights / total_weight * float(total_budget_aud)
+
+    # Force exact budget equality despite floating-point accumulation.
+    if len(contributions) > 0:
+        contributions.iloc[-1] += float(total_budget_aud) - float(contributions.sum())
+
+    btc = 0.0
+    cumulative = 0.0
+    fees = 0.0
+    replay_rows = []
+
+    for i, row in out.iterrows():
+        contribution = float(contributions.iloc[i])
+        fee = contribution * float(fee_pct)
+        net = max(0.0, contribution - fee)
+        price_aud = float(row["btc_price_aud"])
+        btc_bought = net / price_aud if price_aud > 0 else 0.0
+
+        btc += btc_bought
+        cumulative += contribution
+        fees += fee
+        btc_value = btc * price_aud
+
+        replay = row.to_dict()
+        replay.update(
+            {
+                "actual_buy_aud": contribution,
+                "btc_bought": btc_bought,
+                "btc_held": btc,
+                "cumulative_invested_aud": cumulative,
+                "cumulative_fees_aud": fees,
+                "btc_value_aud": btc_value,
+                "pnl_aud": btc_value - cumulative,
+                "roi_pct": (
+                    (btc_value / cumulative - 1.0) * 100.0
+                    if cumulative > 0 else 0.0
+                ),
+                "avg_cost_aud": cumulative / btc if btc > 0 else 0.0,
+            }
+        )
+        replay_rows.append(replay)
+
+    replay_df = pd.DataFrame(replay_rows)
+    final = replay_df.iloc[-1]
+
+    summary = {
+        "budget_aud": float(total_budget_aud),
+        "total_invested_aud": float(final["cumulative_invested_aud"]),
+        "btc_held": float(final["btc_held"]),
+        "btc_value_aud": float(final["btc_value_aud"]),
+        "avg_cost_aud": float(final["avg_cost_aud"]),
+        "roi_pct": float(final["roi_pct"]),
+        "fees_aud": float(final["cumulative_fees_aud"]),
+    }
+    return replay_df, summary
+
+
 def normalize_dca_to_target_capital(
     result_df,
     target_total_aud,
@@ -2219,12 +2306,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V4.0 FULL",
+    page_title="BTC Dynamic DCA V4.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V4.0 FULL — Buy Low / Sell High")
-st.caption("Version 4.0 FULL • Opportunity Engine • Walk-Forward Historical Analogues • Calibrated 0–1 Risk")
+st.title("Bitcoin Dynamic DCA V4.1 FULL — Buy Low / Sell High")
+st.caption("Version 4.1 FULL • Opportunity Engine • Walk-Forward Historical Analogues • Calibrated 0–1 Risk")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
 # ------------------------------------------------
@@ -2310,6 +2397,20 @@ with st.sidebar:
             help=(
                 "Selects the best curve on the first 70% of the period, "
                 "then checks it on the untouched final 30%."
+            ),
+        )
+
+        st.markdown("**Equal-Capital Intelligent Allocator**")
+        intelligent_dca_budget_aud = st.number_input(
+            "Total Backtest Budget (AUD)",
+            min_value=10000.0,
+            max_value=10000000.0,
+            value=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD,
+            step=10000.0,
+            format="%.0f",
+            help=(
+                "Hard lifetime budget used for the equal-capital comparison. "
+                "Default is A$500,000. Every compared strategy is allocated exactly this amount."
             ),
         )
 
@@ -3702,20 +3803,20 @@ elif mode == "DCA Backtest":
 
         st.subheader("Capital-Normalized Comparison")
         st.caption(
-            "For a fair timing comparison, Risk-Scaled and Risk-Gated contributions "
-            "are rescaled so each strategy invests exactly the same total AUD as Plain DCA."
+            f"Hard equal-capital test: every strategy receives exactly "
+            f"A${capital_target:,.0f}. The only difference is when that money is deployed."
         )
 
-        capital_target = plain_summary["total_invested_aud"]
+        capital_target = float(intelligent_dca_budget_aud)
 
-        _, plain_norm = normalize_dca_to_target_capital(
+        _, plain_norm = apply_equal_capital_allocator(
             plain_df,
-            capital_target,
+            total_budget_aud=capital_target,
             fee_pct=params.get("fee_pct", 0.0),
         )
-        _, gated_norm = normalize_dca_to_target_capital(
+        _, gated_norm = apply_equal_capital_allocator(
             gated_df,
-            capital_target,
+            total_budget_aud=capital_target,
             fee_pct=params.get("fee_pct", 0.0),
         )
 
@@ -3735,9 +3836,9 @@ elif mode == "DCA Backtest":
         ]
 
         for _curve_name, (_curve_df, _curve_sm) in curve_results.items():
-            _, _norm = normalize_dca_to_target_capital(
+            _, _norm = apply_equal_capital_allocator(
                 _curve_df,
-                capital_target,
+                total_budget_aud=capital_target,
                 fee_pct=params.get("fee_pct", 0.0),
             )
             if _norm:
@@ -3762,9 +3863,9 @@ elif mode == "DCA Backtest":
                     }
                 )
 
-        _, opportunity_norm = normalize_dca_to_target_capital(
+        _, opportunity_norm = apply_equal_capital_allocator(
             opportunity_df,
-            capital_target,
+            total_budget_aud=capital_target,
             fee_pct=params.get("fee_pct", 0.0),
         )
 
@@ -3813,6 +3914,20 @@ elif mode == "DCA Backtest":
             )
 
         normalized_table = pd.DataFrame(normalized_rows)
+
+        b1, b2, b3 = st.columns(3)
+        b1.metric("Equal-Capital Budget", f"A${capital_target:,.0f}")
+        b2.metric("Plain DCA BTC", f"{plain_norm['btc_held']:.6f}")
+        if opportunity_norm:
+            opp_adv = (
+                opportunity_norm["btc_held"] / plain_norm["btc_held"] - 1.0
+            ) * 100.0 if plain_norm["btc_held"] > 0 else np.nan
+            b3.metric(
+                "Opportunity BTC Advantage",
+                f"{opp_adv:+.2f}%",
+            )
+        else:
+            b3.metric("Opportunity BTC Advantage", "n/a")
 
         st.dataframe(
             normalized_table.style.format(
