@@ -2309,12 +2309,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.2 FULL",
+    page_title="BTC Dynamic DCA V5.2.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.2 FULL — Smart DCA")
-st.caption("Version 5.2 FULL • Backtest + DCA Today • Calibrated 0–1 Risk")
+st.title("Bitcoin Dynamic DCA V5.2.1 FULL — Smart DCA")
+st.caption("Version 5.2.1 FULL • Backtest + DCA Today • Calibrated 0–1 Risk")
 st.caption("Simple two-mode app • test the strategy, then use the same strategy today")
 
 # ------------------------------------------------
@@ -3628,7 +3628,7 @@ elif mode == "DCA Today":
     usd_per_aud = float(latest["usd_per_aud"]) if pd.notna(latest.get("usd_per_aud", np.nan)) else np.nan
     current_price_aud = current_price_usd / usd_per_aud if np.isfinite(usd_per_aud) and usd_per_aud > 0 else np.nan
 
-    risk_weight = float(interpolate_points(current_risk, smart_dca_curve))
+    risk_weight = float(interpolate(smart_dca_curve, current_risk))
     days_remaining = max((target_deployment_date - dt.date.today()).days, 7)
     weeks_remaining = max(days_remaining / 7.0, 1.0)
     normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
