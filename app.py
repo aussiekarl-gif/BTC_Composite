@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6.4 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6.5 FULL
 ====================================================
 
 Designed for:
@@ -1622,12 +1622,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V3.6.4 FULL",
+    page_title="BTC Dynamic DCA V3.6.5 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.6.4 FULL — Buy Low / Sell High")
-st.caption("Version 3.6.3 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
+st.title("Bitcoin Dynamic DCA V3.6.5 FULL — Buy Low / Sell High")
+st.caption("Version 3.6.5 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
 # ------------------------------------------------
@@ -1688,18 +1688,20 @@ with st.sidebar:
         )
 
         dca_backtest_start_date = st.date_input(
-            "Backtest Start Date",
+            "Start Date",
             value=dt.date(2015, 1, 1),
             min_value=dt.date(2012, 1, 1),
             max_value=dt.date.today(),
+            format="DD/MM/YYYY",
             key="sidebar_dca_backtest_start_date",
         )
 
         dca_backtest_end_date = st.date_input(
-            "Backtest End Date",
+            "End Date",
             value=dt.date.today(),
             min_value=dt.date(2012, 1, 1),
             max_value=dt.date.today(),
+            format="DD/MM/YYYY",
             key="sidebar_dca_backtest_end_date",
         )
 
@@ -2073,6 +2075,7 @@ if mode == "Historical Backtest":
         min_value=genesis,
         max_value=today,
         format="DD/MM/YYYY",
+        key="historical_backtest_start_date",
     )
 
     end_date = st.sidebar.date_input(
@@ -2081,7 +2084,13 @@ if mode == "Historical Backtest":
         min_value=start_date,
         max_value=today,
         format="DD/MM/YYYY",
+        key="historical_backtest_end_date",
     )
+
+elif mode == "DCA Backtest":
+    # Use only the DCA Backtest dates defined in the left sidebar.
+    start_date = dca_backtest_start_date
+    end_date = dca_backtest_end_date
 
 else:
     start_date = st.sidebar.date_input(
@@ -2089,6 +2098,7 @@ else:
         value=today,
         min_value=today,
         format="DD/MM/YYYY",
+        key="forward_deployment_start_date",
     )
 
     end_date = st.sidebar.date_input(
@@ -2096,6 +2106,7 @@ else:
         value=today + timedelta(days=90),
         min_value=start_date + timedelta(days=1),
         format="DD/MM/YYYY",
+        key="forward_deployment_end_date",
     )
 
     st.sidebar.divider()
