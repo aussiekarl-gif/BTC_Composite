@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.5.2.1 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.5.3.1 FULL
 ====================================================
 
 Designed for:
@@ -600,7 +600,7 @@ def _expanding_percentile(series, min_periods=180, rolling_window=1460):
 
 def add_risk_indicators(data, risk_model, params):
     """
-    V3.5.2 valuation risk engine.
+    V3.5.3 valuation risk engine.
 
     Design goals:
       * stronger relationship with BTC valuation / price regime
@@ -1078,7 +1078,7 @@ def dca_day_signal(risk, buy_threshold, sell_threshold):
 
 
 def simulate_dynamic_dca(df_full, params):
-    """V3.5.2: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
+    """V3.5.3: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
     if df_full.empty: return pd.DataFrame(), {}
     df=df_full[(df_full.index>=params["start_date"]) & (df_full.index<=params["end_date"])].copy()
     if df.empty: return pd.DataFrame(), {}
@@ -1145,9 +1145,9 @@ def simulate_dynamic_dca(df_full, params):
     result=pd.DataFrame(trades)
     if result.empty: return result,{}
 
-    # V3.5.2 execution invariants.
+    # V3.5.3 execution invariants.
     if ((result["buy_aud"] > 0) & (result["sell_btc"] > 0)).any():
-        raise RuntimeError("V3.5.2 invariant failed: simultaneous BUY and SELL.")
+        raise RuntimeError("V3.5.3 invariant failed: simultaneous BUY and SELL.")
 
     if (
         (result["buy_aud"] > 0)
@@ -1156,7 +1156,7 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] > buy_th)
         )
     ).any():
-        raise RuntimeError("V3.5.2 invariant failed: BUY outside BUY zone.")
+        raise RuntimeError("V3.5.3 invariant failed: BUY outside BUY zone.")
 
     if (
         (result["sell_btc"] > 0)
@@ -1165,14 +1165,14 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] < sell_th)
         )
     ).any():
-        raise RuntimeError("V3.5.2 invariant failed: SELL outside SELL zone.")
+        raise RuntimeError("V3.5.3 invariant failed: SELL outside SELL zone.")
 
     if (result["cash_aud"] < -0.01).any() or (result["btc_held"] < -1e-12).any():
-        raise RuntimeError("V3.5.2 invariant failed: negative cash or BTC.")
+        raise RuntimeError("V3.5.3 invariant failed: negative cash or BTC.")
 
     hard_buy_cap = capital * float(params.get("max_period_pct", DEFAULT_MAX_PERIOD_PCT))
     if (result["buy_aud"] > hard_buy_cap + 0.01).any():
-        raise RuntimeError("V3.5.2 invariant failed: BUY above hard cap.")
+        raise RuntimeError("V3.5.3 invariant failed: BUY above hard cap.")
     final=result.iloc[-1]; years=max((result.date.iloc[-1]-result.date.iloc[0]).days/365.25,1/365.25); endw=float(final.total_wealth_aud)
     rets=result.total_wealth_aud.pct_change().dropna(); ppy={"Daily":365.0,"Weekly":52.0,"Monthly":12.0}.get(params["frequency"],52.0)
     sharpe=float(rets.mean()/rets.std()*np.sqrt(ppy)) if len(rets)>1 and rets.std()>0 else np.nan; down=rets[rets<0]; sortino=float(rets.mean()/down.std()*np.sqrt(ppy)) if len(down)>1 and down.std()>0 else np.nan
@@ -1373,7 +1373,7 @@ def build_forward_plan(
 
 
 # ================================================================
-# Walk-forward Optimisation (V3.5.2)
+# Walk-forward Optimisation (V3.5.3)
 # ================================================================
 
 def normalized_percentile_score(frame):
@@ -1420,11 +1420,11 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.5.2.1 FULL",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.5.3.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.5.2.1 FULL — Buy Low / Sell High")
+st.title("Bitcoin Dynamic DCA V3.5.3.1 FULL — Buy Low / Sell High")
 st.caption("Version 3.4.1 FULL • CALIBRATED 0–1 RISK • STRICT BUY-LOW / HOLD / SELL-HIGH • Optimized Trend Replica ENABLED • Build 2026-09-02 • Risk Engine Hotfix")
 st.caption(
     "Composite on-chain/technical risk + valuation + time deployment + deployment pressure + "
@@ -1490,7 +1490,7 @@ with st.sidebar:
     risk_model = st.radio(
         "Risk Metric",
         [
-            "Composite V3.5.2",
+            "Composite V3.5.3",
             "Power Law Trend",
             "SMA Ratio (200-day)",
         ],
@@ -1502,7 +1502,7 @@ with st.sidebar:
         "1 = very expensive / low allocation."
     )
 
-    st.subheader("V3.5.2 Valuation Risk Weights")
+    st.subheader("V3.5.3 Valuation Risk Weights")
     weight_mvrv = st.slider("MVRV Z-Score Weight", 0.0, 1.0, 0.30, 0.05)
     weight_power_law = st.slider("Power Law Weight", 0.0, 1.0, 0.25, 0.05)
     weight_mayer = st.slider("Mayer Multiple Weight", 0.0, 1.0, 0.20, 0.05)
@@ -2719,12 +2719,22 @@ else:
         ]
     ]
 
+    expected_forward_columns = 10
+    if display_plan.shape[1] != expected_forward_columns:
+        st.error(
+            f"Forward table schema mismatch: expected {expected_forward_columns} columns, "
+            f"received {display_plan.shape[1]}."
+        )
+        st.stop()
+
     display_plan.columns = [
         "Date",
         "Risk",
-        "DCA Mult.",
-        "Time Progress",
-        "Time Target",
+        "DCA Today?",
+        "DCA Quality",
+        "BUY Mult.",
+        "Decision",
+        "Base DCA",
         "Planned Buy",
         "Cumulative Planned",
         "Capital Remaining",
@@ -2752,7 +2762,7 @@ else:
 with st.expander("How the new Dynamic DCA engine works"):
     st.markdown(
         """
-### 1. Time-based deployment
+### 1. Fixed base DCA
 
 The model calculates how much of the starting capital would normally
 have been deployed by each point in the selected period.
@@ -2766,7 +2776,7 @@ The risk score is converted into a smooth multiplier:
 - High risk / expensive BTC -> smaller purchase
 - Extreme risk -> potentially zero new purchases
 
-### 3. Deployment pressure
+### 3. No forced deployment
 
 The model compares:
 
