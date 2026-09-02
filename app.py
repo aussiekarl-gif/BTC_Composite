@@ -2444,12 +2444,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.6 FULL",
+    page_title="BTC Dynamic DCA V5.6.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.6 FULL — Smart DCA")
-st.caption("Version 5.6 FULL • Backtest + DCA Today • Opportunity Probability")
+st.title("Bitcoin Dynamic DCA V5.6.1 FULL — Smart DCA")
+st.caption("Version 5.6.1 FULL • Backtest + DCA Today • Opportunity Probability")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -4016,14 +4016,15 @@ elif mode == "My Portfolio":
 
     st.subheader("Purchases")
     st.caption(
-        "For ASX:IBIT enter units bought and total AUD trade value. Brokerage defaults to A$3. "
-        "For Direct BTC enter BTC received. BTC AUD Price is used to calculate the ETF's BTC-equivalent exposure."
+        "For ASX:IBIT enter the purchase date as DD/MM/YY, units bought and total AUD trade value. "
+        "Brokerage defaults to A$3. The app automatically looks up BTC/AUD for the purchase date "
+        "and calculates BTC-equivalent exposure. For Direct BTC, enter the actual BTC received."
     )
 
     # Seed one convenient blank Australian IBIT row on first use.
     if portfolio_df.empty:
         portfolio_df = pd.DataFrame([{
-            "Date": dt.date.today().isoformat(),
+            "Date": dt.date.today().strftime("%d/%m/%y"),
             "Asset": "ASX:IBIT",
             "AUD Spent": 0.0,
             "Brokerage / Fee AUD": 3.0,
@@ -4037,6 +4038,10 @@ elif mode == "My Portfolio":
         width="stretch",
         hide_index=True,
         column_config={
+            "Date": st.column_config.TextColumn(
+                "Date (DD/MM/YY)",
+                help="Australian date format, e.g. 02/09/26",
+            ),
             "Asset": st.column_config.SelectboxColumn(
                 "Asset",
                 options=["ASX:IBIT", "Direct BTC"],
@@ -4052,7 +4057,7 @@ elif mode == "My Portfolio":
                 "Units / BTC Received", min_value=0.0, format="%.8f"
             ),
             "BTC AUD Price": st.column_config.NumberColumn(
-                "BTC AUD Price", min_value=0.0, format="A$%.2f"
+                "BTC AUD Price (auto)", min_value=0.0, format="A$%.2f", disabled=True
             ),
         },
         key="portfolio_editor",
@@ -4061,6 +4066,59 @@ elif mode == "My Portfolio":
     clean = edited_portfolio.copy()
     for col in ["AUD Spent", "Brokerage / Fee AUD", "Units / BTC Received", "BTC AUD Price"]:
         clean[col] = pd.to_numeric(clean[col], errors="coerce").fillna(0.0)
+
+    # Australian date format: DD/MM/YY. Also accept ISO dates from older V5.6 CSVs.
+    def _parse_portfolio_date(value):
+        if pd.isna(value):
+            return pd.NaT
+        s = str(value).strip()
+        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return pd.Timestamp(dt.datetime.strptime(s, fmt).date())
+            except Exception:
+                pass
+        return pd.to_datetime(s, dayfirst=True, errors="coerce")
+
+    clean["_purchase_date"] = clean["Date"].apply(_parse_portfolio_date)
+
+    # Automatically populate BTC/AUD for ASX:IBIT rows from the same BTC + FX data
+    # used elsewhere in the app. This avoids manual BTC price entry.
+    ibit_dates = clean.loc[
+        clean["Asset"].eq("ASX:IBIT") & clean["_purchase_date"].notna(),
+        "_purchase_date"
+    ]
+    if not ibit_dates.empty:
+        lookup_start = ibit_dates.min().date() - dt.timedelta(days=7)
+        lookup_end = max(ibit_dates.max().date(), dt.date.today())
+        try:
+            btc_lookup = fetch_btc_history(lookup_start, lookup_end)
+            fx_lookup = fetch_aud_usd_rates(lookup_start, lookup_end)
+            if btc_lookup is not None and not btc_lookup.empty and fx_lookup:
+                lookup = btc_lookup[["price"]].copy()
+                lookup["lookup_date"] = pd.to_datetime(lookup.index, utc=True).date
+                fx_series = pd.Series(fx_lookup, dtype=float)
+                fx_series.index = pd.to_datetime(fx_series.index).date
+                lookup["usd_per_aud"] = lookup["lookup_date"].map(fx_series)
+                lookup["usd_per_aud"] = lookup["usd_per_aud"].ffill().bfill()
+                lookup["btc_aud_auto"] = lookup["price"] / lookup["usd_per_aud"]
+                daily_btc_aud = (
+                    lookup.dropna(subset=["btc_aud_auto"])
+                    .groupby("lookup_date")["btc_aud_auto"]
+                    .last()
+                )
+                for row_idx in clean.index[clean["Asset"].eq("ASX:IBIT")]:
+                    pd_date = clean.at[row_idx, "_purchase_date"]
+                    if pd.isna(pd_date):
+                        continue
+                    d = pd_date.date()
+                    if d in daily_btc_aud.index:
+                        clean.at[row_idx, "BTC AUD Price"] = float(daily_btc_aud.loc[d])
+                    else:
+                        prior = daily_btc_aud[daily_btc_aud.index <= d]
+                        if not prior.empty:
+                            clean.at[row_idx, "BTC AUD Price"] = float(prior.iloc[-1])
+        except Exception as exc:
+            st.warning(f"Could not automatically load BTC/AUD for one or more purchases: {exc}")
 
     # Calculate BTC-equivalent exposure per transaction.
     #
@@ -4124,6 +4182,9 @@ elif mode == "My Portfolio":
     q4.metric("Brokerage / Fees", f"A${total_fees:,.2f}")
 
     st.subheader("Calculated Transactions")
+    clean["Date"] = clean["_purchase_date"].apply(
+        lambda x: x.strftime("%d/%m/%y") if pd.notna(x) else ""
+    )
     display_cols = [
         "Date", "Asset", "AUD Spent", "Brokerage / Fee AUD",
         "Units / BTC Received", "ETF Unit Price AUD", "BTC AUD Price",
@@ -4132,14 +4193,16 @@ elif mode == "My Portfolio":
     st.dataframe(clean[display_cols], width="stretch", hide_index=True)
 
     st.caption(
-        "For ASX:IBIT, BTC-equivalent is calculated from the transaction's AUD trade value divided "
-        "by BTC's AUD price on that date. This measures economic bitcoin exposure at purchase; "
-        "it is not a claim that you directly own that amount of bitcoin inside the ETF."
+        "For ASX:IBIT, the app calculates the ETF unit price from AUD spent ÷ units, automatically "
+        "looks up BTC/AUD for the purchase date, then estimates BTC-equivalent exposure as AUD trade "
+        "value ÷ BTC/AUD. This is an economic exposure estimate, not the exact bitcoin legally held "
+        "for each ETF unit."
     )
 
+    export_clean = clean.drop(columns=["_purchase_date"], errors="ignore")
     st.download_button(
         "Download Portfolio CSV",
-        data=clean.to_csv(index=False).encode("utf-8"),
+        data=export_clean.to_csv(index=False).encode("utf-8"),
         file_name="btc_portfolio_asx_ibit.csv",
         mime="text/csv",
         key="portfolio_download",
