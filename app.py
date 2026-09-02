@@ -2309,13 +2309,13 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.1 FULL",
+    page_title="BTC Dynamic DCA V5.2 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.0 FULL — Variable Conviction Smart DCA")
-st.caption("Version 5.1 FULL • Variable Conviction Smart DCA • Equal-Capital Test • Calibrated 0–1 Risk")
-st.caption("Two-mode app • variable Smart DCA conviction • no forward planner")
+st.title("Bitcoin Dynamic DCA V5.2 FULL — Smart DCA")
+st.caption("Version 5.2 FULL • Backtest + DCA Today • Calibrated 0–1 Risk")
+st.caption("Simple two-mode app • test the strategy, then use the same strategy today")
 
 # ------------------------------------------------
 # Sidebar
@@ -2327,8 +2327,8 @@ with st.sidebar:
     mode = st.radio(
         "Analysis Mode",
         [
-            "Historical Backtest",
             "DCA Backtest",
+            "DCA Today",
         ],
     )
 
@@ -2354,8 +2354,6 @@ with st.sidebar:
             index=1,
             key="dca_backtest_frequency",
         )
-
-        # V5 DCA Backtest: fixed-budget research, no base-DCA sizing control.
         dca_base_amount_aud = DEFAULT_FIXED_DCA_AUD
 
         intelligent_dca_budget_aud = st.number_input(
@@ -2371,19 +2369,15 @@ with st.sidebar:
         st.subheader("Smart DCA Conviction")
         low_risk_weight = st.slider(
             "Low-risk buy weight (risk 0.00)",
-            min_value=2.0,
-            max_value=10.0,
-            value=5.0,
-            step=0.25,
+            min_value=2.0, max_value=10.0, value=5.0, step=0.25,
             help="How strongly Smart DCA favors the cheapest valuation periods.",
+            key="backtest_low_risk_weight",
         )
         high_risk_weight = st.slider(
             "High-risk buy weight (risk 1.00)",
-            min_value=0.01,
-            max_value=0.50,
-            value=0.10,
-            step=0.01,
+            min_value=0.01, max_value=0.50, value=0.10, step=0.01,
             help="Very small values preserve most capital during expensive valuation periods.",
+            key="backtest_high_risk_weight",
         )
         smart_dca_curve = build_smart_dca_curve(low_risk_weight, high_risk_weight)
         conviction_ratio = low_risk_weight / high_risk_weight
@@ -2393,68 +2387,74 @@ with st.sidebar:
         )
 
         dca_backtest_start_date = st.date_input(
-            "Start Date",
-            value=dt.date(2015, 1, 1),
-            min_value=dt.date(2012, 1, 1),
-            max_value=dt.date.today(),
-            format="DD/MM/YYYY",
-            key="sidebar_dca_backtest_start_date",
+            "Start Date", value=dt.date(2015, 1, 1),
+            min_value=dt.date(2012, 1, 1), max_value=dt.date.today(),
+            format="DD/MM/YYYY", key="sidebar_dca_backtest_start_date",
         )
-
         dca_backtest_end_date = st.date_input(
-            "End Date",
-            value=dt.date.today(),
-            min_value=dt.date(2012, 1, 1),
-            max_value=dt.date.today(),
-            format="DD/MM/YYYY",
-            key="sidebar_dca_backtest_end_date",
+            "End Date", value=dt.date.today(),
+            min_value=dt.date(2012, 1, 1), max_value=dt.date.today(),
+            format="DD/MM/YYYY", key="sidebar_dca_backtest_end_date",
         )
-
         if dca_backtest_start_date >= dca_backtest_end_date:
             st.error("Backtest Start Date must be before Backtest End Date.")
 
         selected_day_name = st.selectbox(
-            "Weekly Execution Day",
-            list(day_map.keys()),
-            index=0,
-            disabled=(dca_frequency != "Weekly"),
-            key="dca_backtest_weekday",
+            "Weekly Execution Day", list(day_map.keys()), index=0,
+            disabled=(dca_frequency != "Weekly"), key="dca_backtest_weekday",
         )
         selected_day = day_map[selected_day_name]
-
-        # Compatibility values. DCA Backtest does not use a capital ceiling.
         total_capital_aud = 0.0
         frequency = dca_frequency
 
         st.caption(
-            "One simple test: same total budget, same dates, same fees. "
-            "Plain DCA invests evenly; Smart DCA strongly tilts toward lower-risk periods using only two conviction controls."
+            "Same budget and dates. Plain DCA invests evenly; Smart DCA tilts capital toward lower-risk periods."
         )
 
-    else:
-        st.header("Capital")
+    else:  # DCA Today
+        st.header("DCA Today")
 
-        total_capital_aud = st.number_input(
-            "Simulation Capital (AUD)",
-            min_value=1000.0,
-            max_value=100_000_000.0,
-            value=100_000.0,
-            step=10_000.0,
+        starting_capital_aud = st.number_input(
+            "Starting Capital (AUD)",
+            min_value=1_000.0, max_value=100_000_000.0,
+            value=500_000.0, step=10_000.0, format="%.0f",
+            key="today_starting_capital",
+        )
+        remaining_capital_aud = st.number_input(
+            "Capital Remaining (AUD)",
+            min_value=0.0, max_value=float(starting_capital_aud),
+            value=float(starting_capital_aud), step=5_000.0, format="%.0f",
+            key="today_remaining_capital",
+        )
+        target_deployment_date = st.date_input(
+            "Target Deployment Date",
+            value=dt.date.today() + dt.timedelta(days=365 * 3),
+            min_value=dt.date.today() + dt.timedelta(days=7),
+            format="DD/MM/YYYY",
+            key="today_target_date",
         )
 
-        frequency = st.selectbox(
-            "Execution Frequency",
-            ["Weekly", "Daily", "Monthly"],
-            index=0,
+        st.subheader("Smart DCA Conviction")
+        low_risk_weight = st.slider(
+            "Low-risk buy weight (risk 0.00)",
+            min_value=2.0, max_value=10.0, value=5.0, step=0.25,
+            key="today_low_risk_weight",
+        )
+        high_risk_weight = st.slider(
+            "High-risk buy weight (risk 1.00)",
+            min_value=0.01, max_value=0.50, value=0.10, step=0.01,
+            key="today_high_risk_weight",
+        )
+        smart_dca_curve = build_smart_dca_curve(low_risk_weight, high_risk_weight)
+        st.caption(
+            f"Current low/high allocation ratio: {low_risk_weight / high_risk_weight:.0f}:1. "
+            "Risk 0.50 remains 1.00x."
         )
 
-        selected_day_name = st.selectbox(
-            "Weekly Execution Day",
-            list(day_map.keys()),
-            index=0,
-            disabled=(frequency != "Weekly"),
-        )
-        selected_day = day_map[selected_day_name]
+        # Compatibility values for the shared risk engine.
+        total_capital_aud = float(starting_capital_aud)
+        frequency = "Weekly"
+        selected_day = dt.date.today().weekday()
 
     st.divider()
 
@@ -2462,10 +2462,8 @@ with st.sidebar:
     # SIMPLE CONTROLS
     # ------------------------------------------------------------
 
-    strategy_controls_container = (
-        st.expander("Advanced engine settings (optional)", expanded=False)
-        if mode == "DCA Backtest"
-        else st.container()
+    strategy_controls_container = st.expander(
+        "Advanced engine settings (optional)", expanded=False
     )
     with strategy_controls_container:
         st.header("Strategy Controls")
@@ -2779,29 +2777,12 @@ with st.sidebar:
 today = dt.datetime.now(timezone.utc).date()
 genesis = dt.date(2009, 1, 3)
 
-if mode == "Historical Backtest":
-    start_date = st.sidebar.date_input(
-        "Backtest Start Date",
-        value=dt.date(2024, 1, 1),
-        min_value=genesis,
-        max_value=today,
-        format="DD/MM/YYYY",
-        key="historical_backtest_start_date",
-    )
-
-    end_date = st.sidebar.date_input(
-        "Backtest End Date",
-        value=today,
-        min_value=start_date,
-        max_value=today,
-        format="DD/MM/YYYY",
-        key="historical_backtest_end_date",
-    )
-
-elif mode == "DCA Backtest":
-    # Use only the DCA Backtest dates defined in the left sidebar.
+if mode == "DCA Backtest":
     start_date = dca_backtest_start_date
     end_date = dca_backtest_end_date
+else:  # DCA Today: use a trailing history window to calculate today's risk.
+    end_date = today
+    start_date = today - dt.timedelta(days=365 * 4)
 
 
 params = {
@@ -2882,7 +2863,7 @@ if buy_threshold >= sell_risk_threshold:
 # Historical Backtest
 # ================================================================
 
-if mode == "Historical Backtest":
+if mode == "_Legacy Historical Backtest":
 
     with st.spinner("Loading BTC and AUD/USD history..."):
         df_full = fetch_btc_history(
@@ -3611,3 +3592,108 @@ elif mode == "DCA Backtest":
 
 
 # ================================================================
+
+# ================================================================
+# DCA Today
+# ================================================================
+
+elif mode == "DCA Today":
+    now_utc = dt.datetime.now(timezone.utc)
+    lookback_start = now_utc - timedelta(days=365 * 4)
+
+    with st.spinner("Calculating today's BTC valuation risk..."):
+        df_today = fetch_btc_history(lookback_start, now_utc)
+        fx_today = fetch_aud_usd_rates(lookback_start, now_utc)
+        bg_token = get_bgeometrics_token()
+        bg_today = fetch_bgeometrics_bundle(
+            lookback_start - timedelta(days=300), now_utc, bg_token
+        )
+
+    if df_today.empty:
+        st.error("No BTC price data was returned.")
+        st.stop()
+
+    df_today = align_fx_to_dates(df_today, fx_today)
+    df_today = merge_bgeometrics(df_today, bg_today)
+    risk_today_df = add_risk_indicators(df_today, risk_model, params)
+
+    valid_today = risk_today_df.dropna(subset=["risk_score", "price"])
+    if valid_today.empty:
+        st.error("Today's risk score could not be calculated from the available data.")
+        st.stop()
+
+    latest = valid_today.iloc[-1]
+    current_risk = float(latest["risk_score"])
+    current_price_usd = float(latest["price"])
+    usd_per_aud = float(latest["usd_per_aud"]) if pd.notna(latest.get("usd_per_aud", np.nan)) else np.nan
+    current_price_aud = current_price_usd / usd_per_aud if np.isfinite(usd_per_aud) and usd_per_aud > 0 else np.nan
+
+    risk_weight = float(interpolate_points(current_risk, smart_dca_curve))
+    days_remaining = max((target_deployment_date - dt.date.today()).days, 7)
+    weeks_remaining = max(days_remaining / 7.0, 1.0)
+    normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
+    recommended_buy = min(
+        float(remaining_capital_aud),
+        max(0.0, normal_weekly_allowance * risk_weight),
+    )
+
+    risk_label = (
+        "VERY LOW" if current_risk <= 0.20 else
+        "LOW" if current_risk <= 0.40 else
+        "NEUTRAL" if current_risk <= 0.60 else
+        "HIGH" if current_risk <= 0.80 else
+        "VERY HIGH"
+    )
+    deployed = max(float(starting_capital_aud) - float(remaining_capital_aud), 0.0)
+    remaining_after = max(float(remaining_capital_aud) - recommended_buy, 0.0)
+
+    st.header("DCA Today")
+    st.caption(
+        "Uses the same V5.1 calibrated risk model and the same Smart DCA conviction curve as the backtest. "
+        "The recommendation uses only data available now."
+    )
+
+    a, b, c = st.columns(3)
+    a.metric("BTC Risk", f"{current_risk:.3f}", risk_label)
+    b.metric("BTC Price", "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}")
+    c.metric("Smart Weight", f"{risk_weight:.2f}x")
+
+    st.subheader("SMART DCA TODAY")
+    st.metric("Recommended Buy", f"A${recommended_buy:,.0f}")
+
+    x1, x2, x3 = st.columns(3)
+    x1.metric("Normal Weekly Allowance", f"A${normal_weekly_allowance:,.0f}")
+    x2.metric("Capital Remaining After Buy", f"A${remaining_after:,.0f}")
+    x3.metric("Already Deployed", f"A${deployed:,.0f}")
+
+    if current_risk <= 0.40:
+        st.success(
+            f"BTC valuation is {risk_label.lower()}. The model is allocating "
+            f"{risk_weight:.2f}× the normal weekly allowance."
+        )
+    elif current_risk >= 0.60:
+        st.info(
+            f"BTC valuation is {risk_label.lower()}. The model is preserving capital by allocating "
+            f"only {risk_weight:.2f}× the normal weekly allowance."
+        )
+    else:
+        st.info(
+            f"BTC valuation is neutral. The model is allocating about "
+            f"{risk_weight:.2f}× the normal weekly allowance."
+        )
+
+    with st.expander("How this amount is calculated", expanded=False):
+        st.write(
+            "Normal weekly allowance = capital remaining ÷ weeks remaining. "
+            "Recommended buy = normal weekly allowance × the Smart DCA risk weight, "
+            "capped at the capital you still have available."
+        )
+        st.write(
+            f"A${remaining_capital_aud:,.0f} ÷ {weeks_remaining:.1f} weeks "
+            f"× {risk_weight:.2f} = A${recommended_buy:,.0f}"
+        )
+        st.caption(
+            "This is a live capital-allocation rule, not a future-price forecast. "
+            "It does not know future risk scores and does not retrospectively normalize future purchases."
+        )
+
