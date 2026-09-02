@@ -320,6 +320,95 @@ def opportunity_rarity_from_history(risk_series, current_risk):
     }
 
 
+
+def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
+    """Historical analogue estimate for seeing a lower risk within a future horizon.
+
+    Finds prior weekly observations with similar starting risk, then measures the
+    minimum risk reached over the following horizon. The estimate is descriptive,
+    not a forecast, and overlapping historical windows are intentionally labelled
+    as such in the UI.
+    """
+    s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna().reset_index(drop=True)
+    if len(s) < 104 or not np.isfinite(current_risk):
+        return {
+            "samples": 0, "chance_lower": np.nan, "chance_materially_lower": np.nan,
+            "material_threshold": np.nan, "chance_below_005": np.nan,
+            "chance_below_002": np.nan, "chance_below_001": np.nan,
+            "median_future_min": np.nan, "tolerance": np.nan,
+        }
+
+    horizon = int(max(4, min(int(round(horizon_weeks)), 156)))
+    material_threshold = max(0.0, min(float(current_risk) - 0.01, float(current_risk) * 0.75))
+
+    # Widen the analogue band only as much as needed for a minimally useful sample.
+    chosen = None
+    for tol in (0.015, 0.025, 0.04, 0.06, 0.10):
+        mins = []
+        for i in range(len(s) - horizon):
+            if abs(float(s.iloc[i]) - float(current_risk)) <= tol:
+                future = s.iloc[i + 1:i + 1 + horizon]
+                if len(future):
+                    mins.append(float(future.min()))
+        if len(mins) >= 8:
+            chosen = (tol, np.asarray(mins, dtype=float))
+            break
+
+    if chosen is None:
+        # Use whatever sparse analogues exist, but surface the sample count.
+        tol = 0.10
+        mins = []
+        for i in range(len(s) - horizon):
+            if abs(float(s.iloc[i]) - float(current_risk)) <= tol:
+                future = s.iloc[i + 1:i + 1 + horizon]
+                if len(future):
+                    mins.append(float(future.min()))
+        arr = np.asarray(mins, dtype=float)
+    else:
+        tol, arr = chosen
+
+    if len(arr) == 0:
+        return {
+            "samples": 0, "chance_lower": np.nan, "chance_materially_lower": np.nan,
+            "material_threshold": material_threshold, "chance_below_005": np.nan,
+            "chance_below_002": np.nan, "chance_below_001": np.nan,
+            "median_future_min": np.nan, "tolerance": tol,
+        }
+
+    return {
+        "samples": int(len(arr)),
+        "chance_lower": float(np.mean(arr < float(current_risk))),
+        "chance_materially_lower": float(np.mean(arr <= material_threshold)),
+        "material_threshold": material_threshold,
+        "chance_below_005": float(np.mean(arr <= 0.05)),
+        "chance_below_002": float(np.mean(arr <= 0.02)),
+        "chance_below_001": float(np.mean(arr <= 0.01)),
+        "median_future_min": float(np.median(arr)),
+        "tolerance": float(tol),
+    }
+
+
+def risk_occurrence_table(risk_series):
+    """Return simple weekly risk buckets for the DCA Today visibility chart."""
+    s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
+    bins = [
+        (0.00, 0.01, "0.00–0.01"),
+        (0.01, 0.02, "0.01–0.02"),
+        (0.02, 0.05, "0.02–0.05"),
+        (0.05, 0.10, "0.05–0.10"),
+        (0.10, 0.20, "0.10–0.20"),
+        (0.20, 0.40, "0.20–0.40"),
+        (0.40, 0.60, "0.40–0.60"),
+        (0.60, 0.80, "0.60–0.80"),
+        (0.80, 1.000001, "0.80–1.00"),
+    ]
+    rows = []
+    total = max(len(s), 1)
+    for lo, hi, label in bins:
+        count = int(((s >= lo) & (s < hi)).sum())
+        rows.append({"Risk range": label, "Weeks": count, "Percent": 100.0 * count / total})
+    return pd.DataFrame(rows)
+
 def annualized_return(start_value, end_value, years):
     if start_value <= 0 or end_value <= 0 or years <= 0:
         return 0.0
@@ -2355,12 +2444,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.3.1 FULL",
+    page_title="BTC Dynamic DCA V5.4 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.3.1 FULL — Smart DCA")
-st.caption("Version 5.3.1 FULL • Backtest + DCA Today • Opportunity Rarity")
+st.title("Bitcoin Dynamic DCA V5.4 FULL — Smart DCA")
+st.caption("Version 5.4 FULL • Backtest + DCA Today • Opportunity Probability")
 st.caption("Simple two-mode app • test the strategy, then use the same strategy today")
 
 # ------------------------------------------------
@@ -3691,11 +3780,30 @@ elif mode == "DCA Today":
 
     days_remaining = max((target_deployment_date - dt.date.today()).days, 7)
     weeks_remaining = max(days_remaining / 7.0, 1.0)
+
+    opportunity = lower_risk_opportunity_stats(
+        rarity_source, current_risk, min(weeks_remaining, 156.0)
+    )
+
     normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
     recommended_buy = min(
         float(remaining_capital_aud),
         max(0.0, normal_weekly_allowance * effective_weight),
     )
+
+    # Extreme-opportunity gate. Full deployment is only allowed when valuation
+    # is exceptionally low AND historical analogues do not show a strong chance
+    # of a materially lower entry within the remaining horizon. Sparse evidence
+    # never forces an all-in recommendation.
+    extreme_all_in_eligible = False
+    if (
+        current_risk <= 0.01
+        and opportunity["samples"] >= 8
+        and np.isfinite(opportunity["chance_materially_lower"])
+        and opportunity["chance_materially_lower"] <= 0.15
+    ):
+        extreme_all_in_eligible = True
+        recommended_buy = float(remaining_capital_aud)
 
     risk_label = (
         "VERY LOW" if current_risk <= 0.20 else
@@ -3717,7 +3825,14 @@ elif mode == "DCA Today":
     a.metric("BTC Risk", f"{current_risk:.3f}", risk_label)
     b.metric("BTC Price", "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}")
     c.metric("Opportunity Rarity", rarity["rarity_label"])
-    d.metric("Effective Weight", f"{effective_weight:.2f}x")
+    if np.isfinite(opportunity["chance_materially_lower"]):
+        d.metric(
+            "Chance of Better Entry",
+            f"{100.0 * opportunity['chance_materially_lower']:.0f}%",
+            help="Historical analogue estimate of reaching a materially lower risk before the selected horizon.",
+        )
+    else:
+        d.metric("Chance of Better Entry", "n/a")
 
     st.subheader("SMART DCA TODAY")
     st.metric("Recommended Buy", f"A${recommended_buy:,.0f}")
@@ -3726,6 +3841,66 @@ elif mode == "DCA Today":
     x1.metric("Normal Weekly Allowance", f"A${normal_weekly_allowance:,.0f}")
     x2.metric("Capital Remaining After Buy", f"A${remaining_after:,.0f}")
     x3.metric("Already Deployed", f"A${deployed:,.0f}")
+
+
+    if extreme_all_in_eligible:
+        st.success(
+            "EXTREME OPPORTUNITY: the model's full-deployment gate is open. "
+            "This is a model output, not a guarantee that BTC cannot fall further."
+        )
+    elif current_risk <= 0.02:
+        st.warning(
+            "EXTREME LOW RISK, but full deployment is not triggered because the historical "
+            "evidence is either sparse or still shows a meaningful chance of an even lower-risk entry."
+        )
+
+    st.subheader("How Often This Risk Occurs")
+    occurrence = risk_occurrence_table(rarity_source)
+    fig_occurrence = go.Figure()
+    fig_occurrence.add_bar(
+        x=occurrence["Risk range"],
+        y=occurrence["Percent"],
+        customdata=occurrence[["Weeks"]],
+        hovertemplate="Risk %{x}<br>%{y:.1f}% of weeks<br>%{customdata[0]} weeks<extra></extra>",
+    )
+    fig_occurrence.update_layout(
+        xaxis_title="BTC Risk Range",
+        yaxis_title="Historical Weekly Frequency (%)",
+        margin=dict(l=20, r=20, t=20, b=20),
+        height=380,
+    )
+    st.plotly_chart(fig_occurrence, width="stretch")
+    st.caption(
+        f"Current risk {current_risk:.3f}. The chart uses weekly risk observations available "
+        "to DCA Today and shows how uncommon each valuation zone has been."
+    )
+
+    with st.expander("Chance of a lower-risk entry", expanded=False):
+        if opportunity["samples"] >= 1:
+            st.write(
+                f"Historical analogue sample: {opportunity['samples']} prior weekly starting points "
+                f"within about ±{opportunity['tolerance']:.3f} risk, looking ahead up to "
+                f"{min(weeks_remaining, 156.0):.0f} weeks."
+            )
+            if np.isfinite(opportunity["chance_lower"]):
+                st.write(f"Any lower risk: **{100.0 * opportunity['chance_lower']:.0f}%**")
+            if np.isfinite(opportunity["chance_materially_lower"]):
+                st.write(
+                    f"Materially lower risk (≤ {opportunity['material_threshold']:.3f}): "
+                    f"**{100.0 * opportunity['chance_materially_lower']:.0f}%**"
+                )
+            st.write(
+                "Historical chance of reaching risk ≤0.05 / ≤0.02 / ≤0.01: "
+                f"**{100.0 * opportunity['chance_below_005']:.0f}% / "
+                f"{100.0 * opportunity['chance_below_002']:.0f}% / "
+                f"{100.0 * opportunity['chance_below_001']:.0f}%**"
+            )
+            st.caption(
+                "These are overlapping historical analogues, so treat them as decision-support "
+                "estimates rather than independent statistical probabilities."
+            )
+        else:
+            st.write("Not enough comparable historical observations for a useful estimate.")
 
     if current_risk <= 0.40:
         st.success(
@@ -3763,6 +3938,8 @@ elif mode == "DCA Today":
             )
         st.caption(
             "This is a live capital-allocation rule, not a future-price forecast. "
-            "It does not know future risk scores and does not retrospectively normalize future purchases."
+            "It does not know future risk scores and does not retrospectively normalize future purchases. "
+            "The experimental full-deployment gate can only open below risk 0.01 when enough historical "
+            "analogues exist and the estimated chance of a materially better entry is low."
         )
 
