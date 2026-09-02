@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.7 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.8 FULL
 ====================================================
 
 Designed for:
@@ -139,6 +139,36 @@ DEFAULT_ALWAYS_DCA_POINTS = [
     (0.90, 0.25),
     (1.00, 0.10),
 ]
+
+DCA_CURVE_PRESETS = {
+    "Conservative": [
+        (0.00, 2.00),
+        (0.10, 1.80),
+        (0.20, 1.60),
+        (0.30, 1.40),
+        (0.40, 1.20),
+        (0.50, 1.00),
+        (0.60, 0.85),
+        (0.70, 0.70),
+        (0.80, 0.55),
+        (0.90, 0.40),
+        (1.00, 0.25),
+    ],
+    "Current": DEFAULT_ALWAYS_DCA_POINTS,
+    "Aggressive": [
+        (0.00, 4.00),
+        (0.10, 3.25),
+        (0.20, 2.50),
+        (0.30, 1.90),
+        (0.40, 1.45),
+        (0.50, 1.00),
+        (0.60, 0.70),
+        (0.70, 0.45),
+        (0.80, 0.25),
+        (0.90, 0.12),
+        (1.00, 0.05),
+    ],
+}
 DEFAULT_BUY_POINTS = [
     (0.00, 4.00), (0.10, 3.25), (0.20, 2.50), (0.30, 1.65),
     (0.35, 1.20), (0.40, 0.60), (0.45, 0.00), (1.00, 0.00),
@@ -1248,6 +1278,7 @@ def simulate_dca_backtest(
     base_dca_aud,
     dca_frequency,
     strategy_mode,
+    risk_curve=None,
 ):
     """
     Historical accumulation-only DCA backtest with no capital ceiling.
@@ -1257,6 +1288,9 @@ def simulate_dca_backtest(
       - "Risk-Scaled DCA": always buys, amount varies with calibrated risk.
       - "Risk-Gated DCA": buys only inside BUY zone; otherwise $0.
     """
+    if risk_curve is None:
+        risk_curve = DEFAULT_ALWAYS_DCA_POINTS
+
     if df_full.empty:
         return pd.DataFrame(), {}
 
@@ -1309,7 +1343,7 @@ def simulate_dca_backtest(
 
         elif strategy_mode == "Risk-Scaled DCA":
             multiplier = (
-                float(interpolate(DEFAULT_ALWAYS_DCA_POINTS, risk))
+                float(interpolate(risk_curve, risk))
                 if np.isfinite(risk)
                 else 1.0
             )
@@ -1401,6 +1435,212 @@ def simulate_dca_backtest(
     }
 
     return result, summary
+
+
+def normalize_dca_to_target_capital(
+    result_df,
+    target_total_aud,
+    fee_pct=0.0,
+):
+    """
+    Replay a DCA result using exactly target_total_aud in total contributions.
+
+    The original strategy's per-period contribution weights are preserved,
+    but every contribution is scaled by one constant factor. This gives a
+    like-for-like capital comparison against Plain DCA.
+    """
+    if result_df.empty or target_total_aud <= 0:
+        return pd.DataFrame(), {}
+
+    original_total = float(
+        result_df["actual_buy_aud"].sum()
+    )
+    if original_total <= 0:
+        return pd.DataFrame(), {}
+
+    scale = float(target_total_aud) / original_total
+
+    btc = 0.0
+    cumulative_invested = 0.0
+    rows = []
+
+    for _, row in result_df.iterrows():
+        contribution = float(row["actual_buy_aud"]) * scale
+        fee = contribution * float(fee_pct)
+        net = max(0.0, contribution - fee)
+        price_aud = float(row["btc_price_aud"])
+
+        btc_bought = (
+            net / price_aud
+            if price_aud > 0
+            else 0.0
+        )
+
+        btc += btc_bought
+        cumulative_invested += contribution
+        btc_value = btc * price_aud
+
+        rows.append(
+            {
+                "date": row["date"],
+                "price_usd": row["price_usd"],
+                "btc_price_aud": price_aud,
+                "risk_score": row["risk_score"],
+                "actual_buy_aud": contribution,
+                "btc_bought": btc_bought,
+                "btc_held": btc,
+                "cumulative_invested_aud": cumulative_invested,
+                "btc_value_aud": btc_value,
+                "avg_cost_aud": (
+                    cumulative_invested / btc
+                    if btc > 0 else 0.0
+                ),
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out, {}
+
+    final = out.iloc[-1]
+    roi_pct = (
+        (float(final["btc_value_aud"]) / target_total_aud - 1.0) * 100.0
+        if target_total_aud > 0
+        else np.nan
+    )
+
+    summary = {
+        "target_total_aud": target_total_aud,
+        "scale_factor": scale,
+        "btc_held": float(final["btc_held"]),
+        "btc_value_aud": float(final["btc_value_aud"]),
+        "avg_cost_aud": float(final["avg_cost_aud"]),
+        "roi_pct": roi_pct,
+    }
+    return out, summary
+
+
+def optimise_dca_curve_walk_forward(
+    df_full,
+    params,
+    base_dca_aud,
+    dca_frequency,
+):
+    """
+    Simple 70/30 walk-forward choice among named curves.
+
+    Training objective:
+      maximize normalized BTC accumulated using the same total capital
+      as Plain DCA on the training period.
+
+    Validation:
+      report the selected curve on the untouched final 30%.
+    """
+    start = params["start_date"]
+    end = params["end_date"]
+    if end <= start:
+        return {}, pd.DataFrame()
+
+    split = start + (end - start) * 0.70
+
+    train_params = dict(params)
+    train_params["end_date"] = split
+
+    valid_params = dict(params)
+    valid_params["start_date"] = split
+    valid_params["end_date"] = end
+
+    rows = []
+
+    # Plain DCA capital target on training set.
+    plain_train, plain_train_sm = simulate_dca_backtest(
+        df_full,
+        train_params,
+        base_dca_aud,
+        dca_frequency,
+        "Plain DCA",
+    )
+    if not plain_train_sm:
+        return {}, pd.DataFrame()
+
+    train_target = plain_train_sm["total_invested_aud"]
+
+    for name, curve in DCA_CURVE_PRESETS.items():
+        scaled_train, _ = simulate_dca_backtest(
+            df_full,
+            train_params,
+            base_dca_aud,
+            dca_frequency,
+            "Risk-Scaled DCA",
+            risk_curve=curve,
+        )
+        _, norm_train = normalize_dca_to_target_capital(
+            scaled_train,
+            train_target,
+            fee_pct=train_params.get("fee_pct", 0.0),
+        )
+
+        if not norm_train:
+            continue
+
+        rows.append(
+            {
+                "Curve": name,
+                "Train BTC": norm_train["btc_held"],
+                "Train ROI %": norm_train["roi_pct"],
+            }
+        )
+
+    train_table = pd.DataFrame(rows)
+    if train_table.empty:
+        return {}, train_table
+
+    best_name = str(
+        train_table.sort_values(
+            "Train BTC",
+            ascending=False,
+        ).iloc[0]["Curve"]
+    )
+    best_curve = DCA_CURVE_PRESETS[best_name]
+
+    # Validation comparison against Plain DCA.
+    plain_valid, plain_valid_sm = simulate_dca_backtest(
+        df_full,
+        valid_params,
+        base_dca_aud,
+        dca_frequency,
+        "Plain DCA",
+    )
+    scaled_valid, _ = simulate_dca_backtest(
+        df_full,
+        valid_params,
+        base_dca_aud,
+        dca_frequency,
+        "Risk-Scaled DCA",
+        risk_curve=best_curve,
+    )
+
+    validation = {}
+    if plain_valid_sm:
+        valid_target = plain_valid_sm["total_invested_aud"]
+        _, norm_valid = normalize_dca_to_target_capital(
+            scaled_valid,
+            valid_target,
+            fee_pct=valid_params.get("fee_pct", 0.0),
+        )
+        if norm_valid:
+            validation = {
+                "selected_curve": best_name,
+                "plain_btc": plain_valid_sm["btc_held"],
+                "scaled_btc": norm_valid["btc_held"],
+                "btc_advantage_pct": (
+                    norm_valid["btc_held"] / plain_valid_sm["btc_held"] - 1.0
+                ) * 100.0 if plain_valid_sm["btc_held"] > 0 else np.nan,
+                "plain_roi_pct": plain_valid_sm["roi_pct"],
+                "scaled_roi_pct": norm_valid["roi_pct"],
+            }
+
+    return validation, train_table
 
 
 # Benchmark Strategies
@@ -1642,12 +1882,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V3.7 FULL",
+    page_title="BTC Dynamic DCA V3.8 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.7 FULL — Buy Low / Sell High")
-st.caption("Version 3.6.5 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
+st.title("Bitcoin Dynamic DCA V3.8 FULL — Buy Low / Sell High")
+st.caption("Version 3.8 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
 # ------------------------------------------------
@@ -1710,6 +1950,26 @@ with st.sidebar:
                 "Plain DCA: same amount every execution. "
                 "Risk-Scaled: always buys, but more at low risk and less at high risk. "
                 "Risk-Gated: buys only inside the BUY zone."
+            ),
+        )
+
+        dca_curve_name = st.selectbox(
+            "Risk-Scaled Curve",
+            ["Conservative", "Current", "Aggressive"],
+            index=1,
+            disabled=(dca_strategy_mode != "Risk-Scaled DCA"),
+            help=(
+                "Controls how strongly DCA size responds to risk. "
+                "Comparison results below always test all three curves."
+            ),
+        )
+
+        dca_run_curve_optimizer = st.toggle(
+            "Run 70/30 Curve Validation",
+            value=False,
+            help=(
+                "Selects the best curve on the first 70% of the period, "
+                "then checks it on the untouched final 30%."
             ),
         )
 
@@ -2952,12 +3212,18 @@ elif mode == "DCA Backtest":
         "No starting-capital limit."
     )
 
+    selected_curve = DCA_CURVE_PRESETS.get(
+        dca_curve_name,
+        DEFAULT_ALWAYS_DCA_POINTS,
+    )
+
     dca_df, dca_summary = simulate_dca_backtest(
         df_full,
         params,
         dca_base_amount_aud,
         dca_frequency,
         dca_strategy_mode,
+        risk_curve=selected_curve,
     )
 
     plain_df, plain_summary = simulate_dca_backtest(
@@ -2974,6 +3240,7 @@ elif mode == "DCA Backtest":
         dca_base_amount_aud,
         dca_frequency,
         "Risk-Scaled DCA",
+        risk_curve=selected_curve,
     )
 
     gated_df, gated_summary = simulate_dca_backtest(
@@ -2983,6 +3250,18 @@ elif mode == "DCA Backtest":
         dca_frequency,
         "Risk-Gated DCA",
     )
+
+    curve_results = {}
+    for _curve_name, _curve_points in DCA_CURVE_PRESETS.items():
+        _df, _sm = simulate_dca_backtest(
+            df_full,
+            params,
+            dca_base_amount_aud,
+            dca_frequency,
+            "Risk-Scaled DCA",
+            risk_curve=_curve_points,
+        )
+        curve_results[_curve_name] = (_df, _sm)
 
     if not dca_df.empty and dca_summary:
         st.subheader(f"Selected: {model_text}")
@@ -3010,54 +3289,152 @@ elif mode == "DCA Backtest":
             f"{dca_summary['roi_pct']:+.2f}%",
         )
 
-        st.subheader("Strategy Comparison")
+        st.subheader("Capital-Normalized Comparison")
         st.caption(
-            "All three strategies use the same dates, frequency and base DCA. "
-            "They differ only in how risk changes the contribution amount."
+            "For a fair timing comparison, Risk-Scaled and Risk-Gated contributions "
+            "are rescaled so each strategy invests exactly the same total AUD as Plain DCA."
         )
 
-        comparison_table = pd.DataFrame(
-            [
-                {
-                    "Strategy": "Plain DCA",
-                    "Invested AUD": plain_summary["total_invested_aud"],
-                    "BTC Held": plain_summary["btc_held"],
-                    "Average Cost AUD": plain_summary["avg_cost_aud"],
-                    "BTC Value AUD": plain_summary["btc_value_aud"],
-                    "ROI %": plain_summary["roi_pct"],
-                },
-                {
-                    "Strategy": "Risk-Scaled DCA",
-                    "Invested AUD": scaled_summary["total_invested_aud"],
-                    "BTC Held": scaled_summary["btc_held"],
-                    "Average Cost AUD": scaled_summary["avg_cost_aud"],
-                    "BTC Value AUD": scaled_summary["btc_value_aud"],
-                    "ROI %": scaled_summary["roi_pct"],
-                },
+        capital_target = plain_summary["total_invested_aud"]
+
+        _, plain_norm = normalize_dca_to_target_capital(
+            plain_df,
+            capital_target,
+            fee_pct=params.get("fee_pct", 0.0),
+        )
+        _, gated_norm = normalize_dca_to_target_capital(
+            gated_df,
+            capital_target,
+            fee_pct=params.get("fee_pct", 0.0),
+        )
+
+        normalized_rows = [
+            {
+                "Strategy": "Plain DCA",
+                "Curve": "1.00x fixed",
+                "Invested AUD": capital_target,
+                "BTC Held": plain_norm["btc_held"],
+                "Average Cost AUD": plain_norm["avg_cost_aud"],
+                "BTC Value AUD": plain_norm["btc_value_aud"],
+                "ROI %": plain_norm["roi_pct"],
+                "BTC Advantage %": 0.0,
+                "Avg Cost Advantage %": 0.0,
+                "Value Advantage %": 0.0,
+            }
+        ]
+
+        for _curve_name, (_curve_df, _curve_sm) in curve_results.items():
+            _, _norm = normalize_dca_to_target_capital(
+                _curve_df,
+                capital_target,
+                fee_pct=params.get("fee_pct", 0.0),
+            )
+            if _norm:
+                normalized_rows.append(
+                    {
+                        "Strategy": "Risk-Scaled DCA",
+                        "Curve": _curve_name,
+                        "Invested AUD": capital_target,
+                        "BTC Held": _norm["btc_held"],
+                        "Average Cost AUD": _norm["avg_cost_aud"],
+                        "BTC Value AUD": _norm["btc_value_aud"],
+                        "ROI %": _norm["roi_pct"],
+                        "BTC Advantage %": (
+                            _norm["btc_held"] / plain_norm["btc_held"] - 1.0
+                        ) * 100.0 if plain_norm["btc_held"] > 0 else np.nan,
+                        "Avg Cost Advantage %": (
+                            1.0 - _norm["avg_cost_aud"] / plain_norm["avg_cost_aud"]
+                        ) * 100.0 if plain_norm["avg_cost_aud"] > 0 else np.nan,
+                        "Value Advantage %": (
+                            _norm["btc_value_aud"] / plain_norm["btc_value_aud"] - 1.0
+                        ) * 100.0 if plain_norm["btc_value_aud"] > 0 else np.nan,
+                    }
+                )
+
+        if gated_norm:
+            normalized_rows.append(
                 {
                     "Strategy": "Risk-Gated DCA",
-                    "Invested AUD": gated_summary["total_invested_aud"],
-                    "BTC Held": gated_summary["btc_held"],
-                    "Average Cost AUD": gated_summary["avg_cost_aud"],
-                    "BTC Value AUD": gated_summary["btc_value_aud"],
-                    "ROI %": gated_summary["roi_pct"],
-                },
-            ]
-        )
+                    "Curve": "BUY-zone only",
+                    "Invested AUD": capital_target,
+                    "BTC Held": gated_norm["btc_held"],
+                    "Average Cost AUD": gated_norm["avg_cost_aud"],
+                    "BTC Value AUD": gated_norm["btc_value_aud"],
+                    "ROI %": gated_norm["roi_pct"],
+                    "BTC Advantage %": (
+                        gated_norm["btc_held"] / plain_norm["btc_held"] - 1.0
+                    ) * 100.0 if plain_norm["btc_held"] > 0 else np.nan,
+                    "Avg Cost Advantage %": (
+                        1.0 - gated_norm["avg_cost_aud"] / plain_norm["avg_cost_aud"]
+                    ) * 100.0 if plain_norm["avg_cost_aud"] > 0 else np.nan,
+                    "Value Advantage %": (
+                        gated_norm["btc_value_aud"] / plain_norm["btc_value_aud"] - 1.0
+                    ) * 100.0 if plain_norm["btc_value_aud"] > 0 else np.nan,
+                }
+            )
+
+        normalized_table = pd.DataFrame(normalized_rows)
 
         st.dataframe(
-            comparison_table.style.format(
+            normalized_table.style.format(
                 {
                     "Invested AUD": "${:,.0f}",
                     "BTC Held": "{:.6f}",
                     "Average Cost AUD": "${:,.0f}",
                     "BTC Value AUD": "${:,.0f}",
                     "ROI %": "{:+.2f}%",
+                    "BTC Advantage %": "{:+.2f}%",
+                    "Avg Cost Advantage %": "{:+.2f}%",
+                    "Value Advantage %": "{:+.2f}%",
                 }
             ),
             width="stretch",
             hide_index=True,
         )
+
+        if dca_run_curve_optimizer:
+            st.subheader("70/30 Curve Validation")
+            with st.spinner("Testing DCA curves on train/validation periods..."):
+                validation_result, train_table = optimise_dca_curve_walk_forward(
+                    df_full,
+                    params,
+                    dca_base_amount_aud,
+                    dca_frequency,
+                )
+
+            if not train_table.empty:
+                st.dataframe(
+                    train_table.style.format(
+                        {
+                            "Train BTC": "{:.6f}",
+                            "Train ROI %": "{:+.2f}%",
+                        }
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                )
+
+            if validation_result:
+                v1, v2, v3 = st.columns(3)
+                v1.metric(
+                    "Selected Curve",
+                    validation_result["selected_curve"],
+                )
+                v2.metric(
+                    "Validation BTC Advantage",
+                    f"{validation_result['btc_advantage_pct']:+.2f}%",
+                )
+                v3.metric(
+                    "Validation ROI",
+                    f"{validation_result['scaled_roi_pct']:+.2f}%",
+                    delta=(
+                        f"{validation_result['scaled_roi_pct'] - validation_result['plain_roi_pct']:+.2f}% vs Plain"
+                    ),
+                )
+                st.caption(
+                    "The curve is selected only from the first 70% of the chosen period. "
+                    "The reported validation result uses the untouched final 30%."
+                )
 
         fig_dca = go.Figure()
 
