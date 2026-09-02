@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.5.1.1 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.5.2.1 FULL
 ====================================================
 
 Designed for:
@@ -55,7 +55,7 @@ DEFAULT_FUND_EXPENSIVE = 1.50
 
 # Smooth risk -> DCA multiplier curve.
 # Lower risk score = cheaper BTC = larger DCA.
-DEFAULT_RISK_POINTS = [
+DEFAULT_BUY_POINTS = [
     (0.00, 3.00),
     (0.10, 2.60),
     (0.20, 2.10),
@@ -600,7 +600,7 @@ def _expanding_percentile(series, min_periods=180, rolling_window=1460):
 
 def add_risk_indicators(data, risk_model, params):
     """
-    V3.5.1 valuation risk engine.
+    V3.5.2 valuation risk engine.
 
     Design goals:
       * stronger relationship with BTC valuation / price regime
@@ -1030,8 +1030,55 @@ def _trend_factor(state, bull, neutral, bear):
     return float(bull if state > 0 else bear if state < 0 else neutral)
 
 
+def dca_day_signal(risk, buy_threshold, sell_threshold):
+    """
+    Current-day DCA signal based on the latest calculated valuation risk.
+    This is not a forecast of future risk.
+    """
+    if risk is None or not np.isfinite(risk):
+        return {
+            "eligible": False,
+            "label": "NO DATA",
+            "quality": "Insufficient risk data",
+            "multiplier": 0.0,
+        }
+
+    risk = float(clamp(risk, 0.0, 1.0))
+    mult = float(interpolate(DEFAULT_BUY_POINTS, risk))
+
+    if risk <= buy_threshold:
+        if mult >= 2.50:
+            quality = "STRONG DCA"
+        elif mult >= 1.25:
+            quality = "GOOD DCA"
+        else:
+            quality = "LIGHT DCA"
+
+        return {
+            "eligible": True,
+            "label": "YES",
+            "quality": quality,
+            "multiplier": mult,
+        }
+
+    if risk >= sell_threshold:
+        return {
+            "eligible": False,
+            "label": "NO",
+            "quality": "SELL ZONE",
+            "multiplier": 0.0,
+        }
+
+    return {
+        "eligible": False,
+        "label": "NO",
+        "quality": "HOLD",
+        "multiplier": 0.0,
+    }
+
+
 def simulate_dynamic_dca(df_full, params):
-    """V3.5.1: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
+    """V3.5.2: strict BUY-low / HOLD / SELL-high. No same-period BUY+SELL and no forced catch-up."""
     if df_full.empty: return pd.DataFrame(), {}
     df=df_full[(df_full.index>=params["start_date"]) & (df_full.index<=params["end_date"])].copy()
     if df.empty: return pd.DataFrame(), {}
@@ -1098,9 +1145,9 @@ def simulate_dynamic_dca(df_full, params):
     result=pd.DataFrame(trades)
     if result.empty: return result,{}
 
-    # V3.5.1 execution invariants.
+    # V3.5.2 execution invariants.
     if ((result["buy_aud"] > 0) & (result["sell_btc"] > 0)).any():
-        raise RuntimeError("V3.5.1 invariant failed: simultaneous BUY and SELL.")
+        raise RuntimeError("V3.5.2 invariant failed: simultaneous BUY and SELL.")
 
     if (
         (result["buy_aud"] > 0)
@@ -1109,7 +1156,7 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] > buy_th)
         )
     ).any():
-        raise RuntimeError("V3.5.1 invariant failed: BUY outside BUY zone.")
+        raise RuntimeError("V3.5.2 invariant failed: BUY outside BUY zone.")
 
     if (
         (result["sell_btc"] > 0)
@@ -1118,14 +1165,14 @@ def simulate_dynamic_dca(df_full, params):
             | (result["risk_score"] < sell_th)
         )
     ).any():
-        raise RuntimeError("V3.5.1 invariant failed: SELL outside SELL zone.")
+        raise RuntimeError("V3.5.2 invariant failed: SELL outside SELL zone.")
 
     if (result["cash_aud"] < -0.01).any() or (result["btc_held"] < -1e-12).any():
-        raise RuntimeError("V3.5.1 invariant failed: negative cash or BTC.")
+        raise RuntimeError("V3.5.2 invariant failed: negative cash or BTC.")
 
     hard_buy_cap = capital * float(params.get("max_period_pct", DEFAULT_MAX_PERIOD_PCT))
     if (result["buy_aud"] > hard_buy_cap + 0.01).any():
-        raise RuntimeError("V3.5.1 invariant failed: BUY above hard cap.")
+        raise RuntimeError("V3.5.2 invariant failed: BUY above hard cap.")
     final=result.iloc[-1]; years=max((result.date.iloc[-1]-result.date.iloc[0]).days/365.25,1/365.25); endw=float(final.total_wealth_aud)
     rets=result.total_wealth_aud.pct_change().dropna(); ppy={"Daily":365.0,"Weekly":52.0,"Monthly":12.0}.get(params["frequency"],52.0)
     sharpe=float(rets.mean()/rets.std()*np.sqrt(ppy)) if len(rets)>1 and rets.std()>0 else np.nan; down=rets[rets<0]; sortino=float(rets.mean()/down.std()*np.sqrt(ppy)) if len(down)>1 and down.std()>0 else np.nan
@@ -1280,6 +1327,12 @@ def build_forward_plan(
         decision = "HOLD — NO BUY"
         buy_multiplier = 0.0
 
+    current_signal = dca_day_signal(
+        risk_score,
+        buy_threshold,
+        sell_threshold,
+    )
+
     rows = []
     cumulative = 0.0
 
@@ -1299,6 +1352,8 @@ def build_forward_plan(
                 "date": date,
                 "risk_score": risk_score,
                 "decision": decision,
+                "dca_today": current_signal["label"],
+                "dca_quality": current_signal["quality"],
                 "buy_multiplier": buy_multiplier,
                 "base_dca_aud": base,
                 "planned_buy_aud": planned,
@@ -1318,7 +1373,7 @@ def build_forward_plan(
 
 
 # ================================================================
-# Walk-forward Optimisation (V3.5.1)
+# Walk-forward Optimisation (V3.5.2)
 # ================================================================
 
 def normalized_percentile_score(frame):
@@ -1365,11 +1420,11 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.5.1.1 FULL",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.5.2.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.5.1.1 FULL — Buy Low / Sell High")
+st.title("Bitcoin Dynamic DCA V3.5.2.1 FULL — Buy Low / Sell High")
 st.caption("Version 3.4.1 FULL • CALIBRATED 0–1 RISK • STRICT BUY-LOW / HOLD / SELL-HIGH • Optimized Trend Replica ENABLED • Build 2026-09-02 • Risk Engine Hotfix")
 st.caption(
     "Composite on-chain/technical risk + valuation + time deployment + deployment pressure + "
@@ -1435,7 +1490,7 @@ with st.sidebar:
     risk_model = st.radio(
         "Risk Metric",
         [
-            "Composite V3.5.1",
+            "Composite V3.5.2",
             "Power Law Trend",
             "SMA Ratio (200-day)",
         ],
@@ -1447,7 +1502,7 @@ with st.sidebar:
         "1 = very expensive / low allocation."
     )
 
-    st.subheader("V3.5.1 Valuation Risk Weights")
+    st.subheader("V3.5.2 Valuation Risk Weights")
     weight_mvrv = st.slider("MVRV Z-Score Weight", 0.0, 1.0, 0.30, 0.05)
     weight_power_law = st.slider("Power Law Weight", 0.0, 1.0, 0.25, 0.05)
     weight_mayer = st.slider("Mayer Multiple Weight", 0.0, 1.0, 0.20, 0.05)
@@ -2440,7 +2495,7 @@ if mode == "Historical Backtest":
     st.download_button(
         "Download Full Backtest CSV",
         data=trade_df.to_csv(index=False).encode("utf-8"),
-        file_name="btc_dynamic_dca_v3_4_full_backtest.csv",
+        file_name="btc_dynamic_dca_v3_5_2_full_backtest.csv",
         mime="text/csv",
     )
 
@@ -2470,13 +2525,19 @@ if mode == "Historical Backtest":
 else:
 
     risk_multiplier = interpolate(
-        DEFAULT_RISK_POINTS,
+        DEFAULT_BUY_POINTS,
         forward_risk_score,
     )
 
     st.subheader("Forward Deployment Plan")
 
-    c1, c2, c3 = st.columns(3)
+    today_signal = dca_day_signal(
+        forward_risk_score,
+        buy_threshold,
+        sell_risk_threshold,
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
 
     c1.metric(
         "Current Risk Score",
@@ -2484,16 +2545,42 @@ else:
     )
 
     c2.metric(
-        "Current Decision",
-        "BUY" if forward_risk_score <= buy_threshold
-        else "SELL ZONE" if forward_risk_score >= sell_risk_threshold
-        else "HOLD",
+        "DCA Today?",
+        today_signal["label"],
+        help="Uses the latest calculated risk available when the app is opened or refreshed.",
     )
 
     c3.metric(
+        "DCA Quality",
+        today_signal["quality"],
+    )
+
+    c4.metric(
         "Reference BTC Price",
         f"${forward_btc_price_usd:,.0f}",
     )
+
+    signal_date_text = (
+        snapshot_signal_date.strftime("%d/%m/%Y")
+        if snapshot_signal_date is not None
+        else "latest available data"
+    )
+
+    if today_signal["eligible"]:
+        st.success(
+            f"DCA signal for {signal_date_text}: {today_signal['quality']} "
+            f"(risk {forward_risk_score:.3f}, buy multiplier {today_signal['multiplier']:.2f}x)."
+        )
+    elif today_signal["quality"] == "SELL ZONE":
+        st.warning(
+            f"DCA signal for {signal_date_text}: NO — valuation risk is in the SELL zone "
+            f"({forward_risk_score:.3f})."
+        )
+    else:
+        st.info(
+            f"DCA signal for {signal_date_text}: NO — current valuation risk is in the HOLD zone "
+            f"({forward_risk_score:.3f})."
+        )
 
     plan = build_forward_plan(
         total_capital_aud,
@@ -2602,12 +2689,13 @@ else:
         "buy_multiplier"
     ].map(lambda x: f"{x:.2f}x")
 
-    display_plan["decision"] = display_plan[
-        "decision"
-    ].map(lambda x: f"{x:.1f}%")
+    # Text fields: do not attempt numeric percentage formatting.
+    display_plan["decision"] = display_plan["decision"].astype(str)
+    display_plan["dca_today"] = display_plan["dca_today"].astype(str)
+    display_plan["dca_quality"] = display_plan["dca_quality"].astype(str)
 
     for col in [
-        "cumulative_planned_aud",
+        "base_dca_aud",
         "planned_buy_aud",
         "cumulative_planned_aud",
         "capital_remaining_aud",
@@ -2620,9 +2708,11 @@ else:
         [
             "date",
             "risk_score",
+            "dca_today",
+            "dca_quality",
             "buy_multiplier",
             "decision",
-            "cumulative_planned_aud",
+            "base_dca_aud",
             "planned_buy_aud",
             "cumulative_planned_aud",
             "capital_remaining_aud",
