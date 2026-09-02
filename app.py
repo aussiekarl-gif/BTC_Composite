@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6.1 FULL
 ====================================================
 
 Designed for:
@@ -124,7 +124,7 @@ DEFAULT_PRICE_POSITION_WEIGHT = 0.20
 DEFAULT_ABSOLUTE_RISK_WEIGHT = 0.60
 DEFAULT_RELATIVE_RISK_WEIGHT = 0.40
 DEFAULT_DRAWDOWN_WINDOW = 365
-DEFAULT_WEEKLY_DCA_AUD = 1000.0
+DEFAULT_FIXED_DCA_AUD = 1000.0
 DEFAULT_BUY_POINTS = [
     (0.00, 4.00), (0.10, 3.25), (0.20, 2.50), (0.30, 1.65),
     (0.35, 1.20), (0.40, 0.60), (0.45, 0.00), (1.00, 0.00),
@@ -1228,8 +1228,8 @@ def simulate_dynamic_dca(df_full, params):
 
 
 # ================================================================
-def simulate_fixed_weekly_risk_dca(df_full, params, weekly_aud):
-    """Accumulation-only weekly DCA scaled by calibrated risk."""
+def simulate_fixed_risk_dca(df_full, params, base_dca_aud, dca_frequency):
+    """Accumulation-only Daily/Weekly DCA scaled by calibrated risk."""
     if df_full.empty:
         return pd.DataFrame(), {}
 
@@ -1243,7 +1243,7 @@ def simulate_fixed_weekly_risk_dca(df_full, params, weekly_aud):
 
     df = add_risk_indicators(df, params["risk_model"], params)
     execution = select_execution_dates(
-        df, "Weekly", params["day_of_week"]
+        df, dca_frequency, params["day_of_week"]
     )
 
     cash = float(params["total_capital_aud"])
@@ -1270,7 +1270,7 @@ def simulate_fixed_weekly_risk_dca(df_full, params, weekly_aud):
         )
 
         planned = (
-            float(weekly_aud) * risk_mult
+            float(base_dca_aud) * risk_mult
             if np.isfinite(risk)
             and risk <= float(params["buy_threshold"])
             else 0.0
@@ -1290,7 +1290,8 @@ def simulate_fixed_weekly_risk_dca(df_full, params, weekly_aud):
             "price_usd": price_usd,
             "risk_score": risk,
             "risk_multiplier": risk_mult,
-            "base_weekly_aud": float(weekly_aud),
+            "base_dca_aud": float(base_dca_aud),
+            "dca_frequency": dca_frequency,
             "actual_buy_aud": buy,
             "btc_bought": btc_bought,
             "btc_held": btc,
@@ -1304,7 +1305,8 @@ def simulate_fixed_weekly_risk_dca(df_full, params, weekly_aud):
         return result, {}
 
     return result, {
-        "base_weekly_aud": float(weekly_aud),
+        "base_dca_aud": float(base_dca_aud),
+            "dca_frequency": dca_frequency,
         "total_bought_aud": float(result["actual_buy_aud"].sum()),
         "ending_wealth_aud": float(result.iloc[-1]["total_wealth_aud"]),
         "btc_held": float(result.iloc[-1]["btc_held"]),
@@ -1551,12 +1553,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.6 FULL",
+    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.6.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.6 FULL — Buy Low / Sell High")
-st.caption("Version 3.5.4 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
+st.title("Bitcoin Dynamic DCA V3.6.1 FULL — Buy Low / Sell High")
+st.caption("Version 3.6.1 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
 # ------------------------------------------------
@@ -1570,7 +1572,7 @@ with st.sidebar:
         "Analysis Mode",
         [
             "Historical Backtest",
-            "Fixed Weekly Risk DCA",
+            "Fixed DCA",
             "Forward Deployment Plan",
         ],
     )
@@ -2714,10 +2716,10 @@ if mode == "Historical Backtest":
 
 
 # ================================================================
-# Fixed Weekly Risk DCA
+# Fixed DCA
 # ================================================================
 
-elif mode == "Fixed Weekly Risk DCA":
+elif mode == "Fixed DCA":
 
     with st.spinner("Loading BTC and AUD/USD history..."):
         df_full = fetch_btc_history(
@@ -2737,72 +2739,88 @@ elif mode == "Fixed Weekly Risk DCA":
             bg_token,
         )
 
-        df_full = merge_external_data(
-            df_full,
-            fx_series,
-            bg_data,
-        )
+    if df_full.empty:
+        st.error("No BTC price data was returned.")
+        st.stop()
 
-    st.header("Fixed Weekly Risk DCA")
+    df_full = align_fx_to_dates(
+        df_full,
+        fx_series,
+    )
+    df_full = merge_bgeometrics(
+        df_full,
+        bg_data,
+    )
+
+    st.header("Fixed DCA")
     st.caption(
-        "Choose your normal weekly AUD investment. The amount automatically "
-        "increases when risk is low and decreases to $0 outside the BUY zone. "
+        "Choose a normal Daily or Weekly AUD amount. The app automatically "
+        "increases it when risk is low and reduces it to $0 outside the BUY zone. "
         "This mode never sells."
     )
 
-    weekly_dca_aud = st.number_input(
-        "Normal Weekly DCA (AUD)",
+    dca_frequency = st.radio(
+        "DCA Frequency",
+        ["Daily", "Weekly"],
+        horizontal=True,
+        index=1,
+    )
+
+    base_dca_aud = st.number_input(
+        f"Normal {dca_frequency} DCA (AUD)",
         min_value=10.0,
         max_value=100000.0,
-        value=DEFAULT_WEEKLY_DCA_AUD,
+        value=DEFAULT_FIXED_DCA_AUD,
         step=100.0,
     )
 
-    weekly_df, weekly_summary = simulate_fixed_weekly_risk_dca(
+    fixed_df, fixed_summary = simulate_fixed_risk_dca(
         df_full,
         params,
-        weekly_dca_aud,
+        base_dca_aud,
+        dca_frequency,
     )
 
-    if not weekly_df.empty:
+    if not fixed_df.empty:
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Base Weekly DCA", f"${weekly_summary['base_weekly_aud']:,.0f}")
-        c2.metric("Total Bought", f"${weekly_summary['total_bought_aud']:,.0f}")
-        c3.metric("BTC Held", f"{weekly_summary['btc_held']:.6f}")
-        c4.metric("Ending Wealth", f"${weekly_summary['ending_wealth_aud']:,.0f}")
+        c1.metric("Base DCA", f"${fixed_summary['base_dca_aud']:,.0f}")
+        c2.metric("Total Bought", f"${fixed_summary['total_bought_aud']:,.0f}")
+        c3.metric("BTC Held", f"{fixed_summary['btc_held']:.6f}")
+        c4.metric("Ending Wealth", f"${fixed_summary['ending_wealth_aud']:,.0f}")
 
-        fig_weekly = go.Figure()
-        fig_weekly.add_trace(
+        fig_fixed = go.Figure()
+        fig_fixed.add_trace(
             go.Bar(
-                x=weekly_df["date"],
-                y=weekly_df["actual_buy_aud"],
-                name="Actual Weekly Buy",
+                x=fixed_df["date"],
+                y=fixed_df["actual_buy_aud"],
+                name=f"Actual {dca_frequency} Buy",
             )
         )
-        fig_weekly.add_trace(
+        fig_fixed.add_trace(
             go.Scatter(
-                x=weekly_df["date"],
-                y=weekly_df["base_weekly_aud"],
-                name="Base Weekly Amount",
+                x=fixed_df["date"],
+                y=fixed_df["base_dca_aud"],
+                name="Base DCA Amount",
                 line=dict(dash="dot"),
             )
         )
-        fig_weekly.update_layout(
+        fig_fixed.update_layout(
             height=420,
             template="plotly_dark",
             xaxis_title="Date",
             yaxis_title="AUD",
             hovermode="x unified",
         )
-        st.plotly_chart(fig_weekly, width="stretch")
+        st.plotly_chart(fig_fixed, width="stretch")
 
-        weekly_display = weekly_df[
+        fixed_display = fixed_df[
             [
                 "date",
+                "dca_frequency",
                 "price_usd",
                 "risk_score",
                 "risk_multiplier",
-                "base_weekly_aud",
+                "base_dca_aud",
                 "actual_buy_aud",
                 "btc_bought",
                 "btc_held",
@@ -2810,37 +2828,38 @@ elif mode == "Fixed Weekly Risk DCA":
             ]
         ].copy()
 
-        weekly_display["date"] = pd.to_datetime(
-            weekly_display["date"]
+        fixed_display["date"] = pd.to_datetime(
+            fixed_display["date"]
         ).dt.strftime("%d/%m/%Y")
-        weekly_display["price_usd"] = weekly_display["price_usd"].map(
+        fixed_display["price_usd"] = fixed_display["price_usd"].map(
             lambda x: f"${x:,.0f}"
         )
-        weekly_display["risk_score"] = weekly_display["risk_score"].map(
+        fixed_display["risk_score"] = fixed_display["risk_score"].map(
             lambda x: "n/a" if pd.isna(x) else f"{x:.3f}"
         )
-        weekly_display["risk_multiplier"] = weekly_display["risk_multiplier"].map(
+        fixed_display["risk_multiplier"] = fixed_display["risk_multiplier"].map(
             lambda x: f"{x:.2f}x"
         )
-        weekly_display["base_weekly_aud"] = weekly_display["base_weekly_aud"].map(
+        fixed_display["base_dca_aud"] = fixed_display["base_dca_aud"].map(
             lambda x: f"${x:,.0f}"
         )
-        weekly_display["actual_buy_aud"] = weekly_display["actual_buy_aud"].map(
+        fixed_display["actual_buy_aud"] = fixed_display["actual_buy_aud"].map(
             lambda x: f"${x:,.0f}"
         )
-        weekly_display["btc_bought"] = weekly_display["btc_bought"].map(
+        fixed_display["btc_bought"] = fixed_display["btc_bought"].map(
             lambda x: f"{x:.6f}"
         )
-        weekly_display["btc_held"] = weekly_display["btc_held"].map(
+        fixed_display["btc_held"] = fixed_display["btc_held"].map(
             lambda x: f"{x:.6f}"
         )
 
-        weekly_display.columns = [
+        fixed_display.columns = [
             "Date",
+            "Frequency",
             "BTC USD",
             "Risk",
             "Risk Mult.",
-            "Base Weekly AUD",
+            "Base DCA AUD",
             "Actual Buy AUD",
             "BTC Bought",
             "BTC Held",
@@ -2848,12 +2867,12 @@ elif mode == "Fixed Weekly Risk DCA":
         ]
 
         st.dataframe(
-            weekly_display,
+            fixed_display,
             width="stretch",
             hide_index=True,
         )
     else:
-        st.info("No weekly DCA rows are available for the selected period.")
+        st.info("No Fixed DCA rows are available for the selected period.")
 
 
 # ================================================================
