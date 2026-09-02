@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6.3 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6.4 FULL
 ====================================================
 
 Designed for:
@@ -1622,11 +1622,11 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V3.6.3 FULL",
+    page_title="BTC Dynamic DCA V3.6.4 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.6.3 FULL — Buy Low / Sell High")
+st.title("Bitcoin Dynamic DCA V3.6.4 FULL — Buy Low / Sell High")
 st.caption("Version 3.6.3 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
@@ -1686,6 +1686,25 @@ with st.sidebar:
                 "OFF: exactly the base amount is invested every execution."
             ),
         )
+
+        dca_backtest_start_date = st.date_input(
+            "Backtest Start Date",
+            value=dt.date(2015, 1, 1),
+            min_value=dt.date(2012, 1, 1),
+            max_value=dt.date.today(),
+            key="sidebar_dca_backtest_start_date",
+        )
+
+        dca_backtest_end_date = st.date_input(
+            "Backtest End Date",
+            value=dt.date.today(),
+            min_value=dt.date(2012, 1, 1),
+            max_value=dt.date.today(),
+            key="sidebar_dca_backtest_end_date",
+        )
+
+        if dca_backtest_start_date >= dca_backtest_end_date:
+            st.error("Backtest Start Date must be before Backtest End Date.")
 
         selected_day_name = st.selectbox(
             "Weekly Execution Day",
@@ -2837,35 +2856,17 @@ if mode == "Historical Backtest":
 
 elif mode == "DCA Backtest":
 
-    today_utc = pd.Timestamp.now(tz="UTC").normalize()
-
-    dc1, dc2 = st.columns(2)
-    dca_start_date = dc1.date_input(
-        "Backtest Start Date",
-        value=dt.date(2024, 1, 1),
-        min_value=dt.date(2012, 1, 1),
-        max_value=dt.date.today(),
-        key="dca_backtest_start_date",
-    )
-    dca_end_date = dc2.date_input(
-        "Backtest End Date",
-        value=dt.date.today(),
-        min_value=dt.date(2012, 1, 1),
-        max_value=dt.date.today(),
-        key="dca_backtest_end_date",
-    )
-
-    if dca_start_date >= dca_end_date:
+    if dca_backtest_start_date >= dca_backtest_end_date:
         st.error("Backtest Start Date must be before Backtest End Date.")
         st.stop()
 
     params["start_date"] = dt.datetime.combine(
-        dca_start_date,
+        dca_backtest_start_date,
         dt.time.min,
         tzinfo=timezone.utc,
     )
     params["end_date"] = dt.datetime.combine(
-        dca_end_date,
+        dca_backtest_end_date,
         dt.time.max,
         tzinfo=timezone.utc,
     )
@@ -2902,7 +2903,7 @@ elif mode == "DCA Backtest":
         bg_data,
     )
 
-    st.header("DCA Backtest")
+    st.header("DCA Backtest Results")
 
     model_text = (
         "Risk-adjusted DCA"
@@ -2911,8 +2912,10 @@ elif mode == "DCA Backtest":
     )
 
     st.caption(
-        f"Historical-only simulation • {model_text} • "
+        f"Selected strategy: {model_text} • "
         f"{dca_frequency} base amount ${dca_base_amount_aud:,.0f} AUD • "
+        f"{dca_backtest_start_date.strftime('%d/%m/%Y')} to "
+        f"{dca_backtest_end_date.strftime('%d/%m/%Y')} • "
         "No starting-capital limit."
     )
 
@@ -2934,6 +2937,8 @@ elif mode == "DCA Backtest":
     )
 
     if not dca_df.empty and dca_summary:
+        st.subheader(f"Selected: {model_text}")
+
         c1, c2, c3, c4, c5 = st.columns(5)
 
         c1.metric(
@@ -2957,7 +2962,12 @@ elif mode == "DCA Backtest":
             f"{dca_summary['roi_pct']:+.2f}%",
         )
 
-        st.subheader("Risk Model vs Plain DCA")
+        st.subheader("Strategy Comparison")
+        st.caption(
+            "The main results above always show the option you selected. "
+            "The comparison below deliberately runs the alternative method on the same dates "
+            "and with the same base DCA amount."
+        )
 
         left, right = st.columns(2)
 
@@ -2967,6 +2977,22 @@ elif mode == "DCA Backtest":
         else:
             plain_summary = dca_summary
             risk_summary = comparison_summary
+
+            if (
+                abs(dca_summary["total_invested_aud"] - plain_summary["total_invested_aud"]) > 0.01
+                or abs(dca_summary["btc_held"] - plain_summary["btc_held"]) > 1e-10
+                or abs(dca_summary["roi_pct"] - plain_summary["roi_pct"]) > 1e-9
+            ):
+                st.error(
+                    "Internal consistency check failed: with Risk Model OFF, "
+                    "selected DCA results must match Plain Fixed DCA."
+                )
+
+        if not dca_use_risk_model:
+            st.success(
+                "Risk Model is OFF: the selected results above are the Plain Fixed DCA results. "
+                "The Risk-Adjusted column below is shown only as a comparison."
+            )
 
         with left:
             st.markdown("**Risk-Adjusted DCA**")
