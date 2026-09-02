@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6.5 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.7 FULL
 ====================================================
 
 Designed for:
@@ -125,6 +125,20 @@ DEFAULT_ABSOLUTE_RISK_WEIGHT = 0.60
 DEFAULT_RELATIVE_RISK_WEIGHT = 0.40
 DEFAULT_DRAWDOWN_WINDOW = 365
 DEFAULT_FIXED_DCA_AUD = 1000.0
+
+DEFAULT_ALWAYS_DCA_POINTS = [
+    (0.00, 3.00),
+    (0.10, 2.50),
+    (0.20, 2.00),
+    (0.30, 1.50),
+    (0.40, 1.20),
+    (0.50, 1.00),
+    (0.60, 0.80),
+    (0.70, 0.60),
+    (0.80, 0.40),
+    (0.90, 0.25),
+    (1.00, 0.10),
+]
 DEFAULT_BUY_POINTS = [
     (0.00, 4.00), (0.10, 3.25), (0.20, 2.50), (0.30, 1.65),
     (0.35, 1.20), (0.40, 0.60), (0.45, 0.00), (1.00, 0.00),
@@ -1233,19 +1247,15 @@ def simulate_dca_backtest(
     params,
     base_dca_aud,
     dca_frequency,
-    use_risk_model=True,
+    strategy_mode,
 ):
     """
-    Historical DCA backtest with NO capital ceiling.
+    Historical accumulation-only DCA backtest with no capital ceiling.
 
-    With risk model:
-      actual contribution = base DCA * risk multiplier,
-      and no contribution outside the BUY zone.
-
-    Without risk model:
-      actual contribution = base DCA every execution.
-
-    This mode never sells and never assumes a starting cash balance.
+    strategy_mode:
+      - "Plain DCA": exact base amount every execution.
+      - "Risk-Scaled DCA": always buys, amount varies with calibrated risk.
+      - "Risk-Gated DCA": buys only inside BUY zone; otherwise $0.
     """
     if df_full.empty:
         return pd.DataFrame(), {}
@@ -1292,23 +1302,33 @@ def simulate_dca_backtest(
             else np.nan
         )
 
-        if use_risk_model:
-            risk_mult = (
+        if strategy_mode == "Plain DCA":
+            multiplier = 1.0
+            contribution = float(base_dca_aud)
+            signal = "FIXED DCA"
+
+        elif strategy_mode == "Risk-Scaled DCA":
+            multiplier = (
+                float(interpolate(DEFAULT_ALWAYS_DCA_POINTS, risk))
+                if np.isfinite(risk)
+                else 1.0
+            )
+            contribution = float(base_dca_aud) * multiplier
+            signal = "SCALED DCA"
+
+        else:  # Risk-Gated DCA
+            multiplier = (
                 float(interpolate(DEFAULT_BUY_POINTS, risk))
                 if np.isfinite(risk)
                 else 0.0
             )
             contribution = (
-                float(base_dca_aud) * risk_mult
+                float(base_dca_aud) * multiplier
                 if np.isfinite(risk)
                 and risk <= float(params["buy_threshold"])
                 else 0.0
             )
             signal = "BUY" if contribution > 0 else "HOLD"
-        else:
-            risk_mult = 1.0
-            contribution = float(base_dca_aud)
-            signal = "FIXED DCA"
 
         fee = contribution * float(params.get("fee_pct", 0.0))
         net_contribution = max(0.0, contribution - fee)
@@ -1341,10 +1361,10 @@ def simulate_dca_backtest(
                 "price_usd": price_usd,
                 "btc_price_aud": price_aud,
                 "risk_score": risk,
-                "risk_multiplier": risk_mult,
+                "strategy_mode": strategy_mode,
+                "dca_multiplier": multiplier,
                 "base_dca_aud": float(base_dca_aud),
                 "dca_frequency": dca_frequency,
-                "use_risk_model": bool(use_risk_model),
                 "actual_buy_aud": contribution,
                 "btc_bought": btc_bought,
                 "btc_held": btc,
@@ -1366,9 +1386,9 @@ def simulate_dca_backtest(
     final = result.iloc[-1]
 
     summary = {
+        "strategy_mode": strategy_mode,
         "base_dca_aud": float(base_dca_aud),
         "frequency": dca_frequency,
-        "use_risk_model": bool(use_risk_model),
         "total_invested_aud": float(final["cumulative_invested_aud"]),
         "btc_held": float(final["btc_held"]),
         "btc_value_aud": float(final["btc_value_aud"]),
@@ -1622,11 +1642,11 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V3.6.5 FULL",
+    page_title="BTC Dynamic DCA V3.7 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.6.5 FULL — Buy Low / Sell High")
+st.title("Bitcoin Dynamic DCA V3.7 FULL — Buy Low / Sell High")
 st.caption("Version 3.6.5 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
@@ -1678,12 +1698,18 @@ with st.sidebar:
             key="dca_backtest_base_amount",
         )
 
-        dca_use_risk_model = st.toggle(
-            "Use Risk Model",
-            value=True,
+        dca_strategy_mode = st.radio(
+            "DCA Strategy",
+            [
+                "Plain DCA",
+                "Risk-Scaled DCA",
+                "Risk-Gated DCA",
+            ],
+            index=1,
             help=(
-                "ON: the base DCA is increased/decreased by calibrated risk. "
-                "OFF: exactly the base amount is invested every execution."
+                "Plain DCA: same amount every execution. "
+                "Risk-Scaled: always buys, but more at low risk and less at high risk. "
+                "Risk-Gated: buys only inside the BUY zone."
             ),
         )
 
@@ -2916,11 +2942,7 @@ elif mode == "DCA Backtest":
 
     st.header("DCA Backtest Results")
 
-    model_text = (
-        "Risk-adjusted DCA"
-        if dca_use_risk_model
-        else "Plain fixed DCA"
-    )
+    model_text = dca_strategy_mode
 
     st.caption(
         f"Selected strategy: {model_text} • "
@@ -2935,16 +2957,31 @@ elif mode == "DCA Backtest":
         params,
         dca_base_amount_aud,
         dca_frequency,
-        dca_use_risk_model,
+        dca_strategy_mode,
     )
 
-    # Always run the opposite method for direct comparison.
-    comparison_df, comparison_summary = simulate_dca_backtest(
+    plain_df, plain_summary = simulate_dca_backtest(
         df_full,
         params,
         dca_base_amount_aud,
         dca_frequency,
-        not dca_use_risk_model,
+        "Plain DCA",
+    )
+
+    scaled_df, scaled_summary = simulate_dca_backtest(
+        df_full,
+        params,
+        dca_base_amount_aud,
+        dca_frequency,
+        "Risk-Scaled DCA",
+    )
+
+    gated_df, gated_summary = simulate_dca_backtest(
+        df_full,
+        params,
+        dca_base_amount_aud,
+        dca_frequency,
+        "Risk-Gated DCA",
     )
 
     if not dca_df.empty and dca_summary:
@@ -2975,65 +3012,52 @@ elif mode == "DCA Backtest":
 
         st.subheader("Strategy Comparison")
         st.caption(
-            "The main results above always show the option you selected. "
-            "The comparison below deliberately runs the alternative method on the same dates "
-            "and with the same base DCA amount."
+            "All three strategies use the same dates, frequency and base DCA. "
+            "They differ only in how risk changes the contribution amount."
         )
 
-        left, right = st.columns(2)
+        comparison_table = pd.DataFrame(
+            [
+                {
+                    "Strategy": "Plain DCA",
+                    "Invested AUD": plain_summary["total_invested_aud"],
+                    "BTC Held": plain_summary["btc_held"],
+                    "Average Cost AUD": plain_summary["avg_cost_aud"],
+                    "BTC Value AUD": plain_summary["btc_value_aud"],
+                    "ROI %": plain_summary["roi_pct"],
+                },
+                {
+                    "Strategy": "Risk-Scaled DCA",
+                    "Invested AUD": scaled_summary["total_invested_aud"],
+                    "BTC Held": scaled_summary["btc_held"],
+                    "Average Cost AUD": scaled_summary["avg_cost_aud"],
+                    "BTC Value AUD": scaled_summary["btc_value_aud"],
+                    "ROI %": scaled_summary["roi_pct"],
+                },
+                {
+                    "Strategy": "Risk-Gated DCA",
+                    "Invested AUD": gated_summary["total_invested_aud"],
+                    "BTC Held": gated_summary["btc_held"],
+                    "Average Cost AUD": gated_summary["avg_cost_aud"],
+                    "BTC Value AUD": gated_summary["btc_value_aud"],
+                    "ROI %": gated_summary["roi_pct"],
+                },
+            ]
+        )
 
-        if dca_use_risk_model:
-            risk_summary = dca_summary
-            plain_summary = comparison_summary
-        else:
-            plain_summary = dca_summary
-            risk_summary = comparison_summary
-
-            if (
-                abs(dca_summary["total_invested_aud"] - plain_summary["total_invested_aud"]) > 0.01
-                or abs(dca_summary["btc_held"] - plain_summary["btc_held"]) > 1e-10
-                or abs(dca_summary["roi_pct"] - plain_summary["roi_pct"]) > 1e-9
-            ):
-                st.error(
-                    "Internal consistency check failed: with Risk Model OFF, "
-                    "selected DCA results must match Plain Fixed DCA."
-                )
-
-        if not dca_use_risk_model:
-            st.success(
-                "Risk Model is OFF: the selected results above are the Plain Fixed DCA results. "
-                "The Risk-Adjusted column below is shown only as a comparison."
-            )
-
-        with left:
-            st.markdown("**Risk-Adjusted DCA**")
-            st.metric(
-                "Invested",
-                f"${risk_summary['total_invested_aud']:,.0f}",
-            )
-            st.metric(
-                "BTC",
-                f"{risk_summary['btc_held']:.6f}",
-            )
-            st.metric(
-                "ROI",
-                f"{risk_summary['roi_pct']:+.2f}%",
-            )
-
-        with right:
-            st.markdown("**Plain Fixed DCA**")
-            st.metric(
-                "Invested",
-                f"${plain_summary['total_invested_aud']:,.0f}",
-            )
-            st.metric(
-                "BTC",
-                f"{plain_summary['btc_held']:.6f}",
-            )
-            st.metric(
-                "ROI",
-                f"{plain_summary['roi_pct']:+.2f}%",
-            )
+        st.dataframe(
+            comparison_table.style.format(
+                {
+                    "Invested AUD": "${:,.0f}",
+                    "BTC Held": "{:.6f}",
+                    "Average Cost AUD": "${:,.0f}",
+                    "BTC Value AUD": "${:,.0f}",
+                    "ROI %": "{:+.2f}%",
+                }
+            ),
+            width="stretch",
+            hide_index=True,
+        )
 
         fig_dca = go.Figure()
 
@@ -3071,9 +3095,10 @@ elif mode == "DCA Backtest":
             [
                 "date",
                 "dca_frequency",
+                "strategy_mode",
                 "price_usd",
                 "risk_score",
-                "risk_multiplier",
+                "dca_multiplier",
                 "base_dca_aud",
                 "actual_buy_aud",
                 "cumulative_invested_aud",
@@ -3100,8 +3125,8 @@ elif mode == "DCA Backtest":
             else f"{x:.3f}"
         )
 
-        dca_display["risk_multiplier"] = dca_display[
-            "risk_multiplier"
+        dca_display["dca_multiplier"] = dca_display[
+            "dca_multiplier"
         ].map(lambda x: f"{x:.2f}x")
 
         for col in [
@@ -3128,9 +3153,10 @@ elif mode == "DCA Backtest":
         dca_display.columns = [
             "Date",
             "Frequency",
+            "Strategy",
             "BTC USD",
             "Risk",
-            "Risk Mult.",
+            "DCA Mult.",
             "Base DCA AUD",
             "Actual Buy AUD",
             "Total Invested",
