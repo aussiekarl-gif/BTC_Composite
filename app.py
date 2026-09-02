@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6.2 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V3.6.3 FULL
 ====================================================
 
 Designed for:
@@ -1228,8 +1228,25 @@ def simulate_dynamic_dca(df_full, params):
 
 
 # ================================================================
-def simulate_fixed_dca_backtest(df_full, params, base_dca_aud, dca_frequency):
-    """Historical accumulation-only Daily/Weekly DCA backtest scaled by calibrated risk."""
+def simulate_dca_backtest(
+    df_full,
+    params,
+    base_dca_aud,
+    dca_frequency,
+    use_risk_model=True,
+):
+    """
+    Historical DCA backtest with NO capital ceiling.
+
+    With risk model:
+      actual contribution = base DCA * risk multiplier,
+      and no contribution outside the BUY zone.
+
+    Without risk model:
+      actual contribution = base DCA every execution.
+
+    This mode never sells and never assumes a starting cash balance.
+    """
     if df_full.empty:
         return pd.DataFrame(), {}
 
@@ -1241,18 +1258,30 @@ def simulate_fixed_dca_backtest(df_full, params, base_dca_aud, dca_frequency):
     if df.empty:
         return pd.DataFrame(), {}
 
-    df = add_risk_indicators(df, params["risk_model"], params)
-    execution = select_execution_dates(
-        df, dca_frequency, params["day_of_week"]
+    df = add_risk_indicators(
+        df,
+        params["risk_model"],
+        params,
     )
 
-    cash = float(params["total_capital_aud"])
+    execution = select_execution_dates(
+        df,
+        dca_frequency,
+        params["day_of_week"],
+    )
+
+    if execution.empty:
+        return pd.DataFrame(), {}
+
     btc = 0.0
+    cumulative_invested = 0.0
+    cumulative_fees = 0.0
     rows = []
 
     for timestamp, row in execution.iterrows():
         price_usd = float(row["price"])
         usd_per_aud = float(row["usd_per_aud"])
+
         if price_usd <= 0 or usd_per_aud <= 0:
             continue
 
@@ -1263,55 +1292,95 @@ def simulate_fixed_dca_backtest(df_full, params, base_dca_aud, dca_frequency):
             else np.nan
         )
 
-        risk_mult = (
-            float(interpolate(DEFAULT_BUY_POINTS, risk))
-            if np.isfinite(risk)
+        if use_risk_model:
+            risk_mult = (
+                float(interpolate(DEFAULT_BUY_POINTS, risk))
+                if np.isfinite(risk)
+                else 0.0
+            )
+            contribution = (
+                float(base_dca_aud) * risk_mult
+                if np.isfinite(risk)
+                and risk <= float(params["buy_threshold"])
+                else 0.0
+            )
+            signal = "BUY" if contribution > 0 else "HOLD"
+        else:
+            risk_mult = 1.0
+            contribution = float(base_dca_aud)
+            signal = "FIXED DCA"
+
+        fee = contribution * float(params.get("fee_pct", 0.0))
+        net_contribution = max(0.0, contribution - fee)
+        btc_bought = (
+            net_contribution / price_aud
+            if price_aud > 0
             else 0.0
         )
 
-        planned = (
-            float(base_dca_aud) * risk_mult
-            if np.isfinite(risk)
-            and risk <= float(params["buy_threshold"])
-            else 0.0
-        )
-
-        buy = min(planned, cash)
-        fee = buy * float(params.get("fee_pct", 0.0))
-        net = max(0.0, buy - fee)
-        btc_bought = net / price_aud if price_aud > 0 else 0.0
-
-        cash -= buy
         btc += btc_bought
-        wealth = cash + btc * price_aud
+        cumulative_invested += contribution
+        cumulative_fees += fee
 
-        rows.append({
-            "date": timestamp,
-            "price_usd": price_usd,
-            "risk_score": risk,
-            "risk_multiplier": risk_mult,
-            "base_dca_aud": float(base_dca_aud),
-            "dca_frequency": dca_frequency,
-            "actual_buy_aud": buy,
-            "btc_bought": btc_bought,
-            "btc_held": btc,
-            "cash_aud": cash,
-            "total_wealth_aud": wealth,
-            "signal": "BUY" if buy > 0 else "HOLD",
-        })
+        btc_value = btc * price_aud
+        pnl = btc_value - cumulative_invested
+        roi_pct = (
+            (btc_value / cumulative_invested - 1.0) * 100.0
+            if cumulative_invested > 0
+            else 0.0
+        )
+        avg_cost_aud = (
+            cumulative_invested / btc
+            if btc > 0
+            else 0.0
+        )
+
+        rows.append(
+            {
+                "date": timestamp,
+                "price_usd": price_usd,
+                "btc_price_aud": price_aud,
+                "risk_score": risk,
+                "risk_multiplier": risk_mult,
+                "base_dca_aud": float(base_dca_aud),
+                "dca_frequency": dca_frequency,
+                "use_risk_model": bool(use_risk_model),
+                "actual_buy_aud": contribution,
+                "btc_bought": btc_bought,
+                "btc_held": btc,
+                "cumulative_invested_aud": cumulative_invested,
+                "cumulative_fees_aud": cumulative_fees,
+                "btc_value_aud": btc_value,
+                "pnl_aud": pnl,
+                "roi_pct": roi_pct,
+                "avg_cost_aud": avg_cost_aud,
+                "signal": signal,
+            }
+        )
 
     result = pd.DataFrame(rows)
+
     if result.empty:
         return result, {}
 
-    return result, {
+    final = result.iloc[-1]
+
+    summary = {
         "base_dca_aud": float(base_dca_aud),
-            "dca_frequency": dca_frequency,
-        "total_bought_aud": float(result["actual_buy_aud"].sum()),
-        "ending_wealth_aud": float(result.iloc[-1]["total_wealth_aud"]),
-        "btc_held": float(result.iloc[-1]["btc_held"]),
-        "cash_aud": float(result.iloc[-1]["cash_aud"]),
+        "frequency": dca_frequency,
+        "use_risk_model": bool(use_risk_model),
+        "total_invested_aud": float(final["cumulative_invested_aud"]),
+        "btc_held": float(final["btc_held"]),
+        "btc_value_aud": float(final["btc_value_aud"]),
+        "pnl_aud": float(final["pnl_aud"]),
+        "roi_pct": float(final["roi_pct"]),
+        "avg_cost_aud": float(final["avg_cost_aud"]),
+        "fees_aud": float(final["cumulative_fees_aud"]),
+        "execution_count": int(len(result)),
+        "buy_count": int((result["actual_buy_aud"] > 0).sum()),
     }
+
+    return result, summary
 
 
 # Benchmark Strategies
@@ -1553,12 +1622,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA & Tactical Rebalancer V3.6.2 FULL",
+    page_title="BTC Dynamic DCA V3.6.3 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.6.2 FULL — Buy Low / Sell High")
-st.caption("Version 3.6.1 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
+st.title("Bitcoin Dynamic DCA V3.6.3 FULL — Buy Low / Sell High")
+st.caption("Version 3.6.3 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
 # ------------------------------------------------
@@ -1572,28 +1641,12 @@ with st.sidebar:
         "Analysis Mode",
         [
             "Historical Backtest",
-            "Fixed DCA Backtest",
+            "DCA Backtest",
             "Forward Deployment Plan",
         ],
     )
 
     st.divider()
-
-    st.header("Capital")
-
-    total_capital_aud = st.number_input(
-        "Simulation Capital (AUD)",
-        min_value=1000.0,
-        max_value=100_000_000.0,
-        value=100_000.0,
-        step=10_000.0,
-    )
-
-    frequency = st.selectbox(
-        "Execution Frequency",
-        ["Weekly", "Daily", "Monthly"],
-        index=0,
-    )
 
     day_map = {
         "Monday": 0,
@@ -1605,14 +1658,77 @@ with st.sidebar:
         "Sunday": 6,
     }
 
-    selected_day_name = st.selectbox(
-        "Weekly Execution Day",
-        list(day_map.keys()),
-        index=0,
-        disabled=(frequency != "Weekly"),
-    )
+    if mode == "DCA Backtest":
+        st.header("DCA Backtest")
 
-    selected_day = day_map[selected_day_name]
+        dca_frequency = st.radio(
+            "DCA Frequency",
+            ["Daily", "Weekly"],
+            horizontal=True,
+            index=1,
+            key="dca_backtest_frequency",
+        )
+
+        dca_base_amount_aud = st.number_input(
+            f"Base {dca_frequency} DCA (AUD)",
+            min_value=10.0,
+            max_value=100_000.0,
+            value=DEFAULT_FIXED_DCA_AUD,
+            step=100.0,
+            key="dca_backtest_base_amount",
+        )
+
+        dca_use_risk_model = st.toggle(
+            "Use Risk Model",
+            value=True,
+            help=(
+                "ON: the base DCA is increased/decreased by calibrated risk. "
+                "OFF: exactly the base amount is invested every execution."
+            ),
+        )
+
+        selected_day_name = st.selectbox(
+            "Weekly Execution Day",
+            list(day_map.keys()),
+            index=0,
+            disabled=(dca_frequency != "Weekly"),
+            key="dca_backtest_weekday",
+        )
+        selected_day = day_map[selected_day_name]
+
+        # Compatibility values. DCA Backtest does not use a capital ceiling.
+        total_capital_aud = 0.0
+        frequency = dca_frequency
+
+        st.caption(
+            "No capital limit is used in DCA Backtest. "
+            "The simulation simply sums each historical contribution."
+        )
+
+    else:
+        st.header("Capital")
+
+        total_capital_aud = st.number_input(
+            "Simulation Capital (AUD)",
+            min_value=1000.0,
+            max_value=100_000_000.0,
+            value=100_000.0,
+            step=10_000.0,
+        )
+
+        frequency = st.selectbox(
+            "Execution Frequency",
+            ["Weekly", "Daily", "Monthly"],
+            index=0,
+        )
+
+        selected_day_name = st.selectbox(
+            "Weekly Execution Day",
+            list(day_map.keys()),
+            index=0,
+            disabled=(frequency != "Weekly"),
+        )
+        selected_day = day_map[selected_day_name]
 
     st.divider()
 
@@ -2716,51 +2832,46 @@ if mode == "Historical Backtest":
 
 
 # ================================================================
-# Fixed DCA Backtest
+# DCA Backtest
 # ================================================================
 
-elif mode == "Fixed DCA Backtest":
+elif mode == "DCA Backtest":
 
     today_utc = pd.Timestamp.now(tz="UTC").normalize()
-    if params["end_date"] > today_utc.to_pydatetime():
-        st.warning(
-            "Fixed DCA Backtest is historical only. "
-            "The end date has been limited to today because future BTC prices are unknown."
-        )
-        params["end_date"] = today_utc.to_pydatetime()
 
     dc1, dc2 = st.columns(2)
-    fixed_start_date = dc1.date_input(
+    dca_start_date = dc1.date_input(
         "Backtest Start Date",
-        value=max(dt.date(2024, 1, 1), params["start_date"].date()),
+        value=dt.date(2024, 1, 1),
         min_value=dt.date(2012, 1, 1),
         max_value=dt.date.today(),
-        key="fixed_dca_start_date",
+        key="dca_backtest_start_date",
     )
-    fixed_end_date = dc2.date_input(
+    dca_end_date = dc2.date_input(
         "Backtest End Date",
-        value=min(dt.date.today(), params["end_date"].date()),
+        value=dt.date.today(),
         min_value=dt.date(2012, 1, 1),
         max_value=dt.date.today(),
-        key="fixed_dca_end_date",
+        key="dca_backtest_end_date",
     )
 
-    if fixed_start_date >= fixed_end_date:
+    if dca_start_date >= dca_end_date:
         st.error("Backtest Start Date must be before Backtest End Date.")
         st.stop()
 
     params["start_date"] = dt.datetime.combine(
-        fixed_start_date,
+        dca_start_date,
         dt.time.min,
         tzinfo=timezone.utc,
     )
     params["end_date"] = dt.datetime.combine(
-        fixed_end_date,
+        dca_end_date,
         dt.time.max,
         tzinfo=timezone.utc,
     )
+    params["day_of_week"] = selected_day
 
-    with st.spinner("Loading BTC and AUD/USD history..."):
+    with st.spinner("Loading historical BTC and AUD/USD data..."):
         df_full = fetch_btc_history(
             params["start_date"],
             params["end_date"],
@@ -2791,125 +2902,135 @@ elif mode == "Fixed DCA Backtest":
         bg_data,
     )
 
-    st.header("Fixed DCA Backtest")
+    st.header("DCA Backtest")
+
+    model_text = (
+        "Risk-adjusted DCA"
+        if dca_use_risk_model
+        else "Plain fixed DCA"
+    )
+
     st.caption(
-        "Choose a normal Daily or Weekly AUD amount. The app automatically "
-        "increases it when risk is low and reduces it to $0 outside the BUY zone. "
-        "This mode never sells."
+        f"Historical-only simulation • {model_text} • "
+        f"{dca_frequency} base amount ${dca_base_amount_aud:,.0f} AUD • "
+        "No starting-capital limit."
     )
 
-    dca_frequency = st.radio(
-        "DCA Frequency",
-        ["Daily", "Weekly"],
-        horizontal=True,
-        index=1,
-    )
-
-    base_dca_aud = st.number_input(
-        f"Normal {dca_frequency} DCA (AUD)",
-        min_value=10.0,
-        max_value=100000.0,
-        value=DEFAULT_FIXED_DCA_AUD,
-        step=100.0,
-    )
-
-    fixed_df, fixed_summary = simulate_fixed_dca_backtest(
+    dca_df, dca_summary = simulate_dca_backtest(
         df_full,
         params,
-        base_dca_aud,
+        dca_base_amount_aud,
         dca_frequency,
+        dca_use_risk_model,
     )
 
-    if not fixed_df.empty:
-        # Plain fixed DCA benchmark with the same base amount and frequency.
-        benchmark_df = fixed_df.copy()
-        benchmark_cash = float(params["total_capital_aud"])
-        benchmark_btc = 0.0
-        benchmark_rows = []
+    # Always run the opposite method for direct comparison.
+    comparison_df, comparison_summary = simulate_dca_backtest(
+        df_full,
+        params,
+        dca_base_amount_aud,
+        dca_frequency,
+        not dca_use_risk_model,
+    )
 
-        for _, brow in benchmark_df.iterrows():
-            price_usd = float(str(brow["price_usd"]).replace("$", "").replace(",", "")) if isinstance(brow["price_usd"], str) else float(brow["price_usd"])
-            match = df_full.loc[df_full.index == pd.Timestamp(brow["date"])]
-            if match.empty:
-                continue
-            usd_per_aud = float(match.iloc[0]["usd_per_aud"])
-            price_aud = price_usd / usd_per_aud if usd_per_aud > 0 else np.nan
-            buy = min(float(base_dca_aud), benchmark_cash)
-            btc_bought = buy / price_aud if price_aud and price_aud > 0 else 0.0
-            benchmark_cash -= buy
-            benchmark_btc += btc_bought
-            benchmark_rows.append(
-                {
-                    "date": brow["date"],
-                    "benchmark_btc": benchmark_btc,
-                    "benchmark_cash": benchmark_cash,
-                    "benchmark_wealth": benchmark_cash + benchmark_btc * price_aud,
-                }
+    if not dca_df.empty and dca_summary:
+        c1, c2, c3, c4, c5 = st.columns(5)
+
+        c1.metric(
+            "Total Invested",
+            f"${dca_summary['total_invested_aud']:,.0f}",
+        )
+        c2.metric(
+            "BTC Held",
+            f"{dca_summary['btc_held']:.6f}",
+        )
+        c3.metric(
+            "BTC Value",
+            f"${dca_summary['btc_value_aud']:,.0f}",
+        )
+        c4.metric(
+            "Average Cost",
+            f"${dca_summary['avg_cost_aud']:,.0f}",
+        )
+        c5.metric(
+            "ROI",
+            f"{dca_summary['roi_pct']:+.2f}%",
+        )
+
+        st.subheader("Risk Model vs Plain DCA")
+
+        left, right = st.columns(2)
+
+        if dca_use_risk_model:
+            risk_summary = dca_summary
+            plain_summary = comparison_summary
+        else:
+            plain_summary = dca_summary
+            risk_summary = comparison_summary
+
+        with left:
+            st.markdown("**Risk-Adjusted DCA**")
+            st.metric(
+                "Invested",
+                f"${risk_summary['total_invested_aud']:,.0f}",
+            )
+            st.metric(
+                "BTC",
+                f"{risk_summary['btc_held']:.6f}",
+            )
+            st.metric(
+                "ROI",
+                f"{risk_summary['roi_pct']:+.2f}%",
             )
 
-        benchmark_result = pd.DataFrame(benchmark_rows)
-        benchmark_final_wealth = (
-            float(benchmark_result.iloc[-1]["benchmark_wealth"])
-            if not benchmark_result.empty
-            else np.nan
-        )
-        benchmark_btc_held = (
-            float(benchmark_result.iloc[-1]["benchmark_btc"])
-            if not benchmark_result.empty
-            else np.nan
-        )
+        with right:
+            st.markdown("**Plain Fixed DCA**")
+            st.metric(
+                "Invested",
+                f"${plain_summary['total_invested_aud']:,.0f}",
+            )
+            st.metric(
+                "BTC",
+                f"{plain_summary['btc_held']:.6f}",
+            )
+            st.metric(
+                "ROI",
+                f"{plain_summary['roi_pct']:+.2f}%",
+            )
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Base DCA", f"${fixed_summary['base_dca_aud']:,.0f}")
-        c2.metric("Total Bought", f"${fixed_summary['total_bought_aud']:,.0f}")
-        c3.metric("BTC Held", f"{fixed_summary['btc_held']:.6f}")
-        c4.metric("Ending Wealth", f"${fixed_summary['ending_wealth_aud']:,.0f}")
+        fig_dca = go.Figure()
 
-        b1, b2, b3 = st.columns(3)
-        b1.metric(
-            "Plain Fixed DCA BTC",
-            "n/a" if pd.isna(benchmark_btc_held) else f"{benchmark_btc_held:.6f}",
-        )
-        b2.metric(
-            "Plain Fixed DCA Wealth",
-            "n/a" if pd.isna(benchmark_final_wealth) else f"${benchmark_final_wealth:,.0f}",
-        )
-        outperformance = (
-            fixed_summary["ending_wealth_aud"] - benchmark_final_wealth
-            if pd.notna(benchmark_final_wealth)
-            else np.nan
-        )
-        b3.metric(
-            "Risk-Adjusted vs Plain DCA",
-            "n/a" if pd.isna(outperformance) else f"${outperformance:,.0f}",
-        )
-
-        fig_fixed = go.Figure()
-        fig_fixed.add_trace(
+        fig_dca.add_trace(
             go.Bar(
-                x=fixed_df["date"],
-                y=fixed_df["actual_buy_aud"],
-                name=f"Actual {dca_frequency} Buy",
+                x=dca_df["date"],
+                y=dca_df["actual_buy_aud"],
+                name=model_text,
             )
         )
-        fig_fixed.add_trace(
+
+        fig_dca.add_trace(
             go.Scatter(
-                x=fixed_df["date"],
-                y=fixed_df["base_dca_aud"],
-                name="Plain Base DCA",
+                x=dca_df["date"],
+                y=dca_df["base_dca_aud"],
+                name="Base DCA",
                 line=dict(dash="dot"),
             )
         )
-        fig_fixed.update_layout(
+
+        fig_dca.update_layout(
             height=420,
             template="plotly_dark",
             xaxis_title="Date",
-            yaxis_title="AUD",
+            yaxis_title="AUD per execution",
             hovermode="x unified",
         )
-        st.plotly_chart(fig_fixed, width="stretch")
 
-        fixed_display = fixed_df[
+        st.plotly_chart(
+            fig_dca,
+            width="stretch",
+        )
+
+        dca_display = dca_df[
             [
                 "date",
                 "dca_frequency",
@@ -2918,38 +3039,56 @@ elif mode == "Fixed DCA Backtest":
                 "risk_multiplier",
                 "base_dca_aud",
                 "actual_buy_aud",
+                "cumulative_invested_aud",
                 "btc_bought",
                 "btc_held",
+                "roi_pct",
                 "signal",
             ]
         ].copy()
 
-        fixed_display["date"] = pd.to_datetime(
-            fixed_display["date"]
+        dca_display["date"] = pd.to_datetime(
+            dca_display["date"]
         ).dt.strftime("%d/%m/%Y")
-        fixed_display["price_usd"] = fixed_display["price_usd"].map(
-            lambda x: f"${x:,.0f}"
-        )
-        fixed_display["risk_score"] = fixed_display["risk_score"].map(
-            lambda x: "n/a" if pd.isna(x) else f"{x:.3f}"
-        )
-        fixed_display["risk_multiplier"] = fixed_display["risk_multiplier"].map(
-            lambda x: f"{x:.2f}x"
-        )
-        fixed_display["base_dca_aud"] = fixed_display["base_dca_aud"].map(
-            lambda x: f"${x:,.0f}"
-        )
-        fixed_display["actual_buy_aud"] = fixed_display["actual_buy_aud"].map(
-            lambda x: f"${x:,.0f}"
-        )
-        fixed_display["btc_bought"] = fixed_display["btc_bought"].map(
-            lambda x: f"{x:.6f}"
-        )
-        fixed_display["btc_held"] = fixed_display["btc_held"].map(
-            lambda x: f"{x:.6f}"
+
+        dca_display["price_usd"] = dca_display[
+            "price_usd"
+        ].map(lambda x: f"${x:,.0f}")
+
+        dca_display["risk_score"] = dca_display[
+            "risk_score"
+        ].map(
+            lambda x: "n/a"
+            if pd.isna(x)
+            else f"{x:.3f}"
         )
 
-        fixed_display.columns = [
+        dca_display["risk_multiplier"] = dca_display[
+            "risk_multiplier"
+        ].map(lambda x: f"{x:.2f}x")
+
+        for col in [
+            "base_dca_aud",
+            "actual_buy_aud",
+            "cumulative_invested_aud",
+        ]:
+            dca_display[col] = dca_display[col].map(
+                lambda x: f"${x:,.0f}"
+            )
+
+        for col in [
+            "btc_bought",
+            "btc_held",
+        ]:
+            dca_display[col] = dca_display[col].map(
+                lambda x: f"{x:.6f}"
+            )
+
+        dca_display["roi_pct"] = dca_display[
+            "roi_pct"
+        ].map(lambda x: f"{x:+.2f}%")
+
+        dca_display.columns = [
             "Date",
             "Frequency",
             "BTC USD",
@@ -2957,18 +3096,21 @@ elif mode == "Fixed DCA Backtest":
             "Risk Mult.",
             "Base DCA AUD",
             "Actual Buy AUD",
+            "Total Invested",
             "BTC Bought",
             "BTC Held",
+            "ROI",
             "Signal",
         ]
 
         st.dataframe(
-            fixed_display,
+            dca_display,
             width="stretch",
             hide_index=True,
         )
+
     else:
-        st.info("No Fixed DCA Backtest rows are available for the selected period.")
+        st.info("No DCA Backtest rows are available for the selected period.")
 
 
 # ================================================================
