@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-BTC Dynamic DCA & Tactical Rebalancing Simulator V3.8 FULL
+BTC Dynamic DCA & Tactical Rebalancing Simulator V4.0 FULL
 ====================================================
 
 Designed for:
@@ -139,6 +139,24 @@ DEFAULT_ALWAYS_DCA_POINTS = [
     (0.90, 0.25),
     (1.00, 0.10),
 ]
+
+OPPORTUNITY_MULTIPLIER_POINTS = [
+    (0.0, 0.25),
+    (20.0, 0.40),
+    (35.0, 0.65),
+    (50.0, 1.00),
+    (65.0, 1.40),
+    (75.0, 1.80),
+    (85.0, 2.30),
+    (95.0, 2.80),
+    (100.0, 3.00),
+]
+
+DEFAULT_OPPORTUNITY_HORIZON_DAYS = 365
+DEFAULT_OPPORTUNITY_NEIGHBORS = 40
+DEFAULT_OPPORTUNITY_MIN_HISTORY = 120
+DEFAULT_OPPORTUNITY_LEARNED_WEIGHT = 0.70
+DEFAULT_OPPORTUNITY_VALUATION_WEIGHT = 0.30
 
 DCA_CURVE_PRESETS = {
     "Conservative": [
@@ -1272,6 +1290,263 @@ def simulate_dynamic_dca(df_full, params):
 
 
 # ================================================================
+
+def _weighted_percentile_rank(values, target):
+    values = pd.to_numeric(pd.Series(values), errors="coerce").dropna()
+    if values.empty or not np.isfinite(target):
+        return np.nan
+    return float((values <= target).mean())
+
+
+def build_opportunity_scores(
+    indicator_df,
+    execution_index,
+    horizon_days=DEFAULT_OPPORTUNITY_HORIZON_DAYS,
+    neighbors=DEFAULT_OPPORTUNITY_NEIGHBORS,
+    min_history=DEFAULT_OPPORTUNITY_MIN_HISTORY,
+    learned_weight=DEFAULT_OPPORTUNITY_LEARNED_WEIGHT,
+    valuation_weight=DEFAULT_OPPORTUNITY_VALUATION_WEIGHT,
+):
+    """
+    Walk-forward historical analogue engine.
+
+    For every execution date, it only trains on observations whose full
+    forward-return outcome would already have been known on that date.
+    No future observations are used to score a historical decision.
+
+    The engine compares today's state with past states using:
+      - calibrated risk
+      - raw valuation risk
+      - 365d drawdown
+      - RSI
+      - Mayer multiple
+      - Power Law residual
+      - 365d price position
+      - Optimized Trend state/strength
+
+    It then measures how the most similar historical states performed over
+    the selected forward horizon.
+
+    This is intentionally transparent statistical learning, not a claim that
+    future BTC returns can be known.
+    """
+    if indicator_df.empty:
+        return pd.DataFrame()
+
+    x = indicator_df.copy().sort_index()
+
+    horizon_days = max(30, int(horizon_days))
+    neighbors = max(5, int(neighbors))
+    min_history = max(30, int(min_history))
+
+    # Forward return label. Daily BTC data makes calendar-day shift a close
+    # approximation; the label is available to the learner only after the
+    # horizon has fully elapsed.
+    x["opportunity_future_return"] = (
+        x["price"].shift(-horizon_days) / x["price"] - 1.0
+    )
+
+    feature_cols = [
+        "risk_score",
+        "raw_risk_score",
+        "drawdown_365",
+        "rsi_14",
+        "mayer",
+        "power_law_residual",
+        "price_position_365",
+        "optimized_trend_state",
+        "optimized_trend_strength",
+    ]
+
+    # Feature transforms keep scales sensible and reduce domination by one
+    # variable before robust standardisation.
+    features = pd.DataFrame(index=x.index)
+    features["risk_score"] = pd.to_numeric(x["risk_score"], errors="coerce")
+    features["raw_risk_score"] = pd.to_numeric(x["raw_risk_score"], errors="coerce")
+    features["drawdown_365"] = pd.to_numeric(x["drawdown_365"], errors="coerce")
+    features["rsi_14"] = pd.to_numeric(x["rsi_14"], errors="coerce") / 100.0
+    features["mayer"] = np.log(
+        pd.to_numeric(x["mayer"], errors="coerce").clip(lower=0.05)
+    )
+    features["power_law_residual"] = pd.to_numeric(
+        x["power_law_residual"], errors="coerce"
+    )
+    features["price_position_365"] = pd.to_numeric(
+        x["price_position_365"], errors="coerce"
+    )
+    features["optimized_trend_state"] = pd.to_numeric(
+        x["optimized_trend_state"], errors="coerce"
+    )
+    features["optimized_trend_strength"] = pd.to_numeric(
+        x["optimized_trend_strength"], errors="coerce"
+    ).clip(-2, 2) / 2.0
+
+    future_return = pd.to_numeric(
+        x["opportunity_future_return"], errors="coerce"
+    )
+
+    output = []
+
+    for ts in pd.DatetimeIndex(execution_index):
+        if ts not in x.index:
+            continue
+
+        current = features.loc[ts]
+        risk = float(x.at[ts, "risk_score"]) if pd.notna(x.at[ts, "risk_score"]) else np.nan
+
+        # A historical sample can only be used if its forward horizon had
+        # completed by the current decision date.
+        cutoff = ts - pd.Timedelta(days=horizon_days)
+        eligible_mask = (
+            (features.index <= cutoff)
+            & future_return.notna()
+        )
+
+        hist_features = features.loc[eligible_mask].copy()
+        hist_returns = future_return.loc[eligible_mask].copy()
+
+        # Require enough common features for robust analogue matching.
+        valid_current = current.notna()
+        common_cols = [
+            c for c in feature_cols
+            if c in hist_features.columns and valid_current.get(c, False)
+        ]
+
+        if len(common_cols) < 5:
+            learned_score = np.nan
+            expected_return = np.nan
+            positive_rate = np.nan
+            sample_count = 0
+            avg_distance = np.nan
+        else:
+            hist = hist_features[common_cols]
+            complete = hist.notna().sum(axis=1) >= max(4, int(len(common_cols) * 0.70))
+            hist = hist.loc[complete]
+            rets = hist_returns.loc[hist.index]
+
+            if len(hist) < min_history:
+                learned_score = np.nan
+                expected_return = np.nan
+                positive_rate = np.nan
+                sample_count = int(len(hist))
+                avg_distance = np.nan
+            else:
+                # Fill historical gaps using historical medians only.
+                med = hist.median()
+                hist_filled = hist.fillna(med)
+                current_filled = current[common_cols].fillna(med)
+
+                # Robust scale using only information available at the time.
+                scale = (hist_filled.quantile(0.75) - hist_filled.quantile(0.25))
+                fallback_scale = hist_filled.std(ddof=0)
+                scale = scale.where(scale.abs() > 1e-9, fallback_scale)
+                scale = scale.replace(0, 1.0).fillna(1.0)
+
+                z_hist = (hist_filled - med) / scale
+                z_current = (current_filled - med) / scale
+
+                distances = np.sqrt(
+                    ((z_hist - z_current) ** 2).mean(axis=1)
+                )
+
+                k = min(neighbors, len(distances))
+                nearest_idx = distances.nsmallest(k).index
+                nearest_dist = distances.loc[nearest_idx]
+                nearest_ret = rets.loc[nearest_idx]
+
+                weights = 1.0 / (nearest_dist + 0.15)
+                weight_sum = float(weights.sum())
+
+                if weight_sum <= 0:
+                    expected_return = float(nearest_ret.mean())
+                    positive_rate = float((nearest_ret > 0).mean())
+                else:
+                    expected_return = float(
+                        np.average(nearest_ret.values, weights=weights.values)
+                    )
+                    positive_rate = float(
+                        np.average(
+                            (nearest_ret.values > 0).astype(float),
+                            weights=weights.values,
+                        )
+                    )
+
+                return_percentile = _weighted_percentile_rank(
+                    rets,
+                    expected_return,
+                )
+
+                learned_score = 100.0 * (
+                    0.55 * return_percentile
+                    + 0.45 * positive_rate
+                )
+                sample_count = int(len(nearest_ret))
+                avg_distance = float(nearest_dist.mean())
+
+        valuation_score = (
+            (1.0 - risk) * 100.0
+            if np.isfinite(risk)
+            else 50.0
+        )
+
+        if np.isfinite(learned_score):
+            total_w = max(float(learned_weight) + float(valuation_weight), 1e-9)
+            opportunity_score = (
+                float(learned_weight) * learned_score
+                + float(valuation_weight) * valuation_score
+            ) / total_w
+            confidence = min(
+                100.0,
+                35.0
+                + 65.0 * min(1.0, sample_count / max(neighbors, 1))
+                * (1.0 / (1.0 + max(avg_distance, 0.0))),
+            )
+        else:
+            # During early history there may not yet be enough completed
+            # forward-return examples. Fall back to valuation rather than
+            # inventing a learned signal.
+            opportunity_score = valuation_score
+            confidence = 25.0
+
+        opportunity_score = float(np.clip(opportunity_score, 0.0, 100.0))
+        multiplier = float(
+            interpolate(OPPORTUNITY_MULTIPLIER_POINTS, opportunity_score)
+        )
+
+        if opportunity_score >= 85:
+            quality = "EXCEPTIONAL"
+        elif opportunity_score >= 75:
+            quality = "STRONG"
+        elif opportunity_score >= 60:
+            quality = "GOOD"
+        elif opportunity_score >= 45:
+            quality = "NORMAL"
+        elif opportunity_score >= 30:
+            quality = "WEAK"
+        else:
+            quality = "POOR"
+
+        output.append(
+            {
+                "date": ts,
+                "opportunity_score": opportunity_score,
+                "opportunity_quality": quality,
+                "opportunity_multiplier": multiplier,
+                "opportunity_expected_return": expected_return,
+                "opportunity_positive_rate": positive_rate,
+                "opportunity_neighbors": sample_count,
+                "opportunity_confidence": confidence,
+                "opportunity_learned_score": learned_score,
+                "opportunity_valuation_score": valuation_score,
+            }
+        )
+
+    if not output:
+        return pd.DataFrame()
+
+    return pd.DataFrame(output).set_index("date").sort_index()
+
+
 def simulate_dca_backtest(
     df_full,
     params,
@@ -1279,6 +1554,9 @@ def simulate_dca_backtest(
     dca_frequency,
     strategy_mode,
     risk_curve=None,
+    opportunity_horizon_days=DEFAULT_OPPORTUNITY_HORIZON_DAYS,
+    opportunity_neighbors=DEFAULT_OPPORTUNITY_NEIGHBORS,
+    opportunity_min_history=DEFAULT_OPPORTUNITY_MIN_HISTORY,
 ):
     """
     Historical accumulation-only DCA backtest with no capital ceiling.
@@ -1287,6 +1565,8 @@ def simulate_dca_backtest(
       - "Plain DCA": exact base amount every execution.
       - "Risk-Scaled DCA": always buys, amount varies with calibrated risk.
       - "Risk-Gated DCA": buys only inside BUY zone; otherwise $0.
+      - "Opportunity-Scaled DCA": always buys; sizing is learned from
+        walk-forward historical analogue outcomes plus valuation risk.
     """
     if risk_curve is None:
         risk_curve = DEFAULT_ALWAYS_DCA_POINTS
@@ -1317,6 +1597,16 @@ def simulate_dca_backtest(
     if execution.empty:
         return pd.DataFrame(), {}
 
+    opportunity_df = pd.DataFrame()
+    if strategy_mode == "Opportunity-Scaled DCA":
+        opportunity_df = build_opportunity_scores(
+            df,
+            execution.index,
+            horizon_days=opportunity_horizon_days,
+            neighbors=opportunity_neighbors,
+            min_history=opportunity_min_history,
+        )
+
     btc = 0.0
     cumulative_invested = 0.0
     cumulative_fees = 0.0
@@ -1336,6 +1626,12 @@ def simulate_dca_backtest(
             else np.nan
         )
 
+        opportunity_score = np.nan
+        opportunity_quality = ""
+        opportunity_expected_return = np.nan
+        opportunity_positive_rate = np.nan
+        opportunity_confidence = np.nan
+
         if strategy_mode == "Plain DCA":
             multiplier = 1.0
             contribution = float(base_dca_aud)
@@ -1349,6 +1645,30 @@ def simulate_dca_backtest(
             )
             contribution = float(base_dca_aud) * multiplier
             signal = "SCALED DCA"
+
+        elif strategy_mode == "Opportunity-Scaled DCA":
+            if timestamp in opportunity_df.index:
+                opp_row = opportunity_df.loc[timestamp]
+                opportunity_score = float(opp_row["opportunity_score"])
+                opportunity_quality = str(opp_row["opportunity_quality"])
+                opportunity_expected_return = opp_row["opportunity_expected_return"]
+                opportunity_positive_rate = opp_row["opportunity_positive_rate"]
+                opportunity_confidence = float(opp_row["opportunity_confidence"])
+                multiplier = float(opp_row["opportunity_multiplier"])
+            else:
+                opportunity_score = (
+                    (1.0 - risk) * 100.0 if np.isfinite(risk) else 50.0
+                )
+                opportunity_quality = "NORMAL"
+                opportunity_expected_return = np.nan
+                opportunity_positive_rate = np.nan
+                opportunity_confidence = 25.0
+                multiplier = float(
+                    interpolate(OPPORTUNITY_MULTIPLIER_POINTS, opportunity_score)
+                )
+
+            contribution = float(base_dca_aud) * multiplier
+            signal = f"OPPORTUNITY {opportunity_quality}"
 
         else:  # Risk-Gated DCA
             multiplier = (
@@ -1396,6 +1716,11 @@ def simulate_dca_backtest(
                 "btc_price_aud": price_aud,
                 "risk_score": risk,
                 "strategy_mode": strategy_mode,
+                "opportunity_score": opportunity_score,
+                "opportunity_quality": opportunity_quality,
+                "opportunity_expected_return": opportunity_expected_return,
+                "opportunity_positive_rate": opportunity_positive_rate,
+                "opportunity_confidence": opportunity_confidence,
                 "dca_multiplier": multiplier,
                 "base_dca_aud": float(base_dca_aud),
                 "dca_frequency": dca_frequency,
@@ -1432,6 +1757,18 @@ def simulate_dca_backtest(
         "fees_aud": float(final["cumulative_fees_aud"]),
         "execution_count": int(len(result)),
         "buy_count": int((result["actual_buy_aud"] > 0).sum()),
+        "final_opportunity_score": (
+            float(result["opportunity_score"].dropna().iloc[-1])
+            if "opportunity_score" in result
+            and not result["opportunity_score"].dropna().empty
+            else np.nan
+        ),
+        "final_opportunity_quality": (
+            str(result.loc[result["opportunity_score"].notna(), "opportunity_quality"].iloc[-1])
+            if "opportunity_score" in result
+            and result["opportunity_score"].notna().any()
+            else ""
+        ),
     }
 
     return result, summary
@@ -1882,12 +2219,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V3.8 FULL",
+    page_title="BTC Dynamic DCA V4.0 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V3.8 FULL — Buy Low / Sell High")
-st.caption("Version 3.8 FULL • CALIBRATED 0–1 RISK • STRICT BUY / HOLD / SELL • Optimized Trend Replica")
+st.title("Bitcoin Dynamic DCA V4.0 FULL — Buy Low / Sell High")
+st.caption("Version 4.0 FULL • Opportunity Engine • Walk-Forward Historical Analogues • Calibrated 0–1 Risk")
 st.caption("Simplified controls • fixed calibrated composite risk • no forced deployment")
 
 # ------------------------------------------------
@@ -1943,12 +2280,15 @@ with st.sidebar:
             [
                 "Plain DCA",
                 "Risk-Scaled DCA",
+                "Opportunity-Scaled DCA",
                 "Risk-Gated DCA",
             ],
-            index=1,
+            index=2,
             help=(
                 "Plain DCA: same amount every execution. "
                 "Risk-Scaled: always buys, but more at low risk and less at high risk. "
+                "Opportunity-Scaled: walk-forward historical analogue engine learns which "
+                "market states tended to produce stronger forward returns, then sizes the DCA. "
                 "Risk-Gated: buys only inside the BUY zone."
             ),
         )
@@ -1970,6 +2310,42 @@ with st.sidebar:
             help=(
                 "Selects the best curve on the first 70% of the period, "
                 "then checks it on the untouched final 30%."
+            ),
+        )
+
+        st.markdown("**Opportunity Engine**")
+        opportunity_horizon_days = st.selectbox(
+            "Learning Horizon",
+            [90, 180, 365, 730],
+            index=2,
+            format_func=lambda x: f"{x} days",
+            disabled=(dca_strategy_mode != "Opportunity-Scaled DCA"),
+            help=(
+                "The engine learns from how similar historical conditions performed "
+                "over this forward horizon."
+            ),
+        )
+
+        opportunity_neighbors = st.slider(
+            "Historical Analogues",
+            15,
+            100,
+            DEFAULT_OPPORTUNITY_NEIGHBORS,
+            5,
+            disabled=(dca_strategy_mode != "Opportunity-Scaled DCA"),
+            help="Number of most similar completed historical setups used for each score.",
+        )
+
+        opportunity_min_history = st.slider(
+            "Minimum Training Samples",
+            60,
+            300,
+            DEFAULT_OPPORTUNITY_MIN_HISTORY,
+            20,
+            disabled=(dca_strategy_mode != "Opportunity-Scaled DCA"),
+            help=(
+                "Before enough completed examples exist, the engine falls back to "
+                "valuation rather than inventing a learned signal."
             ),
         )
 
@@ -3224,6 +3600,9 @@ elif mode == "DCA Backtest":
         dca_frequency,
         dca_strategy_mode,
         risk_curve=selected_curve,
+        opportunity_horizon_days=opportunity_horizon_days,
+        opportunity_neighbors=opportunity_neighbors,
+        opportunity_min_history=opportunity_min_history,
     )
 
     plain_df, plain_summary = simulate_dca_backtest(
@@ -3249,6 +3628,17 @@ elif mode == "DCA Backtest":
         dca_base_amount_aud,
         dca_frequency,
         "Risk-Gated DCA",
+    )
+
+    opportunity_df, opportunity_summary = simulate_dca_backtest(
+        df_full,
+        params,
+        dca_base_amount_aud,
+        dca_frequency,
+        "Opportunity-Scaled DCA",
+        opportunity_horizon_days=opportunity_horizon_days,
+        opportunity_neighbors=opportunity_neighbors,
+        opportunity_min_history=opportunity_min_history,
     )
 
     curve_results = {}
@@ -3288,6 +3678,27 @@ elif mode == "DCA Backtest":
             "ROI",
             f"{dca_summary['roi_pct']:+.2f}%",
         )
+
+        if dca_strategy_mode == "Opportunity-Scaled DCA":
+            valid_opp = dca_df["opportunity_score"].dropna()
+            if not valid_opp.empty:
+                last_opp = dca_df.loc[dca_df["opportunity_score"].notna()].iloc[-1]
+                o1, o2, o3, o4 = st.columns(4)
+                o1.metric("Opportunity Score", f"{last_opp['opportunity_score']:.0f}/100")
+                o2.metric("Quality", str(last_opp["opportunity_quality"]))
+                o3.metric("Confidence", f"{last_opp['opportunity_confidence']:.0f}%")
+                if pd.notna(last_opp["opportunity_expected_return"]):
+                    o4.metric(
+                        f"Historical {opportunity_horizon_days}d Analogue Return",
+                        f"{last_opp['opportunity_expected_return']*100:+.1f}%",
+                    )
+                else:
+                    o4.metric("Historical Analogue Return", "Insufficient history")
+
+                st.caption(
+                    "Opportunity Score is walk-forward only: each historical decision "
+                    "uses only analogue outcomes that would already have been known on that date."
+                )
 
         st.subheader("Capital-Normalized Comparison")
         st.caption(
@@ -3350,6 +3761,34 @@ elif mode == "DCA Backtest":
                         ) * 100.0 if plain_norm["btc_value_aud"] > 0 else np.nan,
                     }
                 )
+
+        _, opportunity_norm = normalize_dca_to_target_capital(
+            opportunity_df,
+            capital_target,
+            fee_pct=params.get("fee_pct", 0.0),
+        )
+
+        if opportunity_norm:
+            normalized_rows.append(
+                {
+                    "Strategy": "Opportunity-Scaled DCA",
+                    "Curve": f"{opportunity_horizon_days}d analogues",
+                    "Invested AUD": capital_target,
+                    "BTC Held": opportunity_norm["btc_held"],
+                    "Average Cost AUD": opportunity_norm["avg_cost_aud"],
+                    "BTC Value AUD": opportunity_norm["btc_value_aud"],
+                    "ROI %": opportunity_norm["roi_pct"],
+                    "BTC Advantage %": (
+                        opportunity_norm["btc_held"] / plain_norm["btc_held"] - 1.0
+                    ) * 100.0 if plain_norm["btc_held"] > 0 else np.nan,
+                    "Avg Cost Advantage %": (
+                        1.0 - opportunity_norm["avg_cost_aud"] / plain_norm["avg_cost_aud"]
+                    ) * 100.0 if plain_norm["avg_cost_aud"] > 0 else np.nan,
+                    "Value Advantage %": (
+                        opportunity_norm["btc_value_aud"] / plain_norm["btc_value_aud"] - 1.0
+                    ) * 100.0 if plain_norm["btc_value_aud"] > 0 else np.nan,
+                }
+            )
 
         if gated_norm:
             normalized_rows.append(
@@ -3475,6 +3914,9 @@ elif mode == "DCA Backtest":
                 "strategy_mode",
                 "price_usd",
                 "risk_score",
+                "opportunity_score",
+                "opportunity_quality",
+                "opportunity_confidence",
                 "dca_multiplier",
                 "base_dca_aud",
                 "actual_buy_aud",
@@ -3501,6 +3943,14 @@ elif mode == "DCA Backtest":
             if pd.isna(x)
             else f"{x:.3f}"
         )
+
+        dca_display["opportunity_score"] = dca_display[
+            "opportunity_score"
+        ].map(lambda x: "n/a" if pd.isna(x) else f"{x:.0f}")
+
+        dca_display["opportunity_confidence"] = dca_display[
+            "opportunity_confidence"
+        ].map(lambda x: "n/a" if pd.isna(x) else f"{x:.0f}%")
 
         dca_display["dca_multiplier"] = dca_display[
             "dca_multiplier"
@@ -3533,6 +3983,9 @@ elif mode == "DCA Backtest":
             "Strategy",
             "BTC USD",
             "Risk",
+            "Opportunity",
+            "Opp. Quality",
+            "Opp. Confidence",
             "DCA Mult.",
             "Base DCA AUD",
             "Actual Buy AUD",
