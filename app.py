@@ -274,31 +274,106 @@ def interpolate(points, x):
     return points[-1][1]
 
 
-def opportunity_rarity_from_history(risk_series, current_risk):
-    """Estimate how uncommon the current valuation opportunity has been historically.
 
-    Uses only the supplied historical/current risk series. For accumulation, the
-    relevant event is risk <= today's risk: how often has BTC been at least this cheap?
-    A gentle bounded multiplier converts rarity into extra conviction without
-    overwhelming the existing Smart DCA curve.
-    """
+BTC_HALVING_DATES = [
+    pd.Timestamp("2016-07-09"),
+    pd.Timestamp("2020-05-11"),
+    pd.Timestamp("2024-04-20"),
+]
+CYCLE_WEIGHTS = {0: 0.50, 1: 0.30, 2: 0.20}
+
+
+def _cycle_relative_risk_frame(risk_series):
+    """Return weekly risk observations tagged by BTC halving cycle and cycle week."""
     s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
     s = s[(s >= 0.0) & (s <= 1.0)]
-    if len(s) < 52 or not np.isfinite(current_risk):
+    if not isinstance(s.index, pd.DatetimeIndex):
+        return pd.DataFrame(columns=["risk", "cycle_id", "cycle_week"])
+
+    idx = pd.to_datetime(s.index)
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+
+    rows = []
+    for ts, risk in zip(idx, s.values):
+        eligible = [d for d in BTC_HALVING_DATES if d <= ts]
+        if not eligible:
+            continue
+        halving = max(eligible)
+        cycle_id = BTC_HALVING_DATES.index(halving)
+        rows.append({
+            "date": ts,
+            "risk": float(risk),
+            "cycle_id": int(cycle_id),
+            "cycle_week": max(0, int((ts - halving).days // 7)),
+        })
+    if not rows:
+        return pd.DataFrame(columns=["risk", "cycle_id", "cycle_week"])
+    return pd.DataFrame(rows).set_index("date").sort_index()
+
+
+def _cycle_context(risk_series):
+    """Current cycle plus previous two cycles, using only observations supplied to the function."""
+    frame = _cycle_relative_risk_frame(risk_series)
+    if frame.empty:
+        return frame, None, None
+
+    current_cycle = int(frame["cycle_id"].iloc[-1])
+    current_week = int(frame["cycle_week"].iloc[-1])
+    allowed = [c for c in (current_cycle, current_cycle - 1, current_cycle - 2) if c >= 0]
+    return frame[frame["cycle_id"].isin(allowed)].copy(), current_cycle, current_week
+
+
+def opportunity_rarity_from_history(risk_series, current_risk):
+    """Cycle-relative rarity based only on BTC Risk Score.
+
+    Primary evidence is the current halving cycle. Previous two cycles are included
+    at comparable cycle ages and weighted 50% / 30% / 20%. No price-level signal is
+    added here; cycle information only contextualises the existing risk score.
+    """
+    frame, current_cycle, current_week = _cycle_context(risk_series)
+    if frame.empty or not np.isfinite(current_risk):
         return {
-            "percentile": np.nan,
-            "cheap_frequency": np.nan,
-            "rarity_label": "INSUFFICIENT HISTORY",
-            "rarity_multiplier": 1.0,
-            "expected_comparable_weeks_4y": np.nan,
+            "percentile": np.nan, "cheap_frequency": np.nan,
+            "rarity_label": "INSUFFICIENT HISTORY", "rarity_multiplier": 1.0,
+            "expected_comparable_weeks_4y": np.nan, "samples": 0,
+            "evidence_label": "LOW", "cycle_breakdown": {},
         }
 
-    cheap_frequency = float((s <= float(current_risk)).mean())
-    percentile = cheap_frequency * 100.0
+    # Compare similar cycle phase: +/- 26 weeks, widening only if evidence is sparse.
+    selected = pd.DataFrame()
+    phase_window = 26
+    for phase_window in (26, 39, 52, 78):
+        selected = frame[(frame["cycle_week"] - current_week).abs() <= phase_window].copy()
+        if len(selected) >= 20:
+            break
 
-    # Rarity is deliberately gentle: it modifies, rather than replaces, the
-    # already-tested V5.1 Smart DCA valuation curve.
-    if cheap_frequency <= 0.05:
+    cycle_stats = {}
+    weighted_num = weighted_den = 0.0
+    total_samples = 0
+    for offset, weight in CYCLE_WEIGHTS.items():
+        cid = current_cycle - offset
+        part = selected[selected["cycle_id"] == cid]
+        if part.empty:
+            continue
+        freq = float((part["risk"] <= float(current_risk)).mean())
+        cycle_stats[f"cycle_{offset}"] = {"frequency": freq, "samples": int(len(part))}
+        weighted_num += weight * freq
+        weighted_den += weight
+        total_samples += len(part)
+
+    if weighted_den <= 0 or total_samples < 8:
+        cheap_frequency = float((frame["risk"] <= float(current_risk)).mean()) if len(frame) else np.nan
+        evidence = "LOW"
+    else:
+        cheap_frequency = weighted_num / weighted_den
+        evidence = "HIGH" if total_samples >= 40 else ("MODERATE" if total_samples >= 20 else "LOW")
+
+    percentile = cheap_frequency * 100.0 if np.isfinite(cheap_frequency) else np.nan
+
+    if not np.isfinite(cheap_frequency):
+        label, mult = "INSUFFICIENT HISTORY", 1.0
+    elif cheap_frequency <= 0.05:
         label, mult = "EXTREME", 1.35
     elif cheap_frequency <= 0.10:
         label, mult = "VERY HIGH", 1.25
@@ -316,75 +391,102 @@ def opportunity_rarity_from_history(risk_series, current_risk):
         "cheap_frequency": cheap_frequency,
         "rarity_label": label,
         "rarity_multiplier": mult,
-        "expected_comparable_weeks_4y": cheap_frequency * 208.0,
+        "expected_comparable_weeks_4y": cheap_frequency * 208.0 if np.isfinite(cheap_frequency) else np.nan,
+        "samples": int(total_samples),
+        "evidence_label": evidence,
+        "phase_window_weeks": int(phase_window),
+        "cycle_breakdown": cycle_stats,
     }
 
 
-
 def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
-    """Historical analogue estimate for seeing a lower risk within a future horizon.
+    """Cycle-relative analogue estimate for a lower future Risk Score.
 
-    Finds prior weekly observations with similar starting risk, then measures the
-    minimum risk reached over the following horizon. The estimate is descriptive,
-    not a forecast, and overlapping historical windows are intentionally labelled
-    as such in the UI.
+    Uses only the risk history supplied as-of the decision date. Analogues come from
+    the current cycle and previous two cycles, at similar cycle age and similar risk.
+    Earlier analogue outcomes must already be observable by the as-of date, preventing
+    look-ahead leakage in walk-forward use.
     """
-    s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna().reset_index(drop=True)
-    if len(s) < 104 or not np.isfinite(current_risk):
-        return {
-            "samples": 0, "chance_lower": np.nan, "chance_materially_lower": np.nan,
-            "material_threshold": np.nan, "chance_below_005": np.nan,
-            "chance_below_002": np.nan, "chance_below_001": np.nan,
-            "median_future_min": np.nan, "tolerance": np.nan,
-        }
+    frame, current_cycle, current_week = _cycle_context(risk_series)
+    horizon = int(max(1, min(float(horizon_weeks), 156.0)))
+    empty = {
+        "samples": 0, "tolerance": np.nan, "chance_any_lower": np.nan,
+        "chance_materially_lower": np.nan, "chance_le_005": np.nan,
+        "chance_le_002": np.nan, "chance_le_001": np.nan,
+        "median_future_min": np.nan, "material_threshold": np.nan,
+        "evidence_label": "LOW", "phase_window_weeks": np.nan,
+    }
+    if frame.empty or not np.isfinite(current_risk):
+        return empty
 
-    horizon = int(max(4, min(int(round(horizon_weeks)), 156)))
     material_threshold = max(0.0, min(float(current_risk) - 0.01, float(current_risk) * 0.75))
+    asof = frame.index.max()
+    analogues = []
 
-    # Widen the analogue band only as much as needed for a minimally useful sample.
-    chosen = None
-    for tol in (0.015, 0.025, 0.04, 0.06, 0.10):
-        mins = []
-        for i in range(len(s) - horizon):
-            if abs(float(s.iloc[i]) - float(current_risk)) <= tol:
-                future = s.iloc[i + 1:i + 1 + horizon]
-                if len(future):
-                    mins.append(float(future.min()))
-        if len(mins) >= 8:
-            chosen = (tol, np.asarray(mins, dtype=float))
+    chosen_tol = np.nan
+    chosen_phase = np.nan
+    for phase_window in (26, 39, 52, 78):
+        for tol in (0.015, 0.025, 0.04, 0.06, 0.10):
+            candidates = frame[
+                ((frame["risk"] - float(current_risk)).abs() <= tol)
+                & ((frame["cycle_week"] - current_week).abs() <= phase_window)
+            ]
+            tmp = []
+            for ts, row in candidates.iterrows():
+                # Exclude today's observation and require the full outcome window to be known.
+                if ts >= asof:
+                    continue
+                outcome_end = ts + pd.Timedelta(weeks=horizon)
+                if outcome_end > asof:
+                    continue
+                same_cycle = frame[
+                    (frame["cycle_id"] == row["cycle_id"])
+                    & (frame.index > ts)
+                    & (frame.index <= outcome_end)
+                ]["risk"]
+                if same_cycle.empty:
+                    continue
+                future_min = float(same_cycle.min())
+                offset = current_cycle - int(row["cycle_id"])
+                weight = CYCLE_WEIGHTS.get(offset, 0.0)
+                if weight <= 0:
+                    continue
+                tmp.append((future_min, weight))
+            if len(tmp) >= 8:
+                analogues = tmp
+                chosen_tol, chosen_phase = tol, phase_window
+                break
+            if len(tmp) > len(analogues):
+                analogues = tmp
+                chosen_tol, chosen_phase = tol, phase_window
+        if len(analogues) >= 8:
             break
 
-    if chosen is None:
-        # Use whatever sparse analogues exist, but surface the sample count.
-        tol = 0.10
-        mins = []
-        for i in range(len(s) - horizon):
-            if abs(float(s.iloc[i]) - float(current_risk)) <= tol:
-                future = s.iloc[i + 1:i + 1 + horizon]
-                if len(future):
-                    mins.append(float(future.min()))
-        arr = np.asarray(mins, dtype=float)
-    else:
-        tol, arr = chosen
+    if not analogues:
+        empty["material_threshold"] = material_threshold
+        return empty
 
-    if len(arr) == 0:
-        return {
-            "samples": 0, "chance_lower": np.nan, "chance_materially_lower": np.nan,
-            "material_threshold": material_threshold, "chance_below_005": np.nan,
-            "chance_below_002": np.nan, "chance_below_001": np.nan,
-            "median_future_min": np.nan, "tolerance": tol,
-        }
+    mins = np.array([x[0] for x in analogues], dtype=float)
+    weights = np.array([x[1] for x in analogues], dtype=float)
+    weights = weights / weights.sum()
 
+    def wp(condition):
+        return float(weights[np.asarray(condition, dtype=bool)].sum())
+
+    samples = len(mins)
+    evidence = "HIGH" if samples >= 30 else ("MODERATE" if samples >= 12 else "LOW")
     return {
-        "samples": int(len(arr)),
-        "chance_lower": float(np.mean(arr < float(current_risk))),
-        "chance_materially_lower": float(np.mean(arr <= material_threshold)),
+        "samples": samples,
+        "tolerance": float(chosen_tol),
+        "chance_any_lower": wp(mins < float(current_risk)),
+        "chance_materially_lower": wp(mins <= material_threshold),
+        "chance_le_005": wp(mins <= 0.05),
+        "chance_le_002": wp(mins <= 0.02),
+        "chance_le_001": wp(mins <= 0.01),
+        "median_future_min": float(np.median(mins)),
         "material_threshold": material_threshold,
-        "chance_below_005": float(np.mean(arr <= 0.05)),
-        "chance_below_002": float(np.mean(arr <= 0.02)),
-        "chance_below_001": float(np.mean(arr <= 0.01)),
-        "median_future_min": float(np.median(arr)),
-        "tolerance": float(tol),
+        "evidence_label": evidence,
+        "phase_window_weeks": int(chosen_phase),
     }
 
 
@@ -2444,12 +2546,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.6.1 FULL",
+    page_title="BTC Dynamic DCA V5.7 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.6.1 FULL — Smart DCA")
-st.caption("Version 5.6.1 FULL • Backtest + DCA Today • Opportunity Probability")
+st.title("Bitcoin Dynamic DCA V5.7 FULL — Smart DCA")
+st.caption("Version 5.7 FULL • Backtest + DCA Today • Opportunity Probability")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -2934,7 +3036,7 @@ if mode == "DCA Backtest":
     end_date = dca_backtest_end_date
 else:
     end_date = today
-    start_date = today - dt.timedelta(days=365 * 4)
+    start_date = today - dt.timedelta(days=365 * 11)
 
 
 params = {
@@ -3871,7 +3973,7 @@ elif mode == "DCA Today":
             "evidence is either sparse or still shows a meaningful chance of an even lower-risk entry."
         )
 
-    st.subheader("How Often This Risk Occurs")
+    st.subheader("How Often This Risk Occurs — Cycle Context")
     occurrence = risk_occurrence_table(rarity_source)
     fig_occurrence = go.Figure()
     fig_occurrence.add_bar(
@@ -3892,7 +3994,7 @@ elif mode == "DCA Today":
         "to DCA Today and shows how uncommon each valuation zone has been."
     )
 
-    with st.expander("Chance of a lower-risk entry", expanded=False):
+    with st.expander("Chance of a lower-risk entry — current + previous 2 cycles", expanded=False):
         if opportunity["samples"] >= 1:
             st.write(
                 f"Historical analogue sample: {opportunity['samples']} prior weekly starting points "
