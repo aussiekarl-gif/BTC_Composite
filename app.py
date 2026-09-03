@@ -400,12 +400,13 @@ def opportunity_rarity_from_history(risk_series, current_risk):
 
 
 def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
-    """Cycle-relative analogue estimate for a lower future Risk Score.
+    """Cycle-relative estimate for a materially lower future Risk Score.
 
-    Uses only the risk history supplied as-of the decision date. Analogues come from
-    the current cycle and previous two cycles, at similar cycle age and similar risk.
-    Earlier analogue outcomes must already be observable by the as-of date, preventing
-    look-ahead leakage in walk-forward use.
+    Uses only the current cycle plus the previous two cycles and only information
+    observable as of the supplied series endpoint. To avoid pseudo-replication,
+    each BTC cycle contributes at most ONE representative analogue: the prior
+    observation closest to today's risk and cycle age whose full outcome horizon
+    is already known.
     """
     frame, current_cycle, current_week = _cycle_context(risk_series)
     horizon = int(max(1, min(float(horizon_weeks), 156.0)))
@@ -415,68 +416,112 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
         "chance_le_002": np.nan, "chance_le_001": np.nan,
         "median_future_min": np.nan, "material_threshold": np.nan,
         "evidence_label": "LOW", "phase_window_weeks": np.nan,
+        "cycles_used": 0, "cycle_successes": 0, "cycle_details": [],
     }
     if frame.empty or not np.isfinite(current_risk):
         return empty
 
-    material_threshold = max(0.0, min(float(current_risk) - 0.01, float(current_risk) * 0.75))
+    material_threshold = max(
+        0.0,
+        min(float(current_risk) - 0.01, float(current_risk) * 0.75)
+    )
     asof = frame.index.max()
-    analogues = []
 
+    representatives = []
     chosen_tol = np.nan
     chosen_phase = np.nan
+
+    # Widen only as needed. Within each cycle, choose the closest analogue.
     for phase_window in (26, 39, 52, 78):
         for tol in (0.015, 0.025, 0.04, 0.06, 0.10):
-            candidates = frame[
-                ((frame["risk"] - float(current_risk)).abs() <= tol)
-                & ((frame["cycle_week"] - current_week).abs() <= phase_window)
-            ]
-            tmp = []
-            for ts, row in candidates.iterrows():
-                # Exclude today's observation and require the full outcome window to be known.
-                if ts >= asof:
+            reps = []
+            for offset, cycle_weight in CYCLE_WEIGHTS.items():
+                cid = current_cycle - offset
+                if cid < 0:
                     continue
+
+                candidates = frame[
+                    (frame["cycle_id"] == cid)
+                    & ((frame["risk"] - float(current_risk)).abs() <= tol)
+                    & ((frame["cycle_week"] - current_week).abs() <= phase_window)
+                ].copy()
+
+                if candidates.empty:
+                    continue
+
+                # Outcome window must be completely in the known past.
+                candidates = candidates[
+                    (candidates.index < asof)
+                    & ((candidates.index + pd.to_timedelta(horizon, unit="W")) <= asof)
+                ].copy()
+                if candidates.empty:
+                    continue
+
+                # Rank by closeness in risk first, then cycle phase.
+                candidates["_risk_gap"] = (candidates["risk"] - float(current_risk)).abs()
+                candidates["_phase_gap"] = (candidates["cycle_week"] - current_week).abs()
+                candidates["_score"] = (
+                    candidates["_risk_gap"] / max(tol, 1e-9)
+                    + candidates["_phase_gap"] / max(float(phase_window), 1.0)
+                )
+                ts = candidates["_score"].idxmin()
+                row = candidates.loc[ts]
+
                 outcome_end = ts + pd.Timedelta(weeks=horizon)
-                if outcome_end > asof:
-                    continue
-                same_cycle = frame[
-                    (frame["cycle_id"] == row["cycle_id"])
+                future = frame[
+                    (frame["cycle_id"] == cid)
                     & (frame.index > ts)
                     & (frame.index <= outcome_end)
                 ]["risk"]
-                if same_cycle.empty:
+                if future.empty:
                     continue
-                future_min = float(same_cycle.min())
-                offset = current_cycle - int(row["cycle_id"])
-                weight = CYCLE_WEIGHTS.get(offset, 0.0)
-                if weight <= 0:
-                    continue
-                tmp.append((future_min, weight))
-            if len(tmp) >= 8:
-                analogues = tmp
+
+                reps.append({
+                    "cycle_id": int(cid),
+                    "offset": int(offset),
+                    "weight": float(cycle_weight),
+                    "analogue_date": ts,
+                    "analogue_risk": float(row["risk"]),
+                    "analogue_cycle_week": int(row["cycle_week"]),
+                    "future_min": float(future.min()),
+                })
+
+            # We can never have more than 3 independent cycle observations.
+            if len(reps) >= 2:
+                representatives = reps
                 chosen_tol, chosen_phase = tol, phase_window
                 break
-            if len(tmp) > len(analogues):
-                analogues = tmp
+            if len(reps) > len(representatives):
+                representatives = reps
                 chosen_tol, chosen_phase = tol, phase_window
-        if len(analogues) >= 8:
+        if len(representatives) >= 2:
             break
 
-    if not analogues:
+    if not representatives:
         empty["material_threshold"] = material_threshold
         return empty
 
-    mins = np.array([x[0] for x in analogues], dtype=float)
-    weights = np.array([x[1] for x in analogues], dtype=float)
+    weights = np.array([x["weight"] for x in representatives], dtype=float)
     weights = weights / weights.sum()
+    mins = np.array([x["future_min"] for x in representatives], dtype=float)
 
     def wp(condition):
         return float(weights[np.asarray(condition, dtype=bool)].sum())
 
-    samples = len(mins)
-    evidence = "HIGH" if samples >= 30 else ("MODERATE" if samples >= 12 else "LOW")
+    cycles_used = len(representatives)
+    cycle_successes = int((mins <= material_threshold).sum())
+    evidence = "MODERATE" if cycles_used == 3 else "LOW"
+
+    details = []
+    for rep, norm_weight in zip(representatives, weights):
+        details.append({
+            **rep,
+            "normalized_weight": float(norm_weight),
+            "materially_lower": bool(rep["future_min"] <= material_threshold),
+        })
+
     return {
-        "samples": samples,
+        "samples": cycles_used,  # retained for compatibility; now means independent cycles
         "tolerance": float(chosen_tol),
         "chance_any_lower": wp(mins < float(current_risk)),
         "chance_materially_lower": wp(mins <= material_threshold),
@@ -487,6 +532,9 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
         "material_threshold": material_threshold,
         "evidence_label": evidence,
         "phase_window_weeks": int(chosen_phase),
+        "cycles_used": cycles_used,
+        "cycle_successes": cycle_successes,
+        "cycle_details": details,
     }
 
 
@@ -2593,12 +2641,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.7.3 FULL",
+    page_title="BTC Dynamic DCA V5.7.4 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.7.3 FULL — Smart DCA")
-st.caption("Version 5.7.3 FULL • Backtest + DCA Today • Opportunity Probability")
+st.title("Bitcoin Dynamic DCA V5.7.4 FULL — Smart DCA")
+st.caption("Version 5.7.4 FULL • Backtest + DCA Today • Opportunity Probability")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -3971,7 +4019,7 @@ elif mode == "DCA Today":
     extreme_all_in_eligible = False
     if (
         current_risk <= 0.01
-        and opportunity["samples"] >= 8
+        and opportunity["cycles_used"] >= 3
         and np.isfinite(opportunity["chance_materially_lower"])
         and opportunity["chance_materially_lower"] <= 0.15
     ):
@@ -4006,7 +4054,11 @@ elif mode == "DCA Today":
         d.metric(
             "Chance of Better Entry",
             f"{100.0 * opportunity['chance_materially_lower']:.0f}%",
-            help="Historical analogue estimate of reaching a materially lower risk before the selected horizon.",
+            help=(
+                "Cycle-weighted historical better-entry rate. Each of the current + previous "
+                "two BTC cycles contributes at most one independent analogue; this is not a "
+                "precise statistical probability."
+            ),
         )
     else:
         d.metric("Chance of Better Entry", "n/a")
@@ -4075,9 +4127,14 @@ elif mode == "DCA Today":
     with st.expander("Chance of a lower-risk entry — current + previous 2 cycles", expanded=False):
         if opportunity["samples"] >= 1:
             st.write(
-                f"Historical analogue sample: {opportunity['samples']} prior weekly starting points "
-                f"within about ±{opportunity['tolerance']:.3f} risk, looking ahead up to "
-                f"{min(weeks_remaining, 156.0):.0f} weeks."
+                f"Independent cycle analogues: **{opportunity['cycles_used']}** "
+                f"(evidence: **{opportunity['evidence_label']}**). "
+                f"Each cycle contributes at most one closest match within about "
+                f"±{opportunity['tolerance']:.3f} risk and a comparable cycle phase."
+            )
+            st.write(
+                f"Materially-lower outcome occurred in **{opportunity['cycle_successes']} of "
+                f"{opportunity['cycles_used']}** comparable cycle analogues."
             )
             if np.isfinite(opportunity["chance_any_lower"]):
                 st.write(f"Any lower risk: **{100.0 * opportunity['chance_any_lower']:.0f}%**")
@@ -4093,8 +4150,9 @@ elif mode == "DCA Today":
                 f"{100.0 * opportunity['chance_le_001']:.0f}%**"
             )
             st.caption(
-                "These are overlapping historical analogues, so treat them as decision-support "
-                "estimates rather than independent statistical probabilities."
+                "This uses at most one representative analogue per BTC cycle to avoid counting "
+                "overlapping weeks as independent evidence. With only up to three cycles, treat "
+                "the percentage as a historical decision-support rate, not a precise probability."
             )
         else:
             st.write("Not enough comparable historical observations for a useful estimate.")
@@ -4312,7 +4370,7 @@ elif mode == "My Portfolio":
         try:
             btc_lookup = fetch_btc_history(lookup_start, lookup_end)
             fx_lookup = fetch_aud_usd_rates(lookup_start, lookup_end)
-            if btc_lookup is not None and not btc_lookup.empty and fx_lookup:
+            if btc_lookup is not None and not btc_lookup.empty and fx_lookup is not None and not fx_lookup.empty:
                 lookup = btc_lookup[["price"]].copy()
 
                 # Normalize both BTC and FX lookup keys to timezone-naive midnight
@@ -4328,8 +4386,13 @@ elif mode == "My Portfolio":
                     .normalize()
                 )
 
-                lookup["usd_per_aud"] = lookup["lookup_date"].map(fx_series)
-                lookup["usd_per_aud"] = lookup["usd_per_aud"].ffill().bfill()
+                fx_aligned = fx_series.reindex(
+                    pd.DatetimeIndex(lookup["lookup_date"]),
+                    method="ffill"
+                )
+                if fx_aligned.isna().any():
+                    fx_aligned = fx_aligned.bfill()
+                lookup["usd_per_aud"] = fx_aligned.to_numpy()
                 lookup["btc_aud_auto"] = lookup["price"] / lookup["usd_per_aud"]
 
                 daily_btc_aud = (
