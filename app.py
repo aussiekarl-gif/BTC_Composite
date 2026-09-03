@@ -2641,12 +2641,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.7.4 FULL",
+    page_title="BTC Dynamic DCA V5.7.5 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.7.4 FULL — Smart DCA")
-st.caption("Version 5.7.4 FULL • Backtest + DCA Today • Opportunity Probability")
+st.title("Bitcoin Dynamic DCA V5.7.5 FULL — Smart DCA")
+st.caption("Version 5.7.5 FULL • Backtest + DCA Today • Opportunity Probability")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -4089,25 +4089,16 @@ elif mode == "DCA Today":
             "evidence is either sparse or still shows a meaningful chance of an even lower-risk entry."
         )
 
-    st.subheader("How Often This Risk Occurs — Cycle Context")
+    st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(rarity_source)
-    occurrence["Opportunity Rarity"] = occurrence["Percent"].apply(
-        lambda p: rarity_label_from_frequency(float(p) / 100.0)
-    )
-    occurrence["Chart label"] = (
-        occurrence["Risk range"].astype(str)
-        + " • "
-        + occurrence["Opportunity Rarity"].astype(str)
-    )
     fig_occurrence = go.Figure()
     fig_occurrence.add_bar(
-        x=occurrence["Chart label"],
+        x=occurrence["Risk range"],
         y=occurrence["Percent"],
-        customdata=occurrence[["Weeks", "Opportunity Rarity"]],
+        customdata=occurrence[["Weeks"]],
         hovertemplate=(
-            "%{x}<br>%{y:.1f}% of weeks"
+            "Risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
-            "<br>Opportunity rarity: %{customdata[1]}"
             "<extra></extra>"
         ),
     )
@@ -4119,9 +4110,11 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current risk {current_risk:.3f}. Each weekly risk bucket now carries the same "
-        "Opportunity Rarity naming scale used by DCA Today. The percentage shows how often "
-        "that risk zone occurred in the available cycle-context history."
+        f"Current risk {current_risk:.3f}. This chart is descriptive: it shows the percentage "
+        "of weekly observations that fell inside each Risk Score range. It does NOT assign "
+        "Opportunity Rarity to individual buckets. Opportunity Rarity is calculated separately "
+        "as how often comparable cycle-phase observations were at or below today's risk "
+        f"(currently: {rarity['rarity_label']})."
     )
 
     with st.expander("Chance of a lower-risk entry — current + previous 2 cycles", expanded=False):
@@ -4333,10 +4326,14 @@ elif mode == "My Portfolio":
             "Units / BTC Received": st.column_config.NumberColumn(
                 "Units / BTC Received", min_value=0.0, format="%.8f"
             ),
-            "BTC AUD Price": st.column_config.NumberColumn(
-                "BTC AUD Price (auto)", min_value=0.0, format="A$%.2f", disabled=True
-            ),
         },
+        column_order=[
+            "Date",
+            "Asset",
+            "AUD Spent",
+            "Brokerage / Fee AUD",
+            "Units / BTC Received",
+        ],
         key="portfolio_editor",
     )
 
