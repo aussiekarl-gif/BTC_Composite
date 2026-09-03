@@ -490,6 +490,23 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
     }
 
 
+def rarity_label_from_frequency(frequency):
+    """Use the same naming scale as Opportunity Rarity for a frequency value."""
+    if not np.isfinite(frequency):
+        return "N/A"
+    if frequency <= 0.05:
+        return "EXTREME"
+    if frequency <= 0.10:
+        return "VERY HIGH"
+    if frequency <= 0.20:
+        return "HIGH"
+    if frequency <= 0.35:
+        return "ABOVE AVERAGE"
+    if frequency <= 0.60:
+        return "NORMAL"
+    return "COMMON"
+
+
 def risk_occurrence_table(risk_series):
     """Return simple weekly risk buckets for the DCA Today visibility chart."""
     s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
@@ -543,7 +560,22 @@ def fetch_btc_history(start_date, end_date):
     sufficient lookback data.
     """
     buffer_days = 300
-    fetch_start = start_date - timedelta(days=buffer_days)
+
+    # Normalize all caller date/datetime inputs to UTC-aware timestamps.
+    # This prevents comparisons between a UTC DatetimeIndex and Python date objects.
+    start_ts = pd.Timestamp(start_date)
+    end_ts = pd.Timestamp(end_date)
+    if start_ts.tzinfo is None:
+        start_ts = start_ts.tz_localize("UTC")
+    else:
+        start_ts = start_ts.tz_convert("UTC")
+    if end_ts.tzinfo is None:
+        # For a plain date, include the whole day.
+        end_ts = end_ts.tz_localize("UTC") + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+    else:
+        end_ts = end_ts.tz_convert("UTC")
+
+    fetch_start = start_ts - timedelta(days=buffer_days)
 
     url = "https://api.blockchain.info/charts/market-price"
     params = {
@@ -593,10 +625,25 @@ def fetch_btc_history(start_date, end_date):
     # Use requested range plus the lookback needed for indicators.
     df = df[
         (df.index >= fetch_start) &
-        (df.index <= end_date)
+        (df.index <= end_ts)
     ].copy()
 
     return df
+
+
+@st.cache_data(ttl=60)
+def fetch_live_btc_aud():
+    """Fetch a fresh BTC/AUD spot price for the DCA Today display only."""
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {"ids": "bitcoin", "vs_currencies": "aud"}
+    try:
+        resp = requests.get(url, params=params, headers=REQUEST_HEADERS, timeout=15)
+        resp.raise_for_status()
+        payload = resp.json()
+        value = float(payload.get("bitcoin", {}).get("aud", np.nan))
+        return value if np.isfinite(value) and value > 0 else np.nan
+    except Exception:
+        return np.nan
 
 
 @st.cache_data(ttl=86400)
@@ -2546,12 +2593,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.7.2 FULL",
+    page_title="BTC Dynamic DCA V5.7.3 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.7.2 FULL — Smart DCA")
-st.caption("Version 5.7.2 FULL • Backtest + DCA Today • Opportunity Probability")
+st.title("Bitcoin Dynamic DCA V5.7.3 FULL — Smart DCA")
+st.caption("Version 5.7.3 FULL • Backtest + DCA Today • Opportunity Probability")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -3853,7 +3900,8 @@ elif mode == "DCA Backtest":
 
 elif mode == "DCA Today":
     now_utc = dt.datetime.now(timezone.utc)
-    lookback_start = now_utc - timedelta(days=365 * 4)
+    # Enough history for current cycle + previous two halving cycles.
+    lookback_start = now_utc - timedelta(days=365 * 11)
 
     with st.spinner("Calculating today's BTC valuation risk..."):
         df_today = fetch_btc_history(lookback_start, now_utc)
@@ -3880,7 +3928,13 @@ elif mode == "DCA Today":
     current_risk = float(latest["risk_score"])
     current_price_usd = float(latest["price"])
     usd_per_aud = float(latest["usd_per_aud"]) if pd.notna(latest.get("usd_per_aud", np.nan)) else np.nan
-    current_price_aud = current_price_usd / usd_per_aud if np.isfinite(usd_per_aud) and usd_per_aud > 0 else np.nan
+    historical_price_aud = current_price_usd / usd_per_aud if np.isfinite(usd_per_aud) and usd_per_aud > 0 else np.nan
+
+    # Display a fresh spot price where available. The risk engine continues to use
+    # the historical/closed data above, so a live quote cannot change the risk score.
+    live_price_aud = fetch_live_btc_aud()
+    current_price_aud = live_price_aud if np.isfinite(live_price_aud) else historical_price_aud
+    price_is_live = bool(np.isfinite(live_price_aud))
 
     risk_weight = float(interpolate(smart_dca_curve, current_risk))
 
@@ -3942,7 +3996,11 @@ elif mode == "DCA Today":
 
     a, b, c, d = st.columns(4)
     a.metric("BTC Risk", f"{current_risk:.3f}", risk_label)
-    b.metric("BTC Price", "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}")
+    b.metric(
+        "BTC Price",
+        "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}",
+        help="Live BTC/AUD spot quote (60-second cache) when available; otherwise latest historical BTC/AUD. Risk uses closed historical data."
+    )
     c.metric("Opportunity Rarity", rarity["rarity_label"])
     if np.isfinite(opportunity["chance_materially_lower"]):
         d.metric(
@@ -3952,6 +4010,12 @@ elif mode == "DCA Today":
         )
     else:
         d.metric("Chance of Better Entry", "n/a")
+
+    st.caption(
+        ("BTC price: live BTC/AUD spot quote" if price_is_live else "BTC price: latest historical BTC/AUD fallback")
+        + f" • checked {now_utc.strftime('%d/%m/%y %H:%M UTC')}. "
+        "The valuation Risk Score remains based on closed historical data."
+    )
 
     st.subheader("SMART DCA TODAY")
     st.metric("Recommended Buy", f"A${recommended_buy:,.0f}")
@@ -3975,12 +4039,25 @@ elif mode == "DCA Today":
 
     st.subheader("How Often This Risk Occurs — Cycle Context")
     occurrence = risk_occurrence_table(rarity_source)
+    occurrence["Opportunity Rarity"] = occurrence["Percent"].apply(
+        lambda p: rarity_label_from_frequency(float(p) / 100.0)
+    )
+    occurrence["Chart label"] = (
+        occurrence["Risk range"].astype(str)
+        + " • "
+        + occurrence["Opportunity Rarity"].astype(str)
+    )
     fig_occurrence = go.Figure()
     fig_occurrence.add_bar(
-        x=occurrence["Risk range"],
+        x=occurrence["Chart label"],
         y=occurrence["Percent"],
-        customdata=occurrence[["Weeks"]],
-        hovertemplate="Risk %{x}<br>%{y:.1f}% of weeks<br>%{customdata[0]} weeks<extra></extra>",
+        customdata=occurrence[["Weeks", "Opportunity Rarity"]],
+        hovertemplate=(
+            "%{x}<br>%{y:.1f}% of weeks"
+            "<br>%{customdata[0]} weeks"
+            "<br>Opportunity rarity: %{customdata[1]}"
+            "<extra></extra>"
+        ),
     )
     fig_occurrence.update_layout(
         xaxis_title="BTC Risk Range",
@@ -3990,8 +4067,9 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current risk {current_risk:.3f}. The chart uses weekly risk observations available "
-        "to DCA Today and shows how uncommon each valuation zone has been."
+        f"Current risk {current_risk:.3f}. Each weekly risk bucket now carries the same "
+        "Opportunity Rarity naming scale used by DCA Today. The percentage shows how often "
+        "that risk zone occurred in the available cycle-context history."
     )
 
     with st.expander("Chance of a lower-risk entry — current + previous 2 cycles", expanded=False):
