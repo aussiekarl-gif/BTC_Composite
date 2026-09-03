@@ -2546,12 +2546,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.7.1 FULL",
+    page_title="BTC Dynamic DCA V5.7.2 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.7.1 FULL — Smart DCA")
-st.caption("Version 5.7.1 FULL • Backtest + DCA Today • Opportunity Probability")
+st.title("Bitcoin Dynamic DCA V5.7.2 FULL — Smart DCA")
+st.caption("Version 5.7.2 FULL • Backtest + DCA Today • Opportunity Probability")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -4236,26 +4236,42 @@ elif mode == "My Portfolio":
             fx_lookup = fetch_aud_usd_rates(lookup_start, lookup_end)
             if btc_lookup is not None and not btc_lookup.empty and fx_lookup:
                 lookup = btc_lookup[["price"]].copy()
-                lookup["lookup_date"] = pd.to_datetime(lookup.index, utc=True).date
+
+                # Normalize both BTC and FX lookup keys to timezone-naive midnight
+                # Timestamps. This avoids comparing UTC DatetimeIndex values with
+                # plain Python date objects.
+                lookup_dates = pd.to_datetime(lookup.index, utc=True).tz_convert(None).normalize()
+                lookup["lookup_date"] = lookup_dates
+
                 fx_series = pd.Series(fx_lookup, dtype=float)
-                fx_series.index = pd.to_datetime(fx_series.index).date
+                fx_series.index = (
+                    pd.to_datetime(fx_series.index, utc=True)
+                    .tz_convert(None)
+                    .normalize()
+                )
+
                 lookup["usd_per_aud"] = lookup["lookup_date"].map(fx_series)
                 lookup["usd_per_aud"] = lookup["usd_per_aud"].ffill().bfill()
                 lookup["btc_aud_auto"] = lookup["price"] / lookup["usd_per_aud"]
+
                 daily_btc_aud = (
                     lookup.dropna(subset=["btc_aud_auto"])
                     .groupby("lookup_date")["btc_aud_auto"]
                     .last()
+                    .sort_index()
                 )
+
                 for row_idx in clean.index[clean["Asset"].eq("ASX:IBIT")]:
                     pd_date = clean.at[row_idx, "_purchase_date"]
                     if pd.isna(pd_date):
                         continue
-                    d = pd_date.date()
+
+                    d = pd.Timestamp(pd_date).tz_localize(None).normalize()
+
                     if d in daily_btc_aud.index:
                         clean.at[row_idx, "BTC AUD Price"] = float(daily_btc_aud.loc[d])
                     else:
-                        prior = daily_btc_aud[daily_btc_aud.index <= d]
+                        prior = daily_btc_aud.loc[:d]
                         if not prior.empty:
                             clean.at[row_idx, "BTC AUD Price"] = float(prior.iloc[-1])
         except Exception as exc:
