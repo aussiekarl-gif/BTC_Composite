@@ -2546,12 +2546,12 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.7 FULL",
+    page_title="BTC Dynamic DCA V5.7.1 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.7 FULL — Smart DCA")
-st.caption("Version 5.7 FULL • Backtest + DCA Today • Opportunity Probability")
+st.title("Bitcoin Dynamic DCA V5.7.1 FULL — Smart DCA")
+st.caption("Version 5.7.1 FULL • Backtest + DCA Today • Opportunity Probability")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -4001,8 +4001,8 @@ elif mode == "DCA Today":
                 f"within about ±{opportunity['tolerance']:.3f} risk, looking ahead up to "
                 f"{min(weeks_remaining, 156.0):.0f} weeks."
             )
-            if np.isfinite(opportunity["chance_lower"]):
-                st.write(f"Any lower risk: **{100.0 * opportunity['chance_lower']:.0f}%**")
+            if np.isfinite(opportunity["chance_any_lower"]):
+                st.write(f"Any lower risk: **{100.0 * opportunity['chance_any_lower']:.0f}%**")
             if np.isfinite(opportunity["chance_materially_lower"]):
                 st.write(
                     f"Materially lower risk (≤ {opportunity['material_threshold']:.3f}): "
@@ -4010,9 +4010,9 @@ elif mode == "DCA Today":
                 )
             st.write(
                 "Historical chance of reaching risk ≤0.05 / ≤0.02 / ≤0.01: "
-                f"**{100.0 * opportunity['chance_below_005']:.0f}% / "
-                f"{100.0 * opportunity['chance_below_002']:.0f}% / "
-                f"{100.0 * opportunity['chance_below_001']:.0f}%**"
+                f"**{100.0 * opportunity['chance_le_005']:.0f}% / "
+                f"{100.0 * opportunity['chance_le_002']:.0f}% / "
+                f"{100.0 * opportunity['chance_le_001']:.0f}%**"
             )
             st.caption(
                 "These are overlapping historical analogues, so treat them as decision-support "
@@ -4077,6 +4077,10 @@ elif mode == "My Portfolio":
         "Australian IBIT only: iShares Bitcoin ETF, ASX ticker IBIT, Australian domicile, "
         "ISIN AU0000424780. Default brokerage per ETF buy is A$3."
     )
+    st.caption(
+        "Portfolio entries typed into Streamlit are not permanently stored by Streamlit Cloud. "
+        "Download the Portfolio CSV after changes so future app updates/restarts can restore them."
+    )
 
     portfolio_cols = [
         "Date",
@@ -4123,16 +4127,51 @@ elif mode == "My Portfolio":
         "and calculates BTC-equivalent exposure. For Direct BTC, enter the actual BTC received."
     )
 
-    # Seed one convenient blank Australian IBIT row on first use.
+    # Restore the currently known ASX:IBIT purchase history when no CSV is loaded.
+    # These are the five entries visible in the user's portfolio screenshot.
     if portfolio_df.empty:
-        portfolio_df = pd.DataFrame([{
-            "Date": dt.date.today().strftime("%d/%m/%y"),
-            "Asset": "ASX:IBIT",
-            "AUD Spent": 0.0,
-            "Brokerage / Fee AUD": 3.0,
-            "Units / BTC Received": 0.0,
-            "BTC AUD Price": 0.0,
-        }])
+        portfolio_df = pd.DataFrame([
+            {
+                "Date": "19/06/26",
+                "Asset": "ASX:IBIT",
+                "AUD Spent": 1700.0,
+                "Brokerage / Fee AUD": 3.0,
+                "Units / BTC Received": 100.0,
+                "BTC AUD Price": 0.0,
+            },
+            {
+                "Date": "26/08/26",
+                "Asset": "ASX:IBIT",
+                "AUD Spent": 2092.0,
+                "Brokerage / Fee AUD": 3.0,
+                "Units / BTC Received": 100.0,
+                "BTC AUD Price": 0.0,
+            },
+            {
+                "Date": "31/08/26",
+                "Asset": "ASX:IBIT",
+                "AUD Spent": 2061.0,
+                "Brokerage / Fee AUD": 3.0,
+                "Units / BTC Received": 100.0,
+                "BTC AUD Price": 0.0,
+            },
+            {
+                "Date": "01/09/26",
+                "Asset": "ASX:IBIT",
+                "AUD Spent": 2087.0,
+                "Brokerage / Fee AUD": 3.0,
+                "Units / BTC Received": 100.0,
+                "BTC AUD Price": 0.0,
+            },
+            {
+                "Date": "02/09/26",
+                "Asset": "ASX:IBIT",
+                "AUD Spent": 2050.0,
+                "Brokerage / Fee AUD": 3.0,
+                "Units / BTC Received": 100.0,
+                "BTC AUD Price": 0.0,
+            },
+        ])
 
     edited_portfolio = st.data_editor(
         portfolio_df,
