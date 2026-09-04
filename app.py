@@ -642,6 +642,83 @@ def get_kote_api_key():
         return ""
 
 
+def diagnose_kote_mvrv(api_key):
+    """Run a tiny, read-only Kote MVRV API probe for audit diagnostics.
+
+    Never returns or displays the API key. The probe requests only three daily
+    observations so we can inspect the actual response envelope and field names.
+    """
+    if not api_key:
+        return {"ok": False, "error": "No Kote API key entered."}
+
+    headers = dict(REQUEST_HEADERS)
+    headers["Accept"] = "application/json"
+    headers["X-API-Key"] = api_key
+    url = f"{KOTE_BASE}/mvrv-z-score"
+    params = {
+        "from": "2012-01-01",
+        "granularity": "day",
+        "includePartial": "false",
+        "limit": 3,
+        "offset": 0,
+    }
+
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=45)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "request_url": url,
+            "error": f"Request exception: {type(exc).__name__}: {exc}",
+        }
+
+    result = {
+        "ok": bool(resp.ok),
+        "request_url": resp.url,
+        "http_status": resp.status_code,
+        "content_type": resp.headers.get("Content-Type", ""),
+        "rate_limit": resp.headers.get("X-RateLimit-Limit", ""),
+        "rate_remaining": resp.headers.get("X-RateLimit-Remaining", ""),
+        "retry_after": resp.headers.get("Retry-After", ""),
+    }
+
+    try:
+        payload = resp.json()
+    except Exception:
+        text = (resp.text or "").strip()
+        result["json_parse"] = "failed"
+        result["response_preview"] = text[:600]
+        return result
+
+    result["json_parse"] = "ok"
+    result["top_level_type"] = type(payload).__name__
+    if isinstance(payload, dict):
+        result["top_level_keys"] = list(payload.keys())
+        result["success_field"] = payload.get("success")
+        if "error" in payload:
+            result["error_payload"] = payload.get("error")
+        data = payload.get("data")
+        result["data_type"] = type(data).__name__
+        if isinstance(data, dict):
+            result["data_keys"] = list(data.keys())
+            series = data.get("series")
+            result["series_type"] = type(series).__name__
+            if isinstance(series, list):
+                result["rows_returned"] = len(series)
+                if series:
+                    sample = series[0]
+                    result["first_row_type"] = type(sample).__name__
+                    if isinstance(sample, dict):
+                        result["first_row_keys"] = list(sample.keys())
+                        # Tiny sample is safe: chart data only; no headers/API key.
+                        result["first_row_sample"] = {k: sample[k] for k in list(sample.keys())[:8]}
+                    else:
+                        result["first_row_sample"] = str(sample)[:300]
+    else:
+        result["payload_preview"] = str(payload)[:600]
+    return result
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_kote_mvrv(start_date, end_date, api_key=""):
     """Fetch closed-only daily MVRV Z-Score history from Kote Charts for audit use.
@@ -1875,6 +1952,27 @@ with st.sidebar:
             key="audit_kote_api_key",
             help="Used only to fetch closed-day MVRV Z-Score history from Kote. Not saved by this app.",
         )
+        if st.button("Test Kote MVRV connection", key="audit_test_kote_mvrv"):
+            diag = diagnose_kote_mvrv(get_kote_api_key())
+            st.session_state["audit_kote_diag"] = diag
+
+        diag = st.session_state.get("audit_kote_diag")
+        if isinstance(diag, dict):
+            if diag.get("ok") and diag.get("rows_returned", 0) > 0:
+                st.success(
+                    f"Kote diagnostic: HTTP {diag.get('http_status')} • "
+                    f"rows={diag.get('rows_returned')} • JSON parsed"
+                )
+            elif diag.get("http_status") is not None:
+                st.warning(
+                    f"Kote diagnostic: HTTP {diag.get('http_status')} • "
+                    f"rows={diag.get('rows_returned', 0)}"
+                )
+            else:
+                st.warning("Kote diagnostic did not reach a valid HTTP response.")
+            with st.expander("Kote diagnostic details", expanded=True):
+                st.json(diag)
+                st.caption("The API key is never included in this diagnostic output.")
 
         saved_bt = browser_state.get("backtest", {}) if isinstance(browser_state, dict) else {}
         saved_freq = saved_bt.get("frequency", "Weekly")
