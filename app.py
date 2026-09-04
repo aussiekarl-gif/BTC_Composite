@@ -644,57 +644,85 @@ def get_kote_api_key():
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_kote_mvrv(start_date, end_date, api_key=""):
-    """Fetch closed-only daily MVRV Z-Score history from Kote Charts for audit use."""
+    """Fetch closed-only daily MVRV Z-Score history from Kote Charts for audit use.
+
+    Uses conservative pagination because Kote documents limit/offset pagination but
+    does not guarantee that a very large one-shot limit is accepted.
+    """
     if not api_key:
         return pd.DataFrame()
-    params = {
-        "from": start_date.strftime("%Y-%m-%d"),
-        "to": end_date.strftime("%Y-%m-%d"),
-        "granularity": "day",
-        "includePartial": "false",
-        "limit": 10000,
-    }
+
     headers = dict(REQUEST_HEADERS)
     headers["Accept"] = "application/json"
     headers["X-API-Key"] = api_key
-    resp = requests.get(
-        f"{KOTE_BASE}/mvrv-z-score", params=params, headers=headers, timeout=45
-    )
-    resp.raise_for_status()
-    payload = resp.json()
-    if not isinstance(payload, dict) or not payload.get("success", False):
-        raise RuntimeError(f"Kote MVRV request failed: {payload}")
-    data = payload.get("data", {})
-    series = data.get("series", []) if isinstance(data, dict) else []
+    url = f"{KOTE_BASE}/mvrv-z-score"
+
+    all_items = []
+    offset = 0
+    page_limit = 1000
+    for _ in range(30):
+        params = {
+            "from": start_date.strftime("%Y-%m-%d"),
+            "to": end_date.strftime("%Y-%m-%d"),
+            "granularity": "day",
+            "includePartial": "false",
+            "limit": page_limit,
+            "offset": offset,
+        }
+        resp = requests.get(url, params=params, headers=headers, timeout=45)
+        resp.raise_for_status()
+        payload = resp.json()
+        if not isinstance(payload, dict) or not payload.get("success", False):
+            raise RuntimeError(f"Kote MVRV request failed: {payload}")
+        data = payload.get("data", {})
+        series = data.get("series", []) if isinstance(data, dict) else []
+        if not isinstance(series, list):
+            raise RuntimeError(f"Kote MVRV returned unexpected series type: {type(series).__name__}")
+        if not series:
+            break
+        all_items.extend(series)
+        if len(series) < page_limit:
+            break
+        offset += len(series)
+
     rows = []
-    aliases = ["mvrv_z", "mvrvz", "mvrv_z_score", "mvrvzscore", "zscore", "z", "value"]
-    for item in series if isinstance(series, list) else []:
+    aliases = {
+        "mvrv_z", "mvrvz", "mvrv_z_score", "mvrv_zscore", "mvrvzscore",
+        "zscore", "z_score", "z", "score", "value"
+    }
+    for item in all_items:
         if not isinstance(item, dict):
             continue
         raw_date = item.get("t") or item.get("date") or item.get("day") or item.get("timestamp")
         if raw_date is None:
             continue
+
         value = None
-        lower = {str(k).lower().replace("-", "_"): k for k in item.keys()}
-        for alias in aliases:
-            key = lower.get(alias.lower().replace("-", "_"))
-            if key is not None:
-                value = item.get(key)
+        for k, v in item.items():
+            norm = str(k).strip().lower().replace("-", "_").replace(" ", "_")
+            compact = norm.replace("_", "")
+            if norm in aliases or compact in {a.replace("_", "") for a in aliases}:
+                value = v
                 break
+            if ("mvrv" in compact and ("z" in compact or "score" in compact)):
+                value = v
+                break
+
         if value is None:
-            # Fallback: if the series has exactly one non-date numeric metric, use it.
             candidates = []
             for k, v in item.items():
-                if str(k).lower() in {"t", "date", "day", "timestamp", "partial", "price", "usd"}:
+                norm = str(k).strip().lower().replace("-", "_")
+                if norm in {"t", "date", "day", "timestamp", "partial", "price", "usd", "realized_price", "market_cap", "realized_cap"}:
                     continue
                 try:
                     fv = float(v)
                     if np.isfinite(fv):
-                        candidates.append(fv)
+                        candidates.append((k, fv))
                 except Exception:
                     pass
             if len(candidates) == 1:
-                value = candidates[0]
+                value = candidates[0][1]
+
         try:
             if isinstance(raw_date, (int, float)) or str(raw_date).isdigit():
                 n = int(float(raw_date))
@@ -703,13 +731,23 @@ def fetch_kote_mvrv(start_date, end_date, api_key=""):
             else:
                 d = pd.to_datetime(raw_date, utc=True)
             v = float(value)
+            if not np.isfinite(v):
+                continue
         except Exception:
             continue
         rows.append((d, v))
+
     if not rows:
-        return pd.DataFrame()
+        sample = all_items[0] if all_items else None
+        raise RuntimeError(
+            "Kote returned data but no MVRV values could be parsed. "
+            f"Rows received={len(all_items)}; sample keys={list(sample.keys()) if isinstance(sample, dict) else sample}"
+        )
+
     out = pd.DataFrame(rows, columns=["date", "mvrv_z"]).set_index("date").sort_index()
     out = out.loc[~out.index.duplicated(keep="last")]
+    out = out.loc[(out.index >= pd.Timestamp(start_date, tz="UTC") if pd.Timestamp(start_date).tzinfo is None else pd.Timestamp(start_date)) &
+                  (out.index <= pd.Timestamp(end_date, tz="UTC") if pd.Timestamp(end_date).tzinfo is None else pd.Timestamp(end_date))]
     out["mvrv_source"] = "Kote"
     return out
 
