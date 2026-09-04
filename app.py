@@ -3854,6 +3854,20 @@ elif mode == "DCA Today":
         "The valuation Risk Score remains based on closed historical data."
     )
 
+    with st.expander("How the signals work", expanded=False):
+        st.markdown(
+            "**Risk Score = buy sizing.** The Smart DCA amount is determined by the BTC Risk Score "
+            "using the fixed walk-forward-tested curve; the Risk Score itself is not cycle-adjusted.\n\n"
+            "**Opportunity Rarity = cycle-based context.** It compares today's Risk Score with comparable "
+            "periods in the current BTC halving cycle plus the previous two cycles.\n\n"
+            "**Chance of Better Entry = cycle-based context.** It asks whether comparable cycle situations "
+            "later produced a materially lower Risk Score.\n\n"
+            "**Historical Weekly Risk Distribution = descriptive only.** It shows how often each Risk Score "
+            "range occurred historically and is not cycle-adjusted.\n\n"
+            "Opportunity Rarity and Chance of Better Entry are informational only and do **not** change the "
+            "recommended purchase amount."
+        )
+
     with st.expander("Opportunity Rarity Guide", expanded=False):
         rarity_guide = pd.DataFrame([
             ["EXTREME", "≤ 5%", "Exceptionally rare low-risk opportunity"],
@@ -4282,6 +4296,64 @@ elif mode == "My Portfolio":
     q2.metric("Direct BTC", f"{direct_btc:.8f}")
     q3.metric("Trade Value", f"A${total_trade_value:,.0f}")
     q4.metric("Brokerage / Fees", f"A${total_fees:,.2f}")
+
+    # Current portfolio valuation. For ASX:IBIT this is a BTC-equivalent estimate
+    # based on live BTC/AUD, not the exact traded ASX market price of the ETF.
+    portfolio_live_btc_aud = fetch_live_btc_aud()
+    if not np.isfinite(portfolio_live_btc_aud) or portfolio_live_btc_aud <= 0:
+        try:
+            _end = dt.date.today()
+            _start = _end - dt.timedelta(days=10)
+            _btc_hist = fetch_btc_history(_start, _end)
+            _fx_hist = fetch_aud_usd_rates(_start, _end)
+            if (
+                _btc_hist is not None and not _btc_hist.empty and
+                _fx_hist is not None and not _fx_hist.empty
+            ):
+                _latest_btc_usd = float(_btc_hist["price"].dropna().iloc[-1])
+                _fx_series = pd.Series(_fx_hist, dtype=float).dropna()
+                _latest_usd_per_aud = float(_fx_series.iloc[-1])
+                if _latest_btc_usd > 0 and _latest_usd_per_aud > 0:
+                    portfolio_live_btc_aud = _latest_btc_usd / _latest_usd_per_aud
+        except Exception:
+            portfolio_live_btc_aud = np.nan
+
+    current_investment_value = (
+        total_btc_equivalent * portfolio_live_btc_aud
+        if total_btc_equivalent > 0 and np.isfinite(portfolio_live_btc_aud) and portfolio_live_btc_aud > 0
+        else np.nan
+    )
+    unrealized_pl = (
+        current_investment_value - total_cash_out
+        if np.isfinite(current_investment_value) and total_cash_out > 0
+        else np.nan
+    )
+    total_return_pct = (
+        (unrealized_pl / total_cash_out) * 100.0
+        if np.isfinite(unrealized_pl) and total_cash_out > 0
+        else np.nan
+    )
+
+    v1, v2, v3 = st.columns(3)
+    v1.metric(
+        "Current Investment Value",
+        "n/a" if not np.isfinite(current_investment_value) else f"A${current_investment_value:,.0f}",
+        help="Estimated from total BTC-equivalent exposure × current BTC/AUD. For ASX:IBIT this is an economic BTC-equivalent estimate, not the exact live ASX ETF market value.",
+    )
+    v2.metric(
+        "Unrealised Return",
+        "n/a" if not np.isfinite(unrealized_pl) else f"A${unrealized_pl:,.0f}",
+    )
+    v3.metric(
+        "Return",
+        "n/a" if not np.isfinite(total_return_pct) else f"{total_return_pct:+.2f}%",
+        help="(Current estimated investment value − total cash paid including brokerage/fees) ÷ total cash paid.",
+    )
+    if np.isfinite(portfolio_live_btc_aud):
+        st.caption(
+            f"Portfolio valuation uses BTC/AUD ≈ A${portfolio_live_btc_aud:,.0f}. "
+            "ASX:IBIT value is estimated from BTC-equivalent exposure, so it can differ from the ETF's exact live ASX market value due to tracking difference, fees and market pricing."
+        )
 
     st.subheader("Calculated Transactions")
     clean["Date"] = clean["_purchase_date"].apply(
