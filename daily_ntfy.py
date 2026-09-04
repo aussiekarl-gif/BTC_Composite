@@ -7,6 +7,7 @@ Important:
 - The Risk Score / Opportunity Rarity / Better Entry Evidence calculations
   are loaded directly from app.py so the notification uses the same engine.
 - Risk alerts are informational only and do not change Smart DCA sizing.
+- Risk/alert calculations use only the latest fully closed UTC day; BTC prices remain live.
 - ASX:IBIT availability is labelled by Monday-Friday trading-day status.
 - The better-entry horizon is fixed at 156 weeks (3 years), matching the
   default DCA Today horizon.
@@ -52,7 +53,11 @@ def load_app_engine():
 
 
 def fixed_engine_params(e):
-    """V5.8.2 fixed calibrated settings used by DCA Today."""
+    """V5.8.2 fixed calibrated settings used by DCA Today.
+
+    The end_date is overridden in calculate_summary() with the last fully closed
+    UTC day for deterministic ntfy risk calculations.
+    """
     today = dt.datetime.now(dt.timezone.utc).date()
     start_date = today - dt.timedelta(days=365 * 11)
     return {
@@ -136,30 +141,63 @@ def calculate_summary():
     e = load_app_engine()
     np, pd = e["np"], e["pd"]
     now_utc = dt.datetime.now(dt.timezone.utc)
-    lookback_start = now_utc - dt.timedelta(days=365 * 11)
-    params = fixed_engine_params(e)
 
-    df = e["fetch_btc_history"](lookback_start, now_utc)
+    # IMPORTANT: Risk is calculated only from fully closed UTC calendar days.
+    # This makes the valuation reading deterministic during the current day, even
+    # when BTC or external API values are still moving/updating intraday.
+    closed_cutoff_utc = dt.datetime.combine(
+        now_utc.date(), dt.time.min, tzinfo=dt.timezone.utc
+    )
+    closed_end_utc = closed_cutoff_utc - dt.timedelta(microseconds=1)
+    lookback_start = closed_end_utc - dt.timedelta(days=365 * 11)
+    params = fixed_engine_params(e)
+    params["end_date"] = closed_end_utc
+
+    df = e["fetch_btc_history"](lookback_start, closed_end_utc)
     if df is None or df.empty:
         raise RuntimeError("No BTC history returned.")
 
-    fx = e["fetch_aud_usd_rates"](lookback_start, now_utc)
+    fx = e["fetch_aud_usd_rates"](lookback_start, closed_end_utc)
     token = e["get_bgeometrics_token"]()
     bg = e["fetch_bgeometrics_bundle"](
-        lookback_start - dt.timedelta(days=300), now_utc, token
+        lookback_start - dt.timedelta(days=300), closed_end_utc, token
     )
 
     df = e["align_fx_to_dates"](df, fx)
     df = e["merge_bgeometrics"](df, bg)
     risk_df = e["add_risk_indicators"](df, "Composite V3.6", params)
-    valid = risk_df.dropna(subset=["risk_score", "price"])
+    valid = risk_df.dropna(subset=["risk_score", "price"]).copy()
+
+    # Defence in depth: even if an upstream source unexpectedly returns today's
+    # partial observation, exclude it from the Risk Score and alert calculations.
+    if isinstance(valid.index, pd.DatetimeIndex):
+        idx = valid.index
+        if idx.tz is None:
+            cutoff = pd.Timestamp(closed_cutoff_utc.replace(tzinfo=None))
+        else:
+            cutoff = pd.Timestamp(closed_cutoff_utc).tz_convert(idx.tz)
+        valid = valid.loc[idx < cutoff]
+    elif "date" in valid.columns:
+        dates = pd.to_datetime(valid["date"], utc=True, errors="coerce")
+        valid = valid.loc[dates < pd.Timestamp(closed_cutoff_utc)]
+
     if valid.empty:
-        raise RuntimeError("Risk Score could not be calculated.")
+        raise RuntimeError("Risk Score could not be calculated from a fully closed UTC day.")
 
     latest = valid.iloc[-1]
     current_risk = float(latest["risk_score"])
 
-    # Alert comparisons use the risk engine's own closed historical observations.
+    if isinstance(valid.index, pd.DatetimeIndex):
+        latest_ts = pd.Timestamp(valid.index[-1])
+    elif "date" in valid.columns:
+        latest_ts = pd.Timestamp(valid.iloc[-1]["date"])
+    else:
+        latest_ts = pd.Timestamp(closed_end_utc.date())
+    if latest_ts.tzinfo is not None:
+        latest_ts = latest_ts.tz_convert("UTC").tz_localize(None)
+    risk_data_date = latest_ts.date()
+
+    # Alert comparisons use adjacent fully closed historical observations.
     # No portfolio/capital information is involved.
     risk_obs = valid["risk_score"].dropna().astype(float)
     previous_risk = float(risk_obs.iloc[-2]) if len(risk_obs) >= 2 else np.nan
@@ -219,6 +257,7 @@ def calculate_summary():
     ibit_weekday = local_now.weekday() < 5
     return {
         "date": local_now.strftime("%d/%m/%y"),
+        "risk_data_date": risk_data_date.strftime("%d/%m/%y"),
         "risk": current_risk,
         "risk_label": risk_label(current_risk),
         "btc_aud": live_aud,
@@ -253,8 +292,9 @@ def send_ntfy(summary):
 
     lines = [
         f"BTC Risk: {summary['risk']:.3f} - {summary['risk_label']}",
-        f"BTC Price AUD: A${summary['btc_aud']:,.0f}",
-        f"BTC Price USD: US${summary['btc_usd']:,.0f}",
+        f"Risk data through: {summary['risk_data_date']} (closed UTC day)",
+        f"BTC Price AUD: A${summary['btc_aud']:,.0f} (live)",
+        f"BTC Price USD: US${summary['btc_usd']:,.0f} (live)",
         f"Opportunity Rarity: {summary['rarity']}",
         f"Better Entry Evidence: {summary['better_entry']}",
         ibit_status,
@@ -294,7 +334,8 @@ def send_ntfy(summary):
 def main():
     summary = calculate_summary()
     print(
-        f"Risk={summary['risk']:.3f} {summary['risk_label']}; "
+        f"Risk={summary['risk']:.3f} {summary['risk_label']} "
+        f"(closed through {summary['risk_data_date']}); "
         f"AUD={summary['btc_aud']:.0f}; USD={summary['btc_usd']:.0f}; "
         f"Rarity={summary['rarity']}; BetterEntry={summary['better_entry']}; "
         f"Alert={summary['risk_alert']}; IBITWeekday={summary['ibit_weekday']}"
