@@ -69,13 +69,6 @@ def fixed_engine_params(e):
         "sell_threshold": 0.0,
         "max_sell_pct_period": min(e["DEFAULT_MAX_SELL_PCT_PERIOD"], 0.20),
         "fee_pct": e["DEFAULT_FEE_PCT"],
-        "composite_weights": {
-            "mvrv": 0.25,
-            "power_law": 0.25,
-            "mayer": 0.15,
-            "fear_greed": 0.10,
-            "rsi": 0.05,
-        },
         "regime_overlay": 0.0,
         "valuation_strength": e["DEFAULT_VALUATION_STRENGTH"],
         "min_valuation_mult": e["DEFAULT_MIN_VALUATION_MULT"],
@@ -186,8 +179,11 @@ def calculate_summary():
     if not np.isfinite(live_usd) or live_usd <= 0:
         live_usd = float(latest["price"])
 
-    chance = better.get("chance_materially_lower", np.nan)
-    chance_text = f"{100.0 * float(chance):.0f}%" if np.isfinite(chance) else "n/a"
+    cycles_used = int(better.get("cycles_used", 0) or 0)
+    cycle_successes = int(better.get("cycle_successes", 0) or 0)
+    better_entry_text = (
+        f"{cycle_successes} of {cycles_used} cycles" if cycles_used >= 1 else "n/a"
+    )
 
     local_now = now_utc.astimezone(BRISBANE)
     return {
@@ -197,7 +193,7 @@ def calculate_summary():
         "btc_aud": live_aud,
         "btc_usd": live_usd,
         "rarity": rarity["rarity_label"],
-        "better_entry": chance_text,
+        "better_entry": better_entry_text,
     }
 
 
@@ -219,7 +215,7 @@ def send_ntfy(summary):
         f"BTC Price AUD: A${summary['btc_aud']:,.0f}\n"
         f"BTC Price USD: US${summary['btc_usd']:,.0f}\n"
         f"Opportunity Rarity: {summary['rarity']}\n"
-        f"Chance of Better Entry: {summary['better_entry']}"
+        f"Better Entry Evidence: {summary['better_entry']}"
     )
 
     # Deliberately contains NO recommended DCA amount, capital, holdings,
