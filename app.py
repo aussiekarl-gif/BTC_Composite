@@ -1394,6 +1394,23 @@ def simulate_dca_backtest(
             "cumulative_invested_aud": cumulative_invested, "cumulative_fees_aud": cumulative_fees,
             "btc_value_aud": btc_value, "pnl_aud": pnl, "roi_pct": roi_pct,
             "avg_cost_aud": avg_cost_aud, "signal": signal,
+            # AUDIT-ONLY diagnostic fields. These do not alter strategy calculations.
+            "raw_risk_score": row.get("raw_risk_score", np.nan),
+            "risk_components_available": row.get("risk_components_available", np.nan),
+            "power_law_score": row.get("power_law_score", np.nan),
+            "fair_value": row.get("fair_value", np.nan),
+            "power_law_residual": row.get("power_law_residual", np.nan),
+            "price_to_fair": row.get("price_to_fair", np.nan),
+            "mvrv_z": row.get("mvrv_z", np.nan),
+            "mvrv_score": row.get("mvrv_score", np.nan),
+            "price_position_365": row.get("price_position_365", np.nan),
+            "price_position_score": row.get("price_position_score", np.nan),
+            "mayer": row.get("mayer", np.nan),
+            "mayer_score": row.get("mayer_score", np.nan),
+            "fear_greed": row.get("fear_greed", np.nan),
+            "fear_greed_score": row.get("fear_greed_score", np.nan),
+            "rsi_14": row.get("rsi_14", np.nan),
+            "rsi_score": row.get("rsi_score", np.nan),
         })
     result = pd.DataFrame(rows)
     if result.empty:
@@ -1621,8 +1638,8 @@ def _save_browser_state(state):
 
 browser_state = _load_browser_state()
 
-st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
-st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
+st.title("Bitcoin Dynamic DCA V5.8.2 AUDIT EXPORT — Smart DCA")
+st.caption("Version 5.8.2 AUDIT EXPORT • Strategy unchanged • Extra diagnostic CSV columns")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
