@@ -68,6 +68,8 @@ DEFAULT_FEE_PCT = 0.00
 REQUEST_HEADERS = {"User-Agent": "BTC-DCA-Simulator/3.4"}
 
 BGEOMETRICS_BASE = "https://bitcoin-data.com/v1"
+KOTE_BASE = "https://kotecharts.com/api/v1/public/charts"
+ALTERNATIVE_FNG_URL = "https://api.alternative.me/fng/"
 DEFAULT_VALUATION_STRENGTH = 0.75
 DEFAULT_MIN_VALUATION_MULT = 0.50
 DEFAULT_MAX_VALUATION_MULT = 2.50
@@ -619,6 +621,160 @@ def get_bgeometrics_token():
     except Exception:
         pass
     return os.getenv("BGEOMETRICS_TOKEN", "").strip()
+
+
+
+
+def get_kote_api_key():
+    """Read Kote API key from Streamlit Secrets, environment, or audit-session input."""
+    try:
+        token = st.secrets.get("KOTE_API_KEY", "")
+        if token:
+            return str(token).strip()
+    except Exception:
+        pass
+    token = os.getenv("KOTE_API_KEY", "").strip()
+    if token:
+        return token
+    try:
+        return str(st.session_state.get("audit_kote_api_key", "")).strip()
+    except Exception:
+        return ""
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_kote_mvrv(start_date, end_date, api_key=""):
+    """Fetch closed-only daily MVRV Z-Score history from Kote Charts for audit use."""
+    if not api_key:
+        return pd.DataFrame()
+    params = {
+        "from": start_date.strftime("%Y-%m-%d"),
+        "to": end_date.strftime("%Y-%m-%d"),
+        "granularity": "day",
+        "includePartial": "false",
+        "limit": 10000,
+    }
+    headers = dict(REQUEST_HEADERS)
+    headers["Accept"] = "application/json"
+    headers["X-API-Key"] = api_key
+    resp = requests.get(
+        f"{KOTE_BASE}/mvrv-z-score", params=params, headers=headers, timeout=45
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    if not isinstance(payload, dict) or not payload.get("success", False):
+        raise RuntimeError(f"Kote MVRV request failed: {payload}")
+    data = payload.get("data", {})
+    series = data.get("series", []) if isinstance(data, dict) else []
+    rows = []
+    aliases = ["mvrv_z", "mvrvz", "mvrv_z_score", "mvrvzscore", "zscore", "z", "value"]
+    for item in series if isinstance(series, list) else []:
+        if not isinstance(item, dict):
+            continue
+        raw_date = item.get("t") or item.get("date") or item.get("day") or item.get("timestamp")
+        if raw_date is None:
+            continue
+        value = None
+        lower = {str(k).lower().replace("-", "_"): k for k in item.keys()}
+        for alias in aliases:
+            key = lower.get(alias.lower().replace("-", "_"))
+            if key is not None:
+                value = item.get(key)
+                break
+        if value is None:
+            # Fallback: if the series has exactly one non-date numeric metric, use it.
+            candidates = []
+            for k, v in item.items():
+                if str(k).lower() in {"t", "date", "day", "timestamp", "partial", "price", "usd"}:
+                    continue
+                try:
+                    fv = float(v)
+                    if np.isfinite(fv):
+                        candidates.append(fv)
+                except Exception:
+                    pass
+            if len(candidates) == 1:
+                value = candidates[0]
+        try:
+            if isinstance(raw_date, (int, float)) or str(raw_date).isdigit():
+                n = int(float(raw_date))
+                unit = "ms" if abs(n) > 10_000_000_000 else "s"
+                d = pd.to_datetime(n, unit=unit, utc=True)
+            else:
+                d = pd.to_datetime(raw_date, utc=True)
+            v = float(value)
+        except Exception:
+            continue
+        rows.append((d, v))
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows, columns=["date", "mvrv_z"]).set_index("date").sort_index()
+    out = out.loc[~out.index.duplicated(keep="last")]
+    out["mvrv_source"] = "Kote"
+    return out
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_alternative_fng(start_date, end_date):
+    """Fetch full historical Crypto Fear & Greed from Alternative.me for audit use."""
+    params = {"limit": 0, "format": "json"}
+    headers = dict(REQUEST_HEADERS)
+    headers["Accept"] = "application/json"
+    resp = requests.get(ALTERNATIVE_FNG_URL, params=params, headers=headers, timeout=45)
+    resp.raise_for_status()
+    payload = resp.json()
+    data = payload.get("data", []) if isinstance(payload, dict) else []
+    rows = []
+    for item in data if isinstance(data, list) else []:
+        if not isinstance(item, dict):
+            continue
+        raw_ts = item.get("timestamp") or item.get("date")
+        raw_value = item.get("value")
+        try:
+            if raw_ts is None:
+                continue
+            if str(raw_ts).isdigit():
+                d = pd.to_datetime(int(raw_ts), unit="s", utc=True)
+            else:
+                d = pd.to_datetime(raw_ts, utc=True)
+            v = float(raw_value)
+        except Exception:
+            continue
+        start_ts = pd.Timestamp(start_date)
+        end_ts = pd.Timestamp(end_date)
+        if start_ts.tzinfo is None:
+            start_ts = start_ts.tz_localize("UTC")
+        else:
+            start_ts = start_ts.tz_convert("UTC")
+        if end_ts.tzinfo is None:
+            end_ts = end_ts.tz_localize("UTC")
+        else:
+            end_ts = end_ts.tz_convert("UTC")
+        if d < start_ts or d > end_ts:
+            continue
+        rows.append((d.normalize(), v))
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows, columns=["date", "fear_greed"]).set_index("date").sort_index()
+    out = out.loc[~out.index.duplicated(keep="last")]
+    out["fear_greed_source"] = "Alternative.me"
+    return out
+
+
+def merge_audit_external_sources(bg_data, kote_mvrv=None, alt_fng=None):
+    """Audit-only source overlay: Kote MVRV and Alternative.me F&G override BGeometrics where available."""
+    result = bg_data.copy() if bg_data is not None else pd.DataFrame()
+    for extra in (kote_mvrv, alt_fng):
+        if extra is None or extra.empty:
+            continue
+        if result.empty:
+            result = extra.copy()
+            continue
+        idx = result.index.union(extra.index).sort_values()
+        result = result.reindex(idx)
+        for col in extra.columns:
+            result.loc[extra.index, col] = extra[col]
+    return result.sort_index() if not result.empty else pd.DataFrame()
 
 
 def _pick_api_column(frame, aliases):
@@ -1402,12 +1558,14 @@ def simulate_dca_backtest(
             "power_law_residual": row.get("power_law_residual", np.nan),
             "price_to_fair": row.get("price_to_fair", np.nan),
             "mvrv_z": row.get("mvrv_z", np.nan),
+            "mvrv_source": row.get("mvrv_source", ""),
             "mvrv_score": row.get("mvrv_score", np.nan),
             "price_position_365": row.get("price_position_365", np.nan),
             "price_position_score": row.get("price_position_score", np.nan),
             "mayer": row.get("mayer", np.nan),
             "mayer_score": row.get("mayer_score", np.nan),
             "fear_greed": row.get("fear_greed", np.nan),
+            "fear_greed_source": row.get("fear_greed_source", ""),
             "fear_greed_score": row.get("fear_greed_score", np.nan),
             "rsi_14": row.get("rsi_14", np.nan),
             "rsi_score": row.get("rsi_score", np.nan),
@@ -1672,6 +1830,13 @@ with st.sidebar:
 
     if mode == "DCA Backtest":
         st.header("DCA Backtest")
+        st.caption("AUDIT ONLY: optional full-history external data sources")
+        st.text_input(
+            "Kote API key (audit only)",
+            type="password",
+            key="audit_kote_api_key",
+            help="Used only to fetch closed-day MVRV Z-Score history from Kote. Not saved by this app.",
+        )
 
         saved_bt = browser_state.get("backtest", {}) if isinstance(browser_state, dict) else {}
         saved_freq = saved_bt.get("frequency", "Weekly")
@@ -1958,11 +2123,24 @@ if mode == "DCA Backtest":
         df_full = fetch_btc_history(params["start_date"], params["end_date"])
         fx_series = fetch_aud_usd_rates(params["start_date"], params["end_date"])
         bg_token = get_bgeometrics_token()
+        ext_start = params["start_date"] - timedelta(days=300)
         bg_data = fetch_bgeometrics_bundle(
-            params["start_date"] - timedelta(days=300),
+            ext_start,
             params["end_date"],
             bg_token,
         )
+        kote_key = get_kote_api_key()
+        try:
+            kote_mvrv = fetch_kote_mvrv(ext_start, params["end_date"], kote_key)
+        except Exception as exc:
+            kote_mvrv = pd.DataFrame()
+            st.warning(f"Kote MVRV audit fetch failed: {exc}")
+        try:
+            alt_fng = fetch_alternative_fng(ext_start, params["end_date"])
+        except Exception as exc:
+            alt_fng = pd.DataFrame()
+            st.warning(f"Alternative.me Fear & Greed audit fetch failed: {exc}")
+        bg_data = merge_audit_external_sources(bg_data, kote_mvrv, alt_fng)
 
     if df_full.empty:
         st.error("No BTC price data was returned.")
