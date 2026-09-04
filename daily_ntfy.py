@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-Daily ntfy summary for BTC Dynamic DCA V5.8.2.
+Daily ntfy summary + Risk Drop Alert for BTC Dynamic DCA V5.8.2 Clean R2.
 
 Important:
 - No recommended DCA amount or portfolio/capital information is sent.
-- The Risk Score / Opportunity Rarity / Chance of Better Entry calculations
+- The Risk Score / Opportunity Rarity / Better Entry Evidence calculations
   are loaded directly from app.py so the notification uses the same engine.
+- Risk alerts are informational only and do not change Smart DCA sizing.
+- ASX:IBIT availability is labelled by Monday-Friday trading-day status.
 - The better-entry horizon is fixed at 156 weeks (3 years), matching the
   default DCA Today horizon.
 """
@@ -157,6 +159,31 @@ def calculate_summary():
     latest = valid.iloc[-1]
     current_risk = float(latest["risk_score"])
 
+    # Alert comparisons use the risk engine's own closed historical observations.
+    # No portfolio/capital information is involved.
+    risk_obs = valid["risk_score"].dropna().astype(float)
+    previous_risk = float(risk_obs.iloc[-2]) if len(risk_obs) >= 2 else np.nan
+    risk_drop = (previous_risk - current_risk) if np.isfinite(previous_risk) else np.nan
+    crossed_below_020 = bool(
+        np.isfinite(previous_risk) and previous_risk >= 0.20 and current_risk < 0.20
+    )
+
+    cutoff_90d = pd.Timestamp(valid.index[-1]) - pd.Timedelta(days=90) if isinstance(valid.index, pd.DatetimeIndex) else None
+    if cutoff_90d is not None:
+        prior_90 = risk_obs[(risk_obs.index >= cutoff_90d) & (risk_obs.index < risk_obs.index[-1])]
+    else:
+        prior_90 = risk_obs.iloc[-91:-1]
+    prior_90d_low = float(prior_90.min()) if len(prior_90) else np.nan
+    new_90d_low = bool(np.isfinite(prior_90d_low) and current_risk < prior_90d_low)
+    drop_alert = bool(np.isfinite(risk_drop) and risk_drop >= 0.03)
+    alert_reasons = []
+    if crossed_below_020:
+        alert_reasons.append("Risk crossed below 0.20")
+    if drop_alert:
+        alert_reasons.append(f"Risk fell {risk_drop:.3f} since previous closed reading")
+    if new_90d_low:
+        alert_reasons.append("New 90-day Risk low")
+
     if isinstance(valid.index, pd.DatetimeIndex):
         weekly = valid["risk_score"].resample("W-MON").last().dropna()
     elif "date" in valid.columns:
@@ -186,6 +213,10 @@ def calculate_summary():
     )
 
     local_now = now_utc.astimezone(BRISBANE)
+    # User can execute via ASX:IBIT Monday-Friday. This intentionally treats
+    # weekdays as trading days; exceptional ASX public holidays are labelled
+    # separately in the message caveat rather than guessed.
+    ibit_weekday = local_now.weekday() < 5
     return {
         "date": local_now.strftime("%d/%m/%y"),
         "risk": current_risk,
@@ -194,6 +225,11 @@ def calculate_summary():
         "btc_usd": live_usd,
         "rarity": rarity["rarity_label"],
         "better_entry": better_entry_text,
+        "previous_risk": previous_risk,
+        "risk_drop": risk_drop,
+        "alert_reasons": alert_reasons,
+        "risk_alert": bool(alert_reasons),
+        "ibit_weekday": ibit_weekday,
     }
 
 
@@ -202,7 +238,6 @@ def send_ntfy(summary):
     if not topic:
         raise RuntimeError("GitHub secret NTFY_TOPIC is missing or empty.")
 
-    # Accept either a topic name or a full ntfy topic URL in the secret.
     if topic.startswith("http://") or topic.startswith("https://"):
         url = topic.rstrip("/")
     else:
@@ -210,13 +245,35 @@ def send_ntfy(summary):
 
     import requests
 
-    message = (
-        f"BTC Risk: {summary['risk']:.3f} — {summary['risk_label']}\n"
-        f"BTC Price AUD: A${summary['btc_aud']:,.0f}\n"
-        f"BTC Price USD: US${summary['btc_usd']:,.0f}\n"
-        f"Opportunity Rarity: {summary['rarity']}\n"
-        f"Better Entry Evidence: {summary['better_entry']}"
+    ibit_status = (
+        "ASX:IBIT - weekday trading day (check ASX holiday status)"
+        if summary["ibit_weekday"]
+        else "ASX:IBIT - market closed (weekend); reassess next trading day"
     )
+
+    lines = [
+        f"BTC Risk: {summary['risk']:.3f} - {summary['risk_label']}",
+        f"BTC Price AUD: A${summary['btc_aud']:,.0f}",
+        f"BTC Price USD: US${summary['btc_usd']:,.0f}",
+        f"Opportunity Rarity: {summary['rarity']}",
+        f"Better Entry Evidence: {summary['better_entry']}",
+        ibit_status,
+    ]
+
+    if summary["risk_alert"]:
+        lines.insert(0, "RISK DROP ALERT")
+        lines.append("Trigger: " + "; ".join(summary["alert_reasons"]))
+        if not summary["ibit_weekday"]:
+            lines.append("Weekend signal only - IBIT cannot be bought until ASX trading resumes.")
+        title = f"BTC BUY OPPORTUNITY - {summary['date']}"
+        priority = "high"
+        tags = "bitcoin,warning"
+    else:
+        title = f"BTC Daily DCA - {summary['date']}"
+        priority = "default"
+        tags = "bitcoin,chart_with_upwards_trend"
+
+    message = "\n".join(lines)
 
     # Deliberately contains NO recommended DCA amount, capital, holdings,
     # portfolio value, or transaction information.
@@ -224,9 +281,9 @@ def send_ntfy(summary):
         url,
         data=message.encode("utf-8"),
         headers={
-            "Title": f"BTC Daily DCA - {summary['date']}",
-            "Priority": "default",
-            "Tags": "bitcoin,chart_with_upwards_trend",
+            "Title": title,
+            "Priority": priority,
+            "Tags": tags,
             "Cache": "no",
         },
         timeout=20,
@@ -239,7 +296,8 @@ def main():
     print(
         f"Risk={summary['risk']:.3f} {summary['risk_label']}; "
         f"AUD={summary['btc_aud']:.0f}; USD={summary['btc_usd']:.0f}; "
-        f"Rarity={summary['rarity']}; BetterEntry={summary['better_entry']}"
+        f"Rarity={summary['rarity']}; BetterEntry={summary['better_entry']}; "
+        f"Alert={summary['risk_alert']}; IBITWeekday={summary['ibit_weekday']}"
     )
     send_ntfy(summary)
     print("ntfy notification sent.")
