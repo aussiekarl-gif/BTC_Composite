@@ -61,37 +61,6 @@ DEFAULT_PL_EXPENSIVE = 0.20
 DEFAULT_FUND_CHEAP = 1.00
 DEFAULT_FUND_EXPENSIVE = 1.50
 
-# Smooth risk -> DCA multiplier curve.
-# Lower risk score = cheaper BTC = larger DCA.
-DEFAULT_BUY_POINTS = [
-    (0.00, 3.00),
-    (0.10, 2.60),
-    (0.20, 2.10),
-    (0.30, 1.60),
-    (0.40, 1.25),
-    (0.50, 1.00),
-    (0.60, 0.75),
-    (0.70, 0.50),
-    (0.80, 0.25),
-    (0.90, 0.10),
-    (1.00, 0.00),
-]
-
-# Risk -> desired BTC portfolio weight for profit taking/rebalancing.
-DEFAULT_TARGET_BTC_POINTS = [
-    (0.00, 1.00),
-    (0.10, 0.95),
-    (0.20, 0.90),
-    (0.30, 0.85),
-    (0.40, 0.80),
-    (0.50, 0.70),
-    (0.60, 0.55),
-    (0.70, 0.40),
-    (0.80, 0.25),
-    (0.90, 0.10),
-    (1.00, 0.05),
-]
-
 DEFAULT_MIN_CASH_RESERVE_PCT = 0.00
 DEFAULT_MAX_SELL_PCT_PERIOD = 0.25  # Avoid dumping >25% of BTC in one period
 DEFAULT_FEE_PCT = 0.00
@@ -155,10 +124,6 @@ SMART_DCA_POINTS = [
 ]
 
 
-DEFAULT_BUY_POINTS = [
-    (0.00, 4.00), (0.10, 3.25), (0.20, 2.50), (0.30, 1.65),
-    (0.35, 1.20), (0.40, 0.60), (0.45, 0.00), (1.00, 0.00),
-]
 DEFAULT_TREND_ER_PERIOD = 20
 DEFAULT_TREND_FAST = 2
 DEFAULT_TREND_SLOW = 30
@@ -1244,25 +1209,6 @@ def add_risk_indicators(data, risk_model, params):
         / 100.0
     ).clip(0, 1)
 
-    # Trading curves use calibrated risk.
-    result["dca_multiplier"] = result["risk_score"].apply(
-        lambda x: (
-            interpolate(DEFAULT_BUY_POINTS, x)
-            if pd.notna(x)
-            else 0.0
-        )
-    )
-
-    result["target_btc_weight"] = result["risk_score"].apply(
-        lambda x: (
-            interpolate(
-                DEFAULT_TARGET_BTC_POINTS, x
-            )
-            if pd.notna(x)
-            else np.nan
-        )
-    )
-
     result["valuation_multiplier"] = (
         (
             result["fair_value"]
@@ -1862,11 +1808,6 @@ with st.sidebar:
     buy_threshold = DEFAULT_BUY_THRESHOLD
     sell_risk_threshold = DEFAULT_SELL_RISK_THRESHOLD
 
-    weight_mvrv = 0.25
-    weight_power_law = 0.25
-    weight_mayer = 0.15
-    weight_fear_greed = 0.10
-    weight_rsi = 0.05
     regime_overlay = 0.0
 
     valuation_strength = DEFAULT_VALUATION_STRENGTH
@@ -1923,13 +1864,6 @@ params = {
     "sell_threshold": 0.0,
     "max_sell_pct_period": max_sell_pct_period,
     "fee_pct": fee_pct,
-    "composite_weights": {
-        "mvrv": weight_mvrv,
-        "power_law": weight_power_law,
-        "mayer": weight_mayer,
-        "fear_greed": weight_fear_greed,
-        "rsi": weight_rsi,
-    },
     "regime_overlay": regime_overlay,
     "valuation_strength": valuation_strength,
     "min_valuation_mult": min_valuation_mult,
@@ -2238,7 +2172,7 @@ elif mode == "DCA Today":
     st.header("DCA Today")
     st.caption(
         "Uses the calibrated Risk Score with the fixed walk-forward-tested Smart DCA curve. "
-        "Opportunity Rarity and Chance of Better Entry are informational only."
+        "Opportunity Rarity and Better Entry Evidence are informational only."
     )
 
     a, b, c, d = st.columns(4)
@@ -2249,18 +2183,18 @@ elif mode == "DCA Today":
         help="Live BTC/AUD spot quote (60-second cache) when available; otherwise latest historical BTC/AUD. Risk uses closed historical data."
     )
     c.metric("Opportunity Rarity", rarity["rarity_label"])
-    if np.isfinite(opportunity["chance_materially_lower"]):
+    if opportunity["cycles_used"] >= 1:
         d.metric(
-            "Chance of Better Entry",
-            f"{100.0 * opportunity['chance_materially_lower']:.0f}%",
+            "Better Entry Evidence",
+            f"{opportunity['cycle_successes']} of {opportunity['cycles_used']} cycles",
             help=(
-                "Cycle-weighted historical better-entry rate. Each of the current + previous "
-                "two BTC cycles contributes at most one independent analogue; this is not a "
-                "precise statistical probability."
+                "Number of comparable BTC cycles that later produced a materially lower Risk Score. "
+                "Each of the current + previous two cycles contributes at most one independent analogue. "
+                "This is limited historical evidence, not a precise probability."
             ),
         )
     else:
-        d.metric("Chance of Better Entry", "n/a")
+        d.metric("Better Entry Evidence", "n/a")
 
     st.caption(
         ("BTC price: live BTC/AUD spot quote" if price_is_live else "BTC price: latest historical BTC/AUD fallback")
@@ -2274,11 +2208,11 @@ elif mode == "DCA Today":
             "using the fixed walk-forward-tested curve; the Risk Score itself is not cycle-adjusted.\n\n"
             "**Opportunity Rarity = cycle-based context.** It compares today's Risk Score with comparable "
             "periods in the current BTC halving cycle plus the previous two cycles.\n\n"
-            "**Chance of Better Entry = cycle-based context.** It asks whether comparable cycle situations "
+            "**Better Entry Evidence = cycle-based context.** It asks whether comparable cycle situations "
             "later produced a materially lower Risk Score.\n\n"
             "**Historical Weekly Risk Distribution = descriptive only.** It shows how often each Risk Score "
             "range occurred historically and is not cycle-adjusted.\n\n"
-            "Opportunity Rarity and Chance of Better Entry are informational only and do **not** change the "
+            "Opportunity Rarity and Better Entry Evidence are informational only and do **not** change the "
             "recommended purchase amount."
         )
 
@@ -2311,7 +2245,7 @@ elif mode == "DCA Today":
     if current_risk <= 0.02:
         st.info(
             "EXTREME LOW RISK. V5.8 still follows the fixed Risk Score sizing curve; "
-            "Chance of Better Entry does not trigger an automatic all-in purchase."
+            "Better Entry Evidence does not trigger an automatic all-in purchase."
         )
 
     st.subheader("Historical Weekly Risk Distribution")
@@ -2359,7 +2293,7 @@ elif mode == "DCA Today":
             if np.isfinite(opportunity["chance_materially_lower"]):
                 st.write(
                     f"Materially lower risk (≤ {opportunity['material_threshold']:.3f}): "
-                    f"**{100.0 * opportunity['chance_materially_lower']:.0f}%**"
+                    f"**{opportunity['cycle_successes']} of {opportunity['cycles_used']} cycles**"
                 )
             st.write(
                 "Historical chance of reaching risk ≤0.05 / ≤0.02 / ≤0.01: "
