@@ -2697,8 +2697,8 @@ def _save_browser_state(state):
 
 browser_state = _load_browser_state()
 
-st.title("Bitcoin Dynamic DCA V5.8 FULL — Smart DCA")
-st.caption("Version 5.8 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
+st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
+st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -3791,7 +3791,7 @@ elif mode == "DCA Today":
         # Safe fallback: use observations in their existing chronological order.
         rarity_source = valid_today["risk_score"].dropna()
     rarity = opportunity_rarity_from_history(rarity_source, current_risk)
-    # V5.8: rarity is decision-support context only. Risk Score alone controls sizing.
+    # V5.8.2: rarity is decision-support context only. Risk Score alone controls sizing.
     effective_weight = risk_weight
 
     days_remaining = max((target_deployment_date - dt.date.today()).days, 7)
@@ -3807,7 +3807,7 @@ elif mode == "DCA Today":
         max(0.0, normal_weekly_allowance * risk_weight),
     )
 
-    # Better-entry probability is informational only in V5.8.
+    # Better-entry probability is informational only in V5.8.2.
     # It never overrides the Risk Score sizing curve.
     extreme_all_in_eligible = False
 
