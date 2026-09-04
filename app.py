@@ -31,6 +31,7 @@ Important:
 import datetime as dt
 import math
 import os
+import json
 
 import numpy as np
 from datetime import timedelta, timezone
@@ -39,6 +40,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import requests
 import streamlit as st
+
+try:
+    from streamlit_local_storage import LocalStorage
+    LOCAL_STORAGE_AVAILABLE = True
+except Exception:
+    LocalStorage = None
+    LOCAL_STORAGE_AVAILABLE = False
 
 
 # ================================================================
@@ -159,21 +167,24 @@ DEFAULT_OPPORTUNITY_LEARNED_WEIGHT = 0.70
 DEFAULT_OPPORTUNITY_VALUATION_WEIGHT = 0.30
 DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
 
+SMART_DCA_LOW_RISK_WEIGHT = 2.75
+SMART_DCA_HIGH_RISK_WEIGHT = 0.05
+
 SMART_DCA_POINTS = [
-    (0.00, 5.00),
-    (0.10, 4.00),
-    (0.20, 3.00),
-    (0.30, 2.20),
-    (0.40, 1.50),
-    (0.50, 1.00),
-    (0.60, 0.65),
-    (0.70, 0.40),
-    (0.80, 0.25),
-    (0.90, 0.12),
-    (1.00, 0.10),
+    (0.00, 2.7500),
+    (0.10, 2.3125),
+    (0.20, 1.8750),
+    (0.30, 1.5250),
+    (0.40, 1.21875),
+    (0.50, 1.0000),
+    (0.60, 0.6305555555),
+    (0.70, 0.3666666666),
+    (0.80, 0.2083333334),
+    (0.90, 0.0711111111),
+    (1.00, 0.0500),
 ]
 
-def build_smart_dca_curve(low_risk_weight=5.0, high_risk_weight=0.10):
+def build_smart_dca_curve(low_risk_weight=SMART_DCA_LOW_RISK_WEIGHT, high_risk_weight=SMART_DCA_HIGH_RISK_WEIGHT):
     """Build a simple convex Smart DCA curve from two user-facing endpoints.
 
     Risk 0.50 is anchored at 1.00x. The intermediate shape is fixed so the
@@ -2641,12 +2652,53 @@ def walk_forward_optimise(df_full, base_params):
 # ================================================================
 
 st.set_page_config(
-    page_title="BTC Dynamic DCA V5.7.5 FULL",
+    page_title="BTC Dynamic DCA V5.8 FULL",
     layout="wide",
 )
 
-st.title("Bitcoin Dynamic DCA V5.7.5 FULL — Smart DCA")
-st.caption("Version 5.7.5 FULL • Backtest + DCA Today • Opportunity Probability")
+# Browser-local persistence: survives normal app reruns/redeploys on the same browser/device.
+# CSV export remains available as a portable backup.
+PERSISTENCE_KEY = "btc_dynamic_dca_v58_state"
+browser_state = {}
+local_storage = None
+
+def _parse_saved_date(value, fallback):
+    try:
+        parsed = pd.to_datetime(value, errors="coerce")
+        if pd.notna(parsed):
+            return parsed.date()
+    except Exception:
+        pass
+    return fallback
+
+def _load_browser_state():
+    if not LOCAL_STORAGE_AVAILABLE:
+        return {}
+    try:
+        store = LocalStorage()
+        raw = store.getItem(PERSISTENCE_KEY)
+        if isinstance(raw, str) and raw.strip():
+            data = json.loads(raw)
+            return data if isinstance(data, dict) else {}
+        if isinstance(raw, dict):
+            return raw
+    except Exception:
+        return {}
+    return {}
+
+def _save_browser_state(state):
+    if not LOCAL_STORAGE_AVAILABLE:
+        return
+    try:
+        store = LocalStorage()
+        store.setItem(PERSISTENCE_KEY, json.dumps(state, default=str))
+    except Exception:
+        pass
+
+browser_state = _load_browser_state()
+
+st.title("Bitcoin Dynamic DCA V5.8 FULL — Smart DCA")
+st.caption("Version 5.8 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
@@ -2680,11 +2732,13 @@ with st.sidebar:
     if mode == "DCA Backtest":
         st.header("DCA Backtest")
 
+        saved_bt = browser_state.get("backtest", {}) if isinstance(browser_state, dict) else {}
+        saved_freq = saved_bt.get("frequency", "Weekly")
         dca_frequency = st.radio(
             "DCA Frequency",
             ["Daily", "Weekly"],
             horizontal=True,
-            index=1,
+            index=0 if saved_freq == "Daily" else 1,
             key="dca_backtest_frequency",
         )
         dca_base_amount_aud = DEFAULT_FIXED_DCA_AUD
@@ -2693,100 +2747,112 @@ with st.sidebar:
             "Total Budget (AUD)",
             min_value=10_000.0,
             max_value=10_000_000.0,
-            value=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD,
+            value=float(saved_bt.get("budget_aud", DEFAULT_INTELLIGENT_DCA_BUDGET_AUD)),
             step=10_000.0,
             format="%.0f",
             help="Plain DCA and Smart DCA both receive exactly this total budget.",
         )
 
-        st.subheader("Smart DCA Conviction")
-        low_risk_weight = st.slider(
-            "Low-risk buy weight (risk 0.00)",
-            min_value=2.0, max_value=10.0, value=5.0, step=0.25,
-            help="How strongly Smart DCA favors the cheapest valuation periods.",
-            key="backtest_low_risk_weight",
-        )
-        high_risk_weight = st.slider(
-            "High-risk buy weight (risk 1.00)",
-            min_value=0.01, max_value=0.50, value=0.10, step=0.01,
-            help="Very small values preserve most capital during expensive valuation periods.",
-            key="backtest_high_risk_weight",
-        )
-        smart_dca_curve = build_smart_dca_curve(low_risk_weight, high_risk_weight)
-        conviction_ratio = low_risk_weight / high_risk_weight
-        st.caption(
-            f"Current low/high allocation ratio: {conviction_ratio:.0f}:1. "
-            "Risk 0.50 remains anchored at 1.00x."
-        )
+        # Fixed, walk-forward-tested Smart DCA curve.
+        low_risk_weight = SMART_DCA_LOW_RISK_WEIGHT
+        high_risk_weight = SMART_DCA_HIGH_RISK_WEIGHT
+        smart_dca_curve = SMART_DCA_POINTS
 
         dca_backtest_start_date = st.date_input(
-            "Start Date", value=dt.date(2015, 1, 1),
+            "Start Date", value=_parse_saved_date(saved_bt.get("start_date"), dt.date(2015, 1, 1)),
             min_value=dt.date(2012, 1, 1), max_value=dt.date.today(),
             format="DD/MM/YYYY", key="sidebar_dca_backtest_start_date",
         )
         dca_backtest_end_date = st.date_input(
-            "End Date", value=dt.date.today(),
+            "End Date", value=_parse_saved_date(saved_bt.get("end_date"), dt.date.today()),
             min_value=dt.date(2012, 1, 1), max_value=dt.date.today(),
             format="DD/MM/YYYY", key="sidebar_dca_backtest_end_date",
         )
         if dca_backtest_start_date >= dca_backtest_end_date:
             st.error("Backtest Start Date must be before Backtest End Date.")
 
+        saved_weekday = saved_bt.get("weekday", "Monday")
+        weekday_names = list(day_map.keys())
         selected_day_name = st.selectbox(
-            "Weekly Execution Day", list(day_map.keys()), index=0,
-            disabled=(dca_frequency != "Weekly"), key="dca_backtest_weekday",
+            "Weekly Execution Day",
+            weekday_names,
+            index=weekday_names.index(saved_weekday) if saved_weekday in weekday_names else 0,
+            disabled=(dca_frequency != "Weekly"),
+            key="dca_backtest_weekday",
         )
         selected_day = day_map[selected_day_name]
         total_capital_aud = 0.0
         frequency = dca_frequency
 
         st.caption(
-            "Same budget and dates. Plain DCA invests evenly; Smart DCA tilts capital toward lower-risk periods."
+            "Same budget and dates. Plain DCA invests evenly; Smart DCA uses the fixed tested risk curve."
         )
+        browser_state["backtest"] = {
+            "frequency": dca_frequency,
+            "budget_aud": float(intelligent_dca_budget_aud),
+            "start_date": dca_backtest_start_date.isoformat(),
+            "end_date": dca_backtest_end_date.isoformat(),
+            "weekday": selected_day_name,
+        }
+        _save_browser_state(browser_state)
 
     elif mode == "DCA Today":
         st.header("DCA Today")
 
+        saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
+        saved_portfolio = browser_state.get("portfolio", {}) if isinstance(browser_state, dict) else {}
+
+        starting_default = float(saved_today.get(
+            "starting_capital_aud",
+            saved_portfolio.get("starting_capital_aud", 500_000.0)
+        ))
         starting_capital_aud = st.number_input(
             "Starting Capital (AUD)",
             min_value=1_000.0, max_value=100_000_000.0,
-            value=500_000.0, step=10_000.0, format="%.0f",
+            value=starting_default, step=10_000.0, format="%.0f",
             key="today_starting_capital",
         )
+
+        portfolio_remaining_saved = saved_portfolio.get("capital_remaining_aud", None)
+        remaining_default = saved_today.get("remaining_capital_aud", starting_capital_aud)
+        if portfolio_remaining_saved is not None:
+            remaining_default = portfolio_remaining_saved
+
         remaining_capital_aud = st.number_input(
             "Capital Remaining (AUD)",
             min_value=0.0, max_value=float(starting_capital_aud),
-            value=min(
-                float(starting_capital_aud),
-                float(st.session_state.get("portfolio_capital_remaining", starting_capital_aud))
-            ),
+            value=min(float(starting_capital_aud), float(remaining_default)),
             step=5_000.0, format="%.0f",
             key="today_remaining_capital",
         )
+
+        default_target = dt.date.today() + dt.timedelta(days=365 * 3)
+        saved_target = _parse_saved_date(saved_today.get("target_date"), default_target)
+        if saved_target < dt.date.today() + dt.timedelta(days=7):
+            saved_target = default_target
         target_deployment_date = st.date_input(
             "Target Deployment Date",
-            value=dt.date.today() + dt.timedelta(days=365 * 3),
+            value=saved_target,
             min_value=dt.date.today() + dt.timedelta(days=7),
             format="DD/MM/YYYY",
             key="today_target_date",
         )
 
-        st.subheader("Smart DCA Conviction")
-        low_risk_weight = st.slider(
-            "Low-risk buy weight (risk 0.00)",
-            min_value=2.0, max_value=10.0, value=5.0, step=0.25,
-            key="today_low_risk_weight",
-        )
-        high_risk_weight = st.slider(
-            "High-risk buy weight (risk 1.00)",
-            min_value=0.01, max_value=0.50, value=0.10, step=0.01,
-            key="today_high_risk_weight",
-        )
-        smart_dca_curve = build_smart_dca_curve(low_risk_weight, high_risk_weight)
+        low_risk_weight = SMART_DCA_LOW_RISK_WEIGHT
+        high_risk_weight = SMART_DCA_HIGH_RISK_WEIGHT
+        smart_dca_curve = SMART_DCA_POINTS
+
         st.caption(
-            f"Current low/high allocation ratio: {low_risk_weight / high_risk_weight:.0f}:1. "
-            "Risk 0.50 remains 1.00x."
+            "Smart DCA sizing is fixed internally from walk-forward testing: "
+            "2.75× at risk 0.00, 1.00× at risk 0.50, and 0.05× at risk 1.00."
         )
+
+        browser_state["today"] = {
+            "starting_capital_aud": float(starting_capital_aud),
+            "remaining_capital_aud": float(remaining_capital_aud),
+            "target_date": target_deployment_date.isoformat(),
+        }
+        _save_browser_state(browser_state)
 
         # Compatibility values for the shared risk engine.
         total_capital_aud = float(starting_capital_aud)
@@ -2801,322 +2867,51 @@ with st.sidebar:
         total_capital_aud = starting_capital_aud
         frequency = "Weekly"
         selected_day = dt.date.today().weekday()
-        low_risk_weight = 5.0
-        high_risk_weight = 0.10
-        smart_dca_curve = build_smart_dca_curve(low_risk_weight, high_risk_weight)
+        low_risk_weight = SMART_DCA_LOW_RISK_WEIGHT
+        high_risk_weight = SMART_DCA_HIGH_RISK_WEIGHT
+        smart_dca_curve = SMART_DCA_POINTS
 
     st.divider()
-
-    # ------------------------------------------------------------
-    # SIMPLE CONTROLS
-    # ------------------------------------------------------------
-
-    strategy_controls_container = st.expander(
-        "Advanced engine settings (optional)", expanded=False
+    st.caption(
+        "Engine settings are fixed internally for consistency between Backtest and DCA Today."
     )
-    with strategy_controls_container:
-        st.header("Strategy Controls")
 
-        st.caption(
-            "The V3.6 calibrated composite risk model is the standard engine. "
-            "0.00 = cheapest / lowest risk, 1.00 = most expensive / highest risk."
-        )
+    # Fixed calibrated engine defaults. These remain in code but are no longer user-facing.
+    risk_model = "Composite V3.6"
+    base_dca_pct = 0.01
+    max_period_pct = 0.05
+    max_sell_pct_period = min(DEFAULT_MAX_SELL_PCT_PERIOD, 0.20)
+    buy_threshold = DEFAULT_BUY_THRESHOLD
+    sell_risk_threshold = DEFAULT_SELL_RISK_THRESHOLD
 
-        # Standard engine. Legacy modes remain available under Advanced Settings.
-        risk_model = "Composite V3.6"
+    weight_mvrv = 0.25
+    weight_power_law = 0.25
+    weight_mayer = 0.15
+    weight_fear_greed = 0.10
+    weight_rsi = 0.05
+    regime_overlay = 0.0
 
-        st.subheader("DCA Size")
+    valuation_strength = DEFAULT_VALUATION_STRENGTH
+    min_valuation_mult = DEFAULT_MIN_VALUATION_MULT
+    max_valuation_mult = min(DEFAULT_MAX_VALUATION_MULT, 2.0)
+    min_cash_reserve_pct = DEFAULT_MIN_CASH_RESERVE_PCT
+    min_trade_aud = DEFAULT_MIN_TRADE_AUD
+    fee_pct = DEFAULT_FEE_PCT
+    min_days_between_sales = DEFAULT_MIN_DAYS_BETWEEN_SALES
+    min_risk_components = DEFAULT_MIN_RISK_COMPONENTS
+    require_weak_trend_for_sell = False
 
-        base_dca_pct = st.slider(
-            "Base DCA per execution (% of starting capital)",
-            0.10,
-            5.00,
-            1.00,
-            0.10,
-            help=(
-                "Starting DCA size before valuation and trend adjustments. "
-                "This is not forced deployment."
-            ),
-        ) / 100.0
-
-        max_period_pct = st.slider(
-            "Maximum BUY per execution (%)",
-            0.5,
-            20.0,
-            5.0,
-            0.5,
-            help="Hard safety cap for any single BUY.",
-        ) / 100.0
-
-        max_sell_pct_period = st.slider(
-            "Maximum SELL per execution (% of BTC)",
-            1.0,
-            50.0,
-            min(DEFAULT_MAX_SELL_PCT_PERIOD * 100, 20.0),
-            1.0,
-            help="Hard safety cap for any single SELL.",
-        ) / 100.0
-
-        st.divider()
-
-        st.subheader("BUY / HOLD / SELL Risk Bands")
-
-        if "buy_threshold_widget" not in st.session_state:
-            st.session_state["buy_threshold_widget"] = DEFAULT_BUY_THRESHOLD
-        if "sell_threshold_widget" not in st.session_state:
-            st.session_state["sell_threshold_widget"] = DEFAULT_SELL_RISK_THRESHOLD
-
-        preset_cols = st.columns(2)
-        if preset_cols[0].button("Balanced  0.25 / 0.75", width="stretch"):
-            st.session_state["buy_threshold_widget"] = 0.25
-            st.session_state["sell_threshold_widget"] = 0.75
-            st.rerun()
-        if preset_cols[1].button("Wide  0.20 / 0.80", width="stretch"):
-            st.session_state["buy_threshold_widget"] = 0.20
-            st.session_state["sell_threshold_widget"] = 0.80
-            st.rerun()
-
-        preset_cols2 = st.columns(2)
-        if preset_cols2[0].button("Narrow  0.30 / 0.70", width="stretch"):
-            st.session_state["buy_threshold_widget"] = 0.30
-            st.session_state["sell_threshold_widget"] = 0.70
-            st.rerun()
-        if preset_cols2[1].button("Aggressive  0.15 / 0.85", width="stretch"):
-            st.session_state["buy_threshold_widget"] = 0.15
-            st.session_state["sell_threshold_widget"] = 0.85
-            st.rerun()
-
-        buy_threshold = st.slider(
-            "BUY when risk ≤",
-            0.00,
-            1.00,
-            step=0.01,
-            key="buy_threshold_widget",
-        )
-
-        sell_risk_threshold = st.slider(
-            "SELL when risk ≥",
-            0.00,
-            1.00,
-            step=0.01,
-            key="sell_threshold_widget",
-        )
-
-        if buy_threshold >= sell_risk_threshold:
-            st.error("BUY threshold must be lower than SELL threshold.")
-
-        buy_w = max(0.0, min(100.0, buy_threshold * 100.0))
-        hold_w = max(
-            0.0,
-            min(
-                100.0,
-                (sell_risk_threshold - buy_threshold) * 100.0,
-            ),
-        )
-        sell_w = max(
-            0.0,
-            min(100.0, (1.0 - sell_risk_threshold) * 100.0),
-        )
-
-        st.markdown(
-            f"""
-            <div style="display:flex;width:100%;height:30px;border-radius:7px;overflow:hidden;
-                        border:1px solid rgba(255,255,255,0.18);font-size:11px;font-weight:700;text-align:center;">
-                <div style="width:{buy_w:.2f}%;background:rgba(46,160,67,0.75);display:flex;align-items:center;justify-content:center;">BUY</div>
-                <div style="width:{hold_w:.2f}%;background:rgba(31,111,235,0.70);display:flex;align-items:center;justify-content:center;">HOLD</div>
-                <div style="width:{sell_w:.2f}%;background:rgba(218,98,0,0.82);display:flex;align-items:center;justify-content:center;">SELL</div>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:11px;opacity:0.75;margin-top:3px;">
-                <span>0.00</span><span>{buy_threshold:.2f}</span><span>{sell_risk_threshold:.2f}</span><span>1.00</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        # ------------------------------------------------------------
-        # ADVANCED SETTINGS (collapsed by default)
-        # ------------------------------------------------------------
-
-        with st.expander("Advanced Settings", expanded=False):
-
-            st.caption(
-                "Most users can leave these at their defaults. "
-                "BGeometrics Regime is fetched automatically as context and has no manual slider."
-            )
-
-            risk_model = st.selectbox(
-                "Risk engine",
-                [
-                    "Composite V3.6",
-                    "Power Law Trend",
-                    "SMA Ratio (200-day)",
-                ],
-                index=0,
-                help="Composite V3.6 is recommended.",
-            )
-
-            st.markdown("**Composite model weights (fixed)**")
-            st.caption(
-                "Power Law 25% • MVRV-Z 25% • 365d Price Position 20% • "
-                "Mayer 15% • Fear & Greed 10% • RSI 5%"
-            )
-
-            # Compatibility variables: the V3.5 engine uses fixed weights internally.
-            weight_mvrv = 0.25
-            weight_power_law = 0.25
-            weight_mayer = 0.15
-            weight_fear_greed = 0.10
-            weight_rsi = 0.05
-            regime_overlay = 0.0
-
-            valuation_strength = st.slider(
-                "Valuation multiplier strength",
-                0.25,
-                1.50,
-                DEFAULT_VALUATION_STRENGTH,
-                0.05,
-            )
-
-            min_valuation_mult = st.slider(
-                "Minimum valuation multiplier",
-                0.25,
-                1.00,
-                DEFAULT_MIN_VALUATION_MULT,
-                0.05,
-            )
-
-            max_valuation_mult = st.slider(
-                "Maximum valuation multiplier",
-                1.00,
-                3.00,
-                min(DEFAULT_MAX_VALUATION_MULT, 2.0),
-                0.10,
-            )
-
-            min_cash_reserve_pct = st.slider(
-                "Minimum cash reserve (%)",
-                0.0,
-                50.0,
-                DEFAULT_MIN_CASH_RESERVE_PCT * 100,
-                1.0,
-            ) / 100.0
-
-            min_trade_aud = st.number_input(
-                "Minimum trade (AUD)",
-                0.0,
-                100000.0,
-                DEFAULT_MIN_TRADE_AUD,
-                100.0,
-            )
-
-            fee_pct = st.number_input(
-                "Trading fee (%)",
-                min_value=0.0,
-                max_value=5.0,
-                value=DEFAULT_FEE_PCT * 100,
-                step=0.01,
-            ) / 100.0
-
-            min_days_between_sales = st.number_input(
-                "Minimum days between sales",
-                min_value=0,
-                max_value=365,
-                value=DEFAULT_MIN_DAYS_BETWEEN_SALES,
-                step=1,
-            )
-
-            min_risk_components = st.slider(
-                "Minimum composite inputs",
-                1,
-                6,
-                DEFAULT_MIN_RISK_COMPONENTS,
-                1,
-            )
-
-            require_weak_trend_for_sell = st.checkbox(
-                "Require trend to stop being bullish before SELL",
-                value=False,
-            )
-
-            st.markdown("**Optimized Trend Replica**")
-
-            trend_er_period = st.slider(
-                "Trend efficiency lookback",
-                10,
-                60,
-                DEFAULT_TREND_ER_PERIOD,
-                1,
-            )
-            trend_fast = st.slider(
-                "Trend fast response",
-                2,
-                10,
-                DEFAULT_TREND_FAST,
-                1,
-            )
-            trend_slow = st.slider(
-                "Trend slow response",
-                15,
-                80,
-                DEFAULT_TREND_SLOW,
-                1,
-            )
-            trend_range_period = st.slider(
-                "Trend range lookback",
-                7,
-                40,
-                DEFAULT_TREND_RANGE_PERIOD,
-                1,
-            )
-            trend_band_mult = st.slider(
-                "Trend band multiplier",
-                0.5,
-                4.0,
-                DEFAULT_TREND_BAND_MULT,
-                0.1,
-            )
-            trend_buy_bull = st.slider(
-                "BUY factor: bullish",
-                0.0,
-                2.0,
-                DEFAULT_TREND_BUY_BULL,
-                0.05,
-            )
-            trend_buy_neutral = st.slider(
-                "BUY factor: neutral",
-                0.0,
-                2.0,
-                DEFAULT_TREND_BUY_NEUTRAL,
-                0.05,
-            )
-            trend_buy_bear = st.slider(
-                "BUY factor: bearish",
-                0.0,
-                2.0,
-                DEFAULT_TREND_BUY_BEAR,
-                0.05,
-            )
-            trend_sell_bull = st.slider(
-                "SELL factor: bullish",
-                0.0,
-                2.0,
-                DEFAULT_TREND_SELL_BULL,
-                0.05,
-            )
-            trend_sell_neutral = st.slider(
-                "SELL factor: neutral",
-                0.0,
-                2.0,
-                DEFAULT_TREND_SELL_NEUTRAL,
-                0.05,
-            )
-            trend_sell_bear = st.slider(
-                "SELL factor: bearish",
-                0.0,
-                2.0,
-                DEFAULT_TREND_SELL_BEAR,
-                0.05,
-            )
+    trend_er_period = DEFAULT_TREND_ER_PERIOD
+    trend_fast = DEFAULT_TREND_FAST
+    trend_slow = DEFAULT_TREND_SLOW
+    trend_range_period = DEFAULT_TREND_RANGE_PERIOD
+    trend_band_mult = DEFAULT_TREND_BAND_MULT
+    trend_buy_bull = DEFAULT_TREND_BUY_BULL
+    trend_buy_neutral = DEFAULT_TREND_BUY_NEUTRAL
+    trend_buy_bear = DEFAULT_TREND_BUY_BEAR
+    trend_sell_bull = DEFAULT_TREND_SELL_BULL
+    trend_sell_neutral = DEFAULT_TREND_SELL_NEUTRAL
+    trend_sell_bear = DEFAULT_TREND_SELL_BEAR
 
 
     # ================================================================
@@ -3996,8 +3791,8 @@ elif mode == "DCA Today":
         # Safe fallback: use observations in their existing chronological order.
         rarity_source = valid_today["risk_score"].dropna()
     rarity = opportunity_rarity_from_history(rarity_source, current_risk)
-    rarity_multiplier = float(rarity["rarity_multiplier"])
-    effective_weight = risk_weight * rarity_multiplier
+    # V5.8: rarity is decision-support context only. Risk Score alone controls sizing.
+    effective_weight = risk_weight
 
     days_remaining = max((target_deployment_date - dt.date.today()).days, 7)
     weeks_remaining = max(days_remaining / 7.0, 1.0)
@@ -4009,22 +3804,12 @@ elif mode == "DCA Today":
     normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
     recommended_buy = min(
         float(remaining_capital_aud),
-        max(0.0, normal_weekly_allowance * effective_weight),
+        max(0.0, normal_weekly_allowance * risk_weight),
     )
 
-    # Extreme-opportunity gate. Full deployment is only allowed when valuation
-    # is exceptionally low AND historical analogues do not show a strong chance
-    # of a materially lower entry within the remaining horizon. Sparse evidence
-    # never forces an all-in recommendation.
+    # Better-entry probability is informational only in V5.8.
+    # It never overrides the Risk Score sizing curve.
     extreme_all_in_eligible = False
-    if (
-        current_risk <= 0.01
-        and opportunity["cycles_used"] >= 3
-        and np.isfinite(opportunity["chance_materially_lower"])
-        and opportunity["chance_materially_lower"] <= 0.15
-    ):
-        extreme_all_in_eligible = True
-        recommended_buy = float(remaining_capital_aud)
 
     risk_label = (
         "VERY LOW" if current_risk <= 0.20 else
@@ -4038,8 +3823,8 @@ elif mode == "DCA Today":
 
     st.header("DCA Today")
     st.caption(
-        "Uses the same V5.1 calibrated risk model and the same Smart DCA conviction curve as the backtest. "
-        "The recommendation uses only data available now."
+        "Uses the calibrated Risk Score with the fixed walk-forward-tested Smart DCA curve. "
+        "Opportunity Rarity and Chance of Better Entry are informational only."
     )
 
     a, b, c, d = st.columns(4)
@@ -4069,6 +3854,23 @@ elif mode == "DCA Today":
         "The valuation Risk Score remains based on closed historical data."
     )
 
+    with st.expander("Opportunity Rarity Guide", expanded=False):
+        rarity_guide = pd.DataFrame([
+            ["EXTREME", "≤ 5%", "Exceptionally rare low-risk opportunity"],
+            ["VERY HIGH", "> 5–10%", "Very rare opportunity"],
+            ["HIGH", "> 10–20%", "Rare / attractive opportunity"],
+            ["ABOVE AVERAGE", "> 20–35%", "Better than usual"],
+            ["NORMAL", "> 35–60%", "Fairly typical opportunity"],
+            ["COMMON", "> 60%", "This risk level or lower occurs frequently"],
+        ], columns=["Opportunity Rarity", "Historical frequency", "Interpretation"])
+        rarity_guide["Current"] = rarity_guide["Opportunity Rarity"].apply(
+            lambda x: "← CURRENT" if x == rarity["rarity_label"] else ""
+        )
+        st.dataframe(rarity_guide, width="stretch", hide_index=True)
+        st.caption(
+            "V5.8 uses Opportunity Rarity for context only. It does not increase or reduce the recommended buy."
+        )
+
     st.subheader("SMART DCA TODAY")
     st.metric("Recommended Buy", f"A${recommended_buy:,.0f}")
 
@@ -4078,15 +3880,10 @@ elif mode == "DCA Today":
     x3.metric("Already Deployed", f"A${deployed:,.0f}")
 
 
-    if extreme_all_in_eligible:
-        st.success(
-            "EXTREME OPPORTUNITY: the model's full-deployment gate is open. "
-            "This is a model output, not a guarantee that BTC cannot fall further."
-        )
-    elif current_risk <= 0.02:
-        st.warning(
-            "EXTREME LOW RISK, but full deployment is not triggered because the historical "
-            "evidence is either sparse or still shows a meaningful chance of an even lower-risk entry."
+    if current_risk <= 0.02:
+        st.info(
+            "EXTREME LOW RISK. V5.8 still follows the fixed Risk Score sizing curve; "
+            "Chance of Better Entry does not trigger an automatic all-in purchase."
         )
 
     st.subheader("Historical Weekly Risk Distribution")
@@ -4153,28 +3950,28 @@ elif mode == "DCA Today":
     if current_risk <= 0.40:
         st.success(
             f"BTC valuation is {risk_label.lower()} and opportunity rarity is {rarity['rarity_label'].lower()}. "
-            f"The base Smart weight is {risk_weight:.2f}× and the rarity-adjusted weight is {effective_weight:.2f}×."
+            f"The fixed Smart DCA risk weight is {risk_weight:.2f}×. Opportunity Rarity is informational only."
         )
     elif current_risk >= 0.60:
         st.info(
             f"BTC valuation is {risk_label.lower()} and opportunity rarity is {rarity['rarity_label'].lower()}. "
-            f"The model is preserving capital with an effective weight of {effective_weight:.2f}×."
+            f"The model is preserving capital with a Risk Score weight of {risk_weight:.2f}×."
         )
     else:
         st.info(
             f"BTC valuation is neutral and opportunity rarity is {rarity['rarity_label'].lower()}. "
-            f"The effective allocation weight is {effective_weight:.2f}×."
+            f"The Risk Score allocation weight is {risk_weight:.2f}×."
         )
 
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
             "Normal weekly allowance = capital remaining ÷ weeks remaining. "
-            "The existing Smart DCA risk weight is then gently adjusted for how uncommon "
-            "the current risk level has been historically, and capped at remaining capital."
+            "That allowance is multiplied only by the fixed Smart DCA weight from today's Risk Score, "
+            "then capped at remaining capital."
         )
         st.write(
             f"A${remaining_capital_aud:,.0f} ÷ {weeks_remaining:.1f} weeks "
-            f"× {risk_weight:.2f} base weight × {rarity_multiplier:.2f} rarity "
+            f"× {risk_weight:.2f} Risk Score weight "
             f"= A${recommended_buy:,.0f}"
         )
         if np.isfinite(rarity["percentile"]):
@@ -4207,8 +4004,8 @@ elif mode == "My Portfolio":
         "ISIN AU0000424780. Default brokerage per ETF buy is A$3."
     )
     st.caption(
-        "Portfolio entries typed into Streamlit are not permanently stored by Streamlit Cloud. "
-        "Download the Portfolio CSV after changes so future app updates/restarts can restore them."
+        "Portfolio entries are saved automatically in this browser/device when browser storage is available. "
+        "CSV export remains a portable backup for another device or browser."
     )
 
     portfolio_cols = [
@@ -4219,7 +4016,14 @@ elif mode == "My Portfolio":
         "Units / BTC Received",
         "BTC AUD Price",
     ]
-    portfolio_df = pd.DataFrame(columns=portfolio_cols)
+
+    saved_portfolio = browser_state.get("portfolio", {}) if isinstance(browser_state, dict) else {}
+    saved_rows = saved_portfolio.get("rows", [])
+    portfolio_df = pd.DataFrame(saved_rows) if isinstance(saved_rows, list) and saved_rows else pd.DataFrame(columns=portfolio_cols)
+    for col in portfolio_cols:
+        if col not in portfolio_df.columns:
+            portfolio_df[col] = "" if col in ("Date", "Asset") else 0.0
+    portfolio_df = portfolio_df[portfolio_cols]
 
     uploaded_portfolio = st.file_uploader(
         "Load portfolio CSV (optional)", type=["csv"], key="portfolio_csv_upload"
@@ -4243,7 +4047,10 @@ elif mode == "My Portfolio":
     starting_portfolio_capital = st.number_input(
         "Starting Deployment Capital (AUD)",
         min_value=0.0,
-        value=float(st.session_state.get("portfolio_starting_capital", 500000.0)),
+        value=float(saved_portfolio.get(
+            "starting_capital_aud",
+            st.session_state.get("portfolio_starting_capital", 500000.0)
+        )),
         step=10000.0,
         format="%.2f",
         key="portfolio_starting_capital_input",
@@ -4510,7 +4317,12 @@ elif mode == "My Portfolio":
         "Date", "BTC Price AUD", "Risk", "Better Entry Chance %",
         "Model Recommendation AUD", "Actual Purchase AUD", "Asset"
     ]
-    decision_df = pd.DataFrame(columns=decision_cols)
+    saved_decisions = browser_state.get("decision_rows", []) if isinstance(browser_state, dict) else []
+    decision_df = pd.DataFrame(saved_decisions) if isinstance(saved_decisions, list) and saved_decisions else pd.DataFrame(columns=decision_cols)
+    for col in decision_cols:
+        if col not in decision_df.columns:
+            decision_df[col] = ""
+    decision_df = decision_df[decision_cols]
 
     decision_upload = st.file_uploader(
         "Load decision-history CSV (optional)", type=["csv"], key="decision_csv_upload"
@@ -4538,8 +4350,21 @@ elif mode == "My Portfolio":
         key="decision_download",
     )
 
-    st.info(
-        "After updating purchases, download the portfolio CSV. Upload it next time to restore "
-        "your purchases. DCA Today will use the remaining-capital value during the same session."
-    )
+    # Automatic browser persistence for portfolio + decision history.
+    browser_state["portfolio"] = {
+        "starting_capital_aud": float(starting_portfolio_capital),
+        "capital_remaining_aud": float(capital_remaining),
+        "rows": export_clean[portfolio_cols].to_dict(orient="records"),
+    }
+    browser_state["decision_rows"] = edited_decisions[decision_cols].to_dict(orient="records")
+    _save_browser_state(browser_state)
+
+    if LOCAL_STORAGE_AVAILABLE:
+        st.success(
+            "Saved automatically in this browser. CSV download remains available as a portable backup."
+        )
+    else:
+        st.warning(
+            "Browser-local saving is unavailable in this deployment. Use the CSV download as backup."
+        )
 
