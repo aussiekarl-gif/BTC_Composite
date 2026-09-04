@@ -228,7 +228,7 @@ def send_ntfy(summary):
         url,
         data=message.encode("utf-8"),
         headers={
-            "Title": f"BTC Daily DCA — {summary['date']}",
+            "Title": f"BTC Daily DCA - {summary['date']}",
             "Priority": "default",
             "Tags": "bitcoin,chart_with_upwards_trend",
             "Cache": "no",
