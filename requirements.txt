@@ -1,0 +1,6 @@
+streamlit
+pandas
+numpy
+requests
+plotly
+streamlit-local-storage>=0.0.23
