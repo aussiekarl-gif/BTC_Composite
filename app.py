@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Single-private-app launcher for BTC Dynamic DCA V5.8.2 Production and V5.9 Research."""
+"""Single-private-app launcher for BTC Dynamic DCA V5.8.2 Production and V5.9 Research R2."""
 from pathlib import Path
 import streamlit as st
 
@@ -7,7 +7,7 @@ st.set_page_config(page_title="BTC Dynamic DCA — Production + Research", layou
 
 version = st.sidebar.selectbox(
     "App version",
-    ["V5.8.2 Production", "V5.9 Research"],
+    ["V5.8.2 Production", "V5.9 Research R2"],
     index=0,
     key="combined_app_version_selector",
     help="Production remains the control. Research uses the simplified causal Power Law sizing engine.",
