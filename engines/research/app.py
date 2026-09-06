@@ -810,6 +810,215 @@ def walk_forward_power_law(data, cheap=-0.10, expensive=0.20, min_weeks=52, refi
     return scores, fair, residuals, slopes, intercepts
 
 
+
+def continuous_pl_display_risk(price, fair_value, cheap=-0.10, expensive=0.20):
+    """Continuous valuation-risk display that reserves 0.000 for a zero BTC price.
+
+    This is intentionally separate from the proven R2 sizing score.  It anchors
+    fair value at 0.50, the legacy R2 cheap boundary near 0.20, and the legacy
+    expensive boundary near 0.80.  For any strictly positive BTC price the
+    returned value is strictly above zero; as price grows without bound it
+    approaches 1.0 asymptotically.
+    """
+    try:
+        price = float(price)
+        fair_value = float(fair_value)
+    except Exception:
+        return np.nan
+    if not np.isfinite(price) or not np.isfinite(fair_value) or fair_value <= 0:
+        return np.nan
+    if price <= 0:
+        return 0.0
+
+    ratio = price / fair_value
+    if ratio <= 0:
+        return 0.0
+
+    cheap_ratio = 10.0 ** float(cheap)
+    expensive_ratio = 10.0 ** float(expensive)
+
+    # Choose exponents so the historical R2 clamp boundaries retain intuitive
+    # display anchors: cheap boundary ~= 0.20 and expensive boundary ~= 0.80.
+    if 0 < cheap_ratio < 1:
+        low_exp = math.log(0.20 / 0.50) / math.log(cheap_ratio)
+    else:
+        low_exp = 4.0
+    if expensive_ratio > 1:
+        high_exp = math.log(0.50 / (1.0 - 0.80)) / math.log(expensive_ratio)
+    else:
+        high_exp = 2.0
+
+    if ratio <= 1.0:
+        out = 0.50 * (ratio ** low_exp)
+    else:
+        out = 1.0 - 0.50 / (ratio ** high_exp)
+
+    # Numerically preserve the semantic rule: positive BTC price != zero risk.
+    if out <= 0.0:
+        out = float(np.nextafter(0.0, 1.0))
+    return float(min(out, float(np.nextafter(1.0, 0.0))))
+
+
+def format_continuous_risk(value, price=None):
+    """Format risk so a positive BTC price never visually rounds to 0.000."""
+    if value is None or not np.isfinite(value):
+        return "n/a"
+    if price is not None and np.isfinite(price) and float(price) > 0 and 0 < float(value) < 0.0005:
+        return "<0.001"
+    return f"{float(value):.3f}"
+
+
+def add_cycle_context_research(result, params):
+    """Add causal, display-only bottom/trend context to a scored BTC frame.
+
+    Nothing in this function changes ``risk_score`` or the R2 DCA multiplier.
+    It creates:
+      * continuous_valuation_risk -- zero only when BTC price is zero
+      * weekly_bull_confirmed -- 50-week MA reclaim proxy with 3-week confirmation
+      * bull_age_weeks / cycle_stage
+      * bottom_zone_score -- current bottom-like evidence (0..100)
+      * bottom_confidence_score -- recent bottom evidence + trend confirmation (0..100)
+
+    Bottom Confidence is an evidence score, NOT a calibrated probability that the
+    exact cycle low is in.  Every input is based only on data available on or
+    before each timestamp.
+    """
+    out = result.copy()
+    cheap = float(params.get("pl_cheap", DEFAULT_PL_CHEAP))
+    expensive = float(params.get("pl_expensive", DEFAULT_PL_EXPENSIVE))
+
+    # ---------- Continuous valuation risk (display only) ----------
+    out["continuous_valuation_risk"] = [
+        continuous_pl_display_risk(px, fv, cheap, expensive)
+        for px, fv in zip(
+            pd.to_numeric(out.get("price"), errors="coerce"),
+            pd.to_numeric(out.get("fair_value"), errors="coerce"),
+        )
+    ]
+
+    # ---------- Weekly trend confirmation / age ----------
+    price = pd.to_numeric(out["price"], errors="coerce")
+    weekly = price.resample("W-MON").last().dropna()
+    w = pd.DataFrame(index=weekly.index)
+    w["close"] = weekly
+    w["ma50"] = weekly.rolling(50, min_periods=50).mean()
+    w["ma200"] = weekly.rolling(200, min_periods=156).mean()
+    above50 = (w["close"] > w["ma50"]) & w["ma50"].notna()
+    below50 = (w["close"] < w["ma50"]) & w["ma50"].notna()
+    w["bull_reclaim_confirm"] = (above50.astype(int).rolling(3, min_periods=3).sum() >= 3)
+    w["bear_break_confirm"] = (below50.astype(int).rolling(3, min_periods=3).sum() >= 3)
+
+    state = False
+    start = None
+    states, ages, flips = [], [], []
+    for ts, row in w.iterrows():
+        flip = False
+        if (not state) and bool(row["bull_reclaim_confirm"]):
+            state = True
+            start = ts
+            flip = True
+        elif state and bool(row["bear_break_confirm"]):
+            state = False
+            start = None
+        states.append(bool(state))
+        ages.append(int((ts - start).days // 7) if state and start is not None else np.nan)
+        flips.append(bool(flip))
+    w["weekly_bull_confirmed"] = states
+    w["bull_age_weeks"] = ages
+    w["bull_confirmation_flip"] = flips
+
+    def stage(age, state):
+        if not state or not np.isfinite(age):
+            return "BEAR / UNCONFIRMED"
+        age = int(age)
+        if age <= 26:
+            return "EARLY RECOVERY"
+        if age <= 78:
+            return "EXPANSION"
+        if age <= 104:
+            return "MATURE BULL"
+        return "LATE BULL"
+    w["cycle_stage"] = [stage(a, st) for a, st in zip(w["bull_age_weeks"], w["weekly_bull_confirmed"])]
+
+    # ---------- Bottom-zone evidence ----------
+    # Each component is deliberately simple and monotonic. Missing components are
+    # ignored and the available weights are renormalized. This is research context.
+    resid = pd.to_numeric(out.get("power_law_residual"), errors="coerce")
+    pl_evidence = ((0.15 - resid) / (0.15 - cheap)).clip(0, 1)
+
+    rolling_high = price.rolling(365, min_periods=180).max()
+    drawdown = (1.0 - price / rolling_high.replace(0, np.nan)).clip(0, 1)
+    dd_evidence = ((drawdown - 0.20) / (0.50 - 0.20)).clip(0, 1)
+
+    # Align weekly 200W MA to daily rows without looking ahead.
+    ma200_daily = w["ma200"].reindex(out.index, method="ffill")
+    ratio_200w = price / ma200_daily.replace(0, np.nan)
+    ma200_evidence = ((1.60 - ratio_200w) / (1.60 - 1.10)).clip(0, 1)
+
+    mvrv_z = pd.to_numeric(out.get("mvrv_z"), errors="coerce")
+    mvrv_evidence = ((2.0 - mvrv_z) / (2.0 - 0.5)).clip(0, 1)
+
+    fear = pd.to_numeric(out.get("fear_greed"), errors="coerce")
+    fear_evidence = ((60.0 - fear) / (60.0 - 25.0)).clip(0, 1)
+
+    evidence_parts = {
+        "pl": (pl_evidence, 0.30),
+        "drawdown": (dd_evidence, 0.25),
+        "ma200": (ma200_evidence, 0.20),
+        "mvrv": (mvrv_evidence, 0.15),
+        "fear": (fear_evidence, 0.10),
+    }
+    numerator = pd.Series(0.0, index=out.index)
+    denominator = pd.Series(0.0, index=out.index)
+    available = pd.Series(0, index=out.index, dtype=int)
+    for name, (series, weight) in evidence_parts.items():
+        valid = series.notna()
+        numerator = numerator.add(series.fillna(0.0) * weight, fill_value=0.0)
+        denominator = denominator.add(valid.astype(float) * weight, fill_value=0.0)
+        available = available.add(valid.astype(int), fill_value=0).astype(int)
+        out[f"bottom_component_{name}"] = series
+
+    bottom_zone = (numerator / denominator.replace(0, np.nan)).clip(0, 1)
+    out["bottom_zone_score"] = bottom_zone * 100.0
+    out["bottom_components_available"] = available
+
+    # Carry forward the strongest bottom-like evidence from the prior ~26 weeks.
+    # This allows capitulation evidence near the low to remain relevant when trend
+    # confirmation arrives several weeks later, while remaining fully causal.
+    recent_zone = out["bottom_zone_score"].rolling(182, min_periods=1).max() / 100.0
+
+    bull_daily = w["weekly_bull_confirmed"].reindex(out.index, method="ffill").fillna(False).astype(bool)
+    age_daily = w["bull_age_weeks"].reindex(out.index, method="ffill")
+    stage_daily = w["cycle_stage"].reindex(out.index, method="ffill").fillna("BEAR / UNCONFIRMED")
+    flip_daily = w["bull_confirmation_flip"].reindex(out.index, method="ffill").fillna(False).astype(bool)
+    ma50_daily = w["ma50"].reindex(out.index, method="ffill")
+
+    out["weekly_bull_confirmed"] = bull_daily
+    out["bull_age_weeks"] = age_daily
+    out["cycle_stage"] = stage_daily
+    out["bull_confirmation_flip"] = flip_daily
+    out["weekly_ma50"] = ma50_daily
+    out["weekly_ma200"] = ma200_daily
+
+    trend_evidence = bull_daily.astype(float)
+    out["bottom_confidence_score"] = (100.0 * (0.75 * recent_zone + 0.25 * trend_evidence)).clip(0, 100)
+
+    def conf_label(score, bull):
+        if not np.isfinite(score):
+            return "n/a"
+        if bull and score >= 80:
+            return "HIGH — BOTTOM LIKELY IN"
+        if score >= 65:
+            return "ELEVATED"
+        if score >= 45:
+            return "DEVELOPING"
+        return "LOW"
+    out["bottom_confidence_label"] = [
+        conf_label(sc, bu) for sc, bu in zip(out["bottom_confidence_score"], bull_daily)
+    ]
+
+    return out
+
 def power_law_score(date, price, cheap=-0.10, expensive=0.20):
     """
     Power-law residual score.
@@ -1303,6 +1512,10 @@ def add_risk_indicators(data, risk_model, params):
         .fillna(1.0)
     )
 
+    # V5.9 R2 Context Research: display-only valuation / bottom / cycle context.
+    # This does not alter risk_score or Smart DCA sizing.
+    result = add_cycle_context_research(result, params)
+
     result = add_optimized_trend_replica(
         result,
         er_period=int(
@@ -1460,6 +1673,13 @@ def simulate_dca_backtest(
             "risk_score": risk,
             "risk_score_source": row.get("risk_score_source", "Calculated"),
             "power_law_risk_calculated": row.get("power_law_risk_calculated", row.get("power_law_score", np.nan)),
+            "continuous_valuation_risk": row.get("continuous_valuation_risk", np.nan),
+            "bottom_zone_score": row.get("bottom_zone_score", np.nan),
+            "bottom_confidence_score": row.get("bottom_confidence_score", np.nan),
+            "bottom_confidence_label": row.get("bottom_confidence_label", "n/a"),
+            "weekly_bull_confirmed": row.get("weekly_bull_confirmed", False),
+            "bull_age_weeks": row.get("bull_age_weeks", np.nan),
+            "cycle_stage": row.get("cycle_stage", "n/a"),
             "strategy_mode": strategy_mode, "dca_multiplier": multiplier,
             "base_dca_aud": float(base_dca_aud), "dca_frequency": dca_frequency,
             "actual_buy_aud": contribution, "btc_bought": btc_bought, "btc_held": btc,
@@ -1729,7 +1949,7 @@ def _save_browser_state(state):
 
 browser_state = _load_browser_state()
 
-st.title("Bitcoin Dynamic DCA V5.9 RESEARCH R2 — Simplified Smart DCA")
+st.title("Bitcoin Dynamic DCA V5.9 R2 — Context Research")
 st.caption("Version 5.9 RESEARCH • Walk-forward Power Law sizing • Moderate DCA curve • Persistent portfolio")
 st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
@@ -2175,8 +2395,10 @@ if mode == "DCA Backtest":
 
     with st.expander("Detailed activity", expanded=False):
         detail_cols = [
-            "date", "price_usd", "risk_score", "actual_buy_aud",
-            "btc_bought", "btc_held", "cumulative_invested_aud", "avg_cost_aud"
+            "date", "price_usd", "risk_score", "continuous_valuation_risk",
+            "bottom_confidence_score", "weekly_bull_confirmed", "bull_age_weeks",
+            "cycle_stage", "actual_buy_aud", "btc_bought", "btc_held",
+            "cumulative_invested_aud", "avg_cost_aud"
         ]
         smart_detail = smart_df[[c for c in detail_cols if c in smart_df.columns]].copy()
         st.dataframe(smart_detail.tail(250), width="stretch", hide_index=True)
@@ -2230,6 +2452,53 @@ elif mode == "DCA Today":
 
     latest = valid_today.iloc[-1]
     current_risk = float(latest["risk_score"])
+    current_display_risk = float(latest.get("continuous_valuation_risk", np.nan))
+    current_bottom_zone = float(latest.get("bottom_zone_score", np.nan))
+    current_bottom_confidence = float(latest.get("bottom_confidence_score", np.nan))
+    current_bottom_label = str(latest.get("bottom_confidence_label", "n/a"))
+    current_bull = bool(latest.get("weekly_bull_confirmed", False))
+    current_bull_age = float(latest.get("bull_age_weeks", np.nan))
+    current_cycle_stage = str(latest.get("cycle_stage", "BEAR / UNCONFIRMED"))
+    current_weekly_ma50 = float(latest.get("weekly_ma50", np.nan))
+    current_weekly_ma200 = float(latest.get("weekly_ma200", np.nan))
+
+    # V5.9 R2 visibility layer: preserve the bounded 0..1 sizing score, but also
+    # expose the underlying Power Law residual so Risk 0 / Risk 1 do not hide
+    # how far valuation sits beyond the clamp boundary. This is DISPLAY ONLY.
+    current_pl_residual = float(latest.get("power_law_residual", np.nan))
+    current_pl_fair_usd = float(latest.get("power_law_fair_value", np.nan))
+    current_pl_slope = float(latest.get("power_law_slope", np.nan))
+    current_pl_intercept = float(latest.get("power_law_intercept", np.nan))
+    pl_cheap_threshold = float(params.get("pl_cheap", DEFAULT_PL_CHEAP))
+    pl_expensive_threshold = float(params.get("pl_expensive", DEFAULT_PL_EXPENSIVE))
+    pl_span = pl_expensive_threshold - pl_cheap_threshold
+    unclipped_pl_position = (
+        (current_pl_residual - pl_cheap_threshold) / pl_span
+        if np.isfinite(current_pl_residual) and pl_span > 0 else np.nan
+    )
+    price_vs_pl_fair_pct = (
+        (10.0 ** current_pl_residual - 1.0) * 100.0
+        if np.isfinite(current_pl_residual) else np.nan
+    )
+    risk0_boundary_ratio = 10.0 ** pl_cheap_threshold
+    risk1_boundary_ratio = 10.0 ** pl_expensive_threshold
+    if np.isfinite(current_pl_residual) and current_pl_residual <= pl_cheap_threshold:
+        boundary_depth_pct = (1.0 - 10.0 ** (current_pl_residual - pl_cheap_threshold)) * 100.0
+        boundary_depth_label = "Below Risk-0 boundary"
+        boundary_depth_text = f"{boundary_depth_pct:.1f}% deeper"
+    elif np.isfinite(current_pl_residual) and current_pl_residual >= pl_expensive_threshold:
+        boundary_depth_pct = (10.0 ** (current_pl_residual - pl_expensive_threshold) - 1.0) * 100.0
+        boundary_depth_label = "Above Risk-1 boundary"
+        boundary_depth_text = f"{boundary_depth_pct:.1f}% higher"
+    elif np.isfinite(current_pl_residual):
+        boundary_depth_pct = np.nan
+        boundary_depth_label = "Clamp status"
+        boundary_depth_text = "Inside 0–1 range"
+    else:
+        boundary_depth_pct = np.nan
+        boundary_depth_label = "Clamp status"
+        boundary_depth_text = "n/a"
+
     current_price_usd = float(latest["price"])
     usd_per_aud = float(latest["usd_per_aud"]) if pd.notna(latest.get("usd_per_aud", np.nan)) else np.nan
     historical_price_aud = current_price_usd / usd_per_aud if np.isfinite(usd_per_aud) and usd_per_aud > 0 else np.nan
@@ -2289,7 +2558,15 @@ elif mode == "DCA Today":
     )
 
     a, b, c, d = st.columns(4)
-    a.metric("BTC Risk", f"{current_risk:.3f}", risk_label)
+    a.metric(
+        "BTC Valuation Risk",
+        format_continuous_risk(current_display_risk, current_price_usd),
+        risk_label,
+        help=(
+            "Continuous display risk. 0.000 is reserved for a BTC price of zero. "
+            f"The frozen R2 sizing score is {current_risk:.3f} and still controls the DCA multiplier."
+        ),
+    )
     b.metric(
         "BTC Price",
         "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}",
@@ -2315,6 +2592,115 @@ elif mode == "DCA Today":
         "The valuation Risk Score remains based on closed historical data."
     )
 
+    st.subheader("Cycle / Bottom Intelligence — Research Context")
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric(
+        "Bottom Confidence",
+        "n/a" if not np.isfinite(current_bottom_confidence) else f"{current_bottom_confidence:.0f}/100",
+        current_bottom_label,
+        help=(
+            "Causal evidence score, not a calibrated probability. It combines recent deep-valuation / "
+            "capitulation evidence with weekly bull confirmation. It does not change the DCA amount."
+        ),
+    )
+    q2.metric(
+        "Weekly Trend",
+        "BULL CONFIRMED" if current_bull else "UNCONFIRMED / BEAR",
+        help=(
+            "Research proxy for your weekly yellow/bull transition: 3 consecutive weekly closes above "
+            "the causal 50-week moving average. A 3-week break below resets the bull state."
+        ),
+    )
+    q3.metric(
+        "Bull Age",
+        "n/a" if not np.isfinite(current_bull_age) else f"{int(current_bull_age)} weeks",
+        help="Weeks since the current weekly bull confirmation. Research context only; no DCA adjustment.",
+    )
+    q4.metric(
+        "Cycle Stage",
+        current_cycle_stage,
+        help="Display classification from bull age. It is not hard-coded into the R2 sizing curve.",
+    )
+
+    ma50_text = "n/a" if not np.isfinite(current_weekly_ma50) else f"US${current_weekly_ma50:,.0f}"
+    ma200_text = "n/a" if not np.isfinite(current_weekly_ma200) else f"US${current_weekly_ma200:,.0f}"
+    zone_text = "n/a" if not np.isfinite(current_bottom_zone) else f"{current_bottom_zone:.0f}/100"
+    st.caption(
+        f"Current bottom-zone evidence: {zone_text} • 50-week MA: {ma50_text} • 200-week MA: {ma200_text}. "
+        "Bottom Confidence is an experimental evidence score, not a guarantee that the exact cycle low is in."
+    )
+
+    st.info(
+        f"R2 sizing remains frozen: sizing Risk {current_risk:.3f} → {risk_weight:.2f}× DCA. "
+        "The continuous valuation risk, Bottom Confidence, weekly trend and Bull Age are visibility/research only."
+    )
+
+    st.subheader("Power Law Risk Visibility")
+    v1, v2, v3, v4 = st.columns(4)
+    v1.metric(
+        "R2 Sizing Risk",
+        f"{current_risk:.3f}",
+        help="Frozen bounded 0–1 R2 score used for DCA sizing. This may clamp at 0 or 1; the continuous valuation risk above does not.",
+    )
+    v2.metric(
+        "Unclipped PL Position",
+        "n/a" if not np.isfinite(unclipped_pl_position) else f"{unclipped_pl_position:.3f}",
+        help=(
+            "Same Power Law position before clamping. 0.000 is the Risk-0 boundary, "
+            "1.000 is the Risk-1 boundary; negative values show how far below Risk 0 BTC sits."
+        ),
+    )
+    v3.metric(
+        "Price vs PL Fair Value",
+        "n/a" if not np.isfinite(price_vs_pl_fair_pct) else f"{price_vs_pl_fair_pct:+.1f}%",
+        help="Closed-data BTC price relative to the causal walk-forward Power Law fair value.",
+    )
+    v4.metric(
+        boundary_depth_label,
+        boundary_depth_text,
+        help="Shows depth beyond a clamp boundary without increasing the DCA multiplier beyond its fixed cap.",
+    )
+
+    fair_text = "n/a" if not np.isfinite(current_pl_fair_usd) else f"US${current_pl_fair_usd:,.0f}"
+    st.caption(
+        f"Walk-forward PL fair value: {fair_text}. Risk 0 begins at about "
+        f"{risk0_boundary_ratio * 100:.1f}% of fair value; Risk 1 begins at about "
+        f"{risk1_boundary_ratio * 100:.1f}% of fair value. The R2 strategy is unchanged: "
+        f"maximum DCA weight remains {interpolate(smart_dca_curve, 0.0):.2f}×."
+    )
+
+    if np.isfinite(current_pl_residual):
+        view_min = min(-0.50, current_pl_residual - 0.08)
+        view_max = max(0.50, current_pl_residual + 0.08)
+        pl_fig = go.Figure()
+        pl_fig.add_scatter(
+            x=[current_pl_residual], y=["Current"], mode="markers+text",
+            text=[f"Residual {current_pl_residual:+.3f}"], textposition="top center",
+            marker={"size": 14},
+            hovertemplate=(
+                f"Current residual: {current_pl_residual:+.4f}<br>"
+                f"Unclipped position: {unclipped_pl_position:+.3f}<br>"
+                f"Price vs fair value: {price_vs_pl_fair_pct:+.1f}%<extra></extra>"
+            ),
+        )
+        pl_fig.add_vline(x=pl_cheap_threshold, line_dash="dash", annotation_text="Risk 0 boundary")
+        pl_fig.add_vline(x=0.0, line_dash="dot", annotation_text="PL fair value")
+        pl_fig.add_vline(x=pl_expensive_threshold, line_dash="dash", annotation_text="Risk 1 boundary")
+        pl_fig.update_layout(
+            xaxis_title="Power Law residual (log10 price ÷ fair value)",
+            yaxis_title="",
+            yaxis={"showticklabels": False},
+            xaxis={"range": [view_min, view_max]},
+            height=230,
+            margin=dict(l=20, r=20, t=45, b=45),
+            showlegend=False,
+        )
+        st.plotly_chart(pl_fig, width="stretch")
+        st.caption(
+            "This chart is visibility only. A displayed Risk of 0 can represent anything below the left boundary; "
+            "the marker and unclipped position show how deep into that zone BTC actually is."
+        )
+
     with st.expander("How the signals work", expanded=False):
         st.markdown(
             "**Risk Score = buy sizing.** The Smart DCA amount is determined by the BTC Risk Score "
@@ -2325,8 +2711,14 @@ elif mode == "DCA Today":
             "later produced a materially lower Risk Score.\n\n"
             "**Historical Weekly Risk Distribution = descriptive only.** It shows how often each Risk Score "
             "range occurred historically and is not cycle-adjusted.\n\n"
-            "Opportunity Rarity and Better Entry Evidence are informational only and do **not** change the "
-            "recommended purchase amount."
+            "**Continuous Valuation Risk = visibility.** It is a smooth Power-Law-relative display score; "
+            "0.000 is reserved for a zero BTC price. It does not replace the frozen R2 sizing score.\n\n"
+            "**Bottom Confidence = research evidence.** It combines recent bottom-zone evidence with a causal "
+            "weekly bull confirmation. It is not a calibrated probability.\n\n"
+            "**Bull Age / Cycle Stage = context.** They describe how long the current confirmed weekly bull trend "
+            "has been active and do not alter sizing.\n\n"
+            "Opportunity Rarity, Better Entry Evidence, Bottom Confidence and Bull Age are informational only "
+            "and do **not** change the recommended purchase amount."
         )
 
     with st.expander("Opportunity Rarity Guide", expanded=False):
@@ -2343,7 +2735,7 @@ elif mode == "DCA Today":
         )
         st.dataframe(rarity_guide, width="stretch", hide_index=True)
         st.caption(
-            "V5.8 uses Opportunity Rarity for context only. It does not increase or reduce the recommended buy."
+            "V5.9 R2 uses Opportunity Rarity for context only. It does not increase or reduce the recommended buy."
         )
 
     st.subheader("SMART DCA TODAY")
@@ -2357,7 +2749,7 @@ elif mode == "DCA Today":
 
     if current_risk <= 0.02:
         st.info(
-            "EXTREME LOW RISK. V5.8 still follows the fixed Risk Score sizing curve; "
+            "EXTREME LOW RISK. V5.9 R2 still follows the fixed Risk Score sizing curve; "
             "Better Entry Evidence does not trigger an automatic all-in purchase."
         )
 
