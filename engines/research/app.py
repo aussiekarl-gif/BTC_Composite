@@ -2975,9 +2975,11 @@ elif mode == "DCA Today":
             high_date = after["price"].idxmax()
             cycle_rows.append({
                 "Halving": halving_date.strftime("%d %b %Y"),
-                "Prior low": low_date.strftime("%d %b %Y"),
+                "Theory BUY (−500d)": (halving_date - pd.Timedelta(days=500)).strftime("%d %b %Y"),
+                "Theory SELL (+500d)": (halving_date + pd.Timedelta(days=500)).strftime("%d %b %Y"),
+                "Actual prior low": low_date.strftime("%d %b %Y"),
                 "Low vs halving": f"{int((low_date-halving_date).days):+d} d",
-                "Post-halving high": high_date.strftime("%d %b %Y"),
+                "Actual post-halving high": high_date.strftime("%d %b %Y"),
                 "High vs halving": f"{int((high_date-halving_date).days):+d} d",
                 "Status": "cycle-to-date" if halving_date.year == 2024 else "historical",
             })
@@ -2985,20 +2987,20 @@ elif mode == "DCA Today":
             cycle_table = pd.DataFrame(cycle_rows)
             future_row = pd.DataFrame([{
                 "Halving": "≈ " + next_halving_est.strftime("%d %b %Y"),
-                "Prior low": "future / unknown",
+                "Theory BUY (−500d)": "≈ " + next_pre500.strftime("%d %b %Y"),
+                "Theory SELL (+500d)": "≈ " + next_post500.strftime("%d %b %Y"),
+                "Actual prior low": "future / unknown",
                 "Low vs halving": "—",
-                "Post-halving high": "future / unknown",
+                "Actual post-halving high": "future / unknown",
                 "High vs halving": "—",
-                "Status": (
-                    "future estimate • −500 ≈ " + next_pre500.strftime("%d %b %Y")
-                    + " • +500 ≈ " + next_post500.strftime("%d %b %Y")
-                ),
+                "Status": "future estimate",
             }])
             cycle_table = pd.concat([cycle_table, future_row], ignore_index=True)
             st.dataframe(cycle_table, width="stretch", hide_index=True)
             st.caption(
-                "Timing table is descriptive, not predictive. The 2024 row is cycle-to-date and can change. "
-                "The 2028 row is an approximate future planning row only; the actual halving occurs at a block-height milestone. "
+                "Theory BUY and SELL dates are the simple −500/+500-day rule; they are shown explicitly for each cycle. "
+                "The 2024 row is cycle-to-date and can change. The 2028 BUY/Halving/SELL dates are approximate planning dates; "
+                "the actual halving occurs at a block-height milestone. "
                 "Historical low/high searches use a broad ±900-day window so we can test whether the simple ±500-day "
                 "idea roughly aligns with actual macro turning points rather than assuming it does."
             )
