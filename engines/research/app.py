@@ -2089,6 +2089,7 @@ def validate_smart_dca_recent_period(
 # Browser-local persistence: survives normal app reruns/redeploys on the same browser/device.
 # CSV export remains available as a portable backup.
 PERSISTENCE_KEY = "btc_dynamic_dca_v59_research_state"
+SHARED_PORTFOLIO_KEY = "btc_dynamic_dca_shared_portfolio_v1"
 browser_state = {}
 local_storage = None
 
@@ -2125,7 +2126,65 @@ def _save_browser_state(state):
     except Exception:
         pass
 
+
+def _load_shared_portfolio(fallback_state=None):
+    """Load portfolio data shared by V5.8.2 and V5.9 on this browser/device.
+
+    On first use, V5.8.2 is the preferred migration source so an existing production
+    portfolio automatically appears in V5.9 even if V5.9 is opened first.
+    """
+    fallback_state = fallback_state if isinstance(fallback_state, dict) else {}
+    fallback = fallback_state.get("portfolio", {}) if isinstance(fallback_state.get("portfolio", {}), dict) else {}
+    if not LOCAL_STORAGE_AVAILABLE:
+        return fallback.copy()
+    try:
+        store = LocalStorage()
+        raw = store.getItem(SHARED_PORTFOLIO_KEY)
+        if isinstance(raw, str) and raw.strip():
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data
+        elif isinstance(raw, dict):
+            return raw
+
+        # One-time migration. Prefer the existing V5.8.2 production portfolio.
+        migration_candidates = []
+        for legacy_key in ("btc_dynamic_dca_v58_state", "btc_dynamic_dca_v59_research_state"):
+            legacy_raw = store.getItem(legacy_key)
+            legacy_state = None
+            if isinstance(legacy_raw, str) and legacy_raw.strip():
+                try:
+                    legacy_state = json.loads(legacy_raw)
+                except Exception:
+                    legacy_state = None
+            elif isinstance(legacy_raw, dict):
+                legacy_state = legacy_raw
+            if isinstance(legacy_state, dict) and isinstance(legacy_state.get("portfolio"), dict):
+                migration_candidates.append(legacy_state["portfolio"])
+        if fallback:
+            migration_candidates.append(fallback)
+
+        for candidate in migration_candidates:
+            if candidate:
+                store.setItem(SHARED_PORTFOLIO_KEY, json.dumps(candidate, default=str))
+                return candidate.copy()
+    except Exception:
+        pass
+    return fallback.copy()
+
+
+def _save_shared_portfolio(portfolio):
+    """Persist only portfolio inputs in a cross-version shared namespace."""
+    if not LOCAL_STORAGE_AVAILABLE or not isinstance(portfolio, dict):
+        return
+    try:
+        store = LocalStorage()
+        store.setItem(SHARED_PORTFOLIO_KEY, json.dumps(portfolio, default=str))
+    except Exception:
+        pass
+
 browser_state = _load_browser_state()
+shared_portfolio = _load_shared_portfolio(browser_state)
 
 st.title("Bitcoin Dynamic DCA V5.9 R2 — Bottom Zone Challenger")
 st.caption("Version 5.9 R2 CHALLENGER • Frozen R2 control • Staged Exceptional Bottom Zone overlay • Persistent portfolio")
@@ -2230,11 +2289,11 @@ with st.sidebar:
         st.header("DCA Today")
 
         saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
-        saved_portfolio = browser_state.get("portfolio", {}) if isinstance(browser_state, dict) else {}
+        saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
 
-        starting_default = float(saved_today.get(
+        starting_default = float(saved_portfolio.get(
             "starting_capital_aud",
-            saved_portfolio.get("starting_capital_aud", 500_000.0)
+            saved_today.get("starting_capital_aud", 500_000.0)
         ))
         starting_capital_aud = st.number_input(
             "Starting Capital (AUD)",
@@ -2852,6 +2911,73 @@ elif mode == "DCA Today":
         + ". Production V5.8.2 and the R2 control are unchanged."
     )
 
+    with st.expander("📅 Halving Cycle — 500 / 500 Theory", expanded=False):
+        current_halving = pd.Timestamp("2024-04-20")
+        current_day = pd.Timestamp(now_utc.date())
+        days_from_halving = int((current_day - current_halving).days)
+        pre500 = current_halving - pd.Timedelta(days=500)
+        post500 = current_halving + pd.Timedelta(days=500)
+
+        if days_from_halving < -500:
+            theory_status = "CASH / WAITING — before the historical −500-day accumulation window"
+        elif days_from_halving < 0:
+            theory_status = "ACCUMULATION WINDOW — within 500 days before the halving"
+        elif days_from_halving <= 500:
+            theory_status = "HOLD / EXPANSION — between halving day and +500 days"
+        else:
+            theory_status = "PAST THE HISTORICAL +500-DAY EXIT MARKER"
+
+        h1, h2, h3, h4 = st.columns(4)
+        h1.metric("Current Halving", current_halving.strftime("%d %b %Y"))
+        h2.metric("Days From Halving", f"{days_from_halving:+,} days")
+        h3.metric("−500 Day Marker", pre500.strftime("%d %b %Y"))
+        h4.metric("+500 Day Marker", post500.strftime("%d %b %Y"))
+        st.markdown(f"**Theory status today:** {theory_status}")
+
+        st.markdown(
+            "**Theory:** accumulate from about 500 days before a Bitcoin halving, hold through the halving, "
+            "consider the period around 500 days after the halving as a historical take-profit zone, then wait "
+            "for the next accumulation window. This panel is research context only and does not change R2 or "
+            "trigger an automatic sale."
+        )
+
+        # Empirical timing check using only BTC prices available in the app. A broad ±900-day
+        # window is used to locate the preceding bear-market low and the following cycle high.
+        px_hist = df_today[["price"]].copy()
+        px_hist.index = pd.to_datetime(px_hist.index).tz_localize(None) if getattr(pd.to_datetime(px_hist.index), "tz", None) is not None else pd.to_datetime(px_hist.index)
+        px_hist["price"] = pd.to_numeric(px_hist["price"], errors="coerce")
+        px_hist = px_hist.dropna(subset=["price"])
+        cycle_rows = []
+        for halving_date in [pd.Timestamp("2016-07-09"), pd.Timestamp("2020-05-11"), pd.Timestamp("2024-04-20")]:
+            before = px_hist[(px_hist.index >= halving_date - pd.Timedelta(days=900)) & (px_hist.index <= halving_date)]
+            after_end = min(halving_date + pd.Timedelta(days=900), current_day)
+            after = px_hist[(px_hist.index >= halving_date) & (px_hist.index <= after_end)]
+            if before.empty or after.empty:
+                continue
+            low_date = before["price"].idxmin()
+            high_date = after["price"].idxmax()
+            cycle_rows.append({
+                "Halving": halving_date.strftime("%d %b %Y"),
+                "Prior low": low_date.strftime("%d %b %Y"),
+                "Low vs halving": f"{int((low_date-halving_date).days):+d} d",
+                "Post-halving high": high_date.strftime("%d %b %Y"),
+                "High vs halving": f"{int((high_date-halving_date).days):+d} d",
+                "Status": "cycle-to-date" if halving_date.year == 2024 else "historical",
+            })
+        if cycle_rows:
+            st.dataframe(pd.DataFrame(cycle_rows), width="stretch", hide_index=True)
+            st.caption(
+                "Timing table is descriptive, not predictive. The 2024 row is cycle-to-date and can change. "
+                "The low/high search uses a broad ±900-day window so we can test whether the simple ±500-day "
+                "idea roughly aligns with actual macro turning points rather than assuming it does."
+            )
+
+        st.warning(
+            "Bitcoin has only a small number of independent halving cycles. Spot ETFs, institutional flows, "
+            "market maturation and diminishing percentage returns may shift or weaken historical cycle timing. "
+            "Do not treat ±500 days as a guaranteed bottom or top."
+        )
+
     st.subheader("Power Law Risk Visibility")
     v1, v2, v3, v4 = st.columns(4)
     v1.metric(
@@ -3109,7 +3235,7 @@ elif mode == "My Portfolio":
         "BTC AUD Price",
     ]
 
-    saved_portfolio = browser_state.get("portfolio", {}) if isinstance(browser_state, dict) else {}
+    saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
     saved_rows = saved_portfolio.get("rows", [])
     portfolio_df = pd.DataFrame(saved_rows) if isinstance(saved_rows, list) and saved_rows else pd.DataFrame(columns=portfolio_cols)
     for col in portfolio_cols:
@@ -3506,6 +3632,8 @@ elif mode == "My Portfolio":
         "capital_remaining_aud": float(capital_remaining),
         "rows": export_clean[portfolio_cols].to_dict(orient="records"),
     }
+    _save_shared_portfolio(browser_state["portfolio"])
+    shared_portfolio = browser_state["portfolio"].copy()
     browser_state["decision_rows"] = edited_decisions[decision_cols].to_dict(orient="records")
     _save_browser_state(browser_state)
 
