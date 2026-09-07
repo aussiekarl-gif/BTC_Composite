@@ -132,6 +132,12 @@ BOTTOM_CHALLENGER_STEP_MULT = 4.00
 BOTTOM_CHALLENGER_RECOVERY_MULT = 3.00
 BOTTOM_CHALLENGER_RECENT_WEEKS = 26
 
+# V5.9 three-pillar research overlay. Deliberately broad causal timing zone,
+# based only on elapsed days since the previous known halving (no future-date look-ahead).
+HALVING_ACCUMULATION_START_DAY = 800
+HALVING_ACCUMULATION_END_DAY = 1000
+HALVING_ACCUMULATION_FLOOR_MULT = 2.50
+
 
 DEFAULT_TREND_ER_PERIOD = 20
 DEFAULT_TREND_FAST = 2
@@ -1920,6 +1926,39 @@ def apply_bottom_challenger_allocator(result_df, total_budget_aud=DEFAULT_INTELL
     return apply_causal_budget_allocator(x, total_budget_aud=total_budget_aud, fee_pct=fee_pct)
 
 
+def _days_since_previous_halving(index):
+    """Causal cycle clock: elapsed days since the latest halving already observed."""
+    idx = pd.to_datetime(index)
+    naive = idx.tz_localize(None) if getattr(idx, "tz", None) is not None else idx
+    halvings = [pd.Timestamp("2012-11-28"), pd.Timestamp("2016-07-09"),
+                pd.Timestamp("2020-05-11"), pd.Timestamp("2024-04-20")]
+    vals = []
+    for ts in naive:
+        prior = [h for h in halvings if h <= ts]
+        vals.append(float((ts - max(prior)).days) if prior else np.nan)
+    return pd.Series(vals, index=index, dtype=float)
+
+
+def apply_three_pillar_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD, fee_pct=0.0):
+    """Frozen R2 + causal Halving Accumulation Zone + staged Bottom Challenger events."""
+    if result_df.empty:
+        return pd.DataFrame(), {}
+    x = result_df.copy()
+    base = pd.to_numeric(x["dca_multiplier"], errors="coerce").fillna(1.0)
+    event = pd.to_numeric(x.get("bottom_challenger_event_multiplier"), errors="coerce")
+    days = _days_since_previous_halving(x.index)
+    in_zone = days.between(HALVING_ACCUMULATION_START_DAY, HALVING_ACCUMULATION_END_DAY, inclusive="both")
+    timed = np.where(in_zone, np.maximum(base, HALVING_ACCUMULATION_FLOOR_MULT), base)
+    combined = np.where(event.notna(), np.maximum(timed, event), timed)
+    x["r2_dca_multiplier"] = base
+    x["days_since_previous_halving"] = days.values
+    x["halving_accumulation_zone"] = in_zone.values
+    x["halving_timing_multiplier"] = timed
+    x["dca_multiplier"] = combined
+    x["challenger_multiplier_applied"] = combined
+    return apply_causal_budget_allocator(x, total_budget_aud=total_budget_aud, fee_pct=fee_pct)
+
+
 def apply_equal_capital_allocator(
     result_df,
     total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD,
@@ -2540,7 +2579,7 @@ if mode == "DCA Backtest":
             smart_raw, total_budget_aud=capital_target,
             fee_pct=params.get("fee_pct", 0.0)
         )
-        challenger_df, challenger_sm = apply_bottom_challenger_allocator(
+        challenger_df, challenger_sm = apply_three_pillar_allocator(
             smart_raw, total_budget_aud=capital_target,
             fee_pct=params.get("fee_pct", 0.0)
         )
@@ -2802,9 +2841,19 @@ elif mode == "DCA Today":
         float(remaining_capital_aud),
         max(0.0, normal_weekly_allowance * risk_weight),
     )
+    # Three-pillar research sizing: R2 base + broad causal halving accumulation zone
+    # + staged Bottom Challenger events. The +500 marker remains context only.
+    current_halving_clock_days = int((pd.Timestamp(now_utc.date()) - pd.Timestamp("2024-04-20")).days)
+    current_halving_accumulation_zone = (
+        HALVING_ACCUMULATION_START_DAY <= current_halving_clock_days <= HALVING_ACCUMULATION_END_DAY
+    )
+    halving_timing_weight = (
+        max(risk_weight, HALVING_ACCUMULATION_FLOOR_MULT)
+        if current_halving_accumulation_zone else risk_weight
+    )
     challenger_weight = (
-        max(risk_weight, current_challenger_event_mult)
-        if np.isfinite(current_challenger_event_mult) else risk_weight
+        max(halving_timing_weight, current_challenger_event_mult)
+        if np.isfinite(current_challenger_event_mult) else halving_timing_weight
     )
     challenger_recommended_buy = min(
         float(remaining_capital_aud),
@@ -2828,7 +2877,7 @@ elif mode == "DCA Today":
     st.header("DCA Today")
     st.caption(
         "Frozen R2 remains the control. The research challenger can temporarily raise the weekly multiplier "
-        "only on explicit staged Exceptional Bottom Zone events; no fixed reserve or automatic all-in."
+        "through the broad causal Halving Accumulation Zone and explicit staged Exceptional Bottom Zone events; no fixed reserve or automatic all-in."
     )
 
     a, b, c, d = st.columns(4)
@@ -2906,7 +2955,7 @@ elif mode == "DCA Today":
 
     st.info(
         f"Frozen R2: Risk {current_risk:.3f} → {risk_weight:.2f}×. "
-        f"Bottom Challenger today: {challenger_weight:.2f}×"
+        f"Three-Pillar Challenger today: {challenger_weight:.2f}×"
         + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event today)")
         + ". Production V5.8.2 and the R2 control are unchanged."
     )
@@ -2933,11 +2982,20 @@ elif mode == "DCA Today":
         h3.metric("−500 Day Marker", pre500.strftime("%d %b %Y"))
         h4.metric("+500 Day Marker", post500.strftime("%d %b %Y"))
         st.markdown(f"**Theory status today:** {theory_status}")
+        zone_start_date = current_halving + pd.Timedelta(days=HALVING_ACCUMULATION_START_DAY)
+        zone_end_date = current_halving + pd.Timedelta(days=HALVING_ACCUMULATION_END_DAY)
+        st.info(
+            f"V5.9 research Halving Accumulation Zone: {zone_start_date.strftime('%d %b %Y')} to "
+            f"{zone_end_date.strftime('%d %b %Y')} (day +{HALVING_ACCUMULATION_START_DAY} to +{HALVING_ACCUMULATION_END_DAY} "
+            f"after the 2024 halving). Status: {'ACTIVE' if current_halving_accumulation_zone else 'INACTIVE'}. "
+            f"Inside this broad causal zone, ordinary R2 is raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×. "
+            "Bottom Challenger events can still raise it to 3×/4×. No automatic sell is attached to +500."
+        )
 
         # Future-cycle planning markers. Bitcoin halvings occur at block-height milestones,
         # not fixed calendar dates, so these dates are intentionally approximate and should
         # be refreshed as the network approaches block 1,050,000.
-        next_halving_est = pd.Timestamp("2028-04-12")
+        next_halving_est = pd.Timestamp("2028-04-13")
         next_pre500 = next_halving_est - pd.Timedelta(days=500)
         next_post500 = next_halving_est + pd.Timedelta(days=500)
         st.markdown("**Next halving cycle — approximate planning dates**")
@@ -2946,8 +3004,8 @@ elif mode == "DCA Today":
         n2.metric("Approx. 2028 Halving", next_halving_est.strftime("%d %b %Y"))
         n3.metric("Approx. +500 Marker", next_post500.strftime("%d %b %Y"))
         st.caption(
-            "The next Bitcoin halving is currently estimated for roughly 10–13 April 2028. "
-            "The app uses 12 April 2028 as a neutral planning estimate, giving approximate ±500-day markers. "
+            "The next Bitcoin halving is currently estimated for roughly early-to-mid April 2028. "
+            "The app uses 13 April 2028 as a planning estimate, giving approximate ±500-day markers. "
             "The actual halving date will move with block production speed."
         )
 
@@ -3116,13 +3174,13 @@ elif mode == "DCA Today":
             "V5.9 R2 uses Opportunity Rarity for context only. It does not increase or reduce the recommended buy."
         )
 
-    st.subheader("DCA TODAY — R2 CONTROL vs BOTTOM CHALLENGER")
+    st.subheader("DCA TODAY — R2 CONTROL vs THREE-PILLAR CHALLENGER")
     y1, y2 = st.columns(2)
     y1.metric("Frozen R2 Buy", f"A${recommended_buy:,.0f}", help=f"{risk_weight:.2f}× normal weekly allowance")
     y2.metric(
-        "Bottom Challenger Buy", f"A${challenger_recommended_buy:,.0f}",
+        "Three-Pillar Buy", f"A${challenger_recommended_buy:,.0f}",
         delta=(f"A${challenger_recommended_buy-recommended_buy:+,.0f} vs R2" if challenger_recommended_buy != recommended_buy else "same as R2"),
-        help=f"{challenger_weight:.2f}× normal weekly allowance; staged events only"
+        help=f"{challenger_weight:.2f}× normal weekly allowance; R2 + causal halving zone + staged bottom events"
     )
 
     x1, x2, x3 = st.columns(3)
@@ -3131,6 +3189,12 @@ elif mode == "DCA Today":
     x3.metric("Already Deployed", f"A${deployed:,.0f}")
 
     pos_text = "n/a" if not np.isfinite(current_challenger_price_position) else f"{current_challenger_price_position*100:.1f}%"
+    st.caption(
+        f"Halving Accumulation Zone: {'ACTIVE' if current_halving_accumulation_zone else 'inactive'} • "
+        f"day +{current_halving_clock_days} since 20 Apr 2024 • research floor "
+        f"{HALVING_ACCUMULATION_FLOOR_MULT:.2f}× when day +{HALVING_ACCUMULATION_START_DAY} to +{HALVING_ACCUMULATION_END_DAY}. "
+        "The exact ±500 rule remains visible below as historical context; +500 does not trigger an automatic sale."
+    )
     st.caption(
         f"Bottom Challenger: {'EXCEPTIONAL ZONE ACTIVE' if current_challenger_zone else 'no exceptional zone'} • "
         f"confirming categories {current_challenger_votes}/3 • trailing-year price position {pos_text}. "
