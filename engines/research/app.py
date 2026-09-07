@@ -122,6 +122,16 @@ RESEARCH_PL_REFIT_DAYS = 91
 RESEARCH_PL_MIN_WEEKS = 52
 RESEARCH_PL_HISTORY_START = pd.Timestamp("2012-01-01", tz="UTC")
 
+# V5.9 R2 Bottom Zone Challenger — research-only staged deployment overlay.
+BOTTOM_CHALLENGER_THRESHOLD = 0.85
+BOTTOM_CHALLENGER_PRICE_POSITION_MAX = 0.20
+BOTTOM_CHALLENGER_REQUIRED_CONFIRMING_CATEGORIES = 2
+BOTTOM_CHALLENGER_STEP_DOWN = 0.15
+BOTTOM_CHALLENGER_INITIAL_MULT = 3.00
+BOTTOM_CHALLENGER_STEP_MULT = 4.00
+BOTTOM_CHALLENGER_RECOVERY_MULT = 3.00
+BOTTOM_CHALLENGER_RECENT_WEEKS = 26
+
 
 DEFAULT_TREND_ER_PERIOD = 20
 DEFAULT_TREND_FAST = 2
@@ -1019,6 +1029,149 @@ def add_cycle_context_research(result, params):
 
     return out
 
+
+def add_bottom_zone_challenger(result):
+    """Add a causal staged Exceptional Bottom Zone research overlay.
+
+    Frozen R2 is untouched. Weekly signals require deep Power-Law valuation,
+    BTC in the lowest 20% of its trailing 52-week price range, and at least two
+    additional strongly-stressed categories. Correlated indicators are grouped.
+
+    Staging: 3x on initial exceptional entry; 4x after each new >=15% lower price
+    while confluence remains exceptional; 3x on a later bull-recovery confirmation
+    occurring within 26 weeks. There is no fixed reserve and no automatic all-in.
+    """
+    out = result.copy()
+    if out.empty:
+        return out
+
+    price = pd.to_numeric(out.get("price"), errors="coerce")
+    weekly_price = price.resample("W-MON").last().dropna()
+    weekly = pd.DataFrame(index=weekly_price.index)
+    weekly["price"] = weekly_price
+
+    def wk(col):
+        if col not in out.columns:
+            return pd.Series(np.nan, index=weekly.index, dtype=float)
+        return pd.to_numeric(out[col], errors="coerce").resample("W-MON").last().reindex(weekly.index)
+
+    pl = wk("bottom_component_pl").clip(0, 1)
+    mvrv = wk("bottom_component_mvrv").clip(0, 1)
+    drawdown = wk("bottom_component_drawdown").clip(0, 1)
+    ma200 = wk("bottom_component_ma200").clip(0, 1)
+    fear = wk("bottom_component_fear").clip(0, 1)
+
+    mayer = wk("mayer")
+    mayer_evidence = ((1.40 - mayer) / (1.40 - 0.85)).clip(0, 1)
+    rsi = wk("rsi_14")
+    rsi_evidence = ((45.0 - rsi) / (45.0 - 25.0)).clip(0, 1)
+
+    roll_low = weekly["price"].rolling(52, min_periods=26).min()
+    roll_high = weekly["price"].rolling(52, min_periods=26).max()
+    price_position = ((weekly["price"] - roll_low) / (roll_high - roll_low).replace(0, np.nan)).clip(0, 1)
+
+    onchain = mvrv
+    market_structure = pd.concat([drawdown, ma200, mayer_evidence], axis=1).max(axis=1, skipna=True)
+    sentiment = pd.concat([fear, rsi_evidence], axis=1).max(axis=1, skipna=True)
+
+    threshold = float(BOTTOM_CHALLENGER_THRESHOLD)
+    category_votes = pd.concat([
+        (onchain >= threshold).rename("onchain"),
+        (market_structure >= threshold).rename("market_structure"),
+        (sentiment >= threshold).rename("sentiment"),
+    ], axis=1).fillna(False).sum(axis=1).astype(int)
+
+    exceptional = (
+        (pl >= threshold)
+        & (price_position <= float(BOTTOM_CHALLENGER_PRICE_POSITION_MAX))
+        & (category_votes >= int(BOTTOM_CHALLENGER_REQUIRED_CONFIRMING_CATEGORIES))
+    ).fillna(False)
+
+    if "bull_confirmation_flip" in out.columns:
+        bull_flip = out["bull_confirmation_flip"].astype(bool).resample("W-MON").max().reindex(weekly.index).fillna(False)
+    else:
+        bull_flip = pd.Series(False, index=weekly.index)
+
+    events, event_mults, episode_ids, anchors = [], [], [], []
+    last_event_price = np.nan
+    last_exceptional_ts = None
+    episode_id = 0
+    recovery_used = False
+    prev_exceptional = False
+
+    for ts in weekly.index:
+        px = float(weekly.at[ts, "price"]) if pd.notna(weekly.at[ts, "price"]) else np.nan
+        is_exceptional = bool(exceptional.loc[ts])
+        event = "NONE"
+        mult = np.nan
+
+        if last_exceptional_ts is not None and (ts - last_exceptional_ts).days > BOTTOM_CHALLENGER_RECENT_WEEKS * 7:
+            last_event_price = np.nan
+            last_exceptional_ts = None
+            recovery_used = False
+            prev_exceptional = False
+
+        if is_exceptional and not prev_exceptional:
+            episode_id += 1
+            event = "INITIAL EXCEPTIONAL ZONE"
+            mult = float(BOTTOM_CHALLENGER_INITIAL_MULT)
+            last_event_price = px
+            last_exceptional_ts = ts
+            recovery_used = False
+        elif is_exceptional and np.isfinite(last_event_price) and np.isfinite(px) and px <= last_event_price * (1.0 - BOTTOM_CHALLENGER_STEP_DOWN):
+            event = "LOWER CAPITULATION STAGE"
+            mult = float(BOTTOM_CHALLENGER_STEP_MULT)
+            last_event_price = px
+            last_exceptional_ts = ts
+        elif bool(bull_flip.loc[ts]) and last_exceptional_ts is not None and not recovery_used:
+            if (ts - last_exceptional_ts).days <= BOTTOM_CHALLENGER_RECENT_WEEKS * 7:
+                event = "RECOVERY CONFIRMATION"
+                mult = float(BOTTOM_CHALLENGER_RECOVERY_MULT)
+                recovery_used = True
+
+        events.append(event)
+        event_mults.append(mult)
+        episode_ids.append(episode_id if last_exceptional_ts is not None else 0)
+        anchors.append(last_event_price)
+        prev_exceptional = is_exceptional
+
+    weekly["bottom_challenger_pl_evidence"] = pl
+    weekly["bottom_challenger_price_position"] = price_position
+    weekly["bottom_challenger_onchain"] = onchain
+    weekly["bottom_challenger_market_structure"] = market_structure
+    weekly["bottom_challenger_sentiment"] = sentiment
+    weekly["bottom_challenger_category_votes"] = category_votes
+    weekly["bottom_challenger_exceptional_zone"] = exceptional.astype(bool)
+    weekly["bottom_challenger_event"] = events
+    weekly["bottom_challenger_event_multiplier"] = event_mults
+    weekly["bottom_challenger_episode"] = episode_ids
+    weekly["bottom_challenger_anchor_price"] = anchors
+
+    state_cols = [
+        "bottom_challenger_pl_evidence", "bottom_challenger_price_position",
+        "bottom_challenger_onchain", "bottom_challenger_market_structure",
+        "bottom_challenger_sentiment", "bottom_challenger_category_votes",
+        "bottom_challenger_exceptional_zone", "bottom_challenger_episode",
+        "bottom_challenger_anchor_price",
+    ]
+    for col in state_cols:
+        out[col] = weekly[col].reindex(out.index, method="ffill")
+
+    out["bottom_challenger_event"] = "NONE"
+    out["bottom_challenger_event_multiplier"] = np.nan
+    common = out.index.intersection(weekly.index)
+    if len(common):
+        out.loc[common, "bottom_challenger_event"] = weekly.loc[common, "bottom_challenger_event"].astype(str)
+        out.loc[common, "bottom_challenger_event_multiplier"] = weekly.loc[common, "bottom_challenger_event_multiplier"]
+
+    # Current-week decision fields: a Monday signal remains actionable until the next
+    # Monday observation. This allows a user whose weekly DCA day is Tue-Sun to act
+    # on the latest completed weekly signal without looking ahead. Daily backtests do
+    # not use this field, preventing one weekly event from being applied every day.
+    out["bottom_challenger_week_event"] = weekly["bottom_challenger_event"].reindex(out.index, method="ffill").fillna("NONE")
+    out["bottom_challenger_week_multiplier"] = weekly["bottom_challenger_event_multiplier"].reindex(out.index, method="ffill")
+    return out
+
 def power_law_score(date, price, cheap=-0.10, expensive=0.20):
     """
     Power-law residual score.
@@ -1515,6 +1668,7 @@ def add_risk_indicators(data, risk_model, params):
     # V5.9 R2 Context Research: display-only valuation / bottom / cycle context.
     # This does not alter risk_score or Smart DCA sizing.
     result = add_cycle_context_research(result, params)
+    result = add_bottom_zone_challenger(result)
 
     result = add_optimized_trend_replica(
         result,
@@ -1680,6 +1834,17 @@ def simulate_dca_backtest(
             "weekly_bull_confirmed": row.get("weekly_bull_confirmed", False),
             "bull_age_weeks": row.get("bull_age_weeks", np.nan),
             "cycle_stage": row.get("cycle_stage", "n/a"),
+            "bottom_challenger_exceptional_zone": row.get("bottom_challenger_exceptional_zone", False),
+            "bottom_challenger_category_votes": row.get("bottom_challenger_category_votes", 0),
+            "bottom_challenger_price_position": row.get("bottom_challenger_price_position", np.nan),
+            "bottom_challenger_event": (
+                row.get("bottom_challenger_week_event", "NONE") if dca_frequency == "Weekly"
+                else row.get("bottom_challenger_event", "NONE")
+            ),
+            "bottom_challenger_event_multiplier": (
+                row.get("bottom_challenger_week_multiplier", np.nan) if dca_frequency == "Weekly"
+                else np.nan
+            ),
             "strategy_mode": strategy_mode, "dca_multiplier": multiplier,
             "base_dca_aud": float(base_dca_aud), "dca_frequency": dca_frequency,
             "actual_buy_aud": contribution, "btc_bought": btc_bought, "btc_held": btc,
@@ -1740,6 +1905,19 @@ def apply_causal_budget_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGEN
                        "btc_held": float(final["btc_held"]), "btc_value_aud": float(final["btc_value_aud"]),
                        "avg_cost_aud": float(final["avg_cost_aud"]), "roi_pct": float(final["roi_pct"]),
                        "fees_aud": float(final["cumulative_fees_aud"])}
+
+
+def apply_bottom_challenger_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD, fee_pct=0.0):
+    """Replay frozen R2 with the staged challenger multiplier only on event weeks."""
+    if result_df.empty:
+        return pd.DataFrame(), {}
+    x = result_df.copy()
+    base = pd.to_numeric(x["dca_multiplier"], errors="coerce").fillna(1.0)
+    event = pd.to_numeric(x.get("bottom_challenger_event_multiplier"), errors="coerce")
+    x["r2_dca_multiplier"] = base
+    x["dca_multiplier"] = np.where(event.notna(), np.maximum(base, event), base)
+    x["challenger_multiplier_applied"] = x["dca_multiplier"]
+    return apply_causal_budget_allocator(x, total_budget_aud=total_budget_aud, fee_pct=fee_pct)
 
 
 def apply_equal_capital_allocator(
@@ -1949,9 +2127,9 @@ def _save_browser_state(state):
 
 browser_state = _load_browser_state()
 
-st.title("Bitcoin Dynamic DCA V5.9 R2 — Context Research")
-st.caption("Version 5.9 RESEARCH • Walk-forward Power Law sizing • Moderate DCA curve • Persistent portfolio")
-st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
+st.title("Bitcoin Dynamic DCA V5.9 R2 — Bottom Zone Challenger")
+st.caption("Version 5.9 R2 CHALLENGER • Frozen R2 control • Staged Exceptional Bottom Zone overlay • Persistent portfolio")
+st.caption("Simple three-mode app • DCA Today • DCA Backtest • My Portfolio")
 
 # ------------------------------------------------
 # Sidebar
@@ -1963,8 +2141,8 @@ with st.sidebar:
     mode = st.radio(
         "Analysis Mode",
         [
-            "DCA Backtest",
             "DCA Today",
+            "DCA Backtest",
             "My Portfolio",
         ],
     )
@@ -2303,12 +2481,16 @@ if mode == "DCA Backtest":
             smart_raw, total_budget_aud=capital_target,
             fee_pct=params.get("fee_pct", 0.0)
         )
+        challenger_df, challenger_sm = apply_bottom_challenger_allocator(
+            smart_raw, total_budget_aud=capital_target,
+            fee_pct=params.get("fee_pct", 0.0)
+        )
         recent_check = validate_smart_dca_recent_period(
             df_full, params, dca_frequency, capital_target, recent_fraction=0.30,
             risk_curve=smart_dca_curve
         )
 
-    if not plain_sm or not smart_sm:
+    if not plain_sm or not smart_sm or not challenger_sm:
         st.error("Not enough historical data for this DCA Backtest.")
         st.stop()
 
@@ -2324,6 +2506,15 @@ if mode == "DCA Backtest":
         (smart_sm["btc_value_aud"] / plain_sm["btc_value_aud"] - 1.0) * 100.0
         if plain_sm["btc_value_aud"] > 0 else np.nan
     )
+    challenger_vs_r2 = (
+        (challenger_sm["btc_held"] / smart_sm["btc_held"] - 1.0) * 100.0
+        if smart_sm["btc_held"] > 0 else np.nan
+    )
+    challenger_vs_plain = (
+        (challenger_sm["btc_held"] / plain_sm["btc_held"] - 1.0) * 100.0
+        if plain_sm["btc_held"] > 0 else np.nan
+    )
+    challenger_events = int((challenger_df.get("bottom_challenger_event", pd.Series(dtype=str)) != "NONE").sum())
 
     st.header("Simple DCA Backtest")
     st.caption(
@@ -2332,7 +2523,7 @@ if mode == "DCA Backtest":
         f"{dca_backtest_end_date.strftime('%d/%m/%Y')}"
     )
 
-    p1, p2 = st.columns(2)
+    p1, p2, p3 = st.columns(3)
     with p1:
         st.subheader("Plain DCA")
         st.metric("BTC Accumulated", f"{plain_sm['btc_held']:.6f}")
@@ -2341,32 +2532,36 @@ if mode == "DCA Backtest":
         st.metric("ROI", f"{plain_sm['roi_pct']:+.2f}%")
 
     with p2:
-        st.subheader("Smart DCA")
-        st.metric(
-            "BTC Accumulated", f"{smart_sm['btc_held']:.6f}",
-            delta=f"{btc_adv:+.2f}% vs Plain"
-        )
-        st.metric(
-            "Average Cost", f"A${smart_sm['avg_cost_aud']:,.0f}",
-            delta=f"{cost_adv:+.2f}% advantage"
-        )
-        st.metric(
-            "Ending Value", f"A${smart_sm['btc_value_aud']:,.0f}",
-            delta=f"{value_adv:+.2f}% vs Plain"
-        )
+        st.subheader("Frozen R2")
+        st.metric("BTC Accumulated", f"{smart_sm['btc_held']:.6f}", delta=f"{btc_adv:+.2f}% vs Plain")
+        st.metric("Average Cost", f"A${smart_sm['avg_cost_aud']:,.0f}")
+        st.metric("Ending Value", f"A${smart_sm['btc_value_aud']:,.0f}")
         st.metric("ROI", f"{smart_sm['roi_pct']:+.2f}%")
 
+    with p3:
+        st.subheader("Bottom Challenger")
+        st.metric("BTC Accumulated", f"{challenger_sm['btc_held']:.6f}", delta=f"{challenger_vs_r2:+.2f}% vs R2")
+        st.metric("Average Cost", f"A${challenger_sm['avg_cost_aud']:,.0f}")
+        st.metric("Ending Value", f"A${challenger_sm['btc_value_aud']:,.0f}")
+        st.metric("Staged Events", f"{challenger_events}")
+
     st.subheader("Verdict")
-    if btc_adv > 0:
+    if challenger_vs_r2 > 0:
         st.success(
-            f"Smart DCA accumulated {btc_adv:+.2f}% more BTC than Plain DCA "
-            f"for the same A${capital_target:,.0f}."
+            f"Bottom Challenger accumulated {challenger_vs_r2:+.2f}% more BTC than frozen R2 "
+            f"and {challenger_vs_plain:+.2f}% versus Plain DCA for the same A${capital_target:,.0f} budget."
+        )
+    elif challenger_vs_r2 < 0:
+        st.warning(
+            f"Bottom Challenger accumulated {abs(challenger_vs_r2):.2f}% less BTC than frozen R2 in this period. "
+            "R2 remains the control; the challenger is not promoted automatically."
         )
     else:
-        st.warning(
-            f"Smart DCA accumulated {abs(btc_adv):.2f}% less BTC than Plain DCA. "
-            "For this period, Plain DCA was the better strategy."
-        )
+        st.info("Bottom Challenger and frozen R2 accumulated the same BTC in this period.")
+    st.caption(
+        "Research-only overlay: 3x initial exceptional entry • 4x each new ≥15% lower capitulation stage "
+        "while confluence remains exceptional • 3x recent recovery confirmation • no fixed reserve • no all-in."
+    )
 
     if recent_check:
         st.subheader("Recent 30% Validation")
@@ -2396,23 +2591,30 @@ if mode == "DCA Backtest":
     with st.expander("Detailed activity", expanded=False):
         detail_cols = [
             "date", "price_usd", "risk_score", "continuous_valuation_risk",
-            "bottom_confidence_score", "weekly_bull_confirmed", "bull_age_weeks",
-            "cycle_stage", "actual_buy_aud", "btc_bought", "btc_held",
+            "bottom_challenger_exceptional_zone", "bottom_challenger_category_votes",
+            "bottom_challenger_price_position", "bottom_challenger_event",
+            "r2_dca_multiplier", "challenger_multiplier_applied",
+            "actual_buy_aud", "btc_bought", "btc_held",
             "cumulative_invested_aud", "avg_cost_aud"
         ]
-        smart_detail = smart_df[[c for c in detail_cols if c in smart_df.columns]].copy()
-        st.dataframe(smart_detail.tail(250), width="stretch", hide_index=True)
+        challenger_detail = challenger_df[[c for c in detail_cols if c in challenger_df.columns]].copy()
+        st.dataframe(challenger_detail.tail(250), width="stretch", hide_index=True)
 
     plain_csv = plain_df.to_csv(index=False).encode("utf-8")
     smart_csv = smart_df.to_csv(index=False).encode("utf-8")
-    d1, d2 = st.columns(2)
+    challenger_csv = challenger_df.to_csv(index=False).encode("utf-8")
+    d1, d2, d3 = st.columns(3)
     d1.download_button(
         "Download Plain DCA CSV", plain_csv,
         file_name="btc_v5_1_plain_dca.csv", mime="text/csv"
     )
     d2.download_button(
-        "Download Smart DCA CSV", smart_csv,
-        file_name="btc_v5_1_smart_dca.csv", mime="text/csv"
+        "Download Frozen R2 CSV", smart_csv,
+        file_name="btc_v5_9_r2_frozen.csv", mime="text/csv"
+    )
+    d3.download_button(
+        "Download Bottom Challenger CSV", challenger_csv,
+        file_name="btc_v5_9_r2_bottom_challenger.csv", mime="text/csv"
     )
 
 
@@ -2459,6 +2661,11 @@ elif mode == "DCA Today":
     current_bull = bool(latest.get("weekly_bull_confirmed", False))
     current_bull_age = float(latest.get("bull_age_weeks", np.nan))
     current_cycle_stage = str(latest.get("cycle_stage", "BEAR / UNCONFIRMED"))
+    current_challenger_zone = bool(latest.get("bottom_challenger_exceptional_zone", False))
+    current_challenger_votes = int(latest.get("bottom_challenger_category_votes", 0) or 0)
+    current_challenger_price_position = float(latest.get("bottom_challenger_price_position", np.nan))
+    current_challenger_event = str(latest.get("bottom_challenger_week_event", latest.get("bottom_challenger_event", "NONE")))
+    current_challenger_event_mult = float(latest.get("bottom_challenger_week_multiplier", latest.get("bottom_challenger_event_multiplier", np.nan)))
     current_weekly_ma50 = float(latest.get("weekly_ma50", np.nan))
     current_weekly_ma200 = float(latest.get("weekly_ma200", np.nan))
 
@@ -2536,6 +2743,14 @@ elif mode == "DCA Today":
         float(remaining_capital_aud),
         max(0.0, normal_weekly_allowance * risk_weight),
     )
+    challenger_weight = (
+        max(risk_weight, current_challenger_event_mult)
+        if np.isfinite(current_challenger_event_mult) else risk_weight
+    )
+    challenger_recommended_buy = min(
+        float(remaining_capital_aud),
+        max(0.0, normal_weekly_allowance * challenger_weight),
+    )
 
     # Better-entry probability is informational only in V5.9 Research.
     # It never overrides the Risk Score sizing curve.
@@ -2549,12 +2764,12 @@ elif mode == "DCA Today":
         "VERY HIGH"
     )
     deployed = max(float(starting_capital_aud) - float(remaining_capital_aud), 0.0)
-    remaining_after = max(float(remaining_capital_aud) - recommended_buy, 0.0)
+    remaining_after = max(float(remaining_capital_aud) - challenger_recommended_buy, 0.0)
 
     st.header("DCA Today")
     st.caption(
-        "Uses the calibrated Risk Score with the fixed walk-forward-tested Smart DCA curve. "
-        "Opportunity Rarity and Better Entry Evidence are informational only."
+        "Frozen R2 remains the control. The research challenger can temporarily raise the weekly multiplier "
+        "only on explicit staged Exceptional Bottom Zone events; no fixed reserve or automatic all-in."
     )
 
     a, b, c, d = st.columns(4)
@@ -2595,12 +2810,12 @@ elif mode == "DCA Today":
     st.subheader("Cycle / Bottom Intelligence — Research Context")
     q1, q2, q3, q4 = st.columns(4)
     q1.metric(
-        "Bottom Confidence",
-        "n/a" if not np.isfinite(current_bottom_confidence) else f"{current_bottom_confidence:.0f}/100",
-        current_bottom_label,
+        "Exceptional Bottom Zone",
+        "ACTIVE" if current_challenger_zone else "INACTIVE",
+        current_challenger_event if current_challenger_event != "NONE" else f"{current_challenger_votes}/3 confirming categories",
         help=(
-            "Causal evidence score, not a calibrated probability. It combines recent deep-valuation / "
-            "capitulation evidence with weekly bull confirmation. It does not change the DCA amount."
+            "Research challenger. Requires deep causal Power-Law valuation, BTC in the lowest 20% of its trailing "
+            "52-week range, and at least two additional strongly-stressed categories."
         ),
     )
     q2.metric(
@@ -2631,8 +2846,10 @@ elif mode == "DCA Today":
     )
 
     st.info(
-        f"R2 sizing remains frozen: sizing Risk {current_risk:.3f} → {risk_weight:.2f}× DCA. "
-        "The continuous valuation risk, Bottom Confidence, weekly trend and Bull Age are visibility/research only."
+        f"Frozen R2: Risk {current_risk:.3f} → {risk_weight:.2f}×. "
+        f"Bottom Challenger today: {challenger_weight:.2f}×"
+        + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event today)")
+        + ". Production V5.8.2 and the R2 control are unchanged."
     )
 
     st.subheader("Power Law Risk Visibility")
@@ -2713,12 +2930,14 @@ elif mode == "DCA Today":
             "range occurred historically and is not cycle-adjusted.\n\n"
             "**Continuous Valuation Risk = visibility.** It is a smooth Power-Law-relative display score; "
             "0.000 is reserved for a zero BTC price. It does not replace the frozen R2 sizing score.\n\n"
-            "**Bottom Confidence = research evidence.** It combines recent bottom-zone evidence with a causal "
-            "weekly bull confirmation. It is not a calibrated probability.\n\n"
+            "**Exceptional Bottom Zone = challenger trigger.** Deep Power-Law valuation and a low trailing-year price "
+            "position are mandatory; at least two independent confirming categories must also be strongly stressed.\n\n"
+            "**Staged deployment = 3x / 4x / 3x.** Initial exceptional entry uses 3x, each new ≥15% lower "
+            "capitulation stage while confluence remains exceptional uses 4x, and a recent recovery confirmation uses 3x.\n\n"
             "**Bull Age / Cycle Stage = context.** They describe how long the current confirmed weekly bull trend "
             "has been active and do not alter sizing.\n\n"
-            "Opportunity Rarity, Better Entry Evidence, Bottom Confidence and Bull Age are informational only "
-            "and do **not** change the recommended purchase amount."
+            "Opportunity Rarity and Better Entry Evidence remain informational only. Bull Age remains context only. "
+            "Only an explicit Bottom Challenger staged event can raise the research-challenger purchase above frozen R2."
         )
 
     with st.expander("Opportunity Rarity Guide", expanded=False):
@@ -2738,20 +2957,26 @@ elif mode == "DCA Today":
             "V5.9 R2 uses Opportunity Rarity for context only. It does not increase or reduce the recommended buy."
         )
 
-    st.subheader("SMART DCA TODAY")
-    st.metric("Recommended Buy", f"A${recommended_buy:,.0f}")
+    st.subheader("DCA TODAY — R2 CONTROL vs BOTTOM CHALLENGER")
+    y1, y2 = st.columns(2)
+    y1.metric("Frozen R2 Buy", f"A${recommended_buy:,.0f}", help=f"{risk_weight:.2f}× normal weekly allowance")
+    y2.metric(
+        "Bottom Challenger Buy", f"A${challenger_recommended_buy:,.0f}",
+        delta=(f"A${challenger_recommended_buy-recommended_buy:+,.0f} vs R2" if challenger_recommended_buy != recommended_buy else "same as R2"),
+        help=f"{challenger_weight:.2f}× normal weekly allowance; staged events only"
+    )
 
     x1, x2, x3 = st.columns(3)
     x1.metric("Normal Weekly Allowance", f"A${normal_weekly_allowance:,.0f}")
-    x2.metric("Capital Remaining After Buy", f"A${remaining_after:,.0f}")
+    x2.metric("Capital Remaining After Challenger Buy", f"A${remaining_after:,.0f}")
     x3.metric("Already Deployed", f"A${deployed:,.0f}")
 
-
-    if current_risk <= 0.02:
-        st.info(
-            "EXTREME LOW RISK. V5.9 R2 still follows the fixed Risk Score sizing curve; "
-            "Better Entry Evidence does not trigger an automatic all-in purchase."
-        )
+    pos_text = "n/a" if not np.isfinite(current_challenger_price_position) else f"{current_challenger_price_position*100:.1f}%"
+    st.caption(
+        f"Bottom Challenger: {'EXCEPTIONAL ZONE ACTIVE' if current_challenger_zone else 'no exceptional zone'} • "
+        f"confirming categories {current_challenger_votes}/3 • trailing-year price position {pos_text}. "
+        "No fixed reserve and no automatic all-in."
+    )
 
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(rarity_source)
