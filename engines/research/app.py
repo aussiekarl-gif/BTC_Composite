@@ -2673,7 +2673,7 @@ elif mode == "DCA Today":
     # expose the underlying Power Law residual so Risk 0 / Risk 1 do not hide
     # how far valuation sits beyond the clamp boundary. This is DISPLAY ONLY.
     current_pl_residual = float(latest.get("power_law_residual", np.nan))
-    current_pl_fair_usd = float(latest.get("power_law_fair_value", np.nan))
+    current_pl_fair_usd = float(latest.get("fair_value", np.nan))
     current_pl_slope = float(latest.get("power_law_slope", np.nan))
     current_pl_intercept = float(latest.get("power_law_intercept", np.nan))
     pl_cheap_threshold = float(params.get("pl_cheap", DEFAULT_PL_CHEAP))
@@ -2842,7 +2842,7 @@ elif mode == "DCA Today":
     zone_text = "n/a" if not np.isfinite(current_bottom_zone) else f"{current_bottom_zone:.0f}/100"
     st.caption(
         f"Current bottom-zone evidence: {zone_text} • 50-week MA: {ma50_text} • 200-week MA: {ma200_text}. "
-        "Bottom Confidence is an experimental evidence score, not a guarantee that the exact cycle low is in."
+        "Exceptional Bottom Zone is a causal research signal, not a guarantee that the exact cycle low is in."
     )
 
     st.info(
