@@ -2876,79 +2876,179 @@ elif mode == "DCA Today":
 
     st.header("DCA Today")
 
-    # Decision-first summary: put the actionable dollar amount before the research detail.
-    with st.container(border=True):
-        top1, top2, top3 = st.columns([1.35, 0.8, 1.35])
-        top1.metric(
-            "RECOMMENDED DCA TODAY",
-            f"A${challenger_recommended_buy:,.0f}",
-            help=(
-                "The research-challenger amount to buy today. It starts with your remaining capital divided by "
-                "the remaining deployment weeks, then applies R2 valuation sizing. The Halving Accumulation Zone "
-                "can raise ordinary R2 to at least 2.50×, and an explicit Exceptional Bottom event can raise it to "
-                "3×/4×. The amount is always capped by remaining capital; there is no automatic all-in."
-            ),
-        )
-        top1.caption(f"Base weekly allowance: A${normal_weekly_allowance:,.0f}")
-        top2.metric(
-            "Current Multiplier",
-            f"{challenger_weight:.2f}×",
-            help=(
-                f"Today's effective V5.9 research multiplier. Frozen R2 alone is {risk_weight:.2f}×. "
-                f"The broad halving zone applies a minimum {HALVING_ACCUMULATION_FLOOR_MULT:.2f}× while active; "
-                "Bottom Challenger events can override it with the tested staged multipliers."
-            ),
-        )
-        top2.caption(f"Frozen R2 alone: {risk_weight:.2f}×")
+    # ------------------------------------------------------------------
+    # Decision-first visual dashboard (UI only)
+    # ------------------------------------------------------------------
+    # This section intentionally uses lightweight HTML/CSS so the live
+    # Streamlit app closely matches the approved dashboard mock-up. It does
+    # not alter any strategy calculations or state.
+    st.markdown(
+        """
+        <style>
+        .v59-wrap {margin-top:.15rem; margin-bottom:.55rem;}
+        .v59-hero {
+            display:grid; grid-template-columns:1.25fr .78fr 1.22fr;
+            gap:0; border:1.5px solid #00e58b; border-radius:15px;
+            background:linear-gradient(135deg,#06291f 0%,#071c23 45%,#061922 100%);
+            box-shadow:0 0 0 1px rgba(0,229,139,.08), 0 8px 26px rgba(0,0,0,.22);
+            overflow:hidden;
+        }
+        .v59-hero > div {padding:20px 24px; min-height:188px;}
+        .v59-hero > div + div {border-left:1px solid rgba(69,216,196,.38);}
+        .v59-title {font-size:1.15rem; font-weight:800; margin-bottom:4px; color:#f4f7fb;}
+        .v59-big {font-size:3.55rem; line-height:1.03; font-weight:900; color:#23e99a; letter-spacing:-.035em;}
+        .v59-mult {font-size:3.25rem; line-height:1.05; font-weight:900; color:#52bfff; letter-spacing:-.035em;}
+        .v59-sub {font-size:.92rem; color:#c7d3df; margin-top:8px;}
+        .v59-base {font-size:1.35rem; font-weight:800; color:#f5f7fb; margin-top:4px;}
+        .v59-buy-pill {display:inline-block; padding:8px 18px; margin-top:14px; border-radius:8px; background:#18e991; color:#062419; font-weight:900; font-size:.88rem;}
+        .v59-reason {display:flex; gap:10px; margin:10px 0; align-items:flex-start; color:#f0f4f8;}
+        .v59-check,.v59-off {width:24px; height:24px; flex:0 0 24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:900; margin-top:1px;}
+        .v59-check {background:#19e894; color:#052b1e;}
+        .v59-off {border:1.5px solid #718397; color:#718397;}
+        .v59-reason b {display:block; font-size:.95rem;}
+        .v59-reason small {display:block; color:#b8c6d4; margin-top:1px;}
+        .v59-q {display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border:1px solid #57c8ff; border-radius:50%; color:#57c8ff; font-size:.68rem; font-weight:800; margin-left:5px; vertical-align:2px; cursor:help;}
+        .v59-cards {display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-top:10px;}
+        .v59-card {border:1px solid #29506b; border-radius:11px; padding:13px 15px; background:linear-gradient(180deg,#092337,#081a2b); min-height:110px;}
+        .v59-card-title {font-size:.82rem; color:#eaf1f7; font-weight:800;}
+        .v59-card-value {font-size:1.45rem; color:#f3f7fb; font-weight:900; margin-top:5px;}
+        .v59-card-value.good {color:#24e894;}
+        .v59-card-sub {font-size:.80rem; color:#c1ccd8; margin-top:5px; line-height:1.35;}
+        .v59-badge {display:inline-block; border-radius:999px; padding:3px 13px; font-size:.78rem; font-weight:900; margin-top:4px;}
+        .v59-badge.active {background:#24e894; color:#05281b;}
+        .v59-badge.inactive {background:#26384b; color:#dce7ef; border:1px solid #64778a;}
+        .v59-pills {display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 10px 0;}
+        .v59-pill {padding:8px 22px; border-radius:8px; border:1px solid #294d67; background:#091d2e; color:#dce6ee; font-size:.86rem;}
+        .v59-pill.active {background:#129cf3; color:white; border-color:#129cf3; font-weight:800;}
+        .v59-info {display:flex; gap:14px; align-items:flex-start; border:1px solid #168fea; border-radius:10px; background:linear-gradient(90deg,#082e50,#07335c); padding:13px 16px; margin-bottom:10px;}
+        .v59-info-icon {width:26px; height:26px; flex:0 0 26px; border-radius:50%; background:#4fb9ff; color:#06233a; display:flex; align-items:center; justify-content:center; font-weight:900;}
+        .v59-info-title {font-weight:900; color:#eef7ff; margin-bottom:3px;}
+        .v59-info-text {font-size:.84rem; color:#d5e4f0; line-height:1.45;}
+        .v59-explain-grid {display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px;}
+        .v59-explain {border:1px solid #264b65; border-radius:10px; padding:13px 14px; background:#091d2e; min-height:170px;}
+        .v59-explain h4 {margin:0 0 8px 0; color:#f2f7fb; font-size:.92rem;}
+        .v59-explain p {margin:0 0 7px 0; color:#c7d3de; font-size:.80rem; line-height:1.42;}
+        .v59-affects,.v59-context {display:inline-block; border-radius:999px; padding:3px 11px; font-size:.72rem; font-weight:900; margin:3px 0 6px 0;}
+        .v59-affects {background:#22e894; color:#05291c;}
+        .v59-context {background:#26394b; color:#e0e8ef; border:1px solid #5a6e82;}
+        @media (max-width:1100px) {
+            .v59-hero {grid-template-columns:1fr;}
+            .v59-hero > div + div {border-left:0; border-top:1px solid rgba(69,216,196,.30);}
+            .v59-cards {grid-template-columns:repeat(2,1fr);}
+            .v59-explain-grid {grid-template-columns:repeat(2,1fr);}
+        }
+        @media (max-width:700px) {
+            .v59-cards,.v59-explain-grid {grid-template-columns:1fr;}
+            .v59-big {font-size:2.8rem;} .v59-mult {font-size:2.6rem;}
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
-        reasons = []
-        if current_halving_accumulation_zone:
-            reasons.append(f"✓ Halving Accumulation Zone ACTIVE → at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×")
-        else:
-            reasons.append("○ Halving Accumulation Zone inactive")
-        reasons.append(f"✓ R2 valuation: {risk_label} (sizing risk {current_risk:.3f})")
-        if current_challenger_event != "NONE":
-            reasons.append(f"✓ Exceptional Bottom event: {current_challenger_event}")
-        elif current_challenger_zone:
-            reasons.append("✓ Exceptional Bottom Zone active; no new staged event this week")
-        else:
-            reasons.append("○ Exceptional Bottom Zone not active")
-        top3.markdown("**Why this amount?**", help=(
-            "Only R2 valuation, the tested Halving Accumulation Zone, and explicit Exceptional Bottom staged events "
-            "can change the V5.9 research buy amount. Opportunity Rarity, Better Entry Evidence, Bull Age, the exact "
-            "±500-day markers and other context indicators do not change today's dollar recommendation."
-        ))
-        top3.markdown("  \n".join(reasons))
+    # Human-readable reason lines for the top hero card.
+    halving_reason_icon = "✓" if current_halving_accumulation_zone else "○"
+    halving_reason_cls = "v59-check" if current_halving_accumulation_zone else "v59-off"
+    halving_reason_title = "Halving Accumulation Zone active" if current_halving_accumulation_zone else "Halving Accumulation Zone inactive"
+    halving_reason_sub = (
+        f"Raises R2 to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×"
+        if current_halving_accumulation_zone else "No timing floor applied today"
+    )
+    bottom_reason_icon = "✓" if current_challenger_zone else "○"
+    bottom_reason_cls = "v59-check" if current_challenger_zone else "v59-off"
+    bottom_reason_title = "Exceptional Bottom Zone active" if current_challenger_zone else "Exceptional Bottom Zone: Not active"
+    bottom_reason_sub = (
+        current_challenger_event if current_challenger_event != "NONE"
+        else ("Zone active; no new staged event today" if current_challenger_zone else "No additional 3× / 4× event today")
+    )
+    btc_price_main = "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}"
+    btc_price_sub = f"US${current_price_usd:,.0f}" if np.isfinite(current_price_usd) else ""
+    halving_badge_cls = "active" if current_halving_accumulation_zone else "inactive"
+    halving_badge_text = "ACTIVE" if current_halving_accumulation_zone else "INACTIVE"
+    bottom_badge_cls = "active" if current_challenger_zone else "inactive"
+    bottom_badge_text = "ACTIVE" if current_challenger_zone else "Not Active"
 
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric(
-        "BTC Price",
-        "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}",
-        help="Live BTC/AUD spot quote when available. The valuation engine itself uses closed historical data, so an intraday quote does not change R2 risk."
-    )
-    k2.metric(
-        "R2 Sizing Risk", f"{current_risk:.3f}", risk_label,
-        help="Frozen causal walk-forward Power-Law score used by R2 to set its base multiplier. Lower risk means a larger DCA multiplier; higher risk means a smaller one."
-    )
-    k3.metric(
-        "Halving Zone", "ACTIVE" if current_halving_accumulation_zone else "INACTIVE",
-        f"day +{current_halving_clock_days}",
-        help=(f"Causal research timing zone from day +{HALVING_ACCUMULATION_START_DAY} to +{HALVING_ACCUMULATION_END_DAY} after the previous halving. "
-              f"While active, ordinary R2 is raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×. This DOES affect today's buy amount.")
-    )
-    k4.metric(
-        "Exceptional Bottom", "ACTIVE" if current_challenger_zone else "INACTIVE",
-        current_challenger_event if current_challenger_event != "NONE" else f"{current_challenger_votes}/3 confirmations",
-        help="Independent capitulation/confluence layer. Only a new staged event changes today's sizing: 3× initial, 4× deeper ≥15% capitulation, 3× recovery. No event means no extra override."
-    )
-    k5.metric(
-        "Remaining Capital", f"A${remaining_capital_aud:,.0f}", f"~{weeks_remaining:.0f} weeks left",
-        help="Portfolio capital still scheduled for deployment. The base weekly allowance is remaining capital divided by remaining deployment weeks, which helps preserve exact budget deployment by the target date."
-    )
+    st.markdown(
+        f"""
+        <div class="v59-wrap">
+          <div class="v59-hero">
+            <div>
+              <div class="v59-title">🛒 &nbsp; Recommended DCA Today <span class="v59-q" title="Today's research-challenger buy amount. Base weekly allowance × effective V5.9 multiplier, capped by remaining capital. No automatic all-in.">?</span></div>
+              <div class="v59-big">A$ {challenger_recommended_buy:,.0f}</div>
+              <span class="v59-buy-pill">₿ &nbsp; BUY TODAY</span>
+              <span class="v59-sub" style="margin-left:10px;">That's {challenger_weight:.2f}× your base weekly amount</span>
+            </div>
+            <div>
+              <div class="v59-title">Current Multiplier <span class="v59-q" title="Effective V5.9 multiplier after R2, Halving Accumulation Zone and any staged Exceptional Bottom event.">?</span></div>
+              <div class="v59-mult">{challenger_weight:.2f}×</div>
+              <div class="v59-sub"><b>Base Weekly Allowance</b></div>
+              <div class="v59-base">A$ {normal_weekly_allowance:,.0f}</div>
+            </div>
+            <div>
+              <div class="v59-title">Reason for Today's Amount <span class="v59-q" title="Only R2 valuation, the Halving Accumulation Zone and explicit Exceptional Bottom staged events can change today's V5.9 recommendation.">?</span></div>
+              <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
+              <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>R2 sizing risk {current_risk:.3f} → {risk_weight:.2f}× base multiplier</small></div></div>
+              <div class="v59-reason"><span class="{bottom_reason_cls}">{bottom_reason_icon}</span><div><b>{bottom_reason_title}</b><small>{bottom_reason_sub}</small></div></div>
+            </div>
+          </div>
 
-    st.caption(
-        "Decision first: the amount above is the V5.9 research-challenger recommendation. Frozen R2 remains the control. "
-        "The detailed valuation, bottom, cycle and opportunity explanations below are retained for auditability."
+          <div class="v59-cards">
+            <div class="v59-card">
+              <div class="v59-card-title">BTC Price <span class="v59-q" title="Live BTC/AUD spot quote when available. R2 valuation uses closed historical data.">?</span></div>
+              <div class="v59-card-value">{btc_price_main}</div>
+              <div class="v59-card-sub">({btc_price_sub})</div>
+            </div>
+            <div class="v59-card">
+              <div class="v59-card-title">R2 Valuation Risk <span class="v59-q" title="Frozen causal walk-forward Power-Law sizing score. Lower risk means a larger DCA multiplier.">?</span></div>
+              <div class="v59-card-value good">{risk_label.title()}</div>
+              <div class="v59-card-sub">R2 Multiplier: <b style="color:#24e894">{risk_weight:.2f}×</b></div>
+            </div>
+            <div class="v59-card">
+              <div class="v59-card-title">Halving Accumulation Zone <span class="v59-q" title="Causal timing zone from day +800 to +1000 after the prior halving. While active, ordinary R2 is raised to at least 2.50×.">?</span></div>
+              <span class="v59-badge {halving_badge_cls}">{halving_badge_text}</span>
+              <div class="v59-card-sub">Day +{current_halving_clock_days} (in +{HALVING_ACCUMULATION_START_DAY}–+{HALVING_ACCUMULATION_END_DAY} range)<br>R2 raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×</div>
+            </div>
+            <div class="v59-card">
+              <div class="v59-card-title">Exceptional Bottom Zone <span class="v59-q" title="Independent capitulation/confluence layer. Only a new staged event changes sizing: 3× initial, 4× deeper capitulation, 3× recovery.">?</span></div>
+              <span class="v59-badge {bottom_badge_cls}">{bottom_badge_text}</span>
+              <div class="v59-card-sub">{current_challenger_votes}/3 confirming categories<br>{'Event: ' + current_challenger_event if current_challenger_event != 'NONE' else 'No 3× / 4× event today'}</div>
+            </div>
+            <div class="v59-card">
+              <div class="v59-card-title">Remaining Capital <span class="v59-q" title="Portfolio capital still scheduled for deployment. Base allowance = remaining capital ÷ remaining deployment weeks.">?</span></div>
+              <div class="v59-card-value">A$ {remaining_capital_aud:,.0f}</div>
+              <div class="v59-card-sub">~{weeks_remaining:.0f} weeks remaining<br>until {target_deployment_date.strftime('%d %b %Y')}</div>
+            </div>
+          </div>
+
+          <div class="v59-pills">
+            <span class="v59-pill active">Key Information</span>
+            <span class="v59-pill">Valuation (R2)</span>
+            <span class="v59-pill">Halving Cycle</span>
+            <span class="v59-pill">Exceptional Bottom Zone</span>
+            <span class="v59-pill">Opportunity &amp; Context</span>
+            <span class="v59-pill">FAQs</span>
+          </div>
+
+          <div class="v59-info">
+            <span class="v59-info-icon">i</span>
+            <div><div class="v59-info-title">How today's amount is calculated</div>
+            <div class="v59-info-text">Today's DCA amount is your Base Weekly Allowance multiplied by the current R2 multiplier, with tested adjustments from the Halving Accumulation Zone and Exceptional Bottom Zone. Cycle-based context such as the exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other descriptive indicators do not independently change the buy amount.</div></div>
+          </div>
+
+          <div class="v59-explain-grid">
+            <div class="v59-explain"><h4>📈 R2 Valuation Risk <span class="v59-q" title="The causal walk-forward Power-Law score is the base sizing engine in V5.9.">?</span></h4><p>Compares BTC with the causal walk-forward Power-Law valuation and determines the base DCA multiplier.</p><span class="v59-affects">Affects buy amount</span><p>Lower risk = larger base multiplier.<br>Higher risk = smaller base multiplier.</p></div>
+            <div class="v59-explain"><h4>📅 Halving Accumulation Zone <span class="v59-q" title="Broad research timing zone designed to avoid over-fitting to an exact −500-day date.">?</span></h4><p>Active approximately day +{HALVING_ACCUMULATION_START_DAY}–+{HALVING_ACCUMULATION_END_DAY} after the previous halving. While active, ordinary R2 is raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×.</p><span class="v59-affects">Affects buy amount</span><p>Provides a timing boost to ordinary R2 sizing.</p></div>
+            <div class="v59-explain"><h4>⚠️ Exceptional Bottom Zone <span class="v59-q" title="Requires deep valuation, low trailing price position and multiple independent stress categories.">?</span></h4><p>Identifies exceptional capitulation using independent categories. A new event can override ordinary sizing with 3× initial, 4× deeper, or 3× recovery.</p><span class="v59-affects">Affects buy amount</span><p>No new staged event = no additional override.</p></div>
+            <div class="v59-explain"><h4>📊 Opportunity Rarity <span class="v59-q" title="Cycle-based context. It does not modify DCA sizing in V5.9.">?</span></h4><p>Shows how unusual today's R2 risk is versus comparable periods in this halving cycle and previous cycles.</p><span class="v59-context">Context only</span><p>Helps interpret the opportunity; does not change today's amount.</p></div>
+          </div>
+          <div class="v59-explain-grid" style="grid-template-columns:repeat(3,1fr);">
+            <div class="v59-explain" style="min-height:130px"><h4>🗓️ Halving Cycle ±500 Day Markers <span class="v59-q" title="Original 500/500 theory dates remain visible as a reference, but do not automatically buy or sell.">?</span></h4><p>Shows the theoretical −500-day BUY and +500-day SELL dates based on the next estimated halving.</p><span class="v59-context">Context only</span><p>Informational only. No automatic buy or sell.</p></div>
+            <div class="v59-explain" style="min-height:130px"><h4>📊 Historical Weekly Risk Distribution <span class="v59-q" title="Descriptive historical context, not cycle-adjusted sizing.">?</span></h4><p>Shows how today's R2 risk compares with historical weeks.</p><span class="v59-context">Context only</span><p>Does not change the buy amount.</p></div>
+            <div class="v59-explain" style="min-height:130px"><h4>ℹ️ Other Indicators <span class="v59-q" title="MVRV, Mayer, RSI, trend and Bull Age are shown for context and research visibility.">?</span></h4><p>MVRV, Mayer, RSI, weekly trend and Bull Age provide additional context.</p><span class="v59-context">Context only</span><p>Do not independently change the V5.9 buy amount.</p></div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     a, b, c, d = st.columns(4)
