@@ -1583,6 +1583,7 @@ st.set_page_config(
 # Browser-local persistence: survives normal app reruns/redeploys on the same browser/device.
 # CSV export remains available as a portable backup.
 PERSISTENCE_KEY = "btc_dynamic_dca_v58_state"
+SHARED_PORTFOLIO_KEY = "btc_dynamic_dca_shared_portfolio_v1"
 browser_state = {}
 local_storage = None
 
@@ -1619,7 +1620,65 @@ def _save_browser_state(state):
     except Exception:
         pass
 
+
+def _load_shared_portfolio(fallback_state=None):
+    """Load portfolio data shared by V5.8.2 and V5.9 on this browser/device.
+
+    On first use, V5.8.2 is the preferred migration source so an existing production
+    portfolio automatically appears in V5.9 even if V5.9 is opened first.
+    """
+    fallback_state = fallback_state if isinstance(fallback_state, dict) else {}
+    fallback = fallback_state.get("portfolio", {}) if isinstance(fallback_state.get("portfolio", {}), dict) else {}
+    if not LOCAL_STORAGE_AVAILABLE:
+        return fallback.copy()
+    try:
+        store = LocalStorage()
+        raw = store.getItem(SHARED_PORTFOLIO_KEY)
+        if isinstance(raw, str) and raw.strip():
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data
+        elif isinstance(raw, dict):
+            return raw
+
+        # One-time migration. Prefer the existing V5.8.2 production portfolio.
+        migration_candidates = []
+        for legacy_key in ("btc_dynamic_dca_v58_state", "btc_dynamic_dca_v59_research_state"):
+            legacy_raw = store.getItem(legacy_key)
+            legacy_state = None
+            if isinstance(legacy_raw, str) and legacy_raw.strip():
+                try:
+                    legacy_state = json.loads(legacy_raw)
+                except Exception:
+                    legacy_state = None
+            elif isinstance(legacy_raw, dict):
+                legacy_state = legacy_raw
+            if isinstance(legacy_state, dict) and isinstance(legacy_state.get("portfolio"), dict):
+                migration_candidates.append(legacy_state["portfolio"])
+        if fallback:
+            migration_candidates.append(fallback)
+
+        for candidate in migration_candidates:
+            if candidate:
+                store.setItem(SHARED_PORTFOLIO_KEY, json.dumps(candidate, default=str))
+                return candidate.copy()
+    except Exception:
+        pass
+    return fallback.copy()
+
+
+def _save_shared_portfolio(portfolio):
+    """Persist only portfolio inputs in a cross-version shared namespace."""
+    if not LOCAL_STORAGE_AVAILABLE or not isinstance(portfolio, dict):
+        return
+    try:
+        store = LocalStorage()
+        store.setItem(SHARED_PORTFOLIO_KEY, json.dumps(portfolio, default=str))
+    except Exception:
+        pass
+
 browser_state = _load_browser_state()
+shared_portfolio = _load_shared_portfolio(browser_state)
 
 st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
 st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
@@ -1724,11 +1783,11 @@ with st.sidebar:
         st.header("DCA Today")
 
         saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
-        saved_portfolio = browser_state.get("portfolio", {}) if isinstance(browser_state, dict) else {}
+        saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
 
-        starting_default = float(saved_today.get(
+        starting_default = float(saved_portfolio.get(
             "starting_capital_aud",
-            saved_portfolio.get("starting_capital_aud", 500_000.0)
+            saved_today.get("starting_capital_aud", 500_000.0)
         ))
         starting_capital_aud = st.number_input(
             "Starting Capital (AUD)",
@@ -2379,7 +2438,7 @@ elif mode == "My Portfolio":
         "BTC AUD Price",
     ]
 
-    saved_portfolio = browser_state.get("portfolio", {}) if isinstance(browser_state, dict) else {}
+    saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
     saved_rows = saved_portfolio.get("rows", [])
     portfolio_df = pd.DataFrame(saved_rows) if isinstance(saved_rows, list) and saved_rows else pd.DataFrame(columns=portfolio_cols)
     for col in portfolio_cols:
@@ -2776,6 +2835,8 @@ elif mode == "My Portfolio":
         "capital_remaining_aud": float(capital_remaining),
         "rows": export_clean[portfolio_cols].to_dict(orient="records"),
     }
+    _save_shared_portfolio(browser_state["portfolio"])
+    shared_portfolio = browser_state["portfolio"].copy()
     browser_state["decision_rows"] = edited_decisions[decision_cols].to_dict(orient="records")
     _save_browser_state(browser_state)
 
