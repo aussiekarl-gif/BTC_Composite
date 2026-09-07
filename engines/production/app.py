@@ -2260,6 +2260,86 @@ elif mode == "DCA Today":
         "Opportunity Rarity and Better Entry Evidence are informational only."
     )
 
+    # Decision-first production dashboard. UI only: the calculation above is unchanged.
+    # Colour language is shared with V5.9: green=favourable/BUY, amber=neutral/caution,
+    # red=high-risk/unfavourable, grey=context/inactive, blue=information.
+    risk_tone = (
+        "good" if current_risk <= 0.40 else
+        "warn" if current_risk <= 0.60 else
+        "bad"
+    )
+    risk_tone_label = risk_label.title()
+    btc_price_main = "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}"
+    btc_price_sub = f"US${current_price_usd:,.0f}" if np.isfinite(current_price_usd) else ""
+    better_entry_text = (
+        f"{opportunity['cycle_successes']} of {opportunity['cycles_used']} cycles"
+        if opportunity["cycles_used"] >= 1 else "n/a"
+    )
+
+    st.markdown(
+        """
+        <style>
+        .v58-wrap{font-family:inherit;margin-top:.25rem}
+        .v58-hero{display:grid;grid-template-columns:1.35fr .72fr 1.15fr;border:1.5px solid #19e894;border-radius:13px;background:linear-gradient(135deg,#062a29,#071c2d 58%,#062a29);overflow:hidden;box-shadow:0 0 24px rgba(25,232,148,.09)}
+        .v58-hero>div{padding:18px 22px;min-height:178px}.v58-hero>div+div{border-left:1px solid rgba(69,216,196,.30)}
+        .v58-title{font-size:1rem;font-weight:900;color:#f4f8fb}.v58-big{font-size:3.35rem;line-height:1.05;font-weight:950;color:#18e89a;margin:12px 0 14px}.v58-mult{font-size:3.0rem;line-height:1.05;font-weight:950;color:#4fb8ff;margin:12px 0 12px}
+        .v58-buy-pill{display:inline-block;border-radius:8px;background:#18e89a;color:#04281b;font-weight:950;padding:9px 16px;font-size:.82rem}.v58-sub{font-size:.82rem;color:#cad7e2}.v58-base{font-size:1.45rem;font-weight:900;color:#f4f8fb;margin-top:4px}
+        .v58-reason{display:flex;gap:10px;margin:10px 0;align-items:flex-start;color:#f0f4f8}.v58-check,.v58-off{width:24px;height:24px;flex:0 0 24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;margin-top:1px}.v58-check{background:#19e894;color:#052b1e}.v58-off{border:1.5px solid #718397;color:#718397}.v58-reason b{display:block;font-size:.95rem}.v58-reason small{display:block;color:#b8c6d4;margin-top:1px}
+        .v58-q{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border:1px solid #57c8ff;border-radius:50%;color:#57c8ff;font-size:.68rem;font-weight:800;margin-left:5px;vertical-align:2px;cursor:help}
+        .v58-cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px}.v58-card{border:1px solid #29506b;border-radius:11px;padding:13px 15px;background:linear-gradient(180deg,#092337,#081a2b);min-height:110px}.v58-card-title{font-size:.82rem;color:#eaf1f7;font-weight:800}.v58-card-value{font-size:1.45rem;color:#f3f7fb;font-weight:900;margin-top:5px}.v58-card-value.good{color:#24e894}.v58-card-value.warn{color:#ffb43b}.v58-card-value.bad{color:#ff6476}.v58-card-sub{font-size:.80rem;color:#c1ccd8;margin-top:5px;line-height:1.35}
+        .v58-badge{display:inline-block;border-radius:999px;padding:3px 13px;font-size:.76rem;font-weight:900;margin-top:4px}.v58-badge.good{background:#24e894;color:#05281b}.v58-badge.warn{background:#ffb43b;color:#382200}.v58-badge.bad{background:#ff6476;color:#35070c}.v58-badge.context{background:#26384b;color:#dce7ef;border:1px solid #64778a}
+        .v58-info{display:flex;gap:14px;align-items:flex-start;border:1px solid #168fea;border-radius:10px;background:linear-gradient(90deg,#082e50,#07335c);padding:13px 16px;margin:12px 0 10px}.v58-info-icon{width:26px;height:26px;flex:0 0 26px;border-radius:50%;background:#4fb9ff;color:#06233a;display:flex;align-items:center;justify-content:center;font-weight:900}.v58-info-title{font-weight:900;color:#eef7ff;margin-bottom:3px}.v58-info-text{font-size:.84rem;color:#d5e4f0;line-height:1.45}
+        .v58-explain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}.v58-explain{border:1px solid #264b65;border-radius:10px;padding:13px 14px;background:#091d2e;min-height:142px}.v58-explain h4{margin:0 0 8px;color:#f2f7fb;font-size:.92rem}.v58-explain p{margin:0 0 7px;color:#c7d3de;font-size:.80rem;line-height:1.42}.v58-affects,.v58-context{display:inline-block;border-radius:999px;padding:3px 11px;font-size:.72rem;font-weight:900;margin:3px 0 6px}.v58-affects{background:#22e894;color:#05291c}.v58-context{background:#26394b;color:#e0e8ef;border:1px solid #5a6e82}
+        @media(max-width:1100px){.v58-hero{grid-template-columns:1fr}.v58-hero>div+div{border-left:0;border-top:1px solid rgba(69,216,196,.30)}.v58-cards{grid-template-columns:repeat(2,1fr)}.v58-explain-grid{grid-template-columns:1fr}}@media(max-width:700px){.v58-cards{grid-template-columns:1fr}.v58-big{font-size:2.8rem}.v58-mult{font-size:2.6rem}}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="v58-wrap">
+          <div class="v58-hero">
+            <div>
+              <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's V5.8.2 production buy amount. Base Weekly Allowance × Smart DCA risk multiplier, capped by remaining capital.">?</span></div>
+              <div class="v58-big">A$ {recommended_buy:,.0f}</div>
+              <span class="v58-buy-pill">₿ &nbsp; BUY THIS WEEK</span>
+              <span class="v58-sub" style="margin-left:10px;">That's {risk_weight:.2f}× your base weekly amount</span>
+            </div>
+            <div>
+              <div class="v58-title">Current Multiplier <span class="v58-q" title="Production Smart DCA multiplier determined only by the V5.8.2 Risk Score curve.">?</span></div>
+              <div class="v58-mult">{risk_weight:.2f}×</div>
+              <div class="v58-sub"><b>Base Weekly Allowance</b></div>
+              <div class="v58-base">A$ {normal_weekly_allowance:,.0f}</div>
+            </div>
+            <div>
+              <div class="v58-title">Reason for This Week's Amount <span class="v58-q" title="Only the V5.8.2 Risk Score changes the production buy multiplier. Opportunity Rarity and Better Entry Evidence are context only.">?</span></div>
+              <div class="v58-reason"><span class="v58-check">✓</span><div><b>Production signal: BUY</b><small>V5.8.2 always buys; size changes with valuation risk.</small></div></div>
+              <div class="v58-reason"><span class="v58-check">✓</span><div><b>BTC risk: {risk_tone_label}</b><small>Risk {current_risk:.3f} → {risk_weight:.2f}× weekly base multiplier</small></div></div>
+              <div class="v58-reason"><span class="v58-off">i</span><div><b>Cycle evidence: Context only</b><small>Rarity / Better Entry do not alter this week's amount.</small></div></div>
+            </div>
+          </div>
+
+          <div class="v58-cards">
+            <div class="v58-card"><div class="v58-card-title">BTC Price <span class="v58-q" title="Live BTC/AUD spot quote when available. Risk uses closed historical data.">?</span></div><div class="v58-card-value">{btc_price_main}</div><div class="v58-card-sub">({btc_price_sub})</div></div>
+            <div class="v58-card"><div class="v58-card-title">BTC Risk <span class="v58-q" title="Production composite Risk Score. Lower risk produces a larger Smart DCA multiplier.">?</span></div><div class="v58-card-value {risk_tone}">{risk_tone_label}</div><div class="v58-card-sub">Risk score: {current_risk:.3f}<br>Multiplier: <b>{risk_weight:.2f}×</b></div></div>
+            <div class="v58-card"><div class="v58-card-title">Opportunity Rarity <span class="v58-q" title="Cycle-based context comparing today's risk with comparable cycle ages. It does not change production sizing.">?</span></div><span class="v58-badge context">{rarity['rarity_label']}</span><div class="v58-card-sub">Context only<br>Does not change buy amount</div></div>
+            <div class="v58-card"><div class="v58-card-title">Better Entry Evidence <span class="v58-q" title="Limited cycle evidence about whether comparable periods later produced lower risk. Context only.">?</span></div><span class="v58-badge context">{better_entry_text}</span><div class="v58-card-sub">Context only<br>No sizing override</div></div>
+            <div class="v58-card"><div class="v58-card-title">Remaining Capital <span class="v58-q" title="Capital still scheduled for deployment. Base Weekly Allowance = remaining capital ÷ remaining weeks.">?</span></div><div class="v58-card-value">A$ {remaining_capital_aud:,.0f}</div><div class="v58-card-sub">~{weeks_remaining:.0f} weeks remaining<br>until {target_deployment_date.strftime('%d %b %Y')}</div></div>
+          </div>
+
+          <div class="v58-info"><span class="v58-info-icon">i</span><div><div class="v58-info-title">How this week's amount is calculated</div><div class="v58-info-text">This week's production DCA amount is your Base Weekly Allowance multiplied by the fixed V5.8.2 Smart DCA risk multiplier, capped by remaining capital. Opportunity Rarity, Better Entry Evidence and the Historical Weekly Risk Distribution are context only and do not independently change the buy amount.</div></div></div>
+
+          <div class="v58-explain-grid">
+            <div class="v58-explain"><h4>📈 Risk Score <span class="v58-q" title="The production sizing engine. It is not cycle-adjusted.">?</span></h4><p>Combines the production valuation/risk components into one 0–1 Risk Score.</p><span class="v58-affects">Affects buy amount</span><p>Lower risk = larger weekly multiplier.<br>Higher risk = smaller weekly multiplier.</p></div>
+            <div class="v58-explain"><h4>📊 Opportunity Rarity <span class="v58-q" title="Cycle-based context only. It compares today's Risk Score with comparable periods in this halving cycle and the prior two cycles.">?</span></h4><p>Shows how unusual the current valuation risk is for comparable cycle ages.</p><span class="v58-context">Context only</span><p>Does not increase or reduce this week's DCA.</p></div>
+            <div class="v58-explain"><h4>🔎 Better Entry Evidence <span class="v58-q" title="Cycle-based context only. It asks whether comparable cycle situations later produced materially lower Risk Scores.">?</span></h4><p>Helps judge whether historically similar cycle conditions later offered lower risk.</p><span class="v58-context">Context only</span><p>Does not override the production Risk Score curve.</p></div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     a, b, c, d = st.columns(4)
     a.metric("BTC Risk", f"{current_risk:.3f}", risk_label)
     b.metric(
@@ -2318,8 +2398,8 @@ elif mode == "DCA Today":
             "V5.8 uses Opportunity Rarity for context only. It does not increase or reduce the recommended buy."
         )
 
-    st.subheader("SMART DCA TODAY")
-    st.metric("Recommended Buy", f"A${recommended_buy:,.0f}")
+    st.subheader("SMART DCA THIS WEEK")
+    st.metric("Recommended DCA This Week", f"A${recommended_buy:,.0f}")
 
     x1, x2, x3 = st.columns(3)
     x1.metric("Normal Weekly Allowance", f"A${normal_weekly_allowance:,.0f}")
