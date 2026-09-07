@@ -1580,6 +1580,32 @@ st.set_page_config(
     layout="wide",
 )
 
+
+# Unified dashboard theme shared by V5.8.2 and V5.9 (UI only).
+st.markdown("""
+<style>
+:root { --btc-bg:#071521; --btc-panel:#0a2133; --btc-border:#174c6b; --btc-blue:#13a8ff; --btc-green:#16e6a1; --btc-text:#f5f9fc; }
+.stApp { background: radial-gradient(circle at 50% -15%, #0b2a3e 0%, #071521 40%, #06111b 100%); color:var(--btc-text); }
+.block-container { max-width:1500px; padding-top:1.1rem; padding-bottom:3rem; }
+h1,h2,h3,h4 { color:#f5f9fc!important; letter-spacing:-.02em; }
+p,label,.stCaption { color:#dce8f0; }
+[data-testid="stSidebar"] { background:#06131f; border-right:1px solid #123c57; }
+[data-testid="stSidebar"] [role="radiogroup"] > label { background:#0a2133; border:1px solid #174c6b; border-radius:10px; padding:.35rem .55rem; margin:.18rem 0; }
+[data-testid="stMetric"] { background:linear-gradient(180deg,#0b2638,#081d2d); border:1px solid #174c6b; border-radius:12px; padding:14px 16px; min-height:104px; box-shadow:0 6px 20px rgba(0,0,0,.16); }
+[data-testid="stMetricLabel"] { color:#c9dce8; font-weight:700; }
+[data-testid="stMetricValue"] { color:#f7fbff; font-weight:800; }
+[data-testid="stExpander"] { background:#081d2d; border:1px solid #174c6b; border-radius:12px; overflow:hidden; margin:.45rem 0; }
+[data-testid="stExpander"] summary { background:#0a2435; font-weight:700; }
+[data-testid="stForm"] { background:#081d2d; border:1px solid #174c6b; border-radius:14px; padding:1rem; }
+.stButton > button,.stDownloadButton > button,[data-testid="stFormSubmitButton"] button { border-radius:9px; border:1px solid #168fd0; background:linear-gradient(180deg,#129eea,#0879bd); color:white; font-weight:800; }
+[data-baseweb="input"] > div,[data-baseweb="select"] > div,[data-baseweb="base-input"] { background:#091c2a!important; border-color:#174c6b!important; }
+[data-testid="stDataFrame"],[data-testid="stTable"] { border:1px solid #174c6b; border-radius:10px; overflow:hidden; }
+[data-testid="stAlert"] { border-radius:10px; border:1px solid #1d6085; }
+hr { border-color:#174c6b!important; }
+[data-testid="stPlotlyChart"],[data-testid="stVegaLiteChart"] { background:#081d2d; border:1px solid #174c6b; border-radius:12px; padding:.35rem; }
+</style>
+""", unsafe_allow_html=True)
+
 # Browser-local persistence: survives normal app reruns/redeploys on the same browser/device.
 # CSV export remains available as a portable backup.
 PERSISTENCE_KEY = "btc_dynamic_dca_v58_state"
