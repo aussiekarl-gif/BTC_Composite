@@ -2934,6 +2934,23 @@ elif mode == "DCA Today":
         h4.metric("+500 Day Marker", post500.strftime("%d %b %Y"))
         st.markdown(f"**Theory status today:** {theory_status}")
 
+        # Future-cycle planning markers. Bitcoin halvings occur at block-height milestones,
+        # not fixed calendar dates, so these dates are intentionally approximate and should
+        # be refreshed as the network approaches block 1,050,000.
+        next_halving_est = pd.Timestamp("2028-04-12")
+        next_pre500 = next_halving_est - pd.Timedelta(days=500)
+        next_post500 = next_halving_est + pd.Timedelta(days=500)
+        st.markdown("**Next halving cycle — approximate planning dates**")
+        n1, n2, n3 = st.columns(3)
+        n1.metric("Approx. −500 Accumulation Start", next_pre500.strftime("%d %b %Y"))
+        n2.metric("Approx. 2028 Halving", next_halving_est.strftime("%d %b %Y"))
+        n3.metric("Approx. +500 Marker", next_post500.strftime("%d %b %Y"))
+        st.caption(
+            "The next Bitcoin halving is currently estimated for roughly 10–13 April 2028. "
+            "The app uses 12 April 2028 as a neutral planning estimate, giving approximate ±500-day markers. "
+            "The actual halving date will move with block production speed."
+        )
+
         st.markdown(
             "**Theory:** accumulate from about 500 days before a Bitcoin halving, hold through the halving, "
             "consider the period around 500 days after the halving as a historical take-profit zone, then wait "
@@ -2965,10 +2982,24 @@ elif mode == "DCA Today":
                 "Status": "cycle-to-date" if halving_date.year == 2024 else "historical",
             })
         if cycle_rows:
-            st.dataframe(pd.DataFrame(cycle_rows), width="stretch", hide_index=True)
+            cycle_table = pd.DataFrame(cycle_rows)
+            future_row = pd.DataFrame([{
+                "Halving": "≈ " + next_halving_est.strftime("%d %b %Y"),
+                "Prior low": "future / unknown",
+                "Low vs halving": "—",
+                "Post-halving high": "future / unknown",
+                "High vs halving": "—",
+                "Status": (
+                    "future estimate • −500 ≈ " + next_pre500.strftime("%d %b %Y")
+                    + " • +500 ≈ " + next_post500.strftime("%d %b %Y")
+                ),
+            }])
+            cycle_table = pd.concat([cycle_table, future_row], ignore_index=True)
+            st.dataframe(cycle_table, width="stretch", hide_index=True)
             st.caption(
                 "Timing table is descriptive, not predictive. The 2024 row is cycle-to-date and can change. "
-                "The low/high search uses a broad ±900-day window so we can test whether the simple ±500-day "
+                "The 2028 row is an approximate future planning row only; the actual halving occurs at a block-height milestone. "
+                "Historical low/high searches use a broad ±900-day window so we can test whether the simple ±500-day "
                 "idea roughly aligns with actual macro turning points rather than assuming it does."
             )
 
