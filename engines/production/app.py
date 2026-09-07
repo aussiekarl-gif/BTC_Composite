@@ -1575,6 +1575,10 @@ def validate_smart_dca_recent_period(
 # Streamlit UI
 # ================================================================
 
+st.set_page_config(
+    page_title="BTC Dynamic DCA V5.8 FULL",
+    layout="wide",
+)
 
 # Browser-local persistence: survives normal app reruns/redeploys on the same browser/device.
 # CSV export remains available as a portable backup.
@@ -1631,8 +1635,8 @@ with st.sidebar:
     mode = st.radio(
         "Analysis Mode",
         [
-            "DCA Backtest",
             "DCA Today",
+            "DCA Backtest",
             "My Portfolio",
         ],
     )
