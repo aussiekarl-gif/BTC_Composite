@@ -2875,9 +2875,80 @@ elif mode == "DCA Today":
     remaining_after = max(float(remaining_capital_aud) - challenger_recommended_buy, 0.0)
 
     st.header("DCA Today")
+
+    # Decision-first summary: put the actionable dollar amount before the research detail.
+    with st.container(border=True):
+        top1, top2, top3 = st.columns([1.35, 0.8, 1.35])
+        top1.metric(
+            "RECOMMENDED DCA TODAY",
+            f"A${challenger_recommended_buy:,.0f}",
+            help=(
+                "The research-challenger amount to buy today. It starts with your remaining capital divided by "
+                "the remaining deployment weeks, then applies R2 valuation sizing. The Halving Accumulation Zone "
+                "can raise ordinary R2 to at least 2.50×, and an explicit Exceptional Bottom event can raise it to "
+                "3×/4×. The amount is always capped by remaining capital; there is no automatic all-in."
+            ),
+        )
+        top1.caption(f"Base weekly allowance: A${normal_weekly_allowance:,.0f}")
+        top2.metric(
+            "Current Multiplier",
+            f"{challenger_weight:.2f}×",
+            help=(
+                f"Today's effective V5.9 research multiplier. Frozen R2 alone is {risk_weight:.2f}×. "
+                f"The broad halving zone applies a minimum {HALVING_ACCUMULATION_FLOOR_MULT:.2f}× while active; "
+                "Bottom Challenger events can override it with the tested staged multipliers."
+            ),
+        )
+        top2.caption(f"Frozen R2 alone: {risk_weight:.2f}×")
+
+        reasons = []
+        if current_halving_accumulation_zone:
+            reasons.append(f"✓ Halving Accumulation Zone ACTIVE → at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×")
+        else:
+            reasons.append("○ Halving Accumulation Zone inactive")
+        reasons.append(f"✓ R2 valuation: {risk_label} (sizing risk {current_risk:.3f})")
+        if current_challenger_event != "NONE":
+            reasons.append(f"✓ Exceptional Bottom event: {current_challenger_event}")
+        elif current_challenger_zone:
+            reasons.append("✓ Exceptional Bottom Zone active; no new staged event this week")
+        else:
+            reasons.append("○ Exceptional Bottom Zone not active")
+        top3.markdown("**Why this amount?**", help=(
+            "Only R2 valuation, the tested Halving Accumulation Zone, and explicit Exceptional Bottom staged events "
+            "can change the V5.9 research buy amount. Opportunity Rarity, Better Entry Evidence, Bull Age, the exact "
+            "±500-day markers and other context indicators do not change today's dollar recommendation."
+        ))
+        top3.markdown("  \n".join(reasons))
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric(
+        "BTC Price",
+        "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}",
+        help="Live BTC/AUD spot quote when available. The valuation engine itself uses closed historical data, so an intraday quote does not change R2 risk."
+    )
+    k2.metric(
+        "R2 Sizing Risk", f"{current_risk:.3f}", risk_label,
+        help="Frozen causal walk-forward Power-Law score used by R2 to set its base multiplier. Lower risk means a larger DCA multiplier; higher risk means a smaller one."
+    )
+    k3.metric(
+        "Halving Zone", "ACTIVE" if current_halving_accumulation_zone else "INACTIVE",
+        f"day +{current_halving_clock_days}",
+        help=(f"Causal research timing zone from day +{HALVING_ACCUMULATION_START_DAY} to +{HALVING_ACCUMULATION_END_DAY} after the previous halving. "
+              f"While active, ordinary R2 is raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×. This DOES affect today's buy amount.")
+    )
+    k4.metric(
+        "Exceptional Bottom", "ACTIVE" if current_challenger_zone else "INACTIVE",
+        current_challenger_event if current_challenger_event != "NONE" else f"{current_challenger_votes}/3 confirmations",
+        help="Independent capitulation/confluence layer. Only a new staged event changes today's sizing: 3× initial, 4× deeper ≥15% capitulation, 3× recovery. No event means no extra override."
+    )
+    k5.metric(
+        "Remaining Capital", f"A${remaining_capital_aud:,.0f}", f"~{weeks_remaining:.0f} weeks left",
+        help="Portfolio capital still scheduled for deployment. The base weekly allowance is remaining capital divided by remaining deployment weeks, which helps preserve exact budget deployment by the target date."
+    )
+
     st.caption(
-        "Frozen R2 remains the control. The research challenger can temporarily raise the weekly multiplier "
-        "through the broad causal Halving Accumulation Zone and explicit staged Exceptional Bottom Zone events; no fixed reserve or automatic all-in."
+        "Decision first: the amount above is the V5.9 research-challenger recommendation. Frozen R2 remains the control. "
+        "The detailed valuation, bottom, cycle and opportunity explanations below are retained for auditability."
     )
 
     a, b, c, d = st.columns(4)
@@ -2895,7 +2966,10 @@ elif mode == "DCA Today":
         "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}",
         help="Live BTC/AUD spot quote (60-second cache) when available; otherwise latest historical BTC/AUD. Risk uses closed historical data."
     )
-    c.metric("Opportunity Rarity", rarity["rarity_label"])
+    c.metric(
+        "Opportunity Rarity", rarity["rarity_label"],
+        help="Cycle-based context showing how unusual today's R2 risk is versus comparable periods in the current and previous two halving cycles. Context only: it does NOT change today's buy amount."
+    )
     if opportunity["cycles_used"] >= 1:
         d.metric(
             "Better Entry Evidence",
@@ -2960,36 +3034,21 @@ elif mode == "DCA Today":
         + ". Production V5.8.2 and the R2 control are unchanged."
     )
 
-    with st.expander("📅 Halving Cycle — 500 / 500 Theory", expanded=False):
+    with st.expander("📅 Halving Cycle — key dates & ±500-day theory", expanded=False):
         current_halving = pd.Timestamp("2024-04-20")
         current_day = pd.Timestamp(now_utc.date())
         days_from_halving = int((current_day - current_halving).days)
         pre500 = current_halving - pd.Timedelta(days=500)
         post500 = current_halving + pd.Timedelta(days=500)
-
-        if days_from_halving < -500:
-            theory_status = "CASH / WAITING — before the historical −500-day accumulation window"
-        elif days_from_halving < 0:
-            theory_status = "ACCUMULATION WINDOW — within 500 days before the halving"
-        elif days_from_halving <= 500:
-            theory_status = "HOLD / EXPANSION — between halving day and +500 days"
-        else:
-            theory_status = "PAST THE HISTORICAL +500-DAY EXIT MARKER"
-
-        h1, h2, h3, h4 = st.columns(4)
-        h1.metric("Current Halving", current_halving.strftime("%d %b %Y"))
-        h2.metric("Days From Halving", f"{days_from_halving:+,} days")
-        h3.metric("−500 Day Marker", pre500.strftime("%d %b %Y"))
-        h4.metric("+500 Day Marker", post500.strftime("%d %b %Y"))
-        st.markdown(f"**Theory status today:** {theory_status}")
         zone_start_date = current_halving + pd.Timedelta(days=HALVING_ACCUMULATION_START_DAY)
         zone_end_date = current_halving + pd.Timedelta(days=HALVING_ACCUMULATION_END_DAY)
-        st.info(
-            f"V5.9 research Halving Accumulation Zone: {zone_start_date.strftime('%d %b %Y')} to "
-            f"{zone_end_date.strftime('%d %b %Y')} (day +{HALVING_ACCUMULATION_START_DAY} to +{HALVING_ACCUMULATION_END_DAY} "
-            f"after the 2024 halving). Status: {'ACTIVE' if current_halving_accumulation_zone else 'INACTIVE'}. "
-            f"Inside this broad causal zone, ordinary R2 is raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×. "
-            "Bottom Challenger events can still raise it to 3×/4×. No automatic sell is attached to +500."
+
+        st.caption(
+            f"Research Halving Accumulation Zone: {zone_start_date.strftime('%d %b %Y')} to {zone_end_date.strftime('%d %b %Y')} "
+            f"(day +{HALVING_ACCUMULATION_START_DAY} to +{HALVING_ACCUMULATION_END_DAY}); "
+            f"currently {'ACTIVE' if current_halving_accumulation_zone else 'INACTIVE'}. "
+            "The exact −500/+500 dates remain visible in the table below as the original theory reference. "
+            "+500 is informational only and never triggers an automatic sale."
         )
 
         # Future-cycle planning markers. Bitcoin halvings occur at block-height milestones,
@@ -3153,8 +3212,10 @@ elif mode == "DCA Today":
             "capitulation stage while confluence remains exceptional uses 4x, and a recent recovery confirmation uses 3x.\n\n"
             "**Bull Age / Cycle Stage = context.** They describe how long the current confirmed weekly bull trend "
             "has been active and do not alter sizing.\n\n"
+            "**Halving Accumulation Zone = sizing input.** This is the broad causal day +800 to +1000 research window. "
+            "While active, it raises ordinary R2 sizing to at least 2.50x. The exact −500/+500 dates remain context markers and do not themselves trigger a trade.\n\n"
             "Opportunity Rarity and Better Entry Evidence remain informational only. Bull Age remains context only. "
-            "Only an explicit Bottom Challenger staged event can raise the research-challenger purchase above frozen R2."
+            "The Halving Accumulation Zone and explicit Bottom Challenger staged events are the only research overlays that can raise the purchase above frozen R2."
         )
 
     with st.expander("Opportunity Rarity Guide", expanded=False):
@@ -3174,7 +3235,7 @@ elif mode == "DCA Today":
             "V5.9 R2 uses Opportunity Rarity for context only. It does not increase or reduce the recommended buy."
         )
 
-    st.subheader("DCA TODAY — R2 CONTROL vs THREE-PILLAR CHALLENGER")
+    st.subheader("R2 Control vs Three-Pillar Challenger — audit view")
     y1, y2 = st.columns(2)
     y1.metric("Frozen R2 Buy", f"A${recommended_buy:,.0f}", help=f"{risk_weight:.2f}× normal weekly allowance")
     y2.metric(
