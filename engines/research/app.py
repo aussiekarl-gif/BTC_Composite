@@ -2125,6 +2125,32 @@ def validate_smart_dca_recent_period(
 # ================================================================
 
 
+
+# Unified dashboard theme shared by V5.8.2 and V5.9 (UI only).
+st.markdown("""
+<style>
+:root { --btc-bg:#071521; --btc-panel:#0a2133; --btc-border:#174c6b; --btc-blue:#13a8ff; --btc-green:#16e6a1; --btc-text:#f5f9fc; }
+.stApp { background: radial-gradient(circle at 50% -15%, #0b2a3e 0%, #071521 40%, #06111b 100%); color:var(--btc-text); }
+.block-container { max-width:1500px; padding-top:1.1rem; padding-bottom:3rem; }
+h1,h2,h3,h4 { color:#f5f9fc!important; letter-spacing:-.02em; }
+p,label,.stCaption { color:#dce8f0; }
+[data-testid="stSidebar"] { background:#06131f; border-right:1px solid #123c57; }
+[data-testid="stSidebar"] [role="radiogroup"] > label { background:#0a2133; border:1px solid #174c6b; border-radius:10px; padding:.35rem .55rem; margin:.18rem 0; }
+[data-testid="stMetric"] { background:linear-gradient(180deg,#0b2638,#081d2d); border:1px solid #174c6b; border-radius:12px; padding:14px 16px; min-height:104px; box-shadow:0 6px 20px rgba(0,0,0,.16); }
+[data-testid="stMetricLabel"] { color:#c9dce8; font-weight:700; }
+[data-testid="stMetricValue"] { color:#f7fbff; font-weight:800; }
+[data-testid="stExpander"] { background:#081d2d; border:1px solid #174c6b; border-radius:12px; overflow:hidden; margin:.45rem 0; }
+[data-testid="stExpander"] summary { background:#0a2435; font-weight:700; }
+[data-testid="stForm"] { background:#081d2d; border:1px solid #174c6b; border-radius:14px; padding:1rem; }
+.stButton > button,.stDownloadButton > button,[data-testid="stFormSubmitButton"] button { border-radius:9px; border:1px solid #168fd0; background:linear-gradient(180deg,#129eea,#0879bd); color:white; font-weight:800; }
+[data-baseweb="input"] > div,[data-baseweb="select"] > div,[data-baseweb="base-input"] { background:#091c2a!important; border-color:#174c6b!important; }
+[data-testid="stDataFrame"],[data-testid="stTable"] { border:1px solid #174c6b; border-radius:10px; overflow:hidden; }
+[data-testid="stAlert"] { border-radius:10px; border:1px solid #1d6085; }
+hr { border-color:#174c6b!important; }
+[data-testid="stPlotlyChart"],[data-testid="stVegaLiteChart"] { background:#081d2d; border:1px solid #174c6b; border-radius:12px; padding:.35rem; }
+</style>
+""", unsafe_allow_html=True)
+
 # Browser-local persistence: survives normal app reruns/redeploys on the same browser/device.
 # CSV export remains available as a portable backup.
 PERSISTENCE_KEY = "btc_dynamic_dca_v59_research_state"
@@ -2225,8 +2251,8 @@ def _save_shared_portfolio(portfolio):
 browser_state = _load_browser_state()
 shared_portfolio = _load_shared_portfolio(browser_state)
 
-st.title("Bitcoin Dynamic DCA V5.9 R2 — Bottom Zone Challenger")
-st.caption("Version 5.9 R2 CHALLENGER • Frozen R2 control • Staged Exceptional Bottom Zone overlay • Persistent portfolio")
+st.title("Bitcoin Dynamic DCA V5.9 — Three-Pillar Research")
+st.caption("Version 5.9 RESEARCH • R2 Valuation • Exceptional Bottom Zone • Halving Accumulation Zone • Persistent portfolio")
 st.caption("Simple three-mode app • DCA Today • DCA Backtest • My Portfolio")
 
 # ------------------------------------------------
@@ -2973,9 +2999,9 @@ elif mode == "DCA Today":
         <div class="v59-wrap">
           <div class="v59-hero">
             <div>
-              <div class="v59-title">🛒 &nbsp; Recommended DCA Today <span class="v59-q" title="Today's research-challenger buy amount. Base weekly allowance × effective V5.9 multiplier, capped by remaining capital. No automatic all-in.">?</span></div>
+              <div class="v59-title">🛒 &nbsp; Recommended DCA This Week <span class="v59-q" title="This week's research-challenger buy amount. Base weekly allowance × effective V5.9 multiplier, capped by remaining capital. No automatic all-in.">?</span></div>
               <div class="v59-big">A$ {challenger_recommended_buy:,.0f}</div>
-              <span class="v59-buy-pill">₿ &nbsp; BUY TODAY</span>
+              <span class="v59-buy-pill">₿ &nbsp; BUY THIS WEEK</span>
               <span class="v59-sub" style="margin-left:10px;">That's {challenger_weight:.2f}× your base weekly amount</span>
             </div>
             <div>
@@ -2985,7 +3011,7 @@ elif mode == "DCA Today":
               <div class="v59-base">A$ {normal_weekly_allowance:,.0f}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for Today's Amount <span class="v59-q" title="Only R2 valuation, the Halving Accumulation Zone and explicit Exceptional Bottom staged events can change today's V5.9 recommendation.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Only R2 valuation, the Halving Accumulation Zone and explicit Exceptional Bottom staged events can change today's V5.9 recommendation.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>R2 sizing risk {current_risk:.3f} → {risk_weight:.2f}× base multiplier</small></div></div>
               <div class="v59-reason"><span class="{bottom_reason_cls}">{bottom_reason_icon}</span><div><b>{bottom_reason_title}</b><small>{bottom_reason_sub}</small></div></div>
@@ -3032,7 +3058,7 @@ elif mode == "DCA Today":
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
             <div><div class="v59-info-title">How today's amount is calculated</div>
-            <div class="v59-info-text">Today's DCA amount is your Base Weekly Allowance multiplied by the current R2 multiplier, with tested adjustments from the Halving Accumulation Zone and Exceptional Bottom Zone. Cycle-based context such as the exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other descriptive indicators do not independently change the buy amount.</div></div>
+            <div class="v59-info-text">This week's DCA amount is your Base Weekly Allowance multiplied by the current R2 multiplier, with tested adjustments from the Halving Accumulation Zone and Exceptional Bottom Zone. Cycle-based context such as the exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other descriptive indicators do not independently change the buy amount.</div></div>
           </div>
 
           <div class="v59-explain-grid">
