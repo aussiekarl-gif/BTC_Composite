@@ -2978,14 +2978,14 @@ elif mode == "DCA Today":
     halving_reason_title = "Halving Accumulation Zone active" if current_halving_accumulation_zone else "Halving Accumulation Zone inactive"
     halving_reason_sub = (
         f"Raises R2 to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×"
-        if current_halving_accumulation_zone else "No timing floor applied today"
+        if current_halving_accumulation_zone else "No timing floor applied this week"
     )
     bottom_reason_icon = "✓" if current_challenger_zone else "○"
     bottom_reason_cls = "v59-check" if current_challenger_zone else "v59-off"
     bottom_reason_title = "Exceptional Bottom Zone active" if current_challenger_zone else "Exceptional Bottom Zone: Not active"
     bottom_reason_sub = (
         current_challenger_event if current_challenger_event != "NONE"
-        else ("Zone active; no new staged event today" if current_challenger_zone else "No additional 3× / 4× event today")
+        else ("Zone active; no new staged event this week" if current_challenger_zone else "No additional 3× / 4× event this week")
     )
     btc_price_main = "n/a" if not np.isfinite(current_price_aud) else f"A${current_price_aud:,.0f}"
     btc_price_sub = f"US${current_price_usd:,.0f}" if np.isfinite(current_price_usd) else ""
@@ -3011,7 +3011,7 @@ elif mode == "DCA Today":
               <div class="v59-base">A$ {normal_weekly_allowance:,.0f}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Only R2 valuation, the Halving Accumulation Zone and explicit Exceptional Bottom staged events can change today's V5.9 recommendation.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Only R2 valuation, the Halving Accumulation Zone and explicit Exceptional Bottom staged events can change this week's V5.9 recommendation.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>R2 sizing risk {current_risk:.3f} → {risk_weight:.2f}× base multiplier</small></div></div>
               <div class="v59-reason"><span class="{bottom_reason_cls}">{bottom_reason_icon}</span><div><b>{bottom_reason_title}</b><small>{bottom_reason_sub}</small></div></div>
@@ -3037,7 +3037,7 @@ elif mode == "DCA Today":
             <div class="v59-card">
               <div class="v59-card-title">Exceptional Bottom Zone <span class="v59-q" title="Independent capitulation/confluence layer. Only a new staged event changes sizing: 3× initial, 4× deeper capitulation, 3× recovery.">?</span></div>
               <span class="v59-badge {bottom_badge_cls}">{bottom_badge_text}</span>
-              <div class="v59-card-sub">{current_challenger_votes}/3 confirming categories<br>{'Event: ' + current_challenger_event if current_challenger_event != 'NONE' else 'No 3× / 4× event today'}</div>
+              <div class="v59-card-sub">{current_challenger_votes}/3 confirming categories<br>{'Event: ' + current_challenger_event if current_challenger_event != 'NONE' else 'No 3× / 4× event this week'}</div>
             </div>
             <div class="v59-card">
               <div class="v59-card-title">Remaining Capital <span class="v59-q" title="Portfolio capital still scheduled for deployment. Base allowance = remaining capital ÷ remaining deployment weeks.">?</span></div>
@@ -3057,7 +3057,7 @@ elif mode == "DCA Today":
 
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
-            <div><div class="v59-info-title">How today's amount is calculated</div>
+            <div><div class="v59-info-title">How this week's amount is calculated</div>
             <div class="v59-info-text">This week's DCA amount is your Base Weekly Allowance multiplied by the current R2 multiplier, with tested adjustments from the Halving Accumulation Zone and Exceptional Bottom Zone. Cycle-based context such as the exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other descriptive indicators do not independently change the buy amount.</div></div>
           </div>
 
@@ -3065,11 +3065,11 @@ elif mode == "DCA Today":
             <div class="v59-explain"><h4>📈 R2 Valuation Risk <span class="v59-q" title="The causal walk-forward Power-Law score is the base sizing engine in V5.9.">?</span></h4><p>Compares BTC with the causal walk-forward Power-Law valuation and determines the base DCA multiplier.</p><span class="v59-affects">Affects buy amount</span><p>Lower risk = larger base multiplier.<br>Higher risk = smaller base multiplier.</p></div>
             <div class="v59-explain"><h4>📅 Halving Accumulation Zone <span class="v59-q" title="Broad research timing zone designed to avoid over-fitting to an exact −500-day date.">?</span></h4><p>Active approximately day +{HALVING_ACCUMULATION_START_DAY}–+{HALVING_ACCUMULATION_END_DAY} after the previous halving. While active, ordinary R2 is raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×.</p><span class="v59-affects">Affects buy amount</span><p>Provides a timing boost to ordinary R2 sizing.</p></div>
             <div class="v59-explain"><h4>⚠️ Exceptional Bottom Zone <span class="v59-q" title="Requires deep valuation, low trailing price position and multiple independent stress categories.">?</span></h4><p>Identifies exceptional capitulation using independent categories. A new event can override ordinary sizing with 3× initial, 4× deeper, or 3× recovery.</p><span class="v59-affects">Affects buy amount</span><p>No new staged event = no additional override.</p></div>
-            <div class="v59-explain"><h4>📊 Opportunity Rarity <span class="v59-q" title="Cycle-based context. It does not modify DCA sizing in V5.9.">?</span></h4><p>Shows how unusual today's R2 risk is versus comparable periods in this halving cycle and previous cycles.</p><span class="v59-context">Context only</span><p>Helps interpret the opportunity; does not change today's amount.</p></div>
+            <div class="v59-explain"><h4>📊 Opportunity Rarity <span class="v59-q" title="Cycle-based context. It does not modify DCA sizing in V5.9.">?</span></h4><p>Shows how unusual this week's R2 risk is versus comparable periods in this halving cycle and previous cycles.</p><span class="v59-context">Context only</span><p>Helps interpret the opportunity; does not change this week's amount.</p></div>
           </div>
           <div class="v59-explain-grid" style="grid-template-columns:repeat(3,1fr);">
             <div class="v59-explain" style="min-height:130px"><h4>🗓️ Halving Cycle ±500 Day Markers <span class="v59-q" title="Original 500/500 theory dates remain visible as a reference, but do not automatically buy or sell.">?</span></h4><p>Shows the theoretical −500-day BUY and +500-day SELL dates based on the next estimated halving.</p><span class="v59-context">Context only</span><p>Informational only. No automatic buy or sell.</p></div>
-            <div class="v59-explain" style="min-height:130px"><h4>📊 Historical Weekly Risk Distribution <span class="v59-q" title="Descriptive historical context, not cycle-adjusted sizing.">?</span></h4><p>Shows how today's R2 risk compares with historical weeks.</p><span class="v59-context">Context only</span><p>Does not change the buy amount.</p></div>
+            <div class="v59-explain" style="min-height:130px"><h4>📊 Historical Weekly Risk Distribution <span class="v59-q" title="Descriptive historical context, not cycle-adjusted sizing.">?</span></h4><p>Shows how this week's R2 risk compares with historical weeks.</p><span class="v59-context">Context only</span><p>Does not change the buy amount.</p></div>
             <div class="v59-explain" style="min-height:130px"><h4>ℹ️ Other Indicators <span class="v59-q" title="MVRV, Mayer, RSI, trend and Bull Age are shown for context and research visibility.">?</span></h4><p>MVRV, Mayer, RSI, weekly trend and Bull Age provide additional context.</p><span class="v59-context">Context only</span><p>Do not independently change the V5.9 buy amount.</p></div>
           </div>
         </div>
@@ -3094,7 +3094,7 @@ elif mode == "DCA Today":
     )
     c.metric(
         "Opportunity Rarity", rarity["rarity_label"],
-        help="Cycle-based context showing how unusual today's R2 risk is versus comparable periods in the current and previous two halving cycles. Context only: it does NOT change today's buy amount."
+        help="Cycle-based context showing how unusual this week's R2 risk is versus comparable periods in the current and previous two halving cycles. Context only: it does NOT change this week's buy amount."
     )
     if opportunity["cycles_used"] >= 1:
         d.metric(
@@ -3156,7 +3156,7 @@ elif mode == "DCA Today":
     st.info(
         f"Frozen R2: Risk {current_risk:.3f} → {risk_weight:.2f}×. "
         f"Three-Pillar Challenger today: {challenger_weight:.2f}×"
-        + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event today)")
+        + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event this week)")
         + ". Production V5.8.2 and the R2 control are unchanged."
     )
 
