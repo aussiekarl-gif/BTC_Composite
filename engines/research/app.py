@@ -1914,272 +1914,6 @@ def apply_causal_budget_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGEN
 
 
 
-def run_execution_timing_research(
-    df_full,
-    params,
-    total_budget_aud,
-    risk_curve,
-    fee_pct=0.0,
-):
-    """Research-only execution timing test.
-
-    The strategy decision is frozen to one Monday observation per week.
-    We first compute the weekly Frozen-R2 allocation causally, then replay
-    exactly that same AUD amount on each weekday (or split it across several
-    days). This isolates execution timing from strategy/risk changes.
-
-    Only complete Monday-Sunday weeks with valid BTC/AUD prices are included,
-    so every candidate receives identical capital over identical weeks.
-    """
-    if df_full is None or df_full.empty or total_budget_aud <= 0:
-        return {}
-
-    test_params = dict(params)
-    test_params["day_of_week"] = 0  # Monday is the frozen weekly decision point.
-
-    weekly_raw, _ = simulate_dca_backtest(
-        df_full,
-        test_params,
-        DEFAULT_FIXED_DCA_AUD,
-        "Weekly",
-        "Risk-Scaled DCA",
-        risk_curve=risk_curve,
-    )
-    if weekly_raw.empty:
-        return {}
-
-    daily = df_full.copy()
-    daily = daily[
-        (daily.index >= test_params["start_date"])
-        & (daily.index <= test_params["end_date"])
-    ].copy()
-    if daily.empty or "price" not in daily.columns or "usd_per_aud" not in daily.columns:
-        return {}
-
-    # Normalize timestamps to UTC calendar days.
-    daily_idx = pd.to_datetime(daily.index, utc=True).normalize()
-    price_lookup = {}
-    for ts, (_, row) in zip(daily_idx, daily.iterrows()):
-        try:
-            p_usd = float(row["price"])
-            fx = float(row["usd_per_aud"])
-            if np.isfinite(p_usd) and np.isfinite(fx) and p_usd > 0 and fx > 0:
-                price_lookup[pd.Timestamp(ts)] = p_usd / fx
-        except Exception:
-            continue
-
-    wr = weekly_raw.copy()
-    wr["date"] = pd.to_datetime(wr["date"], utc=True).dt.normalize()
-
-    end_day = pd.Timestamp(test_params["end_date"])
-    end_day = (
-        end_day.tz_localize("UTC")
-        if end_day.tzinfo is None
-        else end_day.tz_convert("UTC")
-    ).normalize()
-
-    eligible_rows = []
-    for _, row in wr.iterrows():
-        monday = pd.Timestamp(row["date"]).normalize()
-        if monday + pd.Timedelta(days=6) > end_day:
-            continue
-        # Require valid prices for all seven days so comparisons are identical.
-        if all((monday + pd.Timedelta(days=d)) in price_lookup for d in range(7)):
-            eligible_rows.append(row)
-
-    if not eligible_rows:
-        return {}
-
-    eligible_raw = pd.DataFrame(eligible_rows).reset_index(drop=True)
-
-    # Recalculate the causal weekly budget after restricting to complete weeks.
-    # This keeps total capital exactly equal across every timing candidate.
-    schedule_df, schedule_sm = apply_causal_budget_allocator(
-        eligible_raw,
-        total_budget_aud=float(total_budget_aud),
-        fee_pct=float(fee_pct),
-    )
-    if schedule_df.empty or not schedule_sm:
-        return {}
-
-    schedule_df["date"] = pd.to_datetime(schedule_df["date"], utc=True).dt.normalize()
-
-    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-    def replay_days(day_numbers):
-        btc = 0.0
-        gross = 0.0
-        fees = 0.0
-        week_rows = []
-
-        for _, row in schedule_df.iterrows():
-            monday = pd.Timestamp(row["date"]).normalize()
-            weekly_amount = float(row["actual_buy_aud"])
-            if weekly_amount <= 0:
-                continue
-
-            piece = weekly_amount / len(day_numbers)
-            week_btc = 0.0
-            for d in day_numbers:
-                target = monday + pd.Timedelta(days=int(d))
-                price_aud = float(price_lookup[target])
-                fee = piece * float(fee_pct)
-                net = max(0.0, piece - fee)
-                bought = net / price_aud if price_aud > 0 else 0.0
-                btc += bought
-                week_btc += bought
-                gross += piece
-                fees += fee
-
-            week_rows.append(
-                {
-                    "week": monday,
-                    "gross_aud": weekly_amount,
-                    "btc_bought": week_btc,
-                }
-            )
-
-        avg_cost = gross / btc if btc > 0 else np.nan
-        return {
-            "btc": float(btc),
-            "gross_aud": float(gross),
-            "fees_aud": float(fees),
-            "avg_cost_aud": float(avg_cost) if np.isfinite(avg_cost) else np.nan,
-            "weekly_rows": pd.DataFrame(week_rows),
-        }
-
-    weekday_rows = []
-    weekday_runs = {}
-    for d, name in enumerate(day_names):
-        run = replay_days([d])
-        weekday_runs[name] = run
-        weekday_rows.append(
-            {
-                "Execution": name,
-                "BTC Accumulated": run["btc"],
-                "Average Cost AUD": run["avg_cost_aud"],
-                "Capital AUD": run["gross_aud"],
-            }
-        )
-
-    weekday_df = pd.DataFrame(weekday_rows)
-    monday_btc = float(
-        weekday_df.loc[weekday_df["Execution"] == "Monday", "BTC Accumulated"].iloc[0]
-    )
-    weekday_df["BTC vs Monday %"] = np.where(
-        monday_btc > 0,
-        (weekday_df["BTC Accumulated"] / monday_btc - 1.0) * 100.0,
-        np.nan,
-    )
-    weekday_df = weekday_df.sort_values("BTC Accumulated", ascending=False).reset_index(drop=True)
-
-    split_specs = {
-        "1-day Monday": [0],
-        "3-day Mon/Wed/Fri": [0, 2, 4],
-        "5-day Mon-Fri": [0, 1, 2, 3, 4],
-        "7-day Daily": [0, 1, 2, 3, 4, 5, 6],
-    }
-    split_rows = []
-    for label, days in split_specs.items():
-        run = replay_days(days)
-        split_rows.append(
-            {
-                "Execution": label,
-                "BTC Accumulated": run["btc"],
-                "Average Cost AUD": run["avg_cost_aud"],
-                "Capital AUD": run["gross_aud"],
-            }
-        )
-    split_df = pd.DataFrame(split_rows)
-    split_baseline = float(
-        split_df.loc[split_df["Execution"] == "1-day Monday", "BTC Accumulated"].iloc[0]
-    )
-    split_df["BTC vs Monday %"] = np.where(
-        split_baseline > 0,
-        (split_df["BTC Accumulated"] / split_baseline - 1.0) * 100.0,
-        np.nan,
-    )
-    split_df = split_df.sort_values("BTC Accumulated", ascending=False).reset_index(drop=True)
-
-    # Era stability: use the already-frozen weekly AUD schedule, so each weekday
-    # gets identical capital inside each era.
-    era_specs = [
-        ("2016-2019", pd.Timestamp("2016-01-01", tz="UTC"), pd.Timestamp("2019-12-31", tz="UTC")),
-        ("2020-2022", pd.Timestamp("2020-01-01", tz="UTC"), pd.Timestamp("2022-12-31", tz="UTC")),
-        ("2023-present", pd.Timestamp("2023-01-01", tz="UTC"), end_day),
-    ]
-    era_rows = []
-    for era_name, era_start, era_end in era_specs:
-        era_sched = schedule_df[
-            (schedule_df["date"] >= era_start) & (schedule_df["date"] <= era_end)
-        ].copy()
-        if len(era_sched) < 8:
-            continue
-
-        era_capital = float(era_sched["actual_buy_aud"].sum())
-        results = {}
-        for d, name in enumerate(day_names):
-            btc = 0.0
-            for _, row in era_sched.iterrows():
-                monday = pd.Timestamp(row["date"]).normalize()
-                target = monday + pd.Timedelta(days=d)
-                amount = float(row["actual_buy_aud"])
-                price_aud = float(price_lookup[target])
-                net = amount * (1.0 - float(fee_pct))
-                btc += max(0.0, net) / price_aud
-            results[name] = btc
-
-        best_day = max(results, key=results.get)
-        monday_era = results["Monday"]
-        advantage = (
-            (results[best_day] / monday_era - 1.0) * 100.0
-            if monday_era > 0
-            else np.nan
-        )
-        era_rows.append(
-            {
-                "Era": era_name,
-                "Weeks": int(len(era_sched)),
-                "Capital AUD": era_capital,
-                "Best Day": best_day,
-                "Best vs Monday %": advantage,
-            }
-        )
-    era_df = pd.DataFrame(era_rows)
-
-    # Count the cheapest BTC/AUD weekday in each complete week. This is descriptive
-    # only; it helps show whether a 'best day' is broad or driven by a few episodes.
-    cheapest_counts = {name: 0 for name in day_names}
-    for _, row in schedule_df.iterrows():
-        monday = pd.Timestamp(row["date"]).normalize()
-        prices = {
-            day_names[d]: float(price_lookup[monday + pd.Timedelta(days=d)])
-            for d in range(7)
-        }
-        cheapest_counts[min(prices, key=prices.get)] += 1
-
-    cheapest_df = pd.DataFrame(
-        {
-            "Day": day_names,
-            "Weeks Cheapest": [cheapest_counts[d] for d in day_names],
-        }
-    )
-    total_weeks = max(int(len(schedule_df)), 1)
-    cheapest_df["Share of Weeks %"] = cheapest_df["Weeks Cheapest"] / total_weeks * 100.0
-    cheapest_df = cheapest_df.sort_values("Weeks Cheapest", ascending=False).reset_index(drop=True)
-
-    return {
-        "weekday": weekday_df,
-        "splits": split_df,
-        "eras": era_df,
-        "cheapest": cheapest_df,
-        "weeks": int(len(schedule_df)),
-        "start": schedule_df["date"].min(),
-        "end": schedule_df["date"].max() + pd.Timedelta(days=6),
-        "capital_aud": float(schedule_df["actual_buy_aud"].sum()),
-    }
-
-
 def apply_bottom_challenger_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD, fee_pct=0.0):
     """Replay frozen R2 with the staged challenger multiplier only on event weeks."""
     if result_df.empty:
@@ -2652,29 +2386,19 @@ with st.sidebar:
 
     st.divider()
 
-    day_map = {
-        "Monday": 0,
-        "Tuesday": 1,
-        "Wednesday": 2,
-        "Thursday": 3,
-        "Friday": 4,
-        "Saturday": 5,
-        "Sunday": 6,
-    }
-
     if mode == "DCA Backtest":
         st.header("DCA Backtest")
 
         saved_bt = browser_state.get("backtest", {}) if isinstance(browser_state, dict) else {}
-        saved_freq = saved_bt.get("frequency", "Weekly")
-        dca_frequency = st.radio(
-            "DCA Frequency",
-            ["Daily", "Weekly"],
-            horizontal=True,
-            index=0 if saved_freq == "Daily" else 1,
-            key="dca_backtest_frequency",
-        )
+        # Execution timing is intentionally fixed after historical testing:
+        # one purchase each Monday. Keep the internal engine value as "Weekly"
+        # so the proven weekly calculations remain unchanged.
+        dca_frequency = "Weekly"
+        selected_day_name = "Monday"
+        selected_day = 0
         dca_base_amount_aud = DEFAULT_FIXED_DCA_AUD
+        st.markdown("**Execution: Monday DCA**")
+        st.caption("One purchase each Monday. Daily and split execution were tested and did not improve BTC accumulation.")
 
         intelligent_dca_budget_aud = st.number_input(
             "Total Budget (AUD)",
@@ -2704,28 +2428,18 @@ with st.sidebar:
         if dca_backtest_start_date >= dca_backtest_end_date:
             st.error("Backtest Start Date must be before Backtest End Date.")
 
-        saved_weekday = saved_bt.get("weekday", "Monday")
-        weekday_names = list(day_map.keys())
-        selected_day_name = st.selectbox(
-            "Weekly Execution Day",
-            weekday_names,
-            index=weekday_names.index(saved_weekday) if saved_weekday in weekday_names else 0,
-            disabled=(dca_frequency != "Weekly"),
-            key="dca_backtest_weekday",
-        )
-        selected_day = day_map[selected_day_name]
         total_capital_aud = 0.0
         frequency = dca_frequency
 
         st.caption(
-            "Same budget and dates. Both strategies deploy sequentially; Smart DCA uses only information available at each execution."
+            "Same budget and dates. Both strategies deploy sequentially every Monday; Smart DCA uses only information available at each execution."
         )
         browser_state["backtest"] = {
-            "frequency": dca_frequency,
+            "frequency": "Monday DCA",
             "budget_aud": float(intelligent_dca_budget_aud),
             "start_date": dca_backtest_start_date.isoformat(),
             "end_date": dca_backtest_end_date.isoformat(),
-            "weekday": selected_day_name,
+            "weekday": "Monday",
         }
         _save_browser_state(browser_state)
 
@@ -3021,7 +2735,7 @@ if mode == "DCA Backtest":
 
     st.header("Simple DCA Backtest")
     st.caption(
-        f"Same A${capital_target:,.0f} budget • {dca_frequency} • "
+        f"Same A${capital_target:,.0f} budget • Monday DCA • "
         f"{dca_backtest_start_date.strftime('%d/%m/%Y')} to "
         f"{dca_backtest_end_date.strftime('%d/%m/%Y')}"
     )
@@ -3048,100 +2762,6 @@ if mode == "DCA Backtest":
         st.metric("Ending Value", f"A${challenger_sm['btc_value_aud']:,.0f}")
         st.metric("Staged Events", f"{challenger_events}")
 
-
-    st.subheader("Execution Timing Research")
-    st.caption(
-        "Research only — no strategy change. The weekly Frozen-R2 DCA amount is decided once on Monday "
-        "and then held fixed while only the execution day is changed. All candidates use the same complete "
-        "weeks and exactly the same total capital."
-    )
-
-    with st.spinner("Testing weekday and split-execution timing..."):
-        timing_test = run_execution_timing_research(
-            df_full,
-            params,
-            capital_target,
-            smart_dca_curve,
-            fee_pct=params.get("fee_pct", 0.0),
-        )
-
-    if not timing_test:
-        st.info(
-            "Execution timing research could not be calculated for this date range. "
-            "Try a longer period with complete daily BTC/AUD history."
-        )
-    else:
-        st.caption(
-            f"{timing_test['weeks']} complete weeks • "
-            f"A${timing_test['capital_aud']:,.0f} identical capital • "
-            f"{pd.Timestamp(timing_test['start']).strftime('%d/%m/%Y')} to "
-            f"{pd.Timestamp(timing_test['end']).strftime('%d/%m/%Y')}"
-        )
-
-        weekday_results = timing_test["weekday"].copy()
-        best_weekday = str(weekday_results.iloc[0]["Execution"])
-        best_weekday_adv = float(weekday_results.iloc[0]["BTC vs Monday %"])
-
-        w1, w2 = st.columns([1, 2])
-        with w1:
-            st.metric("Best Historical Weekday", best_weekday)
-            st.metric("BTC Advantage vs Monday", f"{best_weekday_adv:+.3f}%")
-        with w2:
-            display_weekdays = weekday_results.copy()
-            display_weekdays["BTC Accumulated"] = display_weekdays["BTC Accumulated"].map(lambda x: f"{x:.8f}")
-            display_weekdays["Average Cost AUD"] = display_weekdays["Average Cost AUD"].map(lambda x: f"A${x:,.0f}")
-            display_weekdays["Capital AUD"] = display_weekdays["Capital AUD"].map(lambda x: f"A${x:,.0f}")
-            display_weekdays["BTC vs Monday %"] = display_weekdays["BTC vs Monday %"].map(lambda x: f"{x:+.3f}%")
-            st.dataframe(display_weekdays, hide_index=True, width="stretch")
-
-        st.markdown("**Weekly lump sum vs split execution**")
-        split_results = timing_test["splits"].copy()
-        display_splits = split_results.copy()
-        display_splits["BTC Accumulated"] = display_splits["BTC Accumulated"].map(lambda x: f"{x:.8f}")
-        display_splits["Average Cost AUD"] = display_splits["Average Cost AUD"].map(lambda x: f"A${x:,.0f}")
-        display_splits["Capital AUD"] = display_splits["Capital AUD"].map(lambda x: f"A${x:,.0f}")
-        display_splits["BTC vs Monday %"] = display_splits["BTC vs Monday %"].map(lambda x: f"{x:+.3f}%")
-        st.dataframe(display_splits, hide_index=True, width="stretch")
-
-        best_split = split_results.iloc[0]
-        st.caption(
-            f"Best split in this window: {best_split['Execution']} "
-            f"({float(best_split['BTC vs Monday %']):+.3f}% BTC vs Monday lump sum)."
-        )
-
-        era_results = timing_test["eras"]
-        if isinstance(era_results, pd.DataFrame) and not era_results.empty:
-            st.markdown("**Does the best weekday persist across BTC eras?**")
-            era_display = era_results.copy()
-            era_display["Capital AUD"] = era_display["Capital AUD"].map(lambda x: f"A${x:,.0f}")
-            era_display["Best vs Monday %"] = era_display["Best vs Monday %"].map(lambda x: f"{x:+.3f}%")
-            st.dataframe(era_display, hide_index=True, width="stretch")
-
-            unique_winners = era_results["Best Day"].nunique()
-            if unique_winners == 1:
-                st.success(
-                    f"The same weekday ({era_results.iloc[0]['Best Day']}) won in every sufficiently populated era. "
-                    "That is stronger evidence than a full-history winner alone, although it still does not guarantee a future edge."
-                )
-            else:
-                st.warning(
-                    "The winning weekday changes across eras. Treat the full-history winner as weak timing evidence, "
-                    "not as a reliable rule."
-                )
-
-        with st.expander("How often was each weekday actually the cheapest?", expanded=False):
-            cheap_display = timing_test["cheapest"].copy()
-            cheap_display["Share of Weeks %"] = cheap_display["Share of Weeks %"].map(lambda x: f"{x:.1f}%")
-            st.dataframe(cheap_display, hide_index=True, width="stretch")
-            st.caption(
-                "This table is descriptive only. The main ranking above is weighted by the actual frozen weekly "
-                "DCA amounts, which is the relevant measure for BTC accumulated."
-            )
-
-        st.info(
-            "Interpret small differences cautiously. If the best day only beats Monday by a few tenths of a percent "
-            "or the winner changes by era, the practical conclusion is that execution day is not a robust source of edge."
-        )
 
     st.subheader("Verdict")
     if challenger_vs_r2 > 0:
@@ -3481,7 +3101,7 @@ elif mode == "DCA Today":
             <div>
               <div class="v59-title">Current Multiplier <span class="v59-q" title="Effective V5.9 multiplier after R2, Halving Accumulation Zone and any staged Exceptional Bottom event.">?</span></div>
               <div class="v59-mult">{challenger_weight:.2f}×</div>
-              <div class="v59-sub"><b>Base Weekly Allowance</b></div>
+              <div class="v59-sub"><b>Base Monday DCA</b></div>
               <div class="v59-base">A$ {normal_weekly_allowance:,.0f}</div>
             </div>
             <div>
@@ -3532,7 +3152,7 @@ elif mode == "DCA Today":
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
             <div><div class="v59-info-title">How this week's amount is calculated</div>
-            <div class="v59-info-text">This week's DCA amount is your Base Weekly Allowance multiplied by the current R2 multiplier, with tested adjustments from the Halving Accumulation Zone and Exceptional Bottom Zone. Cycle-based context such as the exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other descriptive indicators do not independently change the buy amount.</div></div>
+            <div class="v59-info-text">Monday's DCA amount is your Base Monday DCA multiplied by the current R2 multiplier, with tested adjustments from the Halving Accumulation Zone and Exceptional Bottom Zone. Cycle-based context such as the exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other descriptive indicators do not independently change the buy amount.</div></div>
           </div>
 
           <div class="v59-explain-grid">
@@ -3845,7 +3465,7 @@ elif mode == "DCA Today":
     )
 
     x1, x2, x3 = st.columns(3)
-    x1.metric("Normal Weekly Allowance", f"A${normal_weekly_allowance:,.0f}")
+    x1.metric("Normal Monday DCA", f"A${normal_weekly_allowance:,.0f}")
     x2.metric("Capital Remaining After Challenger Buy", f"A${remaining_after:,.0f}")
     x3.metric("Already Deployed", f"A${deployed:,.0f}")
 
