@@ -1586,7 +1586,12 @@ st.markdown("""
 <style>
 :root { --btc-bg:#071521; --btc-panel:#0a2133; --btc-border:#174c6b; --btc-blue:#13a8ff; --btc-green:#16e6a1; --btc-text:#f5f9fc; }
 .stApp { background: radial-gradient(circle at 50% -15%, #0b2a3e 0%, #071521 40%, #06111b 100%); color:var(--btc-text); }
-.block-container { max-width:1500px; padding-top:1.1rem; padding-bottom:3rem; }
+/* NAS/local Streamlit chrome: keep the dashboard dark edge-to-edge. UI only. */
+[data-testid="stHeader"] { background:transparent!important; height:0!important; min-height:0!important; }
+[data-testid="stToolbar"], [data-testid="stDecoration"], #MainMenu, footer { display:none!important; visibility:hidden!important; }
+[data-testid="stAppViewContainer"] { background:transparent!important; }
+[data-testid="stMain"] { background:transparent!important; }
+.block-container { max-width:1500px; padding-top:.65rem; padding-bottom:3rem; }
 h1,h2,h3,h4 { color:#f5f9fc!important; letter-spacing:-.02em; }
 p,label,.stCaption { color:#dce8f0; }
 [data-testid="stSidebar"] { background:#06131f; border-right:1px solid #123c57; }
@@ -1602,7 +1607,114 @@ p,label,.stCaption { color:#dce8f0; }
 [data-testid="stDataFrame"],[data-testid="stTable"] { border:1px solid #174c6b; border-radius:10px; overflow:hidden; }
 [data-testid="stAlert"] { border-radius:10px; border:1px solid #1d6085; }
 hr { border-color:#174c6b!important; }
+/* Robust local/NAS Streamlit header removal across old/new DOM variants. */
+header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader, [data-testid="stAppHeader"] { display:none!important; visibility:hidden!important; height:0!important; min-height:0!important; background:#071521!important; }
+.stAppToolbar, [data-testid="stToolbar"], [data-testid="stAppToolbar"], [data-testid="stDecoration"], #MainMenu { display:none!important; visibility:hidden!important; height:0!important; }
+[data-testid="stMainBlockContainer"], [data-testid="stAppViewBlockContainer"], .block-container { padding-top:.45rem!important; margin-top:0!important; }
+header, [class*="stAppHeader"] { background:#071521!important; }
+
 [data-testid="stPlotlyChart"],[data-testid="stVegaLiteChart"] { background:#081d2d; border:1px solid #174c6b; border-radius:12px; padding:.35rem; }
+
+/* DS220+ local Streamlit: remove reserved top shell, not just toolbar contents. */
+:root, html, body, #root {
+    --header-height: 0rem !important;
+    background: #071521 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+#root, #root > div, .stApp, [data-testid="stAppViewContainer"] {
+    background: #071521 !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    top: 0 !important;
+}
+header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader,
+[data-testid="stAppHeader"], .stAppToolbar, [data-testid="stToolbar"],
+[data-testid="stAppToolbar"], [data-testid="stDecoration"], #MainMenu {
+    display: none !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    top: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+}
+/* Streamlit 1.50+ can reserve the header height on the main element even when the header is hidden. */
+.stMain, [data-testid="stMain"], main, section.main {
+    background: #071521 !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    top: 0 !important;
+}
+[data-testid="stMainBlockContainer"], [data-testid="stAppViewBlockContainer"],
+.main .block-container, .block-container {
+    margin-top: 0 !important;
+    padding-top: 0.35rem !important;
+}
+/* Catch any anonymous shell immediately above the main content. */
+[data-testid="stAppViewContainer"] > div,
+[data-testid="stAppViewContainer"] > section {
+    background-color: #071521 !important;
+}
+
+/* ---------------------------------------------------------
+   My Portfolio — force Streamlit input surfaces to dark theme
+   --------------------------------------------------------- */
+[data-baseweb="input"],
+[data-baseweb="input"] > div,
+[data-baseweb="base-input"],
+[data-baseweb="base-input"] > div,
+[data-baseweb="select"] > div {
+    background-color: #071521 !important;
+    color: #f5f9fc !important;
+    border-color: #174c6b !important;
+}
+[data-baseweb="input"] input,
+[data-baseweb="base-input"] input {
+    background-color: #071521 !important;
+    color: #f5f9fc !important;
+    -webkit-text-fill-color: #f5f9fc !important;
+}
+[data-testid="stNumberInput"] button {
+    background-color: #071521 !important;
+    color: #f5f9fc !important;
+    border-color: #174c6b !important;
+}
+[data-testid="stFileUploader"] section,
+[data-testid="stFileUploader"] section > div {
+    background-color: #071521 !important;
+    color: #f5f9fc !important;
+    border-color: #174c6b !important;
+}
+[data-testid="stFileUploader"] button {
+    background-color: #0a2133 !important;
+    color: #f5f9fc !important;
+    border: 1px solid #174c6b !important;
+}
+[data-testid="stDataFrame"],
+[data-testid="stDataEditor"],
+[data-testid="stDataFrame"] > div,
+[data-testid="stDataEditor"] > div {
+    background-color: #071521 !important;
+    border-color: #174c6b !important;
+}
+[data-testid="stDataFrame"] canvas,
+[data-testid="stDataEditor"] canvas {
+    background-color: #071521 !important;
+}
+div[role="listbox"],
+ul[role="listbox"],
+div[role="option"] {
+    background-color: #071521 !important;
+    color: #f5f9fc !important;
+}
+div[role="option"]:hover {
+    background-color: #0a2133 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -2546,7 +2658,26 @@ elif mode == "My Portfolio":
 
     saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
     saved_rows = saved_portfolio.get("rows", [])
-    portfolio_df = pd.DataFrame(saved_rows) if isinstance(saved_rows, list) and saved_rows else pd.DataFrame(columns=portfolio_cols)
+
+    # Reliable editing model:
+    # keep one authoritative copy in Streamlit session state and submit all
+    # portfolio edits as one transaction. st.form prevents data_editor from
+    # triggering a rerun for every individual cell, which was the cause of
+    # values sometimes needing to be entered more than once.
+    if "portfolio_live_rows" not in st.session_state:
+        st.session_state["portfolio_live_rows"] = (
+            saved_rows if isinstance(saved_rows, list) else []
+        )
+    if "portfolio_live_starting_capital" not in st.session_state:
+        st.session_state["portfolio_live_starting_capital"] = float(
+            saved_portfolio.get("starting_capital_aud", 500000.0)
+        )
+
+    portfolio_df = (
+        pd.DataFrame(st.session_state["portfolio_live_rows"])
+        if st.session_state["portfolio_live_rows"]
+        else pd.DataFrame(columns=portfolio_cols)
+    )
     for col in portfolio_cols:
         if col not in portfolio_df.columns:
             portfolio_df[col] = "" if col in ("Date", "Asset") else 0.0
@@ -2556,32 +2687,23 @@ elif mode == "My Portfolio":
         "Load portfolio CSV (optional)", type=["csv"], key="portfolio_csv_upload"
     )
     if uploaded_portfolio is not None:
-        try:
-            portfolio_df = pd.read_csv(uploaded_portfolio)
-            for col in portfolio_cols:
-                if col not in portfolio_df.columns:
-                    if col == "Asset":
-                        portfolio_df[col] = "ASX:IBIT"
-                    elif col == "Date":
-                        portfolio_df[col] = ""
-                    else:
-                        portfolio_df[col] = 0.0
-            portfolio_df = portfolio_df[portfolio_cols]
-        except Exception as exc:
-            st.error(f"Could not read portfolio CSV: {exc}")
-            portfolio_df = pd.DataFrame(columns=portfolio_cols)
-
-    starting_portfolio_capital = st.number_input(
-        "Starting Deployment Capital (AUD)",
-        min_value=0.0,
-        value=float(saved_portfolio.get(
-            "starting_capital_aud",
-            st.session_state.get("portfolio_starting_capital", 500000.0)
-        )),
-        step=10000.0,
-        format="%.2f",
-        key="portfolio_starting_capital_input",
-    )
+        upload_token = getattr(uploaded_portfolio, "file_id", None) or getattr(uploaded_portfolio, "name", "uploaded")
+        if st.session_state.get("portfolio_last_upload_token") != upload_token:
+            try:
+                uploaded_df = pd.read_csv(uploaded_portfolio)
+                for col in portfolio_cols:
+                    if col not in uploaded_df.columns:
+                        if col == "Asset":
+                            uploaded_df[col] = "ASX:IBIT"
+                        elif col == "Date":
+                            uploaded_df[col] = ""
+                        else:
+                            uploaded_df[col] = 0.0
+                portfolio_df = uploaded_df[portfolio_cols]
+                st.session_state["portfolio_live_rows"] = portfolio_df.to_dict(orient="records")
+                st.session_state["portfolio_last_upload_token"] = upload_token
+            except Exception as exc:
+                st.error(f"Could not read portfolio CSV: {exc}")
 
     st.subheader("Purchases")
     st.caption(
@@ -2590,8 +2712,7 @@ elif mode == "My Portfolio":
         "and calculates BTC-equivalent exposure. For Direct BTC, enter the actual BTC received."
     )
 
-    # Restore the currently known ASX:IBIT purchase history when no CSV is loaded.
-    # These are the five entries visible in the user's portfolio screenshot.
+    # Restore the original starter rows only when there is no saved portfolio.
     if portfolio_df.empty:
         portfolio_df = pd.DataFrame([
             {
@@ -2635,41 +2756,71 @@ elif mode == "My Portfolio":
                 "BTC AUD Price": 0.0,
             },
         ])
+        st.session_state["portfolio_live_rows"] = portfolio_df.to_dict(orient="records")
 
-    edited_portfolio = st.data_editor(
-        portfolio_df,
-        num_rows="dynamic",
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "Date": st.column_config.TextColumn(
-                "Date (DD/MM/YY)",
-                help="Australian date format, e.g. 02/09/26",
-            ),
-            "Asset": st.column_config.SelectboxColumn(
+    with st.form("portfolio_edit_form", clear_on_submit=False):
+        starting_portfolio_capital = st.number_input(
+            "Starting Deployment Capital (AUD)",
+            min_value=0.0,
+            value=float(st.session_state["portfolio_live_starting_capital"]),
+            step=10000.0,
+            format="%.2f",
+            key="portfolio_starting_capital_form",
+        )
+
+        edited_portfolio = st.data_editor(
+            portfolio_df,
+            num_rows="dynamic",
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "Date": st.column_config.TextColumn(
+                    "Date (DD/MM/YY)",
+                    help="Australian date format, e.g. 02/09/26",
+                ),
+                "Asset": st.column_config.SelectboxColumn(
+                    "Asset",
+                    options=["ASX:IBIT", "Direct BTC"],
+                    required=True,
+                ),
+                "AUD Spent": st.column_config.NumberColumn(
+                    "AUD Spent", min_value=0.0, format="A$%.2f"
+                ),
+                "Brokerage / Fee AUD": st.column_config.NumberColumn(
+                    "Brokerage / Fee AUD", min_value=0.0, default=3.0, format="A$%.2f"
+                ),
+                "Units / BTC Received": st.column_config.NumberColumn(
+                    "Units / BTC Received", min_value=0.0, format="%.8f"
+                ),
+            },
+            column_order=[
+                "Date",
                 "Asset",
-                options=["ASX:IBIT", "Direct BTC"],
-                required=True,
-            ),
-            "AUD Spent": st.column_config.NumberColumn(
-                "AUD Spent", min_value=0.0, format="A$%.2f"
-            ),
-            "Brokerage / Fee AUD": st.column_config.NumberColumn(
-                "Brokerage / Fee AUD", min_value=0.0, default=3.0, format="A$%.2f"
-            ),
-            "Units / BTC Received": st.column_config.NumberColumn(
-                "Units / BTC Received", min_value=0.0, format="%.8f"
-            ),
-        },
-        column_order=[
-            "Date",
-            "Asset",
-            "AUD Spent",
-            "Brokerage / Fee AUD",
-            "Units / BTC Received",
-        ],
-        key="portfolio_editor",
-    )
+                "AUD Spent",
+                "Brokerage / Fee AUD",
+                "Units / BTC Received",
+            ],
+            key="portfolio_editor_form",
+        )
+        portfolio_submit = st.form_submit_button(
+            "Save Portfolio Changes",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if portfolio_submit:
+        st.session_state["portfolio_live_rows"] = edited_portfolio[portfolio_cols].to_dict(orient="records")
+        st.session_state["portfolio_live_starting_capital"] = float(starting_portfolio_capital)
+        st.session_state["portfolio_starting_capital"] = float(starting_portfolio_capital)
+        st.session_state["portfolio_save_pending"] = True
+    else:
+        # Outside a submit rerun, calculations use the last committed state.
+        edited_portfolio = pd.DataFrame(st.session_state["portfolio_live_rows"])
+        for col in portfolio_cols:
+            if col not in edited_portfolio.columns:
+                edited_portfolio[col] = "" if col in ("Date", "Asset") else 0.0
+        edited_portfolio = edited_portfolio[portfolio_cols]
+        starting_portfolio_capital = float(st.session_state["portfolio_live_starting_capital"])
 
     clean = edited_portfolio.copy()
     for col in ["AUD Spent", "Brokerage / Fee AUD", "Units / BTC Received", "BTC AUD Price"]:
@@ -2936,15 +3087,25 @@ elif mode == "My Portfolio":
     )
 
     # Automatic browser persistence for portfolio + decision history.
-    browser_state["portfolio"] = {
-        "starting_capital_aud": float(starting_portfolio_capital),
-        "capital_remaining_aud": float(capital_remaining),
-        "rows": export_clean[portfolio_cols].to_dict(orient="records"),
-    }
-    _save_shared_portfolio(browser_state["portfolio"])
-    shared_portfolio = browser_state["portfolio"].copy()
+    # Browser-local online version: commit portfolio only after the form submit.
+    # Session state remains authoritative during the current browser session.
     browser_state["decision_rows"] = edited_decisions[decision_cols].to_dict(orient="records")
-    _save_browser_state(browser_state)
+
+    if st.session_state.pop("portfolio_save_pending", False):
+        browser_state["portfolio"] = {
+            "starting_capital_aud": float(starting_portfolio_capital),
+            "capital_remaining_aud": float(capital_remaining),
+            "rows": export_clean[portfolio_cols].to_dict(orient="records"),
+        }
+        _save_shared_portfolio(browser_state["portfolio"])
+        shared_portfolio = browser_state["portfolio"].copy()
+        _save_browser_state(browser_state)
+        st.success(
+            "Portfolio saved in this browser. Changes are committed only when you press “Save Portfolio Changes”."
+        )
+    else:
+        _save_browser_state(browser_state)
+        st.caption("Portfolio changes are committed only when you press “Save Portfolio Changes”.")
 
     if LOCAL_STORAGE_AVAILABLE:
         st.success(
