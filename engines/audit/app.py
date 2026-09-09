@@ -1,6 +1,7 @@
 import os
 import io
 import requests
+import time
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -51,11 +52,41 @@ def _pick(frame, aliases):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_endpoint(endpoint, start_date, end_date, token):
-    params={'startday':pd.Timestamp(start_date).strftime('%Y-%m-%d'),
-            'endday':pd.Timestamp(end_date).strftime('%Y-%m-%d')}
+    params={
+        'startday':pd.Timestamp(start_date).strftime('%Y-%m-%d'),
+        'endday':pd.Timestamp(end_date).strftime('%Y-%m-%d'),
+    }
     h=HEADERS.copy()
-    if token: h['Authorization']=f'Bearer {token}'
+    if token:
+        # BGeometrics accepts Bearer auth; the token query parameter is also
+        # documented, so send both for maximum compatibility.
+        h['Authorization']=f'Bearer {token}'
+        params['token']=token
+
     r=requests.get(f'{BASE}/{endpoint}',params=params,headers=h,timeout=45)
+
+    if r.status_code == 429:
+        remaining=r.headers.get('X-RateLimit-Remaining','0')
+        reset=r.headers.get('X-RateLimit-Reset','')
+        retry=r.headers.get('Retry-After','')
+        msg='BGeometrics rate limit reached (HTTP 429). '
+        if not token:
+            msg += 'No API token was detected, so the free/IP quota is being used. '
+        else:
+            msg += 'A token was detected, but BGeometrics still reports that the quota is exhausted. '
+        if retry:
+            msg += f'Retry-After: {retry}s. '
+        if reset:
+            msg += f'Rate-limit reset: {reset}. '
+        msg += f'Remaining reported: {remaining}.'
+        raise RuntimeError(msg)
+
+    if r.status_code in (401,403):
+        raise RuntimeError(
+            f'BGeometrics authentication failed (HTTP {r.status_code}). '
+            'Check BGEOMETRICS_TOKEN in Streamlit Secrets.'
+        )
+
     r.raise_for_status()
     payload=r.json()
     if isinstance(payload,dict):
@@ -159,7 +190,14 @@ st.write(f'Frozen sample: **{start} → {end}**, {len(base):,} Monday observatio
 
 token=get_token()
 if not token:
-    st.warning('No BGEOMETRICS_TOKEN found in Streamlit secrets. The free API may return only the last 4 years, which is not enough for the full audit. Add the same token already used by your main app for full-history testing.')
+    st.error(
+        'No BGEOMETRICS_TOKEN was detected. This audit needs 9 full-history API calls, '
+        'while the unauthenticated/free quota is too small and only exposes the last 4 years. '
+        'Add the same BGEOMETRICS_TOKEN used by the main app, then rerun.'
+    )
+    st.stop()
+else:
+    st.success('BGeometrics token detected. The token value is not displayed.')
 
 if not st.button('Run public-model audit',type='primary'):
     st.stop()
@@ -167,23 +205,48 @@ if not st.button('Run public-model audit',type='primary'):
 progress=st.progress(0,text='Fetching candidate metrics…')
 merged=base.copy()
 fetch_status=[]
+rate_limited=False
 for i,(name,(endpoint,aliases)) in enumerate(CANDIDATES.items(),start=1):
     try:
         f=fetch_endpoint(endpoint,start,end,token)
         c=_pick(f,aliases)
         if c is None:
-            fetch_status.append((name,endpoint,0,'No numeric field found')); continue
-        s=pd.to_numeric(f[c],errors='coerce')
-        # daily -> Monday as-of, never use future observations
-        daily=s.sort_index().rename(name)
-        left=pd.DataFrame(index=merged.index).reset_index().rename(columns={'date':'audit_date','index':'audit_date'})
-        right=daily.reset_index().rename(columns={'date':'metric_date'})
-        asof=pd.merge_asof(left.sort_values('audit_date'),right.sort_values('metric_date'),left_on='audit_date',right_on='metric_date',direction='backward')
-        merged[name]=pd.to_numeric(asof[name],errors='coerce').to_numpy()
-        fetch_status.append((name,endpoint,int(merged[name].notna().sum()),'OK'))
+            fetch_status.append((name,endpoint,0,'No numeric field found'))
+        else:
+            s=pd.to_numeric(f[c],errors='coerce')
+            # daily -> Monday as-of, never use future observations
+            daily=s.sort_index().rename(name)
+            left=pd.DataFrame(index=merged.index).reset_index().rename(columns={'date':'audit_date','index':'audit_date'})
+            right=daily.reset_index().rename(columns={'date':'metric_date'})
+            asof=pd.merge_asof(
+                left.sort_values('audit_date'),right.sort_values('metric_date'),
+                left_on='audit_date',right_on='metric_date',direction='backward'
+            )
+            merged[name]=pd.to_numeric(asof[name],errors='coerce').to_numpy()
+            fetch_status.append((name,endpoint,int(merged[name].notna().sum()),'OK'))
     except Exception as e:
-        fetch_status.append((name,endpoint,0,str(e)[:120]))
+        msg=str(e)
+        fetch_status.append((name,endpoint,0,msg[:220]))
+        if '429' in msg or 'rate limit' in msg.lower():
+            rate_limited=True
+            # Do not burn additional quota once the provider has rejected a request.
+            break
     progress.progress(i/len(CANDIDATES),text=f'Fetched {i}/{len(CANDIDATES)} candidates')
+    # Gentle pacing. Advanced/Premium limits are far above this, but this avoids bursts.
+    time.sleep(0.35)
+
+if rate_limited:
+    progress.empty()
+    st.subheader('2. Data coverage')
+    status_df=pd.DataFrame(fetch_status,columns=['Candidate','Endpoint','Monday observations','Status'])
+    st.dataframe(status_df,use_container_width=True,hide_index=True)
+    st.error(
+        'BGeometrics has rate-limited the audit, so I stopped immediately instead of '
+        'sending the remaining requests. Wait for the provider quota to reset and rerun. '
+        'If this happens again with a paid token, verify that BGEOMETRICS_TOKEN is valid in '
+        'this Streamlit app and check the token usage/quota in the BGeometrics portal.'
+    )
+    st.stop()
 
 # Derived ratio for Investor Price: spot / investor price, higher = richer.
 if 'Investor Price' in merged.columns:
@@ -229,7 +292,12 @@ if not res.empty:
 st.subheader('3. Main screening results')
 st.caption('Spearman interpretation: for a risk/valuation metric, more negative is better because higher risk should precede lower future returns. “Residual” asks whether the candidate still contains information after removing its linear relationship with frozen R2.')
 show_cols=['Candidate','Coverage','Redundancy vs R2','4w candidate','12w candidate','26w candidate','52w candidate','26w residual','52w residual','Negative 26w eras','Screen']
-st.dataframe(res[show_cols].style.format({c:'{:+.3f}' for c in show_cols if c not in {'Candidate','Coverage','Negative 26w eras','Screen'}}),use_container_width=True,hide_index=True)
+if res.empty:
+    st.warning('No candidate produced enough usable observations to calculate screening results.')
+else:
+    existing=[c for c in show_cols if c in res.columns]
+    fmt={c:'{:+.3f}' for c in existing if c not in {'Candidate','Coverage','Negative 26w eras','Screen'}}
+    st.dataframe(res[existing].style.format(fmt),use_container_width=True,hide_index=True)
 
 st.subheader('4. Era stability — 26 week horizon')
 era_df=pd.DataFrame(era_rows)
