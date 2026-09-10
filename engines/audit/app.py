@@ -43,6 +43,7 @@ MASTER_DATASETS = [
     {"label":"Supply in Profit %", "endpoint":"supply-in-profit-pct", "priority":1, "category":"Profitability", "csv":True, "aliases":["supplyInProfitPct","supply_in_profit_pct","percent","pct","value"]},
     {"label":"NVT Signal", "endpoint":"nvt-signal", "priority":1, "category":"Network valuation", "csv":False, "aliases":["nvtSignal","nvt_signal","nvts","value"]},
     {"label":"Investor Price", "endpoint":"investor-price", "priority":1, "category":"Cost-basis valuation", "csv":False, "aliases":["investorPrice","investor_price","price","value"]},
+    {"label":"ThermoCap Multiple", "endpoint":"thermocap-multiple", "priority":1, "category":"Miner valuation", "csv":False, "aliases":["thermocapMultiple","thermocap_multiple","multiple","value"]},
 
     # Priority 2 — close relatives / strong research controls
     {"label":"MVRV", "endpoint":"mvrv", "priority":2, "category":"Valuation", "csv":False, "aliases":["mvrv","value"]},
@@ -97,6 +98,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Pat
 CACHE_DIR = SCRIPT_DIR / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 BUNDLED_CACHE = CACHE_DIR / "public_model_cache.csv"
+MASTER_CACHE = CACHE_DIR / "btc_onchain_master_cache.csv"
+FROZEN_BENCHMARK = CACHE_DIR / "btc_v5_9_r2_frozen.csv"
 
 
 def get_token():
@@ -177,6 +180,39 @@ def save_runtime_cache(cache):
     except Exception:
         # Runtime may be read-only. Download button still works.
         pass
+
+
+def save_runtime_master_cache(cache):
+    """Best-effort persistence of the reusable master on-chain cache."""
+    if cache is None or cache.empty:
+        return
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = cache.copy()
+        tmp.index.name = "date"
+        tmp.reset_index().to_csv(MASTER_CACHE, index=False)
+    except Exception:
+        # Streamlit Cloud may be ephemeral/read-only. The download button remains authoritative.
+        pass
+
+
+def dataset_cached(cache, ds):
+    """True when this endpoint already has any locally cached observations.
+
+    Deliberately conservative for quota protection: once an endpoint has been acquired,
+    it is skipped by default even if BGeometrics only exposed a partial historical window.
+    Existing datasets are refreshed only when the user explicitly opts in.
+    """
+    if cache is None or cache.empty:
+        return False
+    prefix = f"raw__{ds['endpoint'].replace('-', '_')}__"
+    cols = [c for c in cache.columns if str(c).startswith(prefix)]
+    if ds["label"] in cache.columns:
+        cols.append(ds["label"])
+    for c in cols:
+        if pd.to_numeric(cache[c], errors="coerce").notna().any():
+            return True
+    return False
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -442,167 +478,234 @@ def missing_ranges(cache, column, start, end):
     return [(a, b) for a, b in ranges if a <= b]
 
 
-st.title("BTC Broad Public Model Audit — Cache First")
+st.title("BTC Public Model Audit — Guided Mode")
 st.caption(
-    "Research only. Existing local data is used first; BGeometrics is contacted only for genuinely missing history. "
-    "Nothing is promoted automatically into V5.9 or Production."
+    "Research only. This page is designed to be used in order: 1 → 2 → 3 → 4. "
+    "Existing BGeometrics data is reused first so quota is not wasted."
 )
 
-with st.expander("Why cache-first", expanded=True):
+st.info(
+    "**Normal use:** ① check the benchmark → ② confirm the cache → "
+    "③ download the next missing BGeometrics batch when quota is available → "
+    "④ run the audit. You normally do not need to upload any cache files manually."
+)
+
+with st.expander("What this page does / safety rules", expanded=False):
     st.markdown(
         """
-- **No repeat downloads:** historical observations already stored locally are reused.
-- **Incremental updates only:** when the API is available, only history before/after the stored range is requested.
-- **Rate-limit safe:** if BGeometrics returns HTTP 429, the audit continues with whatever is already cached.
-- **Portable cache:** download the consolidated cache and keep it with the website so future runs do not start from zero.
-"""
+- **Never re-downloads a cached endpoint by default.**
+- **Stops immediately on HTTP 429** and keeps what was already downloaded.
+- **Keeps one API request in reserve** when BGeometrics reports the remaining quota.
+- **Does not change V5.9 Research or V5.8.2 Production.**
+- The **Refresh already-cached datasets** option is hidden under Advanced settings and is OFF by default.
+        """
     )
 
-st.subheader("1. Frozen V5.9 benchmark")
-uploaded = st.file_uploader("Upload btc_v5_9_r2_frozen.csv", type=["csv"], key="frozen")
-if uploaded is None:
-    st.info("Upload the frozen V5.9 R2 CSV to begin.")
+# -----------------------------------------------------------------------------
+# STEP 1 — Frozen benchmark
+# -----------------------------------------------------------------------------
+st.header("① Benchmark")
+st.caption("Use the frozen V5.9 R2 benchmark. The bundled file is used automatically when present.")
+
+benchmark_upload = st.file_uploader(
+    "Optional replacement benchmark (normally leave empty)",
+    type=["csv"],
+    key="frozen",
+    help="Only upload a different btc_v5_9_r2_frozen.csv if we deliberately want to replace the bundled benchmark.",
+)
+
+benchmark_source = benchmark_upload if benchmark_upload is not None else (FROZEN_BENCHMARK if FROZEN_BENCHMARK.exists() else None)
+if benchmark_source is None:
+    st.warning("Benchmark missing. Upload btc_v5_9_r2_frozen.csv once, or bundle it in engines/audit/cache/.")
     st.stop()
 
 try:
-    base = prepare_frozen(uploaded)
+    base = prepare_frozen(benchmark_source)
 except Exception as e:
-    st.error(str(e))
+    st.error(f"Benchmark could not be read: {e}")
     st.stop()
 
 start = base.index.min().date()
 end = base.index.max().date()
-st.write(f"Frozen sample: **{start} → {end}**, {len(base):,} Monday observations")
+st.success(f"Benchmark ready: {start} → {end} • {len(base):,} Monday observations")
 
-st.subheader("2. Local historical cache")
+# -----------------------------------------------------------------------------
+# STEP 2 — Cache status
+# -----------------------------------------------------------------------------
+st.header("② Existing data cache")
+st.caption("The bundled master cache is loaded automatically before any BGeometrics request is considered.")
+
 bundled = read_cache_csv(BUNDLED_CACHE) if BUNDLED_CACHE.exists() else pd.DataFrame()
-extra_cache_file = st.file_uploader(
-    "Optional: upload a previously downloaded public_model_cache.csv",
-    type=["csv"],
-    key="cache",
-    help="Useful after a Streamlit redeploy or when moving the app to another machine.",
-)
+bundled_master = read_cache_csv(MASTER_CACHE) if MASTER_CACHE.exists() else pd.DataFrame()
+
+with st.expander("Optional recovery/import — only use after a redeploy or when moving files", expanded=False):
+    extra_cache_file = st.file_uploader(
+        "Import public_model_cache.csv",
+        type=["csv"], key="cache",
+        help="Optional. Leave empty during normal use.",
+    )
+    master_cache_file = st.file_uploader(
+        "Import btc_onchain_master_cache.csv",
+        type=["csv"], key="master_cache_upload",
+        help="Optional. Leave empty when the current master cache is bundled with the website.",
+    )
+
 extra = read_cache_csv(extra_cache_file) if extra_cache_file is not None else pd.DataFrame()
-cache = combine_caches(bundled, extra)
+uploaded_master = read_cache_csv(master_cache_file) if master_cache_file is not None else pd.DataFrame()
+cache = combine_caches(bundled, bundled_master, extra, uploaded_master)
+
+cached_count = sum(dataset_cached(cache, d) for d in MASTER_DATASETS)
+missing_count = len(MASTER_DATASETS) - cached_count
+m1, m2, m3 = st.columns(3)
+m1.metric("Datasets cached", cached_count)
+m2.metric("Still missing", missing_count)
+m3.metric("Master rows", 0 if cache.empty else f"{len(cache):,}")
 
 if cache.empty:
-    st.warning("No local public-model cache found yet. The audit can still run, but missing metrics require BGeometrics.")
+    st.warning("No cache is loaded yet. The next download would start from zero.")
 else:
-    coverage_rows = []
-    for name in CANDIDATES:
-        a, b, n = cache_span(cache, name)
-        coverage_rows.append({
-            "Candidate": name,
-            "Cached rows": n,
-            "First cached": "—" if a is None else a.date().isoformat(),
-            "Last cached": "—" if b is None else b.date().isoformat(),
-        })
-    st.dataframe(pd.DataFrame(coverage_rows), use_container_width=True, hide_index=True)
+    st.success("Cache loaded. Cached endpoints will be skipped automatically.")
 
-# Download is available even before an API run.
+plan_rows = []
+for d in MASTER_DATASETS:
+    prefix = f"raw__{d['endpoint'].replace('-', '_')}__"
+    endpoint_cols = [c for c in cache.columns if str(c).startswith(prefix)] if not cache.empty else []
+    if (not cache.empty) and d["label"] in cache.columns:
+        endpoint_cols.append(d["label"])
+    union_index = pd.DatetimeIndex([])
+    for c in dict.fromkeys(endpoint_cols):
+        z = pd.to_numeric(cache[c], errors="coerce").dropna()
+        union_index = union_index.union(z.index)
+    plan_rows.append({
+        "#": len(plan_rows) + 1,
+        "Priority": d["priority"],
+        "Dataset": d["label"],
+        "Cached?": "YES — SKIP" if len(union_index) else "NO — DOWNLOAD",
+        "Rows": len(union_index),
+        "First": "—" if len(union_index) == 0 else union_index.min().date().isoformat(),
+        "Last": "—" if len(union_index) == 0 else union_index.max().date().isoformat(),
+    })
+plan_df = pd.DataFrame(plan_rows)
+
+with st.expander("Show numbered dataset list", expanded=False):
+    st.dataframe(plan_df, use_container_width=True, hide_index=True)
+
 if not cache.empty:
-    cache_bytes = cache.reset_index().to_csv(index=False).encode()
-    st.download_button("Download current consolidated cache", cache_bytes, "public_model_cache.csv", "text/csv")
+    st.download_button(
+        "Backup current master cache",
+        cache.reset_index().to_csv(index=False).encode(),
+        "btc_onchain_master_cache.csv",
+        "text/csv",
+        key="master_cache_current",
+    )
+
+# -----------------------------------------------------------------------------
+# STEP 3 — Acquire only missing history
+# -----------------------------------------------------------------------------
+st.header("③ Download next missing BGeometrics batch")
 
 token = get_token()
 if token:
-    st.success("BGeometrics token detected. It will only be used for missing history.")
+    st.success("BGeometrics token detected.")
 else:
-    st.info("No BGeometrics token detected. You can still run a local-cache-only audit.")
+    st.warning("No BGeometrics token detected. Downloading is disabled, but the local-cache audit still works.")
 
-use_api = st.checkbox("Fetch missing history from BGeometrics when quota is available", value=True, disabled=not bool(token))
+if missing_count == 0:
+    st.success("All planned datasets are already cached. No BGeometrics download is needed.")
+else:
+    next_missing = [d for d in sorted(MASTER_DATASETS, key=lambda x: (x["priority"], x["label"])) if not dataset_cached(cache, d)]
+    preview = ", ".join(d["label"] for d in next_missing[:5])
+    if len(next_missing) > 5:
+        preview += ", …"
+    st.info(f"Next eligible datasets: **{preview}**")
 
-st.subheader("2A. One-time master on-chain history acquisition")
+with st.expander("Advanced download settings — normally do not change", expanded=False):
+    master_start = st.date_input("Master-history start date", value=MASTER_START_DATE, key="master_start")
+    master_end = st.date_input("Master-history end date", value=dt.date.today(), key="master_end")
+    refresh_existing = st.checkbox(
+        "Refresh already-cached datasets (USES QUOTA)",
+        value=False,
+        key="refresh_existing_master",
+        help="Leave OFF. This bypasses the quota guard for deliberate refresh/retry work only.",
+    )
+
 st.caption(
-    "Prepared for the next quota window. Each dataset is downloaded once, cached locally, and skipped on later runs. "
-    "Priority 1 fills the current audit; priorities 2–3 preserve adjacent raw history for future research. "
-    "Downloading a series does NOT add it to V5.9."
-)
-plan_df = pd.DataFrame([{
-    "Priority": d["priority"], "Dataset": d["label"], "Category": d["category"],
-    "Endpoint": d["endpoint"], "CSV export": "Yes" if d.get("csv") else "No / JSON"
-} for d in MASTER_DATASETS]).sort_values(["Priority", "Category", "Dataset"])
-st.dataframe(plan_df, use_container_width=True, hide_index=True)
-
-master_start = st.date_input("Master-history start date", value=MASTER_START_DATE, key="master_start")
-master_end = st.date_input("Master-history end date", value=dt.date.today(), key="master_end")
-st.info(
-    "Quota-safe behaviour: datasets are processed in priority order; already-cached datasets are skipped; "
-    "the first HTTP 429 stops all further requests. The exact X-RateLimit-Reset header is converted to Brisbane time."
+    f"Quota guard active: **{cached_count} cached endpoints will not be requested again**. "
+    f"Only {missing_count} missing endpoints are eligible."
 )
 
-if st.button("Download next master-cache batch", disabled=not bool(token), key="master_download"):
+if st.button(
+    "DOWNLOAD NEXT MISSING BATCH",
+    type="primary",
+    disabled=(not bool(token)) or (missing_count == 0),
+    key="master_download",
+):
     master_rows = []
     master_rate = None
     master_limited = False
+    requests_made = 0
     for ds in sorted(MASTER_DATASETS, key=lambda x: (x["priority"], x["label"])):
-        prefix = f"raw__{ds['endpoint'].replace('-', '_')}__"
-        already = (not cache.empty) and (
-            any(str(c).startswith(prefix) for c in cache.columns) or ds["label"] in cache.columns
-        )
-        if already:
-            master_rows.append({"Dataset": ds["label"], "Priority": ds["priority"], "Status": "Already cached — skipped"})
+        already = dataset_cached(cache, ds)
+        if already and not refresh_existing:
             continue
         try:
             frame, master_rate = fetch_master_dataset(ds, master_start, master_end, token)
+            requests_made += 1
             if frame.empty:
                 status = "No usable rows returned"
             else:
                 cache = combine_caches(cache, frame)
                 a, b = frame.index.min().date(), frame.index.max().date()
                 status = f"Saved {len(frame):,} rows ({a} → {b})"
-            master_rows.append({"Dataset": ds["label"], "Priority": ds["priority"], "Status": status})
+            master_rows.append({"Dataset": ds["label"], "Status": status})
+            save_runtime_master_cache(cache)
             save_runtime_cache(cache)
-            # Be conservative when the service tells us the window is nearly empty.
-            try:
-                if master_rate and master_rate.get("remaining") is not None and int(master_rate["remaining"]) <= 1:
-                    master_rows.append({"Dataset": "—", "Priority": "—", "Status": "Stopped with one request left as safety buffer"})
-                    break
-            except Exception:
-                pass
-            time.sleep(0.5)
+
+            if master_rate and master_rate.get("remaining") is not None:
+                try:
+                    if int(master_rate["remaining"]) <= 1:
+                        master_rows.append({"Dataset": "—", "Status": "Stopped with one request left as safety buffer"})
+                        break
+                except Exception:
+                    pass
+            time.sleep(1.2)
         except RateLimitError as exc:
             master_rate = exc.rate
             master_limited = True
-            master_rows.append({"Dataset": ds["label"], "Priority": ds["priority"], "Status": str(exc)})
+            master_rows.append({"Dataset": ds["label"], "Status": "HTTP 429 — stopped immediately"})
             break
         except Exception as exc:
-            master_rows.append({"Dataset": ds["label"], "Priority": ds["priority"], "Status": f"Error: {str(exc)[:180]}"})
+            master_rows.append({"Dataset": ds["label"], "Status": f"Error: {str(exc)[:180]}"})
 
+    st.write(f"**API requests used this batch: {requests_made}**")
     if master_rows:
         st.dataframe(pd.DataFrame(master_rows), use_container_width=True, hide_index=True)
     if master_rate:
         st.info("BGeometrics quota: " + rate_text(master_rate))
     if master_limited:
-        st.warning("Quota exhausted. No more requests were sent. Run the same button after the displayed reset; cached datasets will be skipped automatically.")
+        st.warning("Quota reached. The app stopped immediately. Run this same button after the displayed reset; cached datasets will be skipped.")
+
     if not cache.empty:
         st.download_button(
-            "Download master on-chain cache",
+            "SAVE / BACKUP UPDATED MASTER CACHE",
             cache.reset_index().to_csv(index=False).encode(),
             "btc_onchain_master_cache.csv",
             "text/csv",
             key="master_cache_download",
         )
-        meta_rows=[]
-        for ds in MASTER_DATASETS:
-            cols=[c for c in cache.columns if str(c).startswith(f"raw__{ds['endpoint'].replace('-', '_')}__")]
-            if ds["label"] in cache.columns:
-                cols.append(ds["label"])
-            if cols:
-                sub=cache[cols].dropna(how="all")
-                if not sub.empty:
-                    meta_rows.append({"Dataset":ds["label"],"Endpoint":ds["endpoint"],"Priority":ds["priority"],"Columns saved":len(set(cols)),"Rows":len(sub),"First":sub.index.min().date().isoformat(),"Last":sub.index.max().date().isoformat()})
-        if meta_rows:
-            st.download_button(
-                "Download master-cache inventory",
-                pd.DataFrame(meta_rows).to_csv(index=False).encode(),
-                "btc_onchain_master_cache_inventory.csv",
-                "text/csv",
-                key="master_inventory_download",
-            )
 
-st.divider()
-if not st.button("Run cache-first public-model audit", type="primary"):
+# -----------------------------------------------------------------------------
+# STEP 4 — Audit
+# -----------------------------------------------------------------------------
+st.header("④ Run the research audit")
+st.caption(
+    "This uses the data currently available. It may be run even when some datasets are still missing. "
+    "A partial result is not treated as a final strategy decision."
+)
+
+use_api = False  # Important: Step 4 is cache-only. Step 3 is the only place allowed to spend quota.
+
+if not st.button("RUN AUDIT USING CACHED DATA", type="primary", key="run_audit"):
     st.stop()
 
 merged = base.copy()
@@ -610,66 +713,24 @@ fetch_status = []
 rate_limited = False
 last_rate_info = None
 
-for i, (name, (endpoint, aliases)) in enumerate(CANDIDATES.items(), start=1):
-    # Start with whatever we already have.
+for name, (endpoint, aliases) in CANDIDATES.items():
     local_series = pd.Series(dtype=float)
     if not cache.empty and name in cache.columns:
         local_series = pd.to_numeric(cache[name], errors="coerce").dropna().sort_index()
 
-    ranges = missing_ranges(cache, name, start, end)
-    fetched_parts = []
-    status_bits = []
-
-    if ranges and use_api and token and not rate_limited:
-        for a, b in ranges:
-            try:
-                f, rate_info = fetch_endpoint(endpoint, a.date(), b.date(), token)
-                last_rate_info = rate_info
-                c = _pick(f, aliases)
-                if c is None:
-                    status_bits.append(f"No numeric field for {a.date()}→{b.date()}")
-                    continue
-                s = pd.to_numeric(f[c], errors="coerce").dropna().rename(name)
-                fetched_parts.append(s)
-                status_bits.append(f"Fetched {len(s):,} rows {a.date()}→{b.date()}")
-                time.sleep(0.35)
-            except RateLimitError as e:
-                last_rate_info = e.rate
-                status_bits.append(str(e)[:220])
-                rate_limited = True
-                break
-            except Exception as e:
-                status_bits.append(str(e)[:220])
-
-    # Merge local + freshly fetched series. Fresh data wins on duplicate dates.
-    pieces = [s for s in [local_series] + fetched_parts if s is not None and not s.empty]
-    if pieces:
-        combined = pd.concat(pieces).groupby(level=0).last().sort_index()
-        combined.name = name
-        cache = combine_caches(cache, combined.to_frame())
-        merged[name] = attach_metric_asof(merged.index, combined)
+    if not local_series.empty:
+        merged[name] = attach_metric_asof(merged.index, local_series)
         obs = int(merged[name].notna().sum())
+        status = "Cache only — no API call"
     else:
         obs = 0
-
-    if obs and not status_bits:
-        status = "Cache only"
-    elif obs and status_bits:
-        status = "Cache + " + "; ".join(status_bits)
-    elif status_bits:
-        status = "; ".join(status_bits)
-    else:
-        status = "No cached data"
-
+        status = "Not in cache yet"
     fetch_status.append((name, endpoint, obs, status))
-
-# Persist any new observations for this runtime, and always make them downloadable.
-save_runtime_cache(cache)
 
 if "Investor Price" in merged.columns:
     merged["Investor Price"] = merged["price_usd"] / pd.to_numeric(merged["Investor Price"], errors="coerce")
 
-st.subheader("3. Data coverage used in this run")
+st.header("⑤ Audit data coverage")
 status_df = pd.DataFrame(fetch_status, columns=["Candidate", "Endpoint", "Monday observations", "Status"])
 st.dataframe(status_df, use_container_width=True, hide_index=True)
 if rate_limited:
@@ -731,7 +792,7 @@ if not res.empty:
     res["Residual avg 26/52"] = res[["26w residual", "52w residual"]].mean(axis=1)
     res = res.sort_values(["Screen", "Residual avg 26/52"], ascending=[True, True])
 
-st.subheader("4. Main screening results")
+st.header("⑥ Screening results")
 st.caption(
     "For a risk/valuation metric, more negative future-return Spearman is better. "
     "Residual tests whether the candidate adds information beyond frozen R2."
@@ -751,7 +812,7 @@ else:
     fmt = {c: "{:+.3f}" for c in existing if c not in {"Candidate", "Coverage", "Negative 26w eras", "Screen"}}
     st.dataframe(res[existing].style.format(fmt), use_container_width=True, hide_index=True)
 
-st.subheader("5. Era stability — 26 week horizon")
+st.header("⑦ Era stability — 26 week horizon")
 era_df = pd.DataFrame(era_rows)
 if not era_df.empty:
     pivot = era_df.pivot(index="Candidate", columns="Era", values="26w Spearman").reset_index()
@@ -761,7 +822,7 @@ if not era_df.empty:
         hide_index=True,
     )
 
-st.subheader("6. Research verdict")
+st.header("⑧ Research verdict")
 sufficient = 0 if res.empty else int(res["Coverage"].ge(52).sum())
 total_candidates = len(CANDIDATES)
 if sufficient < total_candidates:
@@ -800,5 +861,5 @@ st.download_button(
 
 st.caption(
     "Cache note: runtime file writes can be lost on a Streamlit Cloud redeploy. "
-    "Keep the downloaded public_model_cache.csv with the website (engines/audit/cache/) so the next deploy starts with the accumulated history."
+    "Keep btc_onchain_master_cache.csv with the website under engines/audit/cache/. That is the permanent reusable BGeometrics history cache."
 )
