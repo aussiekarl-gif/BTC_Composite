@@ -13,110 +13,15 @@ jobs:
         with:
           python-version: '3.12'
       - name: Patch parity lab
+        env:
+          PATCH_B64: "ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnAgPSBQYXRoKCdlbmdpbmVzL3NoYXJlZC9wYXJpdHlfYXBwLnB5JykKcyA9IHAucmVhZF90ZXh0KCkKYW5jaG9yID0gJ3N0LmNhcHRpb24oIk5vIGZpbGVzIHdlcmUgd3JpdHRlbiBhbmQgbm8gUHJvZHVjdGlvbi9SZXNlYXJjaCBkYXRhIHNvdXJjZSB3YXMgY2hhbmdlZCBieSB0aGlzIHBhcml0eSBjaGVjay4iKVxuJwppZiBhbmNob3Igbm90IGluIHM6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdhbmNob3Igbm90IGZvdW5kJykKYmxvY2sgPSByJycnCnN0LnN1YmhlYWRlcigiNC4gU2hhZG93IFByb2R1Y3Rpb24gZW5naW5lIHRlc3QiKQpzdC5jYXB0aW9uKAogICAgIlRoaXMgcnVucyB0aGUgYWN0dWFsIFY1LjguMiBQcm9kdWN0aW9uIHJpc2sgZW5naW5lIGFnYWluc3QgdGhlIFNIQURPVy1PTkxZIGNlbnRyYWwgY2FuZGlkYXRlIGV4cG9ydC4gIgogICAgIkl0IGRvZXMgbm90IGNoYW5nZSBQcm9kdWN0aW9uIGFuZCBpcyBub3QgYSBmaW5hbCBwYXJpdHkgcHJvb2YgZm9yIE1WUlYtWi9GZWFyICYgR3JlZWQuIgopCgpzaGFkb3dfY2ZnID0gQ2VudHJhbERhdGFDb25maWcoCiAgICByZXBvc2l0b3J5PWNmZy5yZXBvc2l0b3J5LAogICAgdG9rZW49Y2ZnLnRva2VuLAogICAgcmVmPWNmZy5yZWYsCiAgICBtYXN0ZXJfcGF0aD0ic2hhZG93L3Byb2R1Y3Rpb25faW5wdXRfY2FuZGlkYXRlLmNzdiIsCikKdHJ5OgogICAgc2hhZG93ID0gbG9hZF9tYXN0ZXIoY29uZmlnPXNoYWRvd19jZmcpCmV4Y2VwdCBFeGNlcHRpb24gYXMgZXhjOgogICAgc3Qud2FybmluZygKICAgICAgICAiU2hhZG93IGNhbmRpZGF0ZSBleHBvcnQgaXMgbm90IGF2YWlsYWJsZSBvbiB0aGUgY2VudHJhbC1kYXRhIG1haW4gYnJhbmNoIHlldC4gIgogICAgICAgIGYiT25jZSB0aGUgZGF0YSBQUiBpcyBtZXJnZWQgdGhpcyBzZWN0aW9uIHdpbGwgcnVuIGF1dG9tYXRpY2FsbHkuICh7dHlwZShleGMpLl9fbmFtZV9ffToge2V4Y30pIgogICAgKQplbHNlOgogICAgcmVxdWlyZWRfc2hhZG93ID0gWyJidGNfdXNkIiwgInVzZF9wZXJfYXVkIiwgIm12cnZfeiIsICJmZWFyX2dyZWVkIl0KICAgIG1pc3Npbmdfc2hhZG93ID0gW2MgZm9yIGMgaW4gcmVxdWlyZWRfc2hhZG93IGlmIGMgbm90IGluIHNoYWRvdy5jb2x1bW5zXQogICAgaWYgbWlzc2luZ19zaGFkb3c6CiAgICAgICAgc3QuZXJyb3IoZiJTaGFkb3cgZXhwb3J0IGlzIG1pc3NpbmcgcmVxdWlyZWQgY29sdW1uczoge21pc3Npbmdfc2hhZG93fSIpCiAgICBlbHNlOgogICAgICAgIGJhc2UgPSBwZC5EYXRhRnJhbWUoaW5kZXg9c2hhZG93LmluZGV4LmNvcHkoKSkKICAgICAgICBiYXNlWyJwcmljZSJdID0gcGQudG9fbnVtZXJpYyhzaGFkb3dbImJ0Y191c2QiXSwgZXJyb3JzPSJjb2VyY2UiKQogICAgICAgIGZ4X3NoYWRvdyA9IHBkLnRvX251bWVyaWMoc2hhZG93WyJ1c2RfcGVyX2F1ZCJdLCBlcnJvcnM9ImNvZXJjZSIpCiAgICAgICAgYmFzZSA9IHByb2QuYWxpZ25fZnhfdG9fZGF0ZXMoYmFzZSwgZnhfc2hhZG93KQogICAgICAgIGV4dCA9IHBkLkRhdGFGcmFtZShpbmRleD1zaGFkb3cuaW5kZXguY29weSgpKQogICAgICAgIGV4dFsibXZydl96Il0gPSBwZC50b19udW1lcmljKHNoYWRvd1sibXZydl96Il0sIGVycm9ycz0iY29lcmNlIikKICAgICAgICBleHRbImZlYXJfZ3JlZWQiXSA9IHBkLnRvX251bWVyaWMoc2hhZG93WyJmZWFyX2dyZWVkIl0sIGVycm9ycz0iY29lcmNlIikKICAgICAgICBiYXNlID0gcHJvZC5tZXJnZV9iZ2VvbWV0cmljcyhiYXNlLCBleHQpCgogICAgICAgIHNoYWRvd19wYXJhbXMgPSB7CiAgICAgICAgICAgICJwbF9jaGVhcCI6IHByb2QuREVGQVVMVF9QTF9DSEVBUCwKICAgICAgICAgICAgInBsX2V4cGVuc2l2ZSI6IHByb2QuREVGQVVMVF9QTF9FWFBFTlNJVkUsCiAgICAgICAgICAgICJ2YWx1YXRpb25fc3RyZW5ndGgiOiBwcm9kLkRFRkFVTFRfVkFMVUFUSU9OX1NUUkVOR1RILAogICAgICAgICAgICAibWluX3ZhbHVhdGlvbl9tdWx0IjogcHJvZC5ERUZBVUxUX01JTl9WQUxVQVRJT05fTVVMVCwKICAgICAgICAgICAgIm1heF92YWx1YXRpb25fbXVsdCI6IG1pbihwcm9kLkRFRkFVTFRfTUFYX1ZBTFVBVElPTl9NVUxULCAyLjApLAogICAgICAgICAgICAibWluX3Jpc2tfY29tcG9uZW50cyI6IHByb2QuREVGQVVMVF9NSU5fUklTS19DT01QT05FTlRTLAogICAgICAgICAgICAicHJpY2VfcG9zaXRpb25fd2luZG93IjogcHJvZC5ERUZBVUxUX1BSSUNFX1BPU0lUSU9OX1dJTkRPVywKICAgICAgICAgICAgInJpc2tfY2FsaWJyYXRpb25fbWluX3BlcmlvZHMiOiBwcm9kLkRFRkFVTFRfUklTS19DQUxJQlJBVElPTl9NSU5fUEVSSU9EUywKICAgICAgICAgICAgInJpc2tfY2FsaWJyYXRpb25fd2luZG93IjogcHJvZC5ERUZBVUxUX1JJU0tfQ0FMSUJSQVRJT05fV0lORE9XLAogICAgICAgICAgICAicmlza19jYWxpYnJhdGlvbl9ibGVuZCI6IHByb2QuREVGQVVMVF9SSVNLX0NBTElCUkFUSU9OX0JMRU5ELAogICAgICAgICAgICAiYWJzb2x1dGVfcmlza193ZWlnaHQiOiBwcm9kLkRFRkFVTFRfQUJTT0xVVEVfUklTS19XRUlHSFQsCiAgICAgICAgICAgICJyZWxhdGl2ZV9yaXNrX3dlaWdodCI6IHByb2QuREVGQVVMVF9SRUxBVElWRV9SSVNLX1dFSUdIVCwKICAgICAgICAgICAgInRyZW5kX2VyX3BlcmlvZCI6IHByb2QuREVGQVVMVF9UUkVORF9FUl9QRVJJT0QsCiAgICAgICAgICAgICJ0cmVuZF9mYXN0IjogcHJvZC5ERUZBVUxUX1RSRU5EX0ZBU1QsCiAgICAgICAgICAgICJ0cmVuZF9zbG93IjogcHJvZC5ERUZBVUxUX1RSRU5EX1NMT1csCiAgICAgICAgICAgICJ0cmVuZF9yYW5nZV9wZXJpb2QiOiBwcm9kLkRFRkFVTFRfVFJFTkRfUkFOR0VfUEVSSU9ELAogICAgICAgICAgICAidHJlbmRfYmFuZF9tdWx0IjogcHJvZC5ERUZBVUxUX1RSRU5EX0JBTkRfTVVMVCwKICAgICAgICB9CiAgICAgICAgc2hhZG93X3Jpc2sgPSBwcm9kLmFkZF9yaXNrX2luZGljYXRvcnMoYmFzZSwgIkNvbXBvc2l0ZSBWMy42Iiwgc2hhZG93X3BhcmFtcykKICAgICAgICB2YWxpZF9zaGFkb3cgPSBzaGFkb3dfcmlzay5kcm9wbmEoc3Vic2V0PVsicmlza19zY29yZSIsICJwcmljZSJdKQoKICAgICAgICBpZiB2YWxpZF9zaGFkb3cuZW1wdHk6CiAgICAgICAgICAgIHN0LmVycm9yKCJUaGUgUHJvZHVjdGlvbiByaXNrIGVuZ2luZSBjb3VsZCBub3QgcHJvZHVjZSBhIHZhbGlkIFJpc2sgU2NvcmUgZnJvbSB0aGUgc2hhZG93IGV4cG9ydC4iKQogICAgICAgIGVsc2U6CiAgICAgICAgICAgIGxhdGVzdF9zaGFkb3cgPSB2YWxpZF9zaGFkb3cuaWxvY1stMV0KICAgICAgICAgICAgbGF0ZXN0X2RhdGUgPSB2YWxpZF9zaGFkb3cuaW5kZXhbLTFdCiAgICAgICAgICAgIGxhdGVzdF9yaXNrID0gZmxvYXQobGF0ZXN0X3NoYWRvd1sicmlza19zY29yZSJdKQogICAgICAgICAgICBsYXRlc3RfbXVsdCA9IGZsb2F0KHByb2QuaW50ZXJwb2xhdGUocHJvZC5TTUFSVF9EQ0FfUE9JTlRTLCBsYXRlc3RfcmlzaykpCiAgICAgICAgICAgIGNvbXBvbmVudF9jb3VudCA9IGludChsYXRlc3Rfc2hhZG93LmdldCgicmlza19jb21wb25lbnRzX2F2YWlsYWJsZSIsIDApKQoKICAgICAgICAgICAgczEsIHMyLCBzMywgczQgPSBzdC5jb2x1bW5zKDQpCiAgICAgICAgICAgIHMxLm1ldHJpYygiU2hhZG93IHZhbGlkIHJpc2sgZGF0ZXMiLCBmIntsZW4odmFsaWRfc2hhZG93KTosfSIpCiAgICAgICAgICAgIHMyLm1ldHJpYygiTGF0ZXN0IHNoYWRvdyBSaXNrIFNjb3JlIiwgZiJ7bGF0ZXN0X3Jpc2s6LjZmfSIpCiAgICAgICAgICAgIHMzLm1ldHJpYygiTGF0ZXN0IFNtYXJ0IERDQSB3ZWlnaHQiLCBmIntsYXRlc3RfbXVsdDouNGZ9eCIpCiAgICAgICAgICAgIHM0Lm1ldHJpYygiUmlzayBjb21wb25lbnRzIGF2YWlsYWJsZSIsIGYie2NvbXBvbmVudF9jb3VudH0vNiIpCiAgICAgICAgICAgIHN0LmNhcHRpb24oCiAgICAgICAgICAgICAgICBmIkxhdGVzdCBzaGFkb3cgZW5naW5lIGRhdGU6IHtsYXRlc3RfZGF0ZS5kYXRlKCl9IOKAoiBCVEMvVVNEIHtmbG9hdChsYXRlc3Rfc2hhZG93WydwcmljZSddKTosLjJmfSDigKIgIgogICAgICAgICAgICAgICAgZiJNVlJWLVoge2Zsb2F0KGxhdGVzdF9zaGFkb3dbJ212cnZfeiddKTouNGZ9IOKAoiBGZWFyICYgR3JlZWQge2Zsb2F0KGxhdGVzdF9zaGFkb3dbJ2ZlYXJfZ3JlZWQnXSk6LjJmfSIKICAgICAgICAgICAgKQoKICAgICAgICAgICAgc2hhZG93X3Jpc2tfMiA9IHByb2QuYWRkX3Jpc2tfaW5kaWNhdG9ycyhiYXNlLCAiQ29tcG9zaXRlIFYzLjYiLCBzaGFkb3dfcGFyYW1zKQogICAgICAgICAgICBhID0gcGQudG9fbnVtZXJpYyhzaGFkb3dfcmlza1sicmlza19zY29yZSJdLCBlcnJvcnM9ImNvZXJjZSIpCiAgICAgICAgICAgIGIgPSBwZC50b19udW1lcmljKHNoYWRvd19yaXNrXzJbInJpc2tfc2NvcmUiXSwgZXJyb3JzPSJjb2VyY2UiKQogICAgICAgICAgICBqb2luZWRfc2hhZG93ID0gcGQuY29uY2F0KFthLnJlbmFtZSgiYSIpLCBiLnJlbmFtZSgiYiIpXSwgYXhpcz0xKS5kcm9wbmEoKQogICAgICAgICAgICBtYXhfcmVwZWF0X2RpZmYgPSBmbG9hdCgoam9pbmVkX3NoYWRvd1siYSJdIC0gam9pbmVkX3NoYWRvd1siYiJdKS5hYnMoKS5tYXgoKSkgaWYgbGVuKGpvaW5lZF9zaGFkb3cpIGVsc2UgZmxvYXQoIm5hbiIpCiAgICAgICAgICAgIGlmIG5wLmlzZmluaXRlKG1heF9yZXBlYXRfZGlmZikgYW5kIG1heF9yZXBlYXRfZGlmZiA8PSAxZS0xMjoKICAgICAgICAgICAgICAgIHN0LnN1Y2Nlc3MoIlNoYWRvdyBlbmdpbmUgZGV0ZXJtaW5pc20gY2hlY2s6IFBBU1Mg4oCUIHJlcGVhdGVkIFY1LjguMiBjYWxjdWxhdGlvbnMgYXJlIGV4YWN0bHkgaWRlbnRpY2FsLiIpCiAgICAgICAgICAgIGVsc2U6CiAgICAgICAgICAgICAgICBzdC5lcnJvcihmIlNoYWRvdyBlbmdpbmUgZGV0ZXJtaW5pc20gY2hlY2sgZmFpbGVkLiBNYXggcmVwZWF0ZWQgUmlzayBTY29yZSBkaWZmZXJlbmNlOiB7bWF4X3JlcGVhdF9kaWZmfSIpCgogICAgICAgICAgICBzdC5pbmZvKAogICAgICAgICAgICAgICAgIlRoaXMgcHJvdmVzIHRoZSBjZW50cmFsIHNoYWRvdyBleHBvcnQgY2FuIGRyaXZlIHRoZSBmcm96ZW4gVjUuOC4yIHJpc2sgZW5naW5lIHJlcHJvZHVjaWJseS4gIgogICAgICAgICAgICAgICAgIkl0IGRvZXMgTk9UIHlldCBwcm92ZSBmcmVzaCBsaXZlIHBhcml0eSBmb3IgTVZSVi1aIGFuZCBGZWFyICYgR3JlZWQsIGFuZCBQcm9kdWN0aW9uIHJlbWFpbnMgb24gaXRzIGV4aXN0aW5nIGxpdmUgZGF0YSBwYXRoLiIKICAgICAgICAgICAgKQoKJycKcyA9IHMucmVwbGFjZShhbmNob3IsIGJsb2NrICsgYW5jaG9yLCAxKQpwLndyaXRlX3RleHQocykK"
         run: |
           python - <<'PY'
+          import os, base64
           from pathlib import Path
-          p = Path('engines/shared/parity_app.py')
-          s = p.read_text()
-          anchor = 'st.caption("No files were written and no Production/Research data source was changed by this parity check.")\n'
-          if anchor not in s:
-              raise SystemExit('anchor not found')
-          block = r'''
-st.subheader("4. Shadow Production engine test")
-st.caption(
-    "This runs the actual V5.8.2 Production risk engine against the SHADOW-ONLY central candidate export. "
-    "It does not change Production and is not a final parity proof for MVRV-Z/Fear & Greed."
-)
-
-shadow_cfg = CentralDataConfig(
-    repository=cfg.repository,
-    token=cfg.token,
-    ref=cfg.ref,
-    master_path="shadow/production_input_candidate.csv",
-)
-try:
-    shadow = load_master(config=shadow_cfg)
-except Exception as exc:
-    st.warning(
-        "Shadow candidate export is not available on the central-data main branch yet. "
-        f"Once the data PR is merged this section will run automatically. ({type(exc).__name__}: {exc})"
-    )
-else:
-    required_shadow = ["btc_usd", "usd_per_aud", "mvrv_z", "fear_greed"]
-    missing_shadow = [c for c in required_shadow if c not in shadow.columns]
-    if missing_shadow:
-        st.error(f"Shadow export is missing required columns: {missing_shadow}")
-    else:
-        base = pd.DataFrame(index=shadow.index.copy())
-        base["price"] = pd.to_numeric(shadow["btc_usd"], errors="coerce")
-        fx_shadow = pd.to_numeric(shadow["usd_per_aud"], errors="coerce")
-        base = prod.align_fx_to_dates(base, fx_shadow)
-        ext = pd.DataFrame(index=shadow.index.copy())
-        ext["mvrv_z"] = pd.to_numeric(shadow["mvrv_z"], errors="coerce")
-        ext["fear_greed"] = pd.to_numeric(shadow["fear_greed"], errors="coerce")
-        base = prod.merge_bgeometrics(base, ext)
-
-        shadow_params = {
-            "pl_cheap": prod.DEFAULT_PL_CHEAP,
-            "pl_expensive": prod.DEFAULT_PL_EXPENSIVE,
-            "valuation_strength": prod.DEFAULT_VALUATION_STRENGTH,
-            "min_valuation_mult": prod.DEFAULT_MIN_VALUATION_MULT,
-            "max_valuation_mult": min(prod.DEFAULT_MAX_VALUATION_MULT, 2.0),
-            "min_risk_components": prod.DEFAULT_MIN_RISK_COMPONENTS,
-            "price_position_window": prod.DEFAULT_PRICE_POSITION_WINDOW,
-            "risk_calibration_min_periods": prod.DEFAULT_RISK_CALIBRATION_MIN_PERIODS,
-            "risk_calibration_window": prod.DEFAULT_RISK_CALIBRATION_WINDOW,
-            "risk_calibration_blend": prod.DEFAULT_RISK_CALIBRATION_BLEND,
-            "absolute_risk_weight": prod.DEFAULT_ABSOLUTE_RISK_WEIGHT,
-            "relative_risk_weight": prod.DEFAULT_RELATIVE_RISK_WEIGHT,
-            "trend_er_period": prod.DEFAULT_TREND_ER_PERIOD,
-            "trend_fast": prod.DEFAULT_TREND_FAST,
-            "trend_slow": prod.DEFAULT_TREND_SLOW,
-            "trend_range_period": prod.DEFAULT_TREND_RANGE_PERIOD,
-            "trend_band_mult": prod.DEFAULT_TREND_BAND_MULT,
-        }
-        shadow_risk = prod.add_risk_indicators(base, "Composite V3.6", shadow_params)
-        valid_shadow = shadow_risk.dropna(subset=["risk_score", "price"])
-
-        if valid_shadow.empty:
-            st.error("The Production risk engine could not produce a valid Risk Score from the shadow export.")
-        else:
-            latest_shadow = valid_shadow.iloc[-1]
-            latest_date = valid_shadow.index[-1]
-            latest_risk = float(latest_shadow["risk_score"])
-            latest_mult = float(prod.interpolate(prod.SMART_DCA_POINTS, latest_risk))
-            component_count = int(latest_shadow.get("risk_components_available", 0))
-
-            s1, s2, s3, s4 = st.columns(4)
-            s1.metric("Shadow valid risk dates", f"{len(valid_shadow):,}")
-            s2.metric("Latest shadow Risk Score", f"{latest_risk:.6f}")
-            s3.metric("Latest Smart DCA weight", f"{latest_mult:.4f}x")
-            s4.metric("Risk components available", f"{component_count}/6")
-            st.caption(
-                f"Latest shadow engine date: {latest_date.date()} • BTC/USD {float(latest_shadow['price']):,.2f} • "
-                f"MVRV-Z {float(latest_shadow['mvrv_z']):.4f} • Fear & Greed {float(latest_shadow['fear_greed']):.2f}"
-            )
-
-            # Determinism check: the same shadow inputs must produce exactly the same risk output twice.
-            shadow_risk_2 = prod.add_risk_indicators(base, "Composite V3.6", shadow_params)
-            a = pd.to_numeric(shadow_risk["risk_score"], errors="coerce")
-            b = pd.to_numeric(shadow_risk_2["risk_score"], errors="coerce")
-            joined_shadow = pd.concat([a.rename("a"), b.rename("b")], axis=1).dropna()
-            max_repeat_diff = float((joined_shadow["a"] - joined_shadow["b"]).abs().max()) if len(joined_shadow) else float("nan")
-            if np.isfinite(max_repeat_diff) and max_repeat_diff <= 1e-12:
-                st.success("Shadow engine determinism check: PASS — repeated V5.8.2 calculations are exactly identical.")
-            else:
-                st.error(f"Shadow engine determinism check failed. Max repeated Risk Score difference: {max_repeat_diff}")
-
-            st.info(
-                "This proves the central shadow export can drive the frozen V5.8.2 risk engine reproducibly. "
-                "It does NOT yet prove fresh live parity for MVRV-Z and Fear & Greed, and Production remains on its existing live data path."
-            )
-
-'''
-          s = s.replace(anchor, block + anchor, 1)
-          p.write_text(s)
+          Path('/tmp/patch.py').write_bytes(base64.b64decode(os.environ['PATCH_B64']))
           PY
+          python /tmp/patch.py
       - name: Validate
         run: |
           python -m py_compile engines/shared/parity_app.py
