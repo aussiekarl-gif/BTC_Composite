@@ -1,0 +1,30 @@
+name: Patch exact-source parity lab
+
+on:
+  push:
+    branches: [source-preserving-centralization]
+    paths:
+      - scripts/patch_parity_exact_sources.py
+      - .github/workflows/patch-parity-exact-sources.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: source-preserving-centralization
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/patch_parity_exact_sources.py
+      - run: python -m py_compile engines/shared/parity_app.py engines/audit/public_model_audit.py
+      - name: Commit final code and remove helpers
+        run: |
+          rm -f scripts/patch_parity_exact_sources.py .github/workflows/patch-parity-exact-sources.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Compare central data against exact Production sources"
+          git push origin HEAD:source-preserving-centralization
