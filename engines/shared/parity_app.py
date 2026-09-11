@@ -62,6 +62,7 @@ def _comparison_row(label: str, current: pd.Series, central: pd.Series, current_
     if joined.empty:
         return {
             "Input": label,
+            "Role": role,
             "Current source": current_source,
             "Central candidate": central_source,
             "Overlap days": 0,
@@ -169,7 +170,8 @@ st.subheader("2. Central master vs current Production inputs")
 rows = []
 window = central.loc[(central.index.date >= start_date) & (central.index.date <= end_date)]
 
-def add_or_gap(label, current_series, central_col, current_source):
+def add_or_gap(label, current_series, central_col, current_source, role="Production-critical"):
+
     central_present = False
     central_obs = 0
     if central_col in window.columns:
@@ -188,11 +190,13 @@ def add_or_gap(label, current_series, central_col, current_source):
         row = _comparison_row(label, current_series, window[central_col], current_source, central_col)
         if row.get("Status") == "NO OVERLAP":
             row["Status"] = "CENTRAL PRESENT — NO DATE OVERLAP"
+        row["Role"] = role
         row["Central observations"] = central_obs
         rows.append(row)
     elif central_present:
         rows.append({
             "Input": label,
+            "Role": role,
             "Current source": current_source,
             "Central candidate": central_col,
             "Central observations": central_obs,
@@ -202,6 +206,7 @@ def add_or_gap(label, current_series, central_col, current_source):
     else:
         rows.append({
             "Input": label,
+            "Role": role,
             "Current source": current_source,
             "Central candidate": central_col,
             "Central observations": 0,
@@ -238,6 +243,7 @@ add_or_gap(
     prod_bg["regime_score"] if "regime_score" in prod_bg.columns else None,
     "src__bgeometrics_regime_score",
     "BGeometrics regime-score",
+    role="Optional context — not used in Risk Score/DCA sizing",
 )
 
 st.caption(
@@ -252,7 +258,7 @@ for col in ["Median abs diff %", "95th pct abs diff %", "Max abs diff %", "Corre
 if "Central observations" not in parity.columns:
     parity["Central observations"] = 0
 st.dataframe(
-    parity[["Input","Current source","Central candidate","Central observations","Overlap days","Median abs diff %","95th pct abs diff %","Max abs diff %","Correlation","Status"]]
+    parity[["Input","Role","Current source","Central candidate","Central observations","Overlap days","Median abs diff %","95th pct abs diff %","Max abs diff %","Correlation","Status"]]
         .style.format({"Median abs diff %":"{:.4f}","95th pct abs diff %":"{:.4f}","Max abs diff %":"{:.4f}","Correlation":"{:.6f}"}, na_rep="—"),
     use_container_width=True,
     hide_index=True,
@@ -262,16 +268,20 @@ if bg_live_error:
     st.caption("Live BGeometrics comparison was unavailable on this run: " + bg_live_error)
 
 st.subheader("3. Migration readiness")
-measured = int((parity["Status"] == "MEASURED").sum())
-present_unvalidated = int(parity["Status"].str.startswith("CENTRAL PRESENT", na=False).sum())
-gaps = int(parity["Status"].str.contains("GAP", regex=True, na=False).sum())
-st.metric("Inputs with measured central parity", measured)
-st.metric("Central inputs present but awaiting live validation", present_unvalidated)
-st.metric("True central-source gaps", gaps)
+critical = parity[parity["Role"].eq("Production-critical")].copy()
+measured = int((critical["Status"] == "MEASURED").sum())
+present_unvalidated = int(critical["Status"].str.startswith("CENTRAL PRESENT", na=False).sum())
+gaps = int(critical["Status"].str.contains("GAP", regex=True, na=False).sum())
+optional_gaps = int((~parity["Role"].eq("Production-critical") & parity["Status"].str.contains("GAP", regex=True, na=False)).sum())
+st.metric("Production-critical inputs with measured central parity", measured)
+st.metric("Production-critical inputs present but awaiting live validation", present_unvalidated)
+st.metric("True Production-critical central-source gaps", gaps)
+if optional_gaps:
+    st.caption(f"Optional/context-only source gaps: {optional_gaps}. These do not block Production input centralization because they are not used in the active Risk Score/DCA sizing path.")
 
 if gaps:
     st.warning(
-        "Centralization is not ready for Production yet. Some exact-source inputs are genuinely missing from the central master. "
+        "Centralization is not ready for Production yet. Some Production-critical exact-source inputs are genuinely missing from the central master. "
         "Inputs marked CENTRAL PRESENT are stored safely and are not counted as missing merely because the live API comparison was unavailable."
     )
 elif present_unvalidated:
