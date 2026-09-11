@@ -13,18 +13,40 @@ import streamlit as st
 
 BASE = "https://bitcoin-data.com/v1"
 HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+COINMETRICS_BASE = "https://community-api.coinmetrics.io/v4"
+COINMETRICS_ASSET = "btc"
+
+# Names below are deliberately protected from BGeometrics acquisition.
+# They are either calculated from the frozen benchmark price or from free Coin Metrics inputs.
+FREE_FIRST_CANDIDATES = {
+    "Puell Multiple", "Mayer Multiple (200D)", "2Y MA Multiple", "200W MA Multiple",
+    "MVRV", "NUPL", "NVT", "NVT Signal", "ThermoCap Multiple", "Investor Price",
+    "MVRV Z-Score (positive control)",
+}
 
 # Research candidates only. Nothing here changes Production or V5.9 Research.
 CANDIDATES = {
-    "MVRV Z-Score (positive control)": ("mvrv-zscore", ["mvrvZScore", "mvrv_zscore", "zscore", "mvrvZ", "value"]),
-    "Puell Multiple": ("puell-multiple", ["puellMultiple", "puell_multiple", "puell", "value"]),
+    # Existing positive control. Reuse local cache; never spend BGeometrics quota just to refresh it.
+    "MVRV Z-Score (positive control)": ("LOCAL CACHE", []),
+
+    # Free/self-calculated candidates. These are NEVER requested from BGeometrics.
+    "Puell Multiple": ("FREE / Coin Metrics -> calculated locally", []),
+    "Mayer Multiple (200D)": ("SELF / benchmark price", []),
+    "2Y MA Multiple": ("SELF / benchmark price", []),
+    "200W MA Multiple": ("SELF / benchmark price", []),
+    "MVRV": ("FREE / Coin Metrics inputs -> calculated locally", []),
+    "NUPL": ("FREE / Coin Metrics inputs -> calculated locally", []),
+    "NVT": ("FREE / Coin Metrics inputs -> calculated locally", []),
+    "NVT Signal": ("FREE / Coin Metrics inputs -> calculated locally", []),
+    "ThermoCap Multiple": ("FREE / Coin Metrics inputs -> calculated locally", []),
+    "Investor Price": ("FREE / Coin Metrics inputs -> calculated locally", []),
+
+    # Metrics that still require a specialist on-chain history source.
     "VDD Multiple": ("vdd-multiple", ["vddMultiple", "vdd_multiple", "value"]),
     "STH MVRV": ("sth-mvrv", ["sthMvrv", "sth_mvrv", "mvrv", "value"]),
     "LTH MVRV": ("lth-mvrv", ["lthMvrv", "lth_mvrv", "mvrv", "value"]),
     "aSOPR": ("asopr", ["asopr", "aSOPR", "value"]),
     "% Supply / UTXOs in Profit": ("profit-loss", ["profitLoss", "profit_loss", "profit", "value", "percent", "pct"]),
-    "NVT Signal": ("nvts", ["nvts", "nvtSignal", "nvt_signal", "value"]),
-    "Investor Price": ("investor-price", ["investorPrice", "investor_price", "price", "value"]),
 }
 
 # One-time master-history acquisition plan. These are DATA candidates, not strategy inputs.
@@ -33,7 +55,6 @@ CANDIDATES = {
 # based on the BGeometrics API schema already saved with this project.
 MASTER_DATASETS = [
     # Priority 1 — current audit gaps
-    {"label":"Puell Multiple", "endpoint":"puell-multiple", "priority":1, "category":"Miner valuation", "csv":False, "aliases":["puellMultiple","puell_multiple","puell","value"]},
     {"label":"VDD Multiple", "endpoint":"vdd-multiple", "priority":1, "category":"Coin-day activity", "csv":True, "aliases":["vddMultiple","vdd_multiple","value"]},
     {"label":"VDD", "endpoint":"vdd", "priority":1, "category":"Coin-day activity", "csv":True, "aliases":["vdd","value"]},
     {"label":"STH MVRV", "endpoint":"sth-mvrv", "priority":1, "category":"Holder valuation", "csv":False, "aliases":["sthMvrv","sth_mvrv","mvrv","value"]},
@@ -41,18 +62,13 @@ MASTER_DATASETS = [
     {"label":"aSOPR", "endpoint":"asopr", "priority":1, "category":"Spent-profit behaviour", "csv":False, "aliases":["asopr","aSOPR","value"]},
     {"label":"UTXOs in Profit %", "endpoint":"utxos-in-profit-pct", "priority":1, "category":"Profitability", "csv":False, "aliases":["utxosInProfitPct","utxos_in_profit_pct","percent","pct","value"]},
     {"label":"Supply in Profit %", "endpoint":"supply-in-profit-pct", "priority":1, "category":"Profitability", "csv":True, "aliases":["supplyInProfitPct","supply_in_profit_pct","percent","pct","value"]},
-    {"label":"NVT Signal", "endpoint":"nvt-signal", "priority":1, "category":"Network valuation", "csv":False, "aliases":["nvtSignal","nvt_signal","nvts","value"]},
-    {"label":"Investor Price", "endpoint":"investor-price", "priority":1, "category":"Cost-basis valuation", "csv":False, "aliases":["investorPrice","investor_price","price","value"]},
-    {"label":"ThermoCap Multiple", "endpoint":"thermocap-multiple", "priority":1, "category":"Miner valuation", "csv":False, "aliases":["thermocapMultiple","thermocap_multiple","multiple","value"]},
 
     # Priority 2 — close relatives / strong research controls
-    {"label":"MVRV", "endpoint":"mvrv", "priority":2, "category":"Valuation", "csv":False, "aliases":["mvrv","value"]},
     {"label":"STH MVRV Z-Score", "endpoint":"sth-mvrv-zscore", "priority":2, "category":"Holder valuation", "csv":False, "aliases":["sthMvrvZscore","zscore","value"]},
     {"label":"LTH MVRV Z-Score", "endpoint":"lth-mvrv-zscore", "priority":2, "category":"Holder valuation", "csv":False, "aliases":["lthMvrvZscore","zscore","value"]},
     {"label":"SOPR", "endpoint":"sopr", "priority":2, "category":"Spent-profit behaviour", "csv":False, "aliases":["sopr","value"]},
     {"label":"STH SOPR", "endpoint":"sth-sopr", "priority":2, "category":"Spent-profit behaviour", "csv":False, "aliases":["sthSopr","sopr_sth","sopr","value"]},
     {"label":"LTH SOPR", "endpoint":"lth-sopr", "priority":2, "category":"Spent-profit behaviour", "csv":False, "aliases":["lthSopr","sopr_lth","sopr","value"]},
-    {"label":"Realized Price", "endpoint":"realized-price", "priority":2, "category":"Cost basis", "csv":False, "aliases":["realizedPrice","realized_price","price","value"]},
     {"label":"STH Realized Price", "endpoint":"sth-realized-price", "priority":2, "category":"Cost basis", "csv":False, "aliases":["sthRealizedPrice","realized_price","price","value"]},
     {"label":"LTH Realized Price", "endpoint":"lth-realized-price", "priority":2, "category":"Cost basis", "csv":False, "aliases":["lthRealizedPrice","realized_price","price","value"]},
     {"label":"CVDD", "endpoint":"cvdd", "priority":2, "category":"Long-cycle floor", "csv":True, "aliases":["cvdd","price","value"]},
@@ -61,12 +77,9 @@ MASTER_DATASETS = [
     {"label":"Liveliness", "endpoint":"liveliness", "priority":2, "category":"Coin-day activity", "csv":True, "aliases":["liveliness","value"]},
     {"label":"Average Dormancy", "endpoint":"average-dormancy", "priority":2, "category":"Coin-day activity", "csv":True, "aliases":["averageDormancy","dormancy","value"]},
     {"label":"RHODL Ratio", "endpoint":"rhodl-ratio", "priority":2, "category":"Holder age valuation", "csv":False, "aliases":["rhodlRatio","rhodl_ratio","value"]},
-    {"label":"NVT", "endpoint":"nvt", "priority":2, "category":"Network valuation", "csv":False, "aliases":["nvt","value"]},
     {"label":"NVT Z-Score", "endpoint":"nvt-zscore", "priority":2, "category":"Network valuation", "csv":False, "aliases":["nvtZscore","zscore","value"]},
 
     # Priority 3 — preserve broader context while quota permits
-    {"label":"Investor Cap", "endpoint":"investor-cap", "priority":3, "category":"Cost-basis valuation", "csv":False, "aliases":["investorCap","investor_cap","value"]},
-    {"label":"Realized Cap", "endpoint":"realized-cap", "priority":3, "category":"Cost basis", "csv":True, "aliases":["realizedCap","realized_cap","value"]},
     {"label":"Realized Profit/Loss Ratio", "endpoint":"realized-profit-loss-ratio", "priority":3, "category":"Profitability", "csv":False, "aliases":["realizedProfitLossRatio","ratio","value"]},
     {"label":"Percent STH in Profit", "endpoint":"percent-sth-in-profit", "priority":3, "category":"Profitability", "csv":False, "aliases":["percentSthInProfit","percent","pct","value"]},
     {"label":"Percent LTH in Profit", "endpoint":"percent-lth-in-profit", "priority":3, "category":"Profitability", "csv":False, "aliases":["percentLthInProfit","percent","pct","value"]},
@@ -374,6 +387,178 @@ def fetch_master_dataset(ds, start_date, end_date, token):
     return raw, rate
 
 
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def fetch_coinmetrics_metric(metric, start_date, end_date):
+    """Fetch one free/community Coin Metrics daily metric with pagination.
+
+    Failure is non-fatal: the caller can continue with whatever free metrics are available.
+    No BGeometrics token or request is used here.
+    """
+    params = {
+        "assets": COINMETRICS_ASSET,
+        "metrics": metric,
+        "frequency": "1d",
+        "page_size": 10000,
+        "paging_from": "start",
+        "start_time": pd.Timestamp(start_date).strftime("%Y-%m-%d"),
+        "end_time": pd.Timestamp(end_date).strftime("%Y-%m-%d"),
+    }
+    url = f"{COINMETRICS_BASE}/timeseries/asset-metrics"
+    rows = []
+    while url:
+        r = requests.get(url, params=params if "?" not in url else None, headers=HEADERS, timeout=60)
+        r.raise_for_status()
+        payload = r.json()
+        rows.extend(payload.get("data", []))
+        url = payload.get("next_page_url")
+        params = None
+    if not rows:
+        return pd.Series(dtype=float)
+    z = pd.DataFrame(rows)
+    if "time" not in z.columns or metric not in z.columns:
+        return pd.Series(dtype=float)
+    z["date"] = pd.to_datetime(z["time"], utc=True, errors="coerce").dt.normalize()
+    z[metric] = pd.to_numeric(z[metric], errors="coerce")
+    z = z.dropna(subset=["date", metric]).drop_duplicates("date").sort_values("date")
+    return z.set_index("date")[metric]
+
+
+def _cm_get(metric, start_date, end_date, status_rows):
+    try:
+        x = fetch_coinmetrics_metric(metric, start_date, end_date)
+        if x is None or x.empty:
+            status_rows.append({"Free input": metric, "Status": "Unavailable / no rows"})
+            return pd.Series(dtype=float)
+        status_rows.append({"Free input": metric, "Status": f"OK — {len(x):,} daily rows"})
+        return x
+    except Exception as exc:
+        status_rows.append({"Free input": metric, "Status": f"Unavailable: {str(exc)[:120]}"})
+        return pd.Series(dtype=float)
+
+
+def build_free_indicator_cache(start_date, end_date):
+    """Build every indicator we can safely derive without BGeometrics.
+
+    The function intentionally degrades gracefully. If a Community metric is unavailable,
+    only dependent indicators are omitted; the audit still runs.
+    """
+    status_rows = []
+    cm = {}
+    # Fetch only raw ingredients. Derived ratios are calculated locally below.
+    for metric in (
+        "PriceUSD", "RevNtv", "FeeTotNtv", "SplyCur",
+        "CapMrktCurUSD", "CapRealUSD", "TxTfrValAdjUSD", "RevAllTimeUSD",
+    ):
+        cm[metric] = _cm_get(metric, start_date, end_date, status_rows)
+
+    idx = pd.DatetimeIndex([])
+    for x in cm.values():
+        if x is not None and not x.empty:
+            idx = idx.union(x.index)
+    if len(idx) == 0:
+        return pd.DataFrame(), status_rows
+
+    raw = pd.DataFrame(index=idx.sort_values())
+    for k, x in cm.items():
+        if x is not None and not x.empty:
+            raw[k] = x.reindex(raw.index)
+
+    out = pd.DataFrame(index=raw.index)
+
+    # Puell Multiple: actual native issuance * price, divided by its trailing 365-day mean.
+    issuance = pd.Series(np.nan, index=raw.index, dtype=float)
+    issuance_source = None
+    # Coin Metrics defines RevNtv as miner revenue = newly issued BTC + transaction fees.
+    # Therefore RevNtv - FeeTotNtv isolates actual daily native issuance.
+    if {"RevNtv", "FeeTotNtv"}.issubset(raw.columns):
+        x = (pd.to_numeric(raw["RevNtv"], errors="coerce") - pd.to_numeric(raw["FeeTotNtv"], errors="coerce")).clip(lower=0)
+        if x.notna().sum() >= 365:
+            issuance = x
+            issuance_source = "RevNtv - FeeTotNtv"
+    if issuance_source is None and "SplyCur" in raw:
+        x = pd.to_numeric(raw["SplyCur"], errors="coerce").diff().clip(lower=0)
+        if x.notna().sum() >= 365:
+            issuance = x
+            issuance_source = "SplyCur.diff() proxy"
+
+    if issuance_source is not None and "PriceUSD" in raw:
+        issuance_usd = issuance * pd.to_numeric(raw["PriceUSD"], errors="coerce")
+        out["Puell Multiple"] = issuance_usd / issuance_usd.rolling(365, min_periods=365).mean()
+        status_rows.append({"Free input": "Puell Multiple", "Status": f"CALCULATED locally from {issuance_source} + PriceUSD"})
+    else:
+        status_rows.append({"Free input": "Puell Multiple", "Status": "Could not calculate — issuance/price inputs unavailable"})
+
+    market = pd.to_numeric(raw.get("CapMrktCurUSD"), errors="coerce") if "CapMrktCurUSD" in raw else None
+    realized = pd.to_numeric(raw.get("CapRealUSD"), errors="coerce") if "CapRealUSD" in raw else None
+    transfer = pd.to_numeric(raw.get("TxTfrValAdjUSD"), errors="coerce") if "TxTfrValAdjUSD" in raw else None
+    thermo = pd.to_numeric(raw.get("RevAllTimeUSD"), errors="coerce") if "RevAllTimeUSD" in raw else None
+    supply = pd.to_numeric(raw.get("SplyCur"), errors="coerce") if "SplyCur" in raw else None
+
+    if market is not None and realized is not None:
+        out["MVRV"] = market / realized.replace(0, np.nan)
+        out["NUPL"] = (market - realized) / market.replace(0, np.nan)
+        status_rows.append({"Free input": "MVRV + NUPL", "Status": "CALCULATED locally from market cap + realized cap"})
+
+    if market is not None and transfer is not None:
+        out["NVT"] = market / transfer.replace(0, np.nan)
+        transfer_90 = transfer.rolling(90, min_periods=75).mean()
+        out["NVT Signal"] = market / transfer_90.replace(0, np.nan)
+        status_rows.append({"Free input": "NVT + NVT Signal", "Status": "CALCULATED locally from market cap + adjusted transfer value"})
+
+    if market is not None and thermo is not None:
+        out["ThermoCap Multiple"] = market / thermo.replace(0, np.nan)
+        status_rows.append({"Free input": "ThermoCap Multiple", "Status": "CALCULATED locally from market cap / cumulative miner revenue"})
+
+    if realized is not None and thermo is not None and supply is not None:
+        investor_cap = realized - thermo
+        investor_price = investor_cap / supply.replace(0, np.nan)
+        out["Investor Cap"] = investor_cap
+        out["Investor Price"] = investor_price
+        status_rows.append({"Free input": "Investor Cap + Investor Price", "Status": "CALCULATED locally from realized cap, thermo cap and supply"})
+
+    out = out.replace([np.inf, -np.inf], np.nan)
+    out.index.name = "date"
+    return out, status_rows
+
+
+def puell_threshold_research(merged, total_capital=500000.0):
+    """Causal Monday accumulation comparison for Puell thresholds.
+
+    Same weekly capital allowance enters each strategy. Threshold strategies hold unused
+    allowance in cash and deploy ALL accumulated cash on an eligible Monday. No future
+    eligible dates are used to size today's purchase.
+    """
+    if "Puell Multiple" not in merged.columns:
+        return pd.DataFrame()
+    z = merged[["price_usd", "Puell Multiple"]].dropna().copy()
+    if len(z) < 52:
+        return pd.DataFrame()
+    n = len(z)
+    weekly = float(total_capital) / n
+    rows = []
+
+    plain_btc = float((weekly / z["price_usd"]).sum())
+    rows.append({"Strategy":"Plain Monday DCA", "BTC":plain_btc, "Deployed":total_capital, "Cash left":0.0, "Buy weeks":n})
+
+    for threshold in (0.50, 0.40, 0.30):
+        cash = btc = deployed = 0.0
+        buys = 0
+        for _, r in z.iterrows():
+            cash += weekly
+            if float(r["Puell Multiple"]) <= threshold and cash > 0:
+                btc += cash / float(r["price_usd"])
+                deployed += cash
+                cash = 0.0
+                buys += 1
+        rows.append({"Strategy":f"Puell <= {threshold:.2f}", "BTC":btc, "Deployed":deployed, "Cash left":cash, "Buy weeks":buys})
+
+    out = pd.DataFrame(rows)
+    out["BTC vs plain %"] = (out["BTC"] / plain_btc - 1.0) * 100.0
+    out["Avg buy price"] = out["Deployed"] / out["BTC"].replace(0, np.nan)
+    out["Deployed %"] = out["Deployed"] / float(total_capital) * 100.0
+    return out
+
+
 def expanding_percentile(s, min_periods=52):
     x = pd.to_numeric(s, errors="coerce")
     vals = x.to_numpy(dtype=float)
@@ -427,11 +612,20 @@ def prepare_frozen(uploaded):
         raise ValueError("CSV must contain price_usd")
     if "risk_score" not in df.columns:
         raise ValueError("CSV must contain risk_score")
+
+    df["price_usd"] = pd.to_numeric(df["price_usd"], errors="coerce")
+    df["risk_score"] = pd.to_numeric(df["risk_score"], errors="coerce")
+
+    # Completely local, zero-API indicators from price history.
+    # Use time-based rolling windows so they remain correct even if the frozen export has occasional missing dates.
+    df["Mayer Multiple (200D)"] = df["price_usd"] / df["price_usd"].rolling("200D", min_periods=180).mean()
+    df["2Y MA Multiple"] = df["price_usd"] / df["price_usd"].rolling("730D", min_periods=650).mean()
+
     m = df[df.index.weekday == 0].copy()
     if m.empty:
         m = df.resample("W-MON").first()
-    m["price_usd"] = pd.to_numeric(m["price_usd"], errors="coerce")
-    m["risk_score"] = pd.to_numeric(m["risk_score"], errors="coerce")
+    m["200W MA Multiple"] = m["price_usd"] / m["price_usd"].rolling(200, min_periods=180).mean()
+
     for w in (4, 12, 26, 52):
         m[f"fwd_{w}w"] = m["price_usd"].shift(-w) / m["price_usd"] - 1
     m["era"] = [era_name(i) for i in m.index]
@@ -481,19 +675,21 @@ def missing_ranges(cache, column, start, end):
 st.title("BTC Public Model Audit — Guided Mode")
 st.caption(
     "Research only. This page is designed to be used in order: 1 → 2 → 3 → 4. "
-    "Existing BGeometrics data is reused first so quota is not wasted."
+    "Free/self-calculated indicators are built first; BGeometrics is used only for metrics we cannot reproduce safely."
 )
 
 st.info(
-    "**Normal use:** ① check the benchmark → ② confirm the cache → "
-    "③ download the next missing BGeometrics batch when quota is available → "
-    "④ run the audit. You normally do not need to upload any cache files manually."
+    "**Normal use:** ① check benchmark → ② confirm cache → ③ build free indicators → "
+    "④ use BGeometrics only for the remaining specialist metrics → ⑤ run the audit."
 )
 
 with st.expander("What this page does / safety rules", expanded=False):
     st.markdown(
         """
-- **Never re-downloads a cached endpoint by default.**
+- **Free first:** Puell, MVRV, NUPL, NVT, NVT Signal, ThermoCap Multiple and Investor Price are calculated locally from free Coin Metrics inputs.
+- **Zero-API price indicators:** Mayer Multiple, 2Y MA Multiple and 200W MA Multiple come directly from the frozen price history.
+- **Never asks BGeometrics for a metric on the free/self-calculated list.**
+- **Never re-downloads a cached BGeometrics endpoint by default.**
 - **Stops immediately on HTTP 429** and keeps what was already downloaded.
 - **Keeps one API request in reserve** when BGeometrics reports the remaining quota.
 - **Does not change V5.9 Research or V5.8.2 Production.**
@@ -533,7 +729,7 @@ st.success(f"Benchmark ready: {start} → {end} • {len(base):,} Monday observa
 # STEP 2 — Cache status
 # -----------------------------------------------------------------------------
 st.header("② Existing data cache")
-st.caption("The bundled master cache is loaded automatically before any BGeometrics request is considered.")
+st.caption("The bundled cache is loaded first. Free/self-calculated data is added before any BGeometrics request is considered.")
 
 bundled = read_cache_csv(BUNDLED_CACHE) if BUNDLED_CACHE.exists() else pd.DataFrame()
 bundled_master = read_cache_csv(MASTER_CACHE) if MASTER_CACHE.exists() else pd.DataFrame()
@@ -600,9 +796,48 @@ if not cache.empty:
     )
 
 # -----------------------------------------------------------------------------
-# STEP 3 — Acquire only missing history
+# STEP 3 — Build free/self-calculated indicators first
 # -----------------------------------------------------------------------------
-st.header("③ Download next missing BGeometrics batch")
+st.header("③ Build free / self-calculated indicators")
+st.caption(
+    "This step uses the frozen benchmark plus the free Coin Metrics Community API. "
+    "It uses ZERO BGeometrics requests and is always attempted before specialist downloads."
+)
+
+price_local = ["Mayer Multiple (200D)", "2Y MA Multiple", "200W MA Multiple"]
+st.success("Already calculated from benchmark price: " + ", ".join(price_local))
+
+free_start = max(MASTER_START_DATE, dt.date(2010, 7, 18))
+free_end = dt.date.today()
+if st.button("BUILD / REFRESH FREE INDICATORS", type="primary", key="build_free_indicators"):
+    with st.spinner("Building free indicators from Coin Metrics Community data..."):
+        free_frame, free_status = build_free_indicator_cache(free_start, free_end)
+    if free_status:
+        st.dataframe(pd.DataFrame(free_status), use_container_width=True, hide_index=True)
+    if free_frame is not None and not free_frame.empty:
+        cache = combine_caches(cache, free_frame)
+        save_runtime_master_cache(cache)
+        save_runtime_cache(cache)
+        st.success(f"Free indicator cache updated: {len(free_frame):,} daily rows. No BGeometrics quota used.")
+        st.download_button(
+            "BACKUP FREE-FIRST MASTER CACHE",
+            cache.reset_index().to_csv(index=False).encode(),
+            "btc_onchain_master_cache.csv",
+            "text/csv",
+            key="free_master_cache_download",
+        )
+    else:
+        st.warning("No Coin Metrics Community rows were available. Price-only indicators still work and BGeometrics was not contacted.")
+
+# Recalculate specialist-cache counts after the free step.
+cached_count = sum(dataset_cached(cache, d) for d in MASTER_DATASETS)
+missing_count = len(MASTER_DATASETS) - cached_count
+
+# -----------------------------------------------------------------------------
+# STEP 4 — Acquire only specialist history still missing
+# -----------------------------------------------------------------------------
+st.header("④ Download only specialist metrics still missing from BGeometrics")
+st.caption("Protected list: free/self-calculated metrics are not present in the BGeometrics download plan, so this button cannot spend quota on them.")
 
 token = get_token()
 if token:
@@ -695,9 +930,9 @@ if st.button(
         )
 
 # -----------------------------------------------------------------------------
-# STEP 4 — Audit
+# STEP 5 — Audit
 # -----------------------------------------------------------------------------
-st.header("④ Run the research audit")
+st.header("⑤ Run the research audit")
 st.caption(
     "This uses the data currently available. It may be run even when some datasets are still missing. "
     "A partial result is not treated as a final strategy decision."
@@ -714,6 +949,13 @@ rate_limited = False
 last_rate_info = None
 
 for name, (endpoint, aliases) in CANDIDATES.items():
+    # Price-derived candidates are already in the frozen benchmark.
+    if name in merged.columns and pd.to_numeric(merged[name], errors="coerce").notna().any():
+        obs = int(pd.to_numeric(merged[name], errors="coerce").notna().sum())
+        status = "Self-calculated from frozen benchmark — no API call"
+        fetch_status.append((name, endpoint, obs, status))
+        continue
+
     local_series = pd.Series(dtype=float)
     if not cache.empty and name in cache.columns:
         local_series = pd.to_numeric(cache[name], errors="coerce").dropna().sort_index()
@@ -721,16 +963,19 @@ for name, (endpoint, aliases) in CANDIDATES.items():
     if not local_series.empty:
         merged[name] = attach_metric_asof(merged.index, local_series)
         obs = int(merged[name].notna().sum())
-        status = "Cache only — no API call"
+        status = "Free/local cache — no BGeometrics call" if name in FREE_FIRST_CANDIDATES else "BGeometrics cache only — no API call"
     else:
         obs = 0
-        status = "Not in cache yet"
+        if name in FREE_FIRST_CANDIDATES:
+            status = "Free/self source not built or unavailable — BGeometrics BLOCKED"
+        else:
+            status = "Not in specialist cache yet"
     fetch_status.append((name, endpoint, obs, status))
 
 if "Investor Price" in merged.columns:
     merged["Investor Price"] = merged["price_usd"] / pd.to_numeric(merged["Investor Price"], errors="coerce")
 
-st.header("⑤ Audit data coverage")
+st.header("⑥ Audit data coverage")
 status_df = pd.DataFrame(fetch_status, columns=["Candidate", "Endpoint", "Monday observations", "Status"])
 st.dataframe(status_df, use_container_width=True, hide_index=True)
 if rate_limited:
@@ -749,6 +994,23 @@ if not cache.empty:
         "public_model_cache.csv",
         "text/csv",
         key="updated_cache",
+    )
+
+st.subheader("Puell accumulation threshold research")
+st.caption(
+    "Causal equal-contribution test: weekly capital accumulates in cash and is deployed only when Puell is at/below the threshold. "
+    "No future qualifying dates are used to size a purchase. Research only; this does not change Production."
+)
+puell_bt = puell_threshold_research(merged, total_capital=500000.0)
+if puell_bt.empty:
+    st.info("Puell threshold test will appear once the free Puell series has enough history.")
+else:
+    st.dataframe(
+        puell_bt.style.format({
+            "BTC":"{:.6f}", "Deployed":"${:,.0f}", "Cash left":"${:,.0f}",
+            "BTC vs plain %":"{:+.2f}%", "Avg buy price":"${:,.0f}", "Deployed %":"{:.1f}%"
+        }),
+        use_container_width=True, hide_index=True,
     )
 
 horizons = (4, 12, 26, 52)
@@ -792,7 +1054,7 @@ if not res.empty:
     res["Residual avg 26/52"] = res[["26w residual", "52w residual"]].mean(axis=1)
     res = res.sort_values(["Screen", "Residual avg 26/52"], ascending=[True, True])
 
-st.header("⑥ Screening results")
+st.header("⑦ Screening results")
 st.caption(
     "For a risk/valuation metric, more negative future-return Spearman is better. "
     "Residual tests whether the candidate adds information beyond frozen R2."
@@ -805,14 +1067,14 @@ show_cols = [
 if res.empty:
     st.warning(
         "The local cache does not yet contain enough history for a full screening result. "
-        "This is expected while the BGeometrics quota is exhausted; the cache will fill incrementally on future runs."
+        "Run the free indicator builder first; only the remaining specialist metrics depend on the BGeometrics cache."
     )
 else:
     existing = [c for c in show_cols if c in res.columns]
     fmt = {c: "{:+.3f}" for c in existing if c not in {"Candidate", "Coverage", "Negative 26w eras", "Screen"}}
     st.dataframe(res[existing].style.format(fmt), use_container_width=True, hide_index=True)
 
-st.header("⑦ Era stability — 26 week horizon")
+st.header("⑧ Era stability — 26 week horizon")
 era_df = pd.DataFrame(era_rows)
 if not era_df.empty:
     pivot = era_df.pivot(index="Candidate", columns="Era", values="26w Spearman").reset_index()
@@ -822,7 +1084,7 @@ if not era_df.empty:
         hide_index=True,
     )
 
-st.header("⑧ Research verdict")
+st.header("⑨ Research verdict")
 sufficient = 0 if res.empty else int(res["Coverage"].ge(52).sum())
 total_candidates = len(CANDIDATES)
 if sufficient < total_candidates:
@@ -861,5 +1123,5 @@ st.download_button(
 
 st.caption(
     "Cache note: runtime file writes can be lost on a Streamlit Cloud redeploy. "
-    "Keep btc_onchain_master_cache.csv with the website under engines/audit/cache/. That is the permanent reusable BGeometrics history cache."
+    "Keep btc_onchain_master_cache.csv under engines/audit/cache/. It now stores free-derived history and any specialist BGeometrics history together."
 )
