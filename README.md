@@ -5,10 +5,12 @@ Primary Streamlit application for the Bitcoin Dynamic DCA project.
 ## Current sections
 
 - `app.py` — main Streamlit launcher
-- `engines/production/production_app.py` — frozen V5.8.2 Production control
-- `engines/research/research_app.py` — V5.9 Research engine
+- `engines/production/production_model.py` — frozen V5.8.2 Production calculations/data logic
+- `engines/production/production_app.py` — Production Streamlit UI
+- `engines/research/research_model.py` — V5.9 Research calculations/data logic
+- `engines/research/research_app.py` — Research Streamlit UI
 - `engines/audit/public_model_audit.py` — Public Model Audit and historical data collector
-- `dca_model_compare_notify.py` — temporary daily Production vs Research ntfy comparison
+- `dca_model_compare_notify.py` — temporary daily Production vs Research ntfy comparison; imports the model modules directly
 
 ## Data
 
