@@ -1,0 +1,1 @@
+Temporary branch note: harden the Public Model Audit quota guard so the lockout survives Streamlit session changes within the same app process. No Production logic changes.
