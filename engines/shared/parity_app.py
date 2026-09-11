@@ -147,7 +147,13 @@ with st.spinner("Fetching current comparison inputs..."):
     prod_fx = prod.fetch_aud_usd_rates(start_date, end_date)
     token = prod.get_bgeometrics_token()
     # One BGeometrics bundle only. Research and Production are not allowed to double-spend quota here.
-    prod_bg = prod.fetch_bgeometrics_bundle(start_date, end_date, token)
+    # A live BGeometrics failure must NOT be interpreted as central data being absent.
+    bg_live_error = ""
+    try:
+        prod_bg = prod.fetch_bgeometrics_bundle(start_date, end_date, token)
+    except Exception as exc:
+        prod_bg = pd.DataFrame()
+        bg_live_error = f"{type(exc).__name__}: {exc}"
 
 st.subheader("1. Production vs Research current price-path parity")
 model_rows = []
@@ -164,12 +170,43 @@ rows = []
 window = central.loc[(central.index.date >= start_date) & (central.index.date <= end_date)]
 
 def add_or_gap(label, current_series, central_col, current_source):
-    if central_col in window.columns and current_series is not None and len(current_series):
-        rows.append(_comparison_row(label, current_series, window[central_col], current_source, central_col))
+    central_present = False
+    central_obs = 0
+    if central_col in window.columns:
+        central_numeric = pd.to_numeric(window[central_col], errors="coerce")
+        central_obs = int(central_numeric.notna().sum())
+        central_present = central_obs > 0
+
+    current_present = False
+    if current_series is not None:
+        try:
+            current_present = len(_daily(current_series)) > 0
+        except Exception:
+            current_present = False
+
+    if central_present and current_present:
+        row = _comparison_row(label, current_series, window[central_col], current_source, central_col)
+        if row.get("Status") == "NO OVERLAP":
+            row["Status"] = "CENTRAL PRESENT — NO DATE OVERLAP"
+        row["Central observations"] = central_obs
+        rows.append(row)
+    elif central_present:
+        rows.append({
+            "Input": label,
+            "Current source": current_source,
+            "Central candidate": central_col,
+            "Central observations": central_obs,
+            "Overlap days": 0,
+            "Status": "CENTRAL PRESENT — LIVE COMPARISON UNAVAILABLE",
+        })
     else:
         rows.append({
-            "Input": label, "Current source": current_source, "Central candidate": central_col,
-            "Overlap days": 0, "Status": "SOURCE-PRESERVING CENTRAL GAP"
+            "Input": label,
+            "Current source": current_source,
+            "Central candidate": central_col,
+            "Central observations": 0,
+            "Overlap days": 0,
+            "Status": "SOURCE-PRESERVING CENTRAL GAP",
         })
 
 add_or_gap(
@@ -212,23 +249,35 @@ parity = pd.DataFrame(rows)
 for col in ["Median abs diff %", "95th pct abs diff %", "Max abs diff %", "Correlation"]:
     if col not in parity.columns:
         parity[col] = np.nan
+if "Central observations" not in parity.columns:
+    parity["Central observations"] = 0
 st.dataframe(
-    parity[["Input","Current source","Central candidate","Overlap days","Median abs diff %","95th pct abs diff %","Max abs diff %","Correlation","Status"]]
+    parity[["Input","Current source","Central candidate","Central observations","Overlap days","Median abs diff %","95th pct abs diff %","Max abs diff %","Correlation","Status"]]
         .style.format({"Median abs diff %":"{:.4f}","95th pct abs diff %":"{:.4f}","Max abs diff %":"{:.4f}","Correlation":"{:.6f}"}, na_rep="—"),
     use_container_width=True,
     hide_index=True,
 )
 
+if bg_live_error:
+    st.caption("Live BGeometrics comparison was unavailable on this run: " + bg_live_error)
+
 st.subheader("3. Migration readiness")
 measured = int((parity["Status"] == "MEASURED").sum())
+present_unvalidated = int(parity["Status"].str.startswith("CENTRAL PRESENT", na=False).sum())
 gaps = int(parity["Status"].str.contains("GAP", regex=True, na=False).sum())
 st.metric("Inputs with measured central parity", measured)
-st.metric("Inputs still requiring a central equivalent / validation", gaps)
+st.metric("Central inputs present but awaiting live validation", present_unvalidated)
+st.metric("True central-source gaps", gaps)
 
 if gaps:
     st.warning(
-        "Centralization is not ready for Production yet. That is the expected safe result at this stage: "
-        "we first measure what matches, identify missing inputs, and only then build a small validated Production export."
+        "Centralization is not ready for Production yet. Some exact-source inputs are genuinely missing from the central master. "
+        "Inputs marked CENTRAL PRESENT are stored safely and are not counted as missing merely because the live API comparison was unavailable."
+    )
+elif present_unvalidated:
+    st.info(
+        "All listed source-preserving inputs exist centrally, but some still need a successful live parity comparison. "
+        "Production remains unchanged until those validations are complete."
     )
 else:
     st.info(
