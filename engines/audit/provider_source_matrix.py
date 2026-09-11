@@ -9,23 +9,25 @@ import pandas as pd
 
 # Prefer local/self-calculated/free sources first; then verified alternate providers;
 # keep BGeometrics as specialist/fallback rather than the default bulk source.
+# CoinGlass specialist endpoints below were live-tested with the configured key and
+# returned application-level code 401 / "Upgrade plan" despite HTTP 200.
 SOURCE_MATRIX = [
     {"metric":"BTC price", "preferred":"Existing benchmark / CoinGecko", "secondary":"Coin Metrics", "fallback":"BGeometrics", "status":"free-first"},
-    {"metric":"Fear & Greed", "preferred":"CoinGlass", "secondary":"Existing central src__ BGeometrics history", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
-    {"metric":"Puell Multiple", "preferred":"Self-calc from Coin Metrics issuance + price", "secondary":"CoinGlass", "fallback":"BGeometrics", "status":"free-first; CoinGlass verified"},
-    {"metric":"2Y MA Multiplier", "preferred":"Self-calc from benchmark price", "secondary":"CoinGlass", "fallback":"BGeometrics", "status":"free-first; CoinGlass verified"},
-    {"metric":"200W MA", "preferred":"Self-calc from benchmark price", "secondary":"CoinGlass", "fallback":"BGeometrics", "status":"free-first; CoinGlass verified"},
-    {"metric":"NUPL", "preferred":"Self-calc from Coin Metrics market/realized cap", "secondary":"CoinGlass", "fallback":"CryptoQuant / BGeometrics", "status":"free-first; CoinGlass verified"},
-    {"metric":"STH SOPR", "preferred":"CoinGlass", "secondary":"CryptoQuant if entitlement permits", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
-    {"metric":"LTH SOPR", "preferred":"CoinGlass", "secondary":"CryptoQuant if entitlement permits", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
-    {"metric":"STH Realized Price", "preferred":"CoinGlass", "secondary":"CryptoQuant if entitlement permits", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
-    {"metric":"LTH Realized Price", "preferred":"CoinGlass", "secondary":"CryptoQuant if entitlement permits", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
-    {"metric":"RHODL Ratio", "preferred":"CoinGlass", "secondary":"CryptoQuant if catalogue/plan supports", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
-    {"metric":"STH Supply", "preferred":"CoinGlass", "secondary":"CryptoQuant if entitlement permits", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
-    {"metric":"LTH Supply", "preferred":"CoinGlass", "secondary":"CryptoQuant if entitlement permits", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
-    {"metric":"Reserve Risk", "preferred":"CoinGlass", "secondary":"CryptoQuant if entitlement permits", "fallback":"BGeometrics", "status":"CoinGlass entitlement verified"},
+    {"metric":"Fear & Greed", "preferred":"CoinGlass if application-level response contains data", "secondary":"Existing central src__ BGeometrics history", "fallback":"BGeometrics", "status":"transport reachable; dataset access must be app-code validated"},
+    {"metric":"Puell Multiple", "preferred":"Self-calc from Coin Metrics issuance + price", "secondary":"CoinGlass if application-level response contains data", "fallback":"BGeometrics", "status":"free-first; CoinGlass access requires app-code validation"},
+    {"metric":"2Y MA Multiplier", "preferred":"Self-calc from benchmark price", "secondary":"CoinGlass if application-level response contains data", "fallback":"BGeometrics", "status":"free-first; CoinGlass access requires app-code validation"},
+    {"metric":"200W MA", "preferred":"Self-calc from benchmark price", "secondary":"CoinGlass if application-level response contains data", "fallback":"BGeometrics", "status":"free-first; CoinGlass access requires app-code validation"},
+    {"metric":"NUPL", "preferred":"Self-calc from Coin Metrics market/realized cap", "secondary":"CoinGlass if application-level response contains data", "fallback":"CryptoQuant / BGeometrics", "status":"free-first; CoinGlass access requires app-code validation"},
+    {"metric":"STH SOPR", "preferred":"CryptoQuant if entitlement permits", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"CoinGlass current plan BLOCKED: code 401 Upgrade plan"},
+    {"metric":"LTH SOPR", "preferred":"CryptoQuant if entitlement permits", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"CoinGlass current plan BLOCKED: code 401 Upgrade plan"},
+    {"metric":"STH Realized Price", "preferred":"CryptoQuant if entitlement permits", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"CoinGlass current plan BLOCKED: code 401 Upgrade plan"},
+    {"metric":"LTH Realized Price", "preferred":"CryptoQuant if entitlement permits", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"CoinGlass current plan BLOCKED: code 401 Upgrade plan"},
+    {"metric":"RHODL Ratio", "preferred":"CryptoQuant if catalogue/plan supports", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"CoinGlass current plan BLOCKED: code 401 Upgrade plan"},
+    {"metric":"STH Supply", "preferred":"CryptoQuant if entitlement permits", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"CoinGlass current plan BLOCKED: code 401 Upgrade plan"},
+    {"metric":"LTH Supply", "preferred":"CryptoQuant if entitlement permits", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"CoinGlass current plan BLOCKED: code 401 Upgrade plan"},
+    {"metric":"Reserve Risk", "preferred":"CryptoQuant if entitlement permits", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"CoinGlass current plan BLOCKED: code 401 Upgrade plan"},
     {"metric":"MVRV / MVRV Z", "preferred":"Coin Metrics/self-calc where exact inputs allow", "secondary":"CryptoQuant if entitlement permits", "fallback":"BGeometrics exact Production source", "status":"do not replace Production source without parity"},
-    {"metric":"aSOPR / SOPR variants", "preferred":"CryptoQuant if entitlement permits", "secondary":"CoinGlass where equivalent exists", "fallback":"BGeometrics", "status":"specialist"},
+    {"metric":"aSOPR / SOPR variants", "preferred":"CryptoQuant if entitlement permits", "secondary":"Existing cache", "fallback":"BGeometrics", "status":"specialist"},
     {"metric":"VDD / CDD / Liveliness / Dormancy", "preferred":"Coin Metrics or CryptoQuant where available", "secondary":"BGeometrics cached history", "fallback":"BGeometrics", "status":"specialist"},
 ]
 
