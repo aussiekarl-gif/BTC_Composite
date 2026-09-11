@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BTC Dynamic DCA launcher — Research, Production control, Public Model Audit, and Central Data Parity."""
+"""BTC Dynamic DCA launcher — Research, Production control, Public Model Audit, provider probe, and Central Data Parity."""
 from pathlib import Path
 import streamlit as st
 
@@ -67,13 +67,14 @@ header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader,
 
 section = st.sidebar.selectbox(
     "App section",
-    ["V5.9 Research", "V5.8.2 Production", "Public Model Audit", "Central Data Parity"],
+    ["V5.9 Research", "V5.8.2 Production", "Public Model Audit", "Provider Capability Probe", "Central Data Parity"],
     index=0,
     key="combined_app_section_selector",
     help=(
         "V5.9 Research is the working development version. "
         "V5.8.2 Production remains the frozen control. "
         "Public Model Audit screens external/public Bitcoin models before any idea is allowed into Research. "
+        "Provider Capability Probe checks configured data-provider access without changing data or models. "
         "Central Data Parity compares the shared research database with current live model inputs without changing either model."
     ),
 )
@@ -82,6 +83,7 @@ engine_path = {
     "V5.9 Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "V5.8.2 Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Public Model Audit": Path(__file__).parent / "engines" / "audit" / "public_model_audit.py",
+    "Provider Capability Probe": Path(__file__).parent / "engines" / "audit" / "provider_probe_app.py",
     "Central Data Parity": Path(__file__).parent / "engines" / "shared" / "parity_app.py",
 }[section]
 
