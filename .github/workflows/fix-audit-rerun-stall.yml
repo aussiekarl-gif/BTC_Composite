@@ -31,9 +31,9 @@ jobs:
           from pathlib import Path
           t = Path('engines/audit/public_model_audit.py').read_text()
           target = 'memory = save_audit_memory(memory, cache, base)'
-          assert target not in t, 'unconditional rerun save still present'
+          assert t.count(target) == 2, 'ordinary-rerun save was not removed exactly once'
           assert 'memory = combine_caches(memory, cache, base)' in t
-          print('Validation passed: ordinary rerun is read-only')
+          print('Validation passed: ordinary rerun is read-only; deliberate saves remain')
           PY
       - name: Commit validated fix and remove one-off helpers
         run: |
