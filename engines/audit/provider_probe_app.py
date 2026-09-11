@@ -7,6 +7,7 @@ from engines.audit.provider_probe import (
     run_coinglass_entitlement_probe,
     run_cryptoquant_catalogue_probe,
 )
+from engines.audit.provider_source_matrix import source_matrix_df, relevant_cryptoquant_paths
 
 st.title("BTC Data Provider Capability Probe")
 st.caption(
@@ -62,5 +63,22 @@ if cq:
     st.write({k:v for k,v in cq.items() if k != "btc_paths"})
     paths=cq.get("btc_paths") or []
     if paths:
-        st.dataframe(pd.DataFrame({"btc_endpoint_path":paths}), use_container_width=True, hide_index=True)
+        relevant = relevant_cryptoquant_paths(paths)
+        if not relevant.empty:
+            st.markdown("**CryptoQuant BTC endpoints relevant to our audit**")
+            st.dataframe(relevant, use_container_width=True, hide_index=True)
+        with st.expander("Show all CryptoQuant BTC endpoint paths", expanded=False):
+            st.dataframe(pd.DataFrame({"btc_endpoint_path":paths}), use_container_width=True, hide_index=True)
     st.caption("This reads endpoint names only. It does not call each CryptoQuant metric endpoint or consume on-chain data history.")
+
+st.divider()
+st.subheader("Research source-priority matrix")
+st.caption(
+    "Planning only. This records the acquisition order we will use for Audit/Research: self-calculated/free first, "
+    "then verified alternate providers, then BGeometrics only where needed. It does not switch Production."
+)
+st.dataframe(source_matrix_df(), use_container_width=True, hide_index=True)
+st.info(
+    "Production-source MVRV-Z and Fear & Greed remain protected by parity requirements. "
+    "An alternate provider is not allowed to silently replace the exact Production source."
+)
