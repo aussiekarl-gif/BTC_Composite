@@ -1,1 +1,0 @@
-Final provider routing: free/self-calculated sources first; existing cache second; BGeometrics for unresolved specialist gaps. CoinGlass specialist endpoints and CryptoQuant targeted on-chain endpoints are blocked by current plan entitlements. Production unchanged.
