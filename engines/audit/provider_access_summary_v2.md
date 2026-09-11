@@ -1,0 +1,1 @@
+Current routing after deployed entitlement tests: free/self-calculated sources first; existing cache second; BGeometrics only for remaining specialist gaps. CoinGlass specialist endpoints are plan-blocked and CryptoQuant targeted BTC on-chain endpoints return HTTP 403 on the current entitlement. Production remains unchanged.
