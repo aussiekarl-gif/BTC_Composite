@@ -1,0 +1,34 @@
+name: Validate central data parity lab
+
+on:
+  push:
+    branches: [central-data-parity-lab]
+    paths:
+      - engines/shared/parity_app.py
+      - app.py
+      - .github/workflows/validate-central-parity.yml
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: central-data-parity-lab
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Compile parity files
+        run: python -m py_compile app.py engines/shared/central_data.py engines/shared/parity_app.py engines/production/production_model.py engines/research/research_model.py
+      - name: Import shared modules
+        run: |
+          python - <<'PY'
+          from engines.shared import central_data
+          from engines.production import production_model
+          from engines.research import research_model
+          assert callable(central_data.load_master)
+          assert callable(production_model.fetch_btc_history)
+          assert callable(research_model.fetch_btc_history)
+          print('central parity imports OK')
+          PY
