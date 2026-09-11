@@ -16,6 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from engines.shared.central_data import CentralDataConfig, CentralDataError, load_master
+from engines.shared.shadow_engine_test import render_shadow_engine_test
 from engines.production import production_model as prod
 from engines.research import research_model as research
 
@@ -294,5 +295,7 @@ else:
         "All listed inputs have measurable central candidates. This still does not switch Production; the next step would be "
         "a separately reviewed validated export with explicit tolerances and reproducibility checks."
     )
+
+render_shadow_engine_test(cfg)
 
 st.caption("No files were written and no Production/Research data source was changed by this parity check.")
