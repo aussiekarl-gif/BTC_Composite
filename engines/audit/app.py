@@ -2,6 +2,8 @@ import os
 import time
 import io
 import json
+import base64
+import hashlib
 import datetime as dt
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -126,6 +128,108 @@ def get_token():
     return os.getenv("BGEOMETRICS_TOKEN", "").strip()
 
 
+def _secret_or_env(*names, default=""):
+    for name in names:
+        try:
+            value = st.secrets.get(name, "")
+            if value:
+                return str(value).strip()
+        except Exception:
+            pass
+        value = os.getenv(name, "")
+        if value:
+            return str(value).strip()
+    return default
+
+
+def audit_storage_config():
+    """Durable GitHub storage for Streamlit Cloud.
+
+    IMPORTANT: use a separate private data repo, not the repo that deploys this app,
+    otherwise every autosave commit can trigger a Streamlit redeploy.
+    """
+    token = _secret_or_env("AUDIT_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN")
+    repo = _secret_or_env("AUDIT_GITHUB_REPO")
+    branch = _secret_or_env("AUDIT_GITHUB_BRANCH", default="main") or "main"
+    path = _secret_or_env("AUDIT_GITHUB_PATH", default="btc_audit_backup.csv") or "btc_audit_backup.csv"
+    return {"token": token, "repo": repo, "branch": branch, "path": path}
+
+
+def _github_headers(token):
+    return {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "btc-public-model-audit",
+    }
+
+
+def load_remote_audit_memory():
+    """Load the single durable backup CSV from GitHub. Returns (frame, status)."""
+    cfg = audit_storage_config()
+    if not cfg["token"] or not cfg["repo"]:
+        return pd.DataFrame(), "NOT CONFIGURED"
+    url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
+    try:
+        r = requests.get(url, headers=_github_headers(cfg["token"]), params={"ref": cfg["branch"]}, timeout=25)
+        if r.status_code == 404:
+            return pd.DataFrame(), "CONNECTED — no remote backup yet"
+        r.raise_for_status()
+        obj = r.json()
+        raw = base64.b64decode(obj.get("content", "").encode())
+        if not raw:
+            return pd.DataFrame(), "CONNECTED — remote backup empty"
+        frame = read_cache_csv(io.BytesIO(raw))
+        return frame, f"CONNECTED — loaded {len(frame):,} remote rows"
+    except Exception as e:
+        return pd.DataFrame(), f"ERROR — {type(e).__name__}: {e}"
+
+
+def save_remote_audit_memory(memory):
+    """Persist the entire audit memory as ONE CSV in GitHub, only when changed.
+
+    Returns a short status string. GitHub is authoritative on Streamlit Cloud because
+    local runtime files disappear when the app sleeps/restarts/redeploys.
+    """
+    cfg = audit_storage_config()
+    if memory is None or memory.empty:
+        return "SKIPPED — memory empty"
+    if not cfg["token"] or not cfg["repo"]:
+        return "NOT CONFIGURED"
+
+    tmp = memory.copy()
+    tmp.index.name = "date"
+    raw = tmp.reset_index().to_csv(index=False).encode("utf-8")
+    url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
+    headers = _github_headers(cfg["token"])
+    try:
+        sha = None
+        old_raw = b""
+        g = requests.get(url, headers=headers, params={"ref": cfg["branch"]}, timeout=25)
+        if g.status_code == 200:
+            obj = g.json()
+            sha = obj.get("sha")
+            old_raw = base64.b64decode(obj.get("content", "").encode()) if obj.get("content") else b""
+        elif g.status_code != 404:
+            g.raise_for_status()
+
+        if hashlib.sha256(old_raw).digest() == hashlib.sha256(raw).digest():
+            return "CONNECTED — remote backup already current"
+
+        payload = {
+            "message": "Update BTC audit persistent backup",
+            "content": base64.b64encode(raw).decode("ascii"),
+            "branch": cfg["branch"],
+        }
+        if sha:
+            payload["sha"] = sha
+        r = requests.put(url, headers=headers, json=payload, timeout=30)
+        r.raise_for_status()
+        return f"SAVED — {len(memory):,} rows to durable GitHub backup"
+    except Exception as e:
+        return f"ERROR — {type(e).__name__}: {e}"
+
+
 def _pick(frame, aliases):
     if frame is None or frame.empty:
         return None
@@ -211,12 +315,11 @@ def save_runtime_master_cache(cache):
 
 
 def save_audit_memory(*frames):
-    """Best-effort single-file memory for everything the audit has learned.
+    """Save one consolidated audit memory locally AND to durable remote storage.
 
-    Combines the frozen benchmark, free-derived data, specialist history and restored
-    backup data into one date-indexed CSV. It is reloaded automatically on future reruns.
-    On ephemeral hosts (for example a Streamlit Cloud redeploy), the downloadable
-    btc_audit_backup.csv remains the portable recovery copy.
+    The local file is only a speed cache. On Streamlit Cloud it is ephemeral.
+    GitHub remote storage (when configured) is the durable source of truth and is
+    restored automatically every time a new Streamlit session starts.
     """
     memory = combine_caches(*frames)
     if memory.empty:
@@ -228,6 +331,9 @@ def save_audit_memory(*frames):
         tmp.reset_index().to_csv(AUDIT_MEMORY, index=False)
     except Exception:
         pass
+    # Durable write. It first compares the remote bytes, so ordinary Streamlit reruns
+    # do not create needless commits.
+    st.session_state["audit_remote_save_status"] = save_remote_audit_memory(memory)
     return memory
 
 
@@ -855,7 +961,7 @@ st.title("BTC Public Model Audit — Guided Mode")
 st.caption(
     "Research only. This page is designed to be used in order: 1 → 2 → 3 → 4. "
     "Free/self-calculated indicators are built first; BGeometrics is used only for metrics we cannot reproduce safely. "
-    "All supplied/acquired data is remembered automatically in one audit memory file."
+    "All supplied/acquired data is consolidated into one audit memory file; with GitHub storage configured it survives Streamlit restarts automatically."
 )
 
 st.info(
@@ -890,7 +996,22 @@ benchmark_upload = st.file_uploader(
     help="Only upload a different btc_v5_9_r2_frozen.csv if we deliberately want to replace the bundled benchmark.",
 )
 
-memory = read_cache_csv(AUDIT_MEMORY) if AUDIT_MEMORY.exists() else pd.DataFrame()
+local_memory = read_cache_csv(AUDIT_MEMORY) if AUDIT_MEMORY.exists() else pd.DataFrame()
+remote_memory, remote_load_status = load_remote_audit_memory()
+# Remote data is loaded first; any newer local rows/columns win within this live session.
+memory = combine_caches(remote_memory, local_memory)
+
+storage_cfg = audit_storage_config()
+if storage_cfg["token"] and storage_cfg["repo"]:
+    if remote_load_status.startswith("ERROR"):
+        st.error("Persistent audit storage: " + remote_load_status)
+    else:
+        st.success("Persistent audit storage: " + remote_load_status)
+else:
+    st.warning(
+        "Persistent audit storage is NOT configured. Streamlit Cloud deletes local runtime files when the app sleeps/restarts. "
+        "Add AUDIT_GITHUB_TOKEN and AUDIT_GITHUB_REPO to Streamlit Secrets to make the single backup automatic and permanent."
+    )
 
 if benchmark_upload is not None:
     benchmark_source = benchmark_upload
@@ -982,6 +1103,9 @@ with st.expander("Show numbered dataset list", expanded=False):
     st.dataframe(plan_df, use_container_width=True, hide_index=True)
 
 backup_now = audit_backup_frame(cache, base, memory)
+if st.session_state.get("audit_remote_save_status"):
+    st.caption("Last persistent save: " + st.session_state["audit_remote_save_status"])
+
 if not backup_now.empty:
     st.download_button(
         "DOWNLOAD SINGLE AUDIT BACKUP",
