@@ -113,6 +113,7 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 BUNDLED_CACHE = CACHE_DIR / "public_model_cache.csv"
 MASTER_CACHE = CACHE_DIR / "btc_onchain_master_cache.csv"
 FROZEN_BENCHMARK = CACHE_DIR / "btc_v5_9_r2_frozen.csv"
+AUDIT_MEMORY = CACHE_DIR / "btc_audit_memory.csv"
 
 
 def get_token():
@@ -207,6 +208,31 @@ def save_runtime_master_cache(cache):
     except Exception:
         # Streamlit Cloud may be ephemeral/read-only. The download button remains authoritative.
         pass
+
+
+def save_audit_memory(*frames):
+    """Best-effort single-file memory for everything the audit has learned.
+
+    Combines the frozen benchmark, free-derived data, specialist history and restored
+    backup data into one date-indexed CSV. It is reloaded automatically on future reruns.
+    On ephemeral hosts (for example a Streamlit Cloud redeploy), the downloadable
+    btc_audit_backup.csv remains the portable recovery copy.
+    """
+    memory = combine_caches(*frames)
+    if memory.empty:
+        return memory
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = memory.copy()
+        tmp.index.name = "date"
+        tmp.reset_index().to_csv(AUDIT_MEMORY, index=False)
+    except Exception:
+        pass
+    return memory
+
+
+def audit_backup_frame(cache, base, existing_memory=None):
+    return combine_caches(existing_memory, cache, base)
 
 
 def dataset_cached(cache, ds):
@@ -522,22 +548,26 @@ def build_free_indicator_cache(start_date, end_date):
 
 
 def puell_threshold_research(merged, total_capital=500000.0):
-    """Causal Monday accumulation comparison for Puell thresholds.
+    """Causal Monday accumulation comparison for Puell thresholds in AUD.
 
-    Same weekly capital allowance enters each strategy. Threshold strategies hold unused
-    allowance in cash and deploy ALL accumulated cash on an eligible Monday. No future
-    eligible dates are used to size today's purchase.
+    Same weekly AUD allowance enters each strategy. Threshold strategies hold unused
+    allowance in cash and deploy ALL accumulated cash on an eligible Monday. Puell is
+    attached using the last completed daily observation before Monday elsewhere.
     """
-    if "Puell Multiple" not in merged.columns:
+    required = {"btc_price_aud", "Puell Multiple"}
+    if not required.issubset(merged.columns):
         return pd.DataFrame()
-    z = merged[["price_usd", "Puell Multiple"]].dropna().copy()
+    z = merged[["btc_price_aud", "Puell Multiple"]].copy()
+    z["btc_price_aud"] = pd.to_numeric(z["btc_price_aud"], errors="coerce")
+    z["Puell Multiple"] = pd.to_numeric(z["Puell Multiple"], errors="coerce")
+    z = z.dropna()
     if len(z) < 52:
         return pd.DataFrame()
     n = len(z)
     weekly = float(total_capital) / n
     rows = []
 
-    plain_btc = float((weekly / z["price_usd"]).sum())
+    plain_btc = float((weekly / z["btc_price_aud"]).sum())
     rows.append({"Strategy":"Plain Monday DCA", "BTC":plain_btc, "Deployed":total_capital, "Cash left":0.0, "Buy weeks":n})
 
     for threshold in (0.50, 0.40, 0.30):
@@ -546,7 +576,7 @@ def puell_threshold_research(merged, total_capital=500000.0):
         for _, r in z.iterrows():
             cash += weekly
             if float(r["Puell Multiple"]) <= threshold and cash > 0:
-                btc += cash / float(r["price_usd"])
+                btc += cash / float(r["btc_price_aud"])
                 deployed += cash
                 cash = 0.0
                 buys += 1
@@ -554,10 +584,148 @@ def puell_threshold_research(merged, total_capital=500000.0):
 
     out = pd.DataFrame(rows)
     out["BTC vs plain %"] = (out["BTC"] / plain_btc - 1.0) * 100.0
-    out["Avg buy price"] = out["Deployed"] / out["BTC"].replace(0, np.nan)
+    out["Avg buy price AUD"] = out["Deployed"] / out["BTC"].replace(0, np.nan)
     out["Deployed %"] = out["Deployed"] / float(total_capital) * 100.0
     return out
 
+
+BOTTOM_ACCELERATOR_RULES = {
+    "MVRV Z": ("MVRV Z-Score (positive control)", (0.50, 0.00, -0.25)),
+    "Puell": ("Puell Multiple", (0.60, 0.50, 0.40)),
+    "2Y MA": ("2Y MA Multiple", (0.80, 0.65, 0.55)),
+    "200W MA": ("200W MA Multiple", (1.10, 0.95, 0.85)),
+    "LTH MVRV": ("LTH MVRV", (1.40, 1.10, 0.90)),
+    "Investor Price": ("Investor Price", (1.40, 1.20, 1.00)),
+}
+
+
+def _bottom_severity(value, thresholds):
+    if not np.isfinite(value):
+        return 0
+    moderate, deep, extreme = thresholds
+    if value < extreme:
+        return 3
+    if value < deep:
+        return 2
+    if value < moderate:
+        return 1
+    return 0
+
+
+def _severity_boost(level):
+    return {0: 1.00, 1: 1.25, 2: 1.50, 3: 2.00}.get(int(level), 1.00)
+
+
+def _causal_remaining_capital_dca(frame, boost, total_capital=500000.0):
+    """Sequential live-style allocator using only information available at each Monday.
+
+    Each week starts from remaining capital / weeks remaining, then applies the frozen
+    R2 DCA multiplier and the research accelerator. The known horizon is allowed; future
+    indicator values/prices are never used. Final week deploys any remaining balance so
+    every strategy is compared on equal total capital.
+    """
+    z = frame.copy()
+    z["btc_price_aud"] = pd.to_numeric(z.get("btc_price_aud"), errors="coerce")
+    z["dca_multiplier"] = pd.to_numeric(z.get("dca_multiplier", 1.0), errors="coerce").fillna(1.0)
+    z = z[z["btc_price_aud"].gt(0)].copy()
+    if z.empty:
+        return None
+    boost = pd.Series(boost, index=frame.index).reindex(z.index).fillna(1.0).astype(float)
+
+    remaining = float(total_capital)
+    btc = deployed = 0.0
+    buy_weeks = 0
+    n = len(z)
+    for i, (idx, r) in enumerate(z.iterrows()):
+        if remaining <= 1e-9:
+            break
+        weeks_left = n - i
+        if weeks_left == 1:
+            amount = remaining
+        else:
+            base = remaining / weeks_left
+            amount = min(remaining, base * max(0.0, float(r["dca_multiplier"])) * max(0.0, float(boost.loc[idx])))
+        if amount > 0:
+            btc += amount / float(r["btc_price_aud"])
+            deployed += amount
+            remaining -= amount
+            buy_weeks += 1
+    return {
+        "BTC": btc,
+        "Deployed": deployed,
+        "Cash left": remaining,
+        "Buy weeks": buy_weeks,
+        "Avg buy price AUD": deployed / btc if btc > 0 else np.nan,
+    }
+
+
+def bottom_accelerator_research(merged, total_capital=500000.0):
+    """Test fixed, pre-declared bear-zone accelerators on top of frozen R2 Monday sizing."""
+    if "btc_price_aud" not in merged.columns or "dca_multiplier" not in merged.columns:
+        return pd.DataFrame(), pd.DataFrame()
+
+    work = merged.copy()
+    severity_cols = {}
+    for label, (col, thresholds) in BOTTOM_ACCELERATOR_RULES.items():
+        if col not in work.columns:
+            continue
+        x = pd.to_numeric(work[col], errors="coerce")
+        sev = x.map(lambda v: _bottom_severity(v, thresholds) if np.isfinite(v) else 0)
+        severity_cols[label] = sev
+
+    base_boost = pd.Series(1.0, index=work.index)
+    baseline = _causal_remaining_capital_dca(work, base_boost, total_capital)
+    if baseline is None:
+        return pd.DataFrame(), pd.DataFrame()
+
+    rows = [{"Strategy": "Frozen R2 baseline", **baseline}]
+    for label, sev in severity_cols.items():
+        boost = sev.map(_severity_boost)
+        result = _causal_remaining_capital_dca(work, boost, total_capital)
+        if result is not None:
+            rows.append({"Strategy": f"R2 + {label} accelerator", **result})
+
+    # Consensus uses only the four longer-history inputs. Missing inputs do not vote.
+    core = [x for x in ("MVRV Z", "Puell", "2Y MA", "200W MA") if x in severity_cols]
+    consensus_boost = pd.Series(1.0, index=work.index, dtype=float)
+    if len(core) >= 2:
+        for idx in work.index:
+            vals = []
+            for label in core:
+                source_col = BOTTOM_ACCELERATOR_RULES[label][0]
+                if source_col in work.columns and pd.notna(work.at[idx, source_col]):
+                    vals.append(float(severity_cols[label].loc[idx]))
+            if len(vals) >= 2:
+                avg = float(np.mean(vals))
+                consensus_boost.loc[idx] = 2.00 if avg >= 2.0 else 1.50 if avg >= 1.5 else 1.25 if avg >= 1.0 else 1.00
+        result = _causal_remaining_capital_dca(work, consensus_boost, total_capital)
+        if result is not None:
+            rows.append({"Strategy": "R2 + 4-factor consensus", **result})
+
+    summary = pd.DataFrame(rows)
+    base_btc = float(summary.loc[summary["Strategy"].eq("Frozen R2 baseline"), "BTC"].iloc[0])
+    summary["BTC vs R2 %"] = (summary["BTC"] / base_btc - 1.0) * 100.0
+
+    era_rows = []
+    if "era" in work.columns:
+        for era in ("2016–2019", "2020–2022", "2023–present"):
+            part = work[work["era"].eq(era)].copy()
+            if len(part) < 20:
+                continue
+            base_e = _causal_remaining_capital_dca(part, pd.Series(1.0, index=part.index), total_capital)
+            if base_e is None:
+                continue
+            for label, sev in severity_cols.items():
+                boost = sev.reindex(part.index).fillna(0).map(_severity_boost)
+                rr = _causal_remaining_capital_dca(part, boost, total_capital)
+                if rr is not None:
+                    era_rows.append({"Era": era, "Strategy": label, "BTC vs R2 %": (rr["BTC"] / base_e["BTC"] - 1.0) * 100.0})
+            if len(core) >= 2:
+                rr = _causal_remaining_capital_dca(part, consensus_boost.reindex(part.index).fillna(1.0), total_capital)
+                if rr is not None:
+                    era_rows.append({"Era": era, "Strategy": "4-factor consensus", "BTC vs R2 %": (rr["BTC"] / base_e["BTC"] - 1.0) * 100.0})
+
+    return summary, pd.DataFrame(era_rows)
 
 def expanding_percentile(s, min_periods=52):
     x = pd.to_numeric(s, errors="coerce")
@@ -603,7 +771,9 @@ def era_name(dt):
 
 
 def prepare_frozen(uploaded):
-    df = pd.read_csv(uploaded)
+    df = uploaded.copy() if isinstance(uploaded, pd.DataFrame) else pd.read_csv(uploaded)
+    if isinstance(df.index, pd.DatetimeIndex) and "date" not in df.columns:
+        df = df.reset_index()
     if "date" not in df.columns:
         raise ValueError("CSV must contain date column")
     df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
@@ -632,15 +802,24 @@ def prepare_frozen(uploaded):
     return m
 
 
-def attach_metric_asof(audit_index, daily_series):
+def attach_metric_asof(audit_index, daily_series, prior_completed_day=False):
+    """Attach latest known daily value to each audit Monday.
+
+    When prior_completed_day=True, the lookup cutoff is one second before the Monday
+    timestamp, preventing a same-day/incomplete daily observation from entering a
+    Monday decision. This is used for Puell accumulation research.
+    """
     daily = pd.to_numeric(daily_series, errors="coerce").dropna().sort_index()
     if daily.empty:
         return pd.Series(np.nan, index=audit_index, dtype=float)
-    left = pd.DataFrame({"audit_date": pd.DatetimeIndex(audit_index)}).sort_values("audit_date")
+    audit_dates = pd.DatetimeIndex(audit_index)
+    cutoffs = audit_dates - pd.Timedelta(seconds=1) if prior_completed_day else audit_dates
+    left = pd.DataFrame({"audit_date": audit_dates, "lookup_date": cutoffs}).sort_values("lookup_date")
     right = daily.rename("value").reset_index().rename(columns={daily.index.name or "index": "metric_date"})
     right["metric_date"] = pd.to_datetime(right["metric_date"], utc=True, errors="coerce")
     right = right.dropna(subset=["metric_date"]).sort_values("metric_date")
-    joined = pd.merge_asof(left, right, left_on="audit_date", right_on="metric_date", direction="backward")
+    joined = pd.merge_asof(left, right, left_on="lookup_date", right_on="metric_date", direction="backward")
+    joined = joined.sort_values("audit_date")
     return pd.Series(pd.to_numeric(joined["value"], errors="coerce").to_numpy(), index=audit_index)
 
 
@@ -675,7 +854,8 @@ def missing_ranges(cache, column, start, end):
 st.title("BTC Public Model Audit — Guided Mode")
 st.caption(
     "Research only. This page is designed to be used in order: 1 → 2 → 3 → 4. "
-    "Free/self-calculated indicators are built first; BGeometrics is used only for metrics we cannot reproduce safely."
+    "Free/self-calculated indicators are built first; BGeometrics is used only for metrics we cannot reproduce safely. "
+    "All supplied/acquired data is remembered automatically in one audit memory file."
 )
 
 st.info(
@@ -710,13 +890,30 @@ benchmark_upload = st.file_uploader(
     help="Only upload a different btc_v5_9_r2_frozen.csv if we deliberately want to replace the bundled benchmark.",
 )
 
-benchmark_source = benchmark_upload if benchmark_upload is not None else (FROZEN_BENCHMARK if FROZEN_BENCHMARK.exists() else None)
+memory = read_cache_csv(AUDIT_MEMORY) if AUDIT_MEMORY.exists() else pd.DataFrame()
+
+if benchmark_upload is not None:
+    benchmark_source = benchmark_upload
+elif FROZEN_BENCHMARK.exists():
+    benchmark_source = FROZEN_BENCHMARK
+elif (not memory.empty) and {"price_usd", "risk_score"}.issubset(memory.columns):
+    benchmark_source = memory
+else:
+    benchmark_source = None
+
 if benchmark_source is None:
-    st.warning("Benchmark missing. Upload btc_v5_9_r2_frozen.csv once, or bundle it in engines/audit/cache/.")
+    st.warning("Benchmark missing. Upload btc_v5_9_r2_frozen.csv once. The audit will remember it automatically after that.")
     st.stop()
 
 try:
     base = prepare_frozen(benchmark_source)
+    if benchmark_upload is not None:
+        try:
+            uploaded_raw = pd.read_csv(benchmark_upload)
+            uploaded_raw.to_csv(FROZEN_BENCHMARK, index=False)
+        except Exception:
+            pass
+        memory = save_audit_memory(memory, base)
 except Exception as e:
     st.error(f"Benchmark could not be read: {e}")
     st.stop()
@@ -734,21 +931,19 @@ st.caption("The bundled cache is loaded first. Free/self-calculated data is adde
 bundled = read_cache_csv(BUNDLED_CACHE) if BUNDLED_CACHE.exists() else pd.DataFrame()
 bundled_master = read_cache_csv(MASTER_CACHE) if MASTER_CACHE.exists() else pd.DataFrame()
 
-with st.expander("Optional recovery/import — only use after a redeploy or when moving files", expanded=False):
-    extra_cache_file = st.file_uploader(
-        "Import public_model_cache.csv",
-        type=["csv"], key="cache",
-        help="Optional. Leave empty during normal use.",
-    )
-    master_cache_file = st.file_uploader(
-        "Import btc_onchain_master_cache.csv",
-        type=["csv"], key="master_cache_upload",
-        help="Optional. Leave empty when the current master cache is bundled with the website.",
+with st.expander("Optional one-file recovery — normally leave empty", expanded=False):
+    backup_restore = st.file_uploader(
+        "Restore btc_audit_backup.csv",
+        type=["csv"], key="audit_backup_restore",
+        help="Only needed after a redeploy/move if the runtime memory file is gone. One file restores benchmark + cached audit history.",
     )
 
-extra = read_cache_csv(extra_cache_file) if extra_cache_file is not None else pd.DataFrame()
-uploaded_master = read_cache_csv(master_cache_file) if master_cache_file is not None else pd.DataFrame()
-cache = combine_caches(bundled, bundled_master, extra, uploaded_master)
+restored = read_cache_csv(backup_restore) if backup_restore is not None else pd.DataFrame()
+cache = combine_caches(memory, bundled, bundled_master, restored)
+if backup_restore is not None and not restored.empty:
+    memory = save_audit_memory(memory, restored, base)
+else:
+    memory = save_audit_memory(memory, cache, base)
 
 cached_count = sum(dataset_cached(cache, d) for d in MASTER_DATASETS)
 missing_count = len(MASTER_DATASETS) - cached_count
@@ -786,13 +981,15 @@ plan_df = pd.DataFrame(plan_rows)
 with st.expander("Show numbered dataset list", expanded=False):
     st.dataframe(plan_df, use_container_width=True, hide_index=True)
 
-if not cache.empty:
+backup_now = audit_backup_frame(cache, base, memory)
+if not backup_now.empty:
     st.download_button(
-        "Backup current master cache",
-        cache.reset_index().to_csv(index=False).encode(),
-        "btc_onchain_master_cache.csv",
+        "DOWNLOAD SINGLE AUDIT BACKUP",
+        backup_now.reset_index().to_csv(index=False).encode(),
+        "btc_audit_backup.csv",
         "text/csv",
-        key="master_cache_current",
+        key="single_audit_backup",
+        help="One portable CSV containing the remembered benchmark plus all cached free/specialist audit history.",
     )
 
 # -----------------------------------------------------------------------------
@@ -818,14 +1015,8 @@ if st.button("BUILD / REFRESH FREE INDICATORS", type="primary", key="build_free_
         cache = combine_caches(cache, free_frame)
         save_runtime_master_cache(cache)
         save_runtime_cache(cache)
-        st.success(f"Free indicator cache updated: {len(free_frame):,} daily rows. No BGeometrics quota used.")
-        st.download_button(
-            "BACKUP FREE-FIRST MASTER CACHE",
-            cache.reset_index().to_csv(index=False).encode(),
-            "btc_onchain_master_cache.csv",
-            "text/csv",
-            key="free_master_cache_download",
-        )
+        memory = save_audit_memory(memory, cache, base)
+        st.success(f"Free indicator cache updated: {len(free_frame):,} daily rows. No BGeometrics quota used. Audit memory saved automatically.")
     else:
         st.warning("No Coin Metrics Community rows were available. Price-only indicators still work and BGeometrics was not contacted.")
 
@@ -895,6 +1086,7 @@ if st.button(
             master_rows.append({"Dataset": ds["label"], "Status": status})
             save_runtime_master_cache(cache)
             save_runtime_cache(cache)
+            memory = save_audit_memory(memory, cache, base)
 
             if master_rate and master_rate.get("remaining") is not None:
                 try:
@@ -920,14 +1112,6 @@ if st.button(
     if master_limited:
         st.warning("Quota reached. The app stopped immediately. Run this same button after the displayed reset; cached datasets will be skipped.")
 
-    if not cache.empty:
-        st.download_button(
-            "SAVE / BACKUP UPDATED MASTER CACHE",
-            cache.reset_index().to_csv(index=False).encode(),
-            "btc_onchain_master_cache.csv",
-            "text/csv",
-            key="master_cache_download",
-        )
 
 # -----------------------------------------------------------------------------
 # STEP 5 — Audit
@@ -961,7 +1145,7 @@ for name, (endpoint, aliases) in CANDIDATES.items():
         local_series = pd.to_numeric(cache[name], errors="coerce").dropna().sort_index()
 
     if not local_series.empty:
-        merged[name] = attach_metric_asof(merged.index, local_series)
+        merged[name] = attach_metric_asof(merged.index, local_series, prior_completed_day=(name == "Puell Multiple"))
         obs = int(merged[name].notna().sum())
         status = "Free/local cache — no BGeometrics call" if name in FREE_FIRST_CANDIDATES else "BGeometrics cache only — no API call"
     else:
@@ -986,16 +1170,6 @@ if rate_limited:
 if last_rate_info:
     st.info("BGeometrics quota: " + rate_text(last_rate_info))
 
-if not cache.empty:
-    cache_bytes = cache.reset_index().to_csv(index=False).encode()
-    st.download_button(
-        "Download updated consolidated cache",
-        cache_bytes,
-        "public_model_cache.csv",
-        "text/csv",
-        key="updated_cache",
-    )
-
 st.subheader("Puell accumulation threshold research")
 st.caption(
     "Causal equal-contribution test: weekly capital accumulates in cash and is deployed only when Puell is at/below the threshold. "
@@ -1008,10 +1182,35 @@ else:
     st.dataframe(
         puell_bt.style.format({
             "BTC":"{:.6f}", "Deployed":"${:,.0f}", "Cash left":"${:,.0f}",
-            "BTC vs plain %":"{:+.2f}%", "Avg buy price":"${:,.0f}", "Deployed %":"{:.1f}%"
+            "BTC vs plain %":"{:+.2f}%", "Avg buy price AUD":"${:,.0f}", "Deployed %":"{:.1f}%"
         }),
         use_container_width=True, hide_index=True,
     )
+
+st.subheader("Bottom-zone accelerator research — on top of frozen R2")
+st.caption(
+    "Fixed pre-declared thresholds; moderate/deep/extreme zones add 1.25x/1.50x/2.00x to the frozen R2 Monday sizing. "
+    "Allocator is sequential: remaining capital / weeks remaining × current R2 multiplier × current accelerator. "
+    "No future indicator values are used and every strategy is compared on the same AUD 500,000 capital."
+)
+accel_summary, accel_eras = bottom_accelerator_research(merged, total_capital=500000.0)
+if accel_summary.empty:
+    st.info("Accelerator test requires btc_price_aud and dca_multiplier in the frozen benchmark.")
+else:
+    st.dataframe(
+        accel_summary.style.format({
+            "BTC":"{:.6f}", "Deployed":"${:,.0f}", "Cash left":"${:,.0f}",
+            "Avg buy price AUD":"${:,.0f}", "BTC vs R2 %":"{:+.2f}%"
+        }),
+        use_container_width=True, hide_index=True,
+    )
+    if not accel_eras.empty:
+        st.caption("Era robustness — BTC accumulation edge versus frozen R2 within each era")
+        pivot_accel = accel_eras.pivot(index="Strategy", columns="Era", values="BTC vs R2 %").reset_index()
+        st.dataframe(
+            pivot_accel.style.format({c:"{:+.2f}%" for c in pivot_accel.columns if c != "Strategy"}),
+            use_container_width=True, hide_index=True,
+        )
 
 horizons = (4, 12, 26, 52)
 rows = []
@@ -1122,6 +1321,7 @@ st.download_button(
 )
 
 st.caption(
-    "Cache note: runtime file writes can be lost on a Streamlit Cloud redeploy. "
-    "Keep btc_onchain_master_cache.csv under engines/audit/cache/. It now stores free-derived history and any specialist BGeometrics history together."
+    "Memory note: the audit now auto-saves benchmark + free-derived + specialist history into cache/btc_audit_memory.csv. "
+    "Normal reruns require no re-upload. Streamlit Cloud can still lose runtime files on a redeploy/cold replacement, so use the single "
+    "btc_audit_backup.csv download when you want a portable recovery copy."
 )
