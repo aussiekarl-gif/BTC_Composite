@@ -1,0 +1,41 @@
+name: Apply source-preserving centralization
+
+on:
+  push:
+    branches: [source-preserving-centralization]
+    paths:
+      - scripts/apply_source_preserving_centralization.py
+      - .github/workflows/apply-source-preserving-centralization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: source-preserving-centralization
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/apply_source_preserving_centralization.py
+      - name: Validate
+        run: |
+          python -m py_compile engines/audit/public_model_audit.py engines/shared/parity_app.py
+          python - <<'PY'
+          from pathlib import Path
+          t=Path('engines/audit/public_model_audit.py').read_text()
+          for s in ['src__blockchain_btc_usd','src__frankfurter_usd_per_aud','src__bgeometrics_mvrv_z','CAPTURE BGEOMETRICS PRODUCTION SOURCES']:
+              assert s in t, s
+          print('source-preserving capture present')
+          PY
+      - name: Commit final code and remove helpers
+        run: |
+          rm -f scripts/apply_source_preserving_centralization.py .github/workflows/apply-source-preserving-centralization.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Preserve exact Production data sources in central master"
+          git push origin HEAD:source-preserving-centralization
