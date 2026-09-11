@@ -296,6 +296,7 @@ else:
         "a separately reviewed validated export with explicit tolerances and reproducibility checks."
     )
 
-render_shadow_engine_test(cfg)
+# Reuse the already-fetched Production frames so Section 6 cannot spend a second BGeometrics request.
+render_shadow_engine_test(cfg, live_price=prod_price, live_fx=prod_fx, live_bg=prod_bg)
 
 st.caption("No files were written and no Production/Research data source was changed by this parity check.")
