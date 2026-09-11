@@ -475,19 +475,50 @@ def fetch_endpoint(endpoint, start_date, end_date, token):
 
 
 def parse_rate_headers(headers):
-    limit = headers.get("X-RateLimit-Limit")
-    remaining = headers.get("X-RateLimit-Remaining")
-    reset_raw = headers.get("X-RateLimit-Reset")
+    """Parse common quota headers without assuming BGeometrics uses one exact scheme."""
+    def first(*names):
+        for name in names:
+            v = headers.get(name)
+            if v not in (None, ""):
+                return v
+        return None
+
+    limit = first("X-RateLimit-Limit", "RateLimit-Limit")
+    remaining = first("X-RateLimit-Remaining", "RateLimit-Remaining")
+    reset_raw = first("X-RateLimit-Reset", "RateLimit-Reset")
+    retry_after = first("Retry-After")
     reset_local = None
     seconds_left = None
-    if reset_raw:
+
+    # Retry-After may be seconds or an HTTP date. Prefer it on 429 when present.
+    if retry_after:
         try:
-            ts = int(float(reset_raw))
-            reset_local = dt.datetime.fromtimestamp(ts, tz=dt.timezone.utc).astimezone(BRISBANE_TZ)
+            seconds_left = max(0, int(float(retry_after)))
+            reset_local = dt.datetime.now(BRISBANE_TZ) + dt.timedelta(seconds=seconds_left)
+        except Exception:
+            try:
+                from email.utils import parsedate_to_datetime
+                x = parsedate_to_datetime(str(retry_after))
+                if x.tzinfo is None:
+                    x = x.replace(tzinfo=dt.timezone.utc)
+                reset_local = x.astimezone(BRISBANE_TZ)
+                seconds_left = max(0, int((reset_local - dt.datetime.now(BRISBANE_TZ)).total_seconds()))
+            except Exception:
+                pass
+
+    if reset_local is None and reset_raw:
+        try:
+            rv = float(reset_raw)
+            # Most APIs use Unix epoch seconds. Small values are sometimes seconds-to-reset.
+            if rv > 10_000_000:
+                reset_local = dt.datetime.fromtimestamp(rv, tz=dt.timezone.utc).astimezone(BRISBANE_TZ)
+            else:
+                reset_local = dt.datetime.now(BRISBANE_TZ) + dt.timedelta(seconds=max(0, rv))
             seconds_left = max(0, int((reset_local - dt.datetime.now(BRISBANE_TZ)).total_seconds()))
         except Exception:
             pass
-    return {"limit": limit, "remaining": remaining, "reset_raw": reset_raw, "reset_local": reset_local, "seconds_left": seconds_left}
+    return {"limit": limit, "remaining": remaining, "reset_raw": reset_raw, "retry_after": retry_after,
+            "reset_local": reset_local, "seconds_left": seconds_left}
 
 
 def rate_text(rate):
@@ -506,7 +537,7 @@ def rate_text(rate):
             h, rem = divmod(sec, 3600)
             m, ss = divmod(rem, 60)
             bits.append(f"about {h}h {m}m {ss}s remaining")
-    return " · ".join(bits) if bits else "Rate-limit headers not returned."
+    return " · ".join(bits) if bits else "Reset time not supplied by BGeometrics."
 
 
 class RateLimitError(RuntimeError):
@@ -635,11 +666,18 @@ def build_free_indicator_cache(start_date, end_date):
     """
     status_rows = []
     cm = {}
-    # Fetch only raw ingredients. Derived ratios are calculated locally below.
-    for metric in (
+    # Free-first research archive: collect a broad set of Coin Metrics Community BTC
+    # series. Unavailable metrics are skipped independently. Raw series are retained
+    # with a cm__ prefix so future research can use them without another download.
+    cm_metrics = (
         "PriceUSD", "RevNtv", "FeeTotNtv", "SplyCur",
         "CapMrktCurUSD", "CapRealUSD", "TxTfrValAdjUSD", "RevAllTimeUSD",
-    ):
+        "HashRate", "AdrActCnt", "TxCnt", "FeeTotUSD", "FeeMeanUSD",
+        "IssContNtv", "IssTotNtv", "TxTfrCnt", "TxTfrValAdjNtv",
+        "TxTfrValUSD", "TxTfrValNtv", "SplyAct1d", "SplyAct30d",
+        "SplyAct90d", "SplyAct1yr", "NVTAdj", "NVTAdj90",
+    )
+    for metric in cm_metrics:
         cm[metric] = _cm_get(metric, start_date, end_date, status_rows)
 
     idx = pd.DatetimeIndex([])
@@ -654,7 +692,11 @@ def build_free_indicator_cache(start_date, end_date):
         if x is not None and not x.empty:
             raw[k] = x.reindex(raw.index)
 
+    # Preserve every free raw input we successfully acquired. Prefixing prevents
+    # collisions with derived/audit columns and records provenance in the one CSV.
     out = pd.DataFrame(index=raw.index)
+    for c in raw.columns:
+        out[f"cm__{c}"] = pd.to_numeric(raw[c], errors="coerce")
 
     # Puell Multiple: actual native issuance * price, divided by its trailing 365-day mean.
     issuance = pd.Series(np.nan, index=raw.index, dtype=float)
@@ -1025,7 +1067,7 @@ st.caption(
 
 st.info(
     "**Normal use:** ① check benchmark → ② confirm cache → ③ build free indicators → "
-    "④ use BGeometrics only for the remaining specialist metrics → ⑤ run the audit."
+    "④ collect all still-missing specialist BTC history until quota stops → ⑤ run the audit."
 )
 
 with st.expander("What this page does / safety rules", expanded=False):
@@ -1036,7 +1078,7 @@ with st.expander("What this page does / safety rules", expanded=False):
 - **Never asks BGeometrics for a metric on the free/self-calculated list.**
 - **Never re-downloads a cached BGeometrics endpoint by default.**
 - **Stops immediately on HTTP 429** and keeps what was already downloaded.
-- **Keeps one API request in reserve** when BGeometrics reports the remaining quota.
+- **Uses the available BGeometrics quota until the provider reports exhaustion; every successful dataset is persisted immediately.
 - **Does not change V5.9 Research or V5.8.2 Production.**
 - The **Refresh already-cached datasets** option is hidden under Advanced settings and is OFF by default.
         """
@@ -1210,8 +1252,8 @@ missing_count = len(MASTER_DATASETS) - cached_count
 # -----------------------------------------------------------------------------
 # STEP 4 — Acquire only specialist history still missing
 # -----------------------------------------------------------------------------
-st.header("④ Download only specialist metrics still missing from BGeometrics")
-st.caption("Protected list: free/self-calculated metrics are not present in the BGeometrics download plan, so this button cannot spend quota on them.")
+st.header("④ BTC research collector — acquire all missing BGeometrics history")
+st.caption("Free/self-calculated metrics are protected from BGeometrics requests. The collector uses the available quota only for specialist BTC datasets not already stored, saves each success immediately, and resumes where it stopped next time.")
 
 token = get_token()
 if token:
@@ -1244,7 +1286,7 @@ st.caption(
 )
 
 if st.button(
-    "DOWNLOAD NEXT MISSING BATCH",
+    "COLLECT ALL MISSING DATA UNTIL QUOTA STOPS",
     type="primary",
     disabled=(not bool(token)) or (missing_count == 0),
     key="master_download",
@@ -1271,13 +1313,6 @@ if st.button(
             save_runtime_cache(cache)
             memory = save_audit_memory(memory, cache, base)
 
-            if master_rate and master_rate.get("remaining") is not None:
-                try:
-                    if int(master_rate["remaining"]) <= 1:
-                        master_rows.append({"Dataset": "—", "Status": "Stopped with one request left as safety buffer"})
-                        break
-                except Exception:
-                    pass
             time.sleep(1.2)
         except RateLimitError as exc:
             master_rate = exc.rate
@@ -1293,7 +1328,7 @@ if st.button(
     if master_rate:
         st.info("BGeometrics quota: " + rate_text(master_rate))
     if master_limited:
-        st.warning("Quota reached. The app stopped immediately. Run this same button after the displayed reset; cached datasets will be skipped.")
+        st.warning("Quota reached. Everything downloaded before the 429 is already saved permanently. If BGeometrics supplied a reset time it is shown above in Brisbane time; otherwise the provider did not expose one. Run this same collector later and all cached datasets will be skipped automatically.")
 
 
 # -----------------------------------------------------------------------------
