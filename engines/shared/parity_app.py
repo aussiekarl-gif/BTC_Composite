@@ -116,6 +116,7 @@ with st.expander("Safety boundary", expanded=False):
 - Missing central equivalents are reported as gaps rather than silently substituted.
 - A future `validated/production_input.csv` will only be created after we are satisfied with coverage and parity.
 - Production stays on its existing data path until a separate explicitly reviewed change.
+- BGeometrics is fetched only **once** per parity run to protect the limited quota.
         """
     )
 
@@ -140,24 +141,22 @@ st.success(
     f"{central.index.min().date()} → {central.index.max().date()}"
 )
 
-with st.spinner("Fetching current Production and Research comparison inputs..."):
+with st.spinner("Fetching current comparison inputs..."):
     prod_price = prod.fetch_btc_history(start_date, end_date)
     research_price = research.fetch_btc_history(start_date, end_date)
     token = prod.get_bgeometrics_token()
+    # One BGeometrics bundle only. Research and Production are not allowed to double-spend quota here.
     prod_bg = prod.fetch_bgeometrics_bundle(start_date, end_date, token)
-    research_bg = research.fetch_bgeometrics_bundle(start_date, end_date, token)
 
-st.subheader("1. Production vs Research current data-path parity")
+st.subheader("1. Production vs Research current price-path parity")
 model_rows = []
 if not prod_price.empty and not research_price.empty and "price" in prod_price and "price" in research_price:
     model_rows.append(_exact_model_row("BTC/USD price", prod_price["price"], research_price["price"]))
-for c in ("mvrv_z", "fear_greed", "bg_btc_price", "regime_score"):
-    if c in prod_bg.columns and c in research_bg.columns:
-        model_rows.append(_exact_model_row(c, prod_bg[c], research_bg[c]))
 if model_rows:
     st.dataframe(pd.DataFrame(model_rows), use_container_width=True, hide_index=True)
+    st.caption("External BGeometrics inputs are not fetched twice here; the limited quota is reserved for the central-vs-current comparison below.")
 else:
-    st.warning("No overlapping Production/Research live inputs were available for comparison.")
+    st.warning("No overlapping Production/Research price inputs were available for comparison.")
 
 st.subheader("2. Central master vs current Production inputs")
 rows = []
