@@ -144,6 +144,7 @@ st.success(
 with st.spinner("Fetching current comparison inputs..."):
     prod_price = prod.fetch_btc_history(start_date, end_date)
     research_price = research.fetch_btc_history(start_date, end_date)
+    prod_fx = prod.fetch_aud_usd_rates(start_date, end_date)
     token = prod.get_bgeometrics_token()
     # One BGeometrics bundle only. Research and Production are not allowed to double-spend quota here.
     prod_bg = prod.fetch_bgeometrics_bundle(start_date, end_date, token)
@@ -160,40 +161,52 @@ else:
 
 st.subheader("2. Central master vs current Production inputs")
 rows = []
-if "cm__PriceUSD" in central.columns and not prod_price.empty and "price" in prod_price.columns:
-    rows.append(_comparison_row(
-        "BTC/USD daily price",
-        prod_price["price"],
-        central.loc[(central.index.date >= start_date) & (central.index.date <= end_date), "cm__PriceUSD"],
-        "Blockchain.com market-price",
-        "Coin Metrics Community cm__PriceUSD",
-    ))
-else:
-    rows.append({"Input":"BTC/USD daily price","Current source":"Blockchain.com market-price","Central candidate":"cm__PriceUSD","Overlap days":0,"Status":"CENTRAL GAP"})
+window = central.loc[(central.index.date >= start_date) & (central.index.date <= end_date)]
 
-if "MVRV Z-Score (positive control)" in central.columns and "mvrv_z" in prod_bg.columns:
-    rows.append(_comparison_row(
-        "MVRV Z-Score",
-        prod_bg["mvrv_z"],
-        central.loc[(central.index.date >= start_date) & (central.index.date <= end_date), "MVRV Z-Score (positive control)"],
-        "BGeometrics mvrv-zscore",
-        "Central MVRV Z positive control",
-    ))
-else:
-    rows.append({"Input":"MVRV Z-Score","Current source":"BGeometrics mvrv-zscore","Central candidate":"MVRV Z-Score (positive control)","Overlap days":0,"Status":"CENTRAL/LIVE GAP"})
+def add_or_gap(label, current_series, central_col, current_source):
+    if central_col in window.columns and current_series is not None and len(current_series):
+        rows.append(_comparison_row(label, current_series, window[central_col], current_source, central_col))
+    else:
+        rows.append({
+            "Input": label, "Current source": current_source, "Central candidate": central_col,
+            "Overlap days": 0, "Status": "SOURCE-PRESERVING CENTRAL GAP"
+        })
 
-for label, current_source in [
-    ("Fear & Greed", "BGeometrics fear-greed"),
-    ("AUD/USD FX", "Frankfurter business-day FX"),
-    ("Regime Score", "BGeometrics regime-score"),
-]:
-    rows.append({
-        "Input": label,
-        "Current source": current_source,
-        "Central candidate": "—",
-        "Overlap days": 0,
-        "Status": "NO VALIDATED CENTRAL EQUIVALENT YET",
-    })
+add_or_gap(
+    "BTC/USD daily price",
+    prod_price["price"] if (not prod_price.empty and "price" in prod_price.columns) else None,
+    "src__blockchain_btc_usd",
+    "Blockchain.com market-price",
+)
+add_or_gap(
+    "MVRV Z-Score",
+    prod_bg["mvrv_z"] if "mvrv_z" in prod_bg.columns else None,
+    "src__bgeometrics_mvrv_z",
+    "BGeometrics mvrv-zscore",
+)
+add_or_gap(
+    "Fear & Greed",
+    prod_bg["fear_greed"] if "fear_greed" in prod_bg.columns else None,
+    "src__bgeometrics_fear_greed",
+    "BGeometrics fear-greed",
+)
+add_or_gap(
+    "AUD/USD FX",
+    prod_fx if prod_fx is not None else None,
+    "src__frankfurter_usd_per_aud",
+    "Frankfurter business-day FX",
+)
+add_or_gap(
+    "Regime Score",
+    prod_bg["regime_score"] if "regime_score" in prod_bg.columns else None,
+    "src__bgeometrics_regime_score",
+    "BGeometrics regime-score",
+)
+
+st.caption(
+    "Migration readiness is based only on exact source-preserving `src__` columns. "
+    "Coin Metrics remains useful research data but is not treated as a substitute for the Production Blockchain.com feed."
+)
 
 parity = pd.DataFrame(rows)
 for col in ["Median abs diff %", "95th pct abs diff %", "Max abs diff %", "Correlation"]:
@@ -208,7 +221,7 @@ st.dataframe(
 
 st.subheader("3. Migration readiness")
 measured = int((parity["Status"] == "MEASURED").sum())
-gaps = int(parity["Status"].str.contains("GAP|NO VALIDATED", regex=True, na=False).sum())
+gaps = int(parity["Status"].str.contains("GAP", regex=True, na=False).sum())
 st.metric("Inputs with measured central parity", measured)
 st.metric("Inputs still requiring a central equivalent / validation", gaps)
 
