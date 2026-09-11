@@ -1,0 +1,45 @@
+name: One-off audit rerun stall fix
+
+on:
+  push:
+    branches: [fix-audit-rerun-stall]
+    paths:
+      - scripts/fix_audit_rerun_stall.py
+      - .github/workflows/fix-audit-rerun-stall.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix-audit-rerun-stall
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply targeted patch
+        run: python scripts/fix_audit_rerun_stall.py
+      - name: Validate syntax and patch intent
+        run: |
+          python -m py_compile engines/audit/public_model_audit.py
+          python - <<'PY'
+          from pathlib import Path
+          t = Path('engines/audit/public_model_audit.py').read_text()
+          target = 'memory = save_audit_memory(memory, cache, base)'
+          assert target not in t, 'unconditional rerun save still present'
+          assert 'memory = combine_caches(memory, cache, base)' in t
+          print('Validation passed: ordinary rerun is read-only')
+          PY
+      - name: Commit validated fix and remove one-off helpers
+        run: |
+          rm -f scripts/fix_audit_rerun_stall.py .github/workflows/fix-audit-rerun-stall.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Stop redundant audit persistence on ordinary reruns"
+          git push origin HEAD:fix-audit-rerun-stall
