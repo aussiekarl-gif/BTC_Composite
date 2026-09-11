@@ -1,1 +1,0 @@
-Provider routing decision: CoinGlass specialist endpoints are plan-blocked; CryptoQuant targeted BTC on-chain endpoints are blocked on the current entitlement; therefore use self-calculated/free inputs first, existing cache second, and BGeometrics only for unresolved specialist history. Production remains unchanged.
