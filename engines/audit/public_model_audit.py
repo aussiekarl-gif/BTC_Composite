@@ -877,7 +877,7 @@ def fetch_bgeometrics_production_sources(start_date, end_date, token):
 
         captured = 0
         for dest, aliases in mapping.items():
-            col = pick_column(frame, aliases)
+            col = _pick(frame, aliases)
             if col is None:
                 continue
             series = frame[col].rename(dest)
