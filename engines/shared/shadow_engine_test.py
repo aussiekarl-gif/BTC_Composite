@@ -17,6 +17,17 @@ def _engine(price, fx, external):
     return prod.add_risk_indicators(base,"Composite V3.6",_params())
 
 
+def _compare_engine_outputs(a, b):
+    cols=["risk_score","power_law_score","mvrv_score","price_position_score","mayer_score","fear_greed_score","rsi_score"]
+    rows=[]
+    for col in cols:
+        if col not in a.columns or col not in b.columns: continue
+        pair=pd.concat([pd.to_numeric(a[col],errors="coerce").rename("a"),pd.to_numeric(b[col],errors="coerce").rename("b")],axis=1,join="inner").dropna()
+        diff=(pair.a-pair.b).abs() if len(pair) else pd.Series(dtype=float)
+        rows.append({"Output":col,"Overlap dates":len(pair),"Max abs difference":float(diff.max()) if len(diff) else np.nan,"Exact?":"YES" if len(diff) and bool((diff<=1e-12).all()) else ("NO" if len(diff) else "NO OVERLAP")})
+    return rows
+
+
 def render_shadow_engine_test(cfg: CentralDataConfig, live_price=None, live_fx=None, live_bg=None):
     st.subheader("4. Shadow Production engine test")
     st.caption("Runs the actual frozen V5.8.2 Production risk engine against the SHADOW-ONLY central candidate export. Production is unchanged.")
@@ -38,32 +49,43 @@ def render_shadow_engine_test(cfg: CentralDataConfig, live_price=None, live_fx=N
     if np.isfinite(repeat_diff) and repeat_diff<=1e-12: st.success("Shadow engine determinism check: PASS — repeated V5.8.2 calculations are exactly identical.")
     else: st.error(f"Shadow engine determinism check failed. Max repeated Risk Score difference: {repeat_diff}")
 
-    st.subheader("5. Live Production vs central shadow output parity")
-    st.caption("Runs the same frozen V5.8.2 engine on the current Production source path and the central shadow path. The standard 730-day live fetch is reused from Streamlit cache when the parity page already fetched it.")
-    # Backward-compatible fallback until parity_app passes its already-fetched frames directly.
-    # These calls use the same cached Production fetchers and do not write data.
+    st.subheader("5. Historical source-preserving export parity")
+    st.caption("Compares the frozen V5.8.2 engine driven directly from the authoritative central master src__ columns with the SHADOW export derived from those columns. This uses zero live BGeometrics requests and tests that export construction/reading does not alter Production calculations.")
+    try: master=load_master(config=cfg)
+    except Exception as exc:
+        st.warning(f"Authoritative central master could not be loaded for historical parity: {type(exc).__name__}: {exc}"); master=None
+    src_required=["src__blockchain_btc_usd","src__frankfurter_usd_per_aud","src__bgeometrics_mvrv_z","src__bgeometrics_fear_greed"]
+    if master is not None and all(c in master.columns for c in src_required):
+        src_price=pd.DataFrame({"price":pd.to_numeric(master["src__blockchain_btc_usd"],errors="coerce")},index=master.index)
+        src_fx=pd.to_numeric(master["src__frankfurter_usd_per_aud"],errors="coerce")
+        src_external=pd.DataFrame(index=master.index); src_external["mvrv_z"]=pd.to_numeric(master["src__bgeometrics_mvrv_z"],errors="coerce"); src_external["fear_greed"]=pd.to_numeric(master["src__bgeometrics_fear_greed"],errors="coerce")
+        try:
+            src_risk=_engine(src_price,src_fx,src_external); hist_rows=_compare_engine_outputs(src_risk,risk); st.dataframe(pd.DataFrame(hist_rows),use_container_width=True,hide_index=True)
+            rr=next((r for r in hist_rows if r["Output"]=="risk_score"),None)
+            if rr and rr["Exact?"]=="YES": st.success("HISTORICAL SOURCE → SHADOW EXPORT: PASS — V5.8.2 Risk Score is exactly identical across every overlapping date.")
+            elif rr and rr["Overlap dates"]: st.error(f"HISTORICAL SOURCE → SHADOW EXPORT: DIFFERENCE DETECTED — Risk Score max absolute difference {rr['Max abs difference']:.12g}.")
+            else: st.warning("Historical source-preserving parity had no overlapping Risk Score dates.")
+        except Exception as exc: st.warning(f"Historical source-preserving engine comparison could not run: {type(exc).__name__}: {exc}")
+    else:
+        missing_src=[c for c in src_required if master is None or c not in master.columns]; st.warning(f"Historical source-preserving parity cannot run; missing central columns: {missing_src}")
+    st.info("This proves export/engine integrity only. It does not replace the still-pending fresh live parity validation for MVRV-Z and Fear & Greed.")
+
+    st.subheader("6. Fresh live Production vs central shadow output parity")
+    st.caption("Runs the same frozen V5.8.2 engine on a fresh/current Production source path and the central shadow path when a complete live bundle is available.")
     if live_price is None or getattr(live_price,"empty",True):
-        end=dt.date.today(); start=end-dt.timedelta(days=730); live_price=prod.fetch_btc_history(start,end)
-        live_fx=prod.fetch_aud_usd_rates(start,end)
+        end=dt.date.today(); start=end-dt.timedelta(days=730); live_price=prod.fetch_btc_history(start,end); live_fx=prod.fetch_aud_usd_rates(start,end)
         try: live_bg=prod.fetch_bgeometrics_bundle(start,end,prod.get_bgeometrics_token())
         except Exception: live_bg=pd.DataFrame()
     if live_price is None or getattr(live_price,"empty",True) or live_bg is None or getattr(live_bg,"empty",True):
-        st.info("Live output parity unavailable because a complete live Production input bundle was not returned. No central data is treated as missing."); return
+        st.info("Fresh live output parity unavailable because a complete live Production input bundle was not returned. Historical source-preserving parity above is unaffected."); return
     try: live_risk=_engine(live_price,live_fx,live_bg)
     except Exception as exc: st.warning(f"Live Production engine comparison could not run: {type(exc).__name__}: {exc}"); return
-    component_cols=["power_law_score","mvrv_score","price_position_score","mayer_score","fear_greed_score","rsi_score"]
-    rows=[]
-    for col in ["risk_score"]+component_cols:
-        if col not in live_risk.columns or col not in risk.columns: continue
-        pair=pd.concat([pd.to_numeric(live_risk[col],errors="coerce").rename("live"),pd.to_numeric(risk[col],errors="coerce").rename("central")],axis=1,join="inner").dropna(); diff=(pair.live-pair.central).abs() if len(pair) else pd.Series(dtype=float)
-        rows.append({"Output":col,"Overlap dates":len(pair),"Max abs difference":float(diff.max()) if len(diff) else np.nan,"Exact?":"YES" if len(diff) and bool((diff<=1e-12).all()) else ("NO" if len(diff) else "NO OVERLAP")})
-    st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+    rows=_compare_engine_outputs(live_risk,risk); st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
     rr=next((r for r in rows if r["Output"]=="risk_score"),None)
-    if rr and rr["Exact?"]=="YES": st.success("LIVE vs CENTRAL SHADOW: PASS — V5.8.2 Risk Score is exactly identical across all overlapping dates.")
-    elif rr and rr["Overlap dates"]: st.warning(f"LIVE vs CENTRAL SHADOW: DIFFERENCE DETECTED — Risk Score max absolute difference {rr['Max abs difference']:.12g}. Component rows above show where it originates.")
-    else: st.info("No overlapping live/shadow Risk Score dates were available on this run.")
+    if rr and rr["Exact?"]=="YES": st.success("FRESH LIVE vs CENTRAL SHADOW: PASS — V5.8.2 Risk Score is exactly identical across all overlapping dates.")
+    elif rr and rr["Overlap dates"]: st.warning(f"FRESH LIVE vs CENTRAL SHADOW: DIFFERENCE DETECTED — Risk Score max absolute difference {rr['Max abs difference']:.12g}.")
+    else: st.info("No overlapping fresh live/shadow Risk Score dates were available on this run.")
     common=pd.concat([live_risk["risk_score"].rename("live"),risk["risk_score"].rename("central")],axis=1,join="inner").dropna()
     if len(common):
-        d=common.index[-1]; lr=float(common.iloc[-1].live); cr=float(common.iloc[-1].central); lm=float(prod.interpolate(prod.SMART_DCA_POINTS,lr)); cm=float(prod.interpolate(prod.SMART_DCA_POINTS,cr))
-        st.caption(f"Latest common date {d.date()} • Live Risk {lr:.6f} / {lm:.4f}x • Central Risk {cr:.6f} / {cm:.4f}x")
+        d=common.index[-1]; lr=float(common.iloc[-1].live); cr=float(common.iloc[-1].central); lm=float(prod.interpolate(prod.SMART_DCA_POINTS,lr)); cm=float(prod.interpolate(prod.SMART_DCA_POINTS,cr)); st.caption(f"Latest common date {d.date()} • Live Risk {lr:.6f} / {lm:.4f}x • Central Risk {cr:.6f} / {cm:.4f}x")
     st.info("This remains a read-only shadow test. It does not switch Production or write central data.")
