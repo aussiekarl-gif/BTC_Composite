@@ -15,10 +15,8 @@ import requests
 
 from engines.audit.coinglass_staging_schema_probe import find_metric_records, safe_shape_summary
 
-
 COINGLASS_BASE = "https://open-api-v4.coinglass.com"
 STAGING_PATH = "staging/coinglass_specialist.csv"
-
 
 @dataclass(frozen=True)
 class Spec:
@@ -26,7 +24,6 @@ class Spec:
     path: str
     value_keys: tuple[str, ...]
     column: str
-
 
 SPECS = [
     Spec("STH SOPR", "/api/index/bitcoin-sth-sopr", ("sth_sopr", "sthSopr", "sopr"), "cg__sth_sopr"),
@@ -39,7 +36,6 @@ SPECS = [
     Spec("Reserve Risk", "/api/index/bitcoin-reserve-risk", ("reserve_risk_index", "reserveRiskIndex", "reserve_risk"), "cg__reserve_risk"),
 ]
 
-
 def _secret(st, *names: str) -> str:
     for name in names:
         try:
@@ -51,6 +47,8 @@ def _secret(st, *names: str) -> str:
             return str(value).strip()
     return ""
 
+def _safe_text(value, limit=180):
+    return str(value or "").replace("\n", " ").replace("\r", " ").strip()[:limit]
 
 def _coerce_date_series(values: pd.Series) -> pd.Series:
     numeric = pd.to_numeric(values, errors="coerce")
@@ -61,7 +59,6 @@ def _coerce_date_series(values: pd.Series) -> pd.Series:
         return pd.to_datetime(numeric, unit=unit, utc=True, errors="coerce").dt.date
     return pd.to_datetime(values, utc=True, errors="coerce").dt.date
 
-
 def _fetch_spec(spec: Spec, token: str) -> tuple[pd.DataFrame, dict]:
     r = requests.get(
         COINGLASS_BASE + spec.path,
@@ -71,6 +68,8 @@ def _fetch_spec(spec: Spec, token: str) -> tuple[pd.DataFrame, dict]:
     status = {
         "dataset": spec.label,
         "http_status": r.status_code,
+        "api_code": "",
+        "api_message": "",
         "rows": 0,
         "status": "",
         "response_path": "",
@@ -88,6 +87,16 @@ def _fetch_spec(spec: Spec, token: str) -> tuple[pd.DataFrame, dict]:
     except ValueError:
         status["status"] = "INVALID JSON"
         return pd.DataFrame(), status
+
+    if isinstance(payload, dict) and "code" in payload:
+        status["api_code"] = payload.get("code")
+        status["api_message"] = _safe_text(payload.get("msg"))
+        if payload.get("code") not in {0, "0", 200, "200"}:
+            status["status"] = f"COINGLASS API BLOCKED — code {payload.get('code')}"
+            return pd.DataFrame(), status
+        if "data" not in payload:
+            status["status"] = "COINGLASS RESPONSE HAS NO DATA FIELD"
+            return pd.DataFrame(), status
 
     records, response_path = find_metric_records(payload, spec.value_keys)
     status["response_path"] = response_path or "not located"
@@ -128,7 +137,6 @@ def _fetch_spec(spec: Spec, token: str) -> tuple[pd.DataFrame, dict]:
     status["status"] = f"PARSED ({used_key})"
     return df, status
 
-
 def collect_specialist_history(st) -> tuple[pd.DataFrame, list[dict]]:
     token = _secret(st, "COINGLASS_API_KEY")
     if not token:
@@ -152,7 +160,6 @@ def collect_specialist_history(st) -> tuple[pd.DataFrame, list[dict]]:
         merged = merged.sort_index()
     return merged, statuses
 
-
 def _github_headers(token: str) -> dict:
     return {
         "Accept": "application/vnd.github+json",
@@ -161,9 +168,7 @@ def _github_headers(token: str) -> dict:
         "User-Agent": "btc-coinglass-staging",
     }
 
-
 def save_staging_csv(st, frame: pd.DataFrame) -> str:
-    """Persist to staging/coinglass_specialist.csv only; never the authoritative master."""
     if frame is None or frame.empty:
         return "NOT SAVED — no parsed rows"
     token = _secret(st, "AUDIT_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN")
@@ -175,10 +180,8 @@ def save_staging_csv(st, frame: pd.DataFrame) -> str:
     meta = requests.get(url, headers=headers, params={"ref": "main"}, timeout=25)
     sha = None
     if meta.status_code == 200:
-        try:
-            sha = meta.json().get("sha")
-        except ValueError:
-            sha = None
+        try: sha = meta.json().get("sha")
+        except ValueError: sha = None
     elif meta.status_code != 404:
         return f"NOT SAVED — metadata HTTP {meta.status_code}"
 
@@ -190,12 +193,10 @@ def save_staging_csv(st, frame: pd.DataFrame) -> str:
         "content": base64.b64encode(raw).decode("ascii"),
         "branch": "main",
     }
-    if sha:
-        payload["sha"] = sha
+    if sha: payload["sha"] = sha
     put = requests.put(url, headers=headers, json=payload, timeout=45)
     if put.status_code not in (200, 201):
         return f"NOT SAVED — upload HTTP {put.status_code}"
-
     verify = requests.get(url, headers=headers, params={"ref": "main"}, timeout=25)
     if verify.status_code != 200:
         return f"SAVED but verification HTTP {verify.status_code}"
