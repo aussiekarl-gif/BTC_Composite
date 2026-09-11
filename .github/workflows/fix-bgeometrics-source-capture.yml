@@ -1,0 +1,44 @@
+name: Fix BGeometrics source capture
+
+on:
+  push:
+    branches: [fix-bgeometrics-source-capture]
+    paths:
+      - scripts/fix_bgeometrics_source_capture.py
+      - .github/workflows/fix-bgeometrics-source-capture.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-bgeometrics-source-capture
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply patch
+        run: python scripts/fix_bgeometrics_source_capture.py
+      - name: Validate
+        run: |
+          python -m py_compile engines/audit/public_model_audit.py
+          python - <<'PY'
+          from pathlib import Path
+          t = Path('engines/audit/public_model_audit.py').read_text()
+          assert 'Migration-critical inputs first' in t
+          assert 'except RateLimitError:' in t
+          assert 'Unavailable — {exc}' in t
+          assert t.index('(\"mvrv-zscore\"') < t.index('(\"btc-price\"')
+          print('BGeometrics source capture validation passed')
+          PY
+      - name: Commit final patch and remove helpers
+        run: |
+          rm -f scripts/fix_bgeometrics_source_capture.py .github/workflows/fix-bgeometrics-source-capture.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Handle BGeometrics source capture per endpoint"
+          git push origin HEAD:fix-bgeometrics-source-capture
