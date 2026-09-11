@@ -28,6 +28,18 @@ def _compare_engine_outputs(a, b):
     return rows
 
 
+def _frames_from_export(frame):
+    required=["btc_usd","usd_per_aud","mvrv_z","fear_greed"]
+    missing=[c for c in required if c not in frame.columns]
+    if missing: raise ValueError(f"missing required columns: {missing}")
+    price=pd.DataFrame({"price":pd.to_numeric(frame["btc_usd"],errors="coerce")},index=frame.index)
+    fx=pd.to_numeric(frame["usd_per_aud"],errors="coerce")
+    external=pd.DataFrame(index=frame.index)
+    external["mvrv_z"]=pd.to_numeric(frame["mvrv_z"],errors="coerce")
+    external["fear_greed"]=pd.to_numeric(frame["fear_greed"],errors="coerce")
+    return price,fx,external
+
+
 def render_shadow_engine_test(cfg: CentralDataConfig, live_price=None, live_fx=None, live_bg=None):
     st.subheader("4. Shadow Production engine test")
     st.caption("Runs the actual frozen V5.8.2 Production risk engine against the SHADOW-ONLY central candidate export. Production is unchanged.")
@@ -35,11 +47,8 @@ def render_shadow_engine_test(cfg: CentralDataConfig, live_price=None, live_fx=N
     try: shadow=load_master(config=shadow_cfg)
     except Exception as exc:
         st.warning(f"Shadow candidate export is unavailable. ({type(exc).__name__}: {exc})"); return
-    required=["btc_usd","usd_per_aud","mvrv_z","fear_greed"]; missing=[c for c in required if c not in shadow.columns]
-    if missing: st.error(f"Shadow export is missing required columns: {missing}"); return
-    price=pd.DataFrame({"price":pd.to_numeric(shadow["btc_usd"],errors="coerce")},index=shadow.index)
-    fx=pd.to_numeric(shadow["usd_per_aud"],errors="coerce")
-    external=pd.DataFrame(index=shadow.index); external["mvrv_z"]=pd.to_numeric(shadow["mvrv_z"],errors="coerce"); external["fear_greed"]=pd.to_numeric(shadow["fear_greed"],errors="coerce")
+    try: price,fx,external=_frames_from_export(shadow)
+    except Exception as exc: st.error(f"Shadow export is invalid: {exc}"); return
     risk=_engine(price,fx,external); valid=risk.dropna(subset=["risk_score","price"])
     if valid.empty: st.error("The Production risk engine could not produce a valid Risk Score from the shadow export."); return
     latest=valid.iloc[-1]; latest_date=valid.index[-1]; latest_risk=float(latest["risk_score"]); latest_mult=float(prod.interpolate(prod.SMART_DCA_POINTS,latest_risk))
@@ -70,14 +79,36 @@ def render_shadow_engine_test(cfg: CentralDataConfig, live_price=None, live_fx=N
         missing_src=[c for c in src_required if master is None or c not in master.columns]; st.warning(f"Historical source-preserving parity cannot run; missing central columns: {missing_src}")
     st.info("This proves export/engine integrity only. It does not replace the still-pending fresh live parity validation for MVRV-Z and Fear & Greed.")
 
-    st.subheader("6. Fresh live Production vs central shadow output parity")
+    st.subheader("6. Validated Production candidate gate")
+    st.caption("Runs the frozen V5.8.2 engine against validated/production_input.csv and compares it with the already parity-proven shadow export. This uses zero BGeometrics requests and does not switch Production.")
+    validated_cfg=CentralDataConfig(repository=cfg.repository,token=cfg.token,ref=cfg.ref,master_path="validated/production_input.csv")
+    try:
+        validated=load_master(config=validated_cfg)
+        vp,vf,ve=_frames_from_export(validated)
+        validated_risk=_engine(vp,vf,ve)
+        candidate_rows=_compare_engine_outputs(risk,validated_risk)
+        st.dataframe(pd.DataFrame(candidate_rows),use_container_width=True,hide_index=True)
+        rr=next((r for r in candidate_rows if r["Output"]=="risk_score"),None)
+        schema_ok=list(validated.columns)==list(shadow.columns)
+        index_ok=validated.index.equals(shadow.index)
+        values_ok=validated.equals(shadow)
+        c1,c2,c3=st.columns(3); c1.metric("Schema identical","YES" if schema_ok else "NO"); c2.metric("Date index identical","YES" if index_ok else "NO"); c3.metric("All export values identical","YES" if values_ok else "NO")
+        if rr and rr["Exact?"]=="YES" and schema_ok and index_ok and values_ok:
+            st.success("VALIDATED CANDIDATE GATE: PASS — validated export is identical to the parity-proven shadow export and produces exactly the same V5.8.2 Risk Score.")
+        else:
+            st.error("VALIDATED CANDIDATE GATE: FAIL — do not promote this export to Production.")
+    except Exception as exc:
+        st.warning(f"Validated Production candidate gate could not run: {type(exc).__name__}: {exc}")
+    st.info("Even a PASS here does not authorize a Production switch. Fresh MVRV-Z/Fear & Greed source parity and an explicitly reviewed fallback migration are still required.")
+
+    st.subheader("7. Fresh live Production vs central shadow output parity")
     st.caption("Runs the same frozen V5.8.2 engine on a fresh/current Production source path and the central shadow path when a complete live bundle is available.")
     if live_price is None or getattr(live_price,"empty",True):
         end=dt.date.today(); start=end-dt.timedelta(days=730); live_price=prod.fetch_btc_history(start,end); live_fx=prod.fetch_aud_usd_rates(start,end)
         try: live_bg=prod.fetch_bgeometrics_bundle(start,end,prod.get_bgeometrics_token())
         except Exception: live_bg=pd.DataFrame()
     if live_price is None or getattr(live_price,"empty",True) or live_bg is None or getattr(live_bg,"empty",True):
-        st.info("Fresh live output parity unavailable because a complete live Production input bundle was not returned. Historical source-preserving parity above is unaffected."); return
+        st.info("Fresh live output parity unavailable because a complete live Production input bundle was not returned. Historical and validated-candidate parity above are unaffected."); return
     try: live_risk=_engine(live_price,live_fx,live_bg)
     except Exception as exc: st.warning(f"Live Production engine comparison could not run: {type(exc).__name__}: {exc}"); return
     rows=_compare_engine_outputs(live_risk,risk); st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
