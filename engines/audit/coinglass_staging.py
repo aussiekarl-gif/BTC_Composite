@@ -13,6 +13,8 @@ from dataclasses import dataclass
 import pandas as pd
 import requests
 
+from engines.audit.coinglass_staging_schema_probe import find_metric_records, safe_shape_summary
+
 
 COINGLASS_BASE = "https://open-api-v4.coinglass.com"
 STAGING_PATH = "staging/coinglass_specialist.csv"
@@ -22,19 +24,19 @@ STAGING_PATH = "staging/coinglass_specialist.csv"
 class Spec:
     label: str
     path: str
-    value_key: str
+    value_keys: tuple[str, ...]
     column: str
 
 
 SPECS = [
-    Spec("STH SOPR", "/api/index/bitcoin-sth-sopr", "sth_sopr", "cg__sth_sopr"),
-    Spec("LTH SOPR", "/api/index/bitcoin-lth-sopr", "lth_sopr", "cg__lth_sopr"),
-    Spec("STH Realized Price", "/api/index/bitcoin-sth-realized-price", "sth_realized_price", "cg__sth_realized_price"),
-    Spec("LTH Realized Price", "/api/index/bitcoin-lth-realized-price", "lth_realized_price", "cg__lth_realized_price"),
-    Spec("RHODL Ratio", "/api/index/bitcoin-rhodl-ratio", "rhodl_ratio", "cg__rhodl_ratio"),
-    Spec("STH Supply", "/api/index/bitcoin-short-term-holder-supply", "short_term_holder_supply", "cg__sth_supply"),
-    Spec("LTH Supply", "/api/index/bitcoin-long-term-holder-supply", "long_term_holder_supply", "cg__lth_supply"),
-    Spec("Reserve Risk", "/api/index/bitcoin-reserve-risk", "reserve_risk_index", "cg__reserve_risk"),
+    Spec("STH SOPR", "/api/index/bitcoin-sth-sopr", ("sth_sopr", "sthSopr", "sopr"), "cg__sth_sopr"),
+    Spec("LTH SOPR", "/api/index/bitcoin-lth-sopr", ("lth_sopr", "lthSopr", "sopr"), "cg__lth_sopr"),
+    Spec("STH Realized Price", "/api/index/bitcoin-sth-realized-price", ("sth_realized_price", "sthRealizedPrice", "realized_price"), "cg__sth_realized_price"),
+    Spec("LTH Realized Price", "/api/index/bitcoin-lth-realized-price", ("lth_realized_price", "lthRealizedPrice", "realized_price"), "cg__lth_realized_price"),
+    Spec("RHODL Ratio", "/api/index/bitcoin-rhodl-ratio", ("rhodl_ratio", "rhodlRatio"), "cg__rhodl_ratio"),
+    Spec("STH Supply", "/api/index/bitcoin-short-term-holder-supply", ("short_term_holder_supply", "shortTermHolderSupply", "sth_supply"), "cg__sth_supply"),
+    Spec("LTH Supply", "/api/index/bitcoin-long-term-holder-supply", ("long_term_holder_supply", "longTermHolderSupply", "lth_supply"), "cg__lth_supply"),
+    Spec("Reserve Risk", "/api/index/bitcoin-reserve-risk", ("reserve_risk_index", "reserveRiskIndex", "reserve_risk"), "cg__reserve_risk"),
 ]
 
 
@@ -50,6 +52,16 @@ def _secret(st, *names: str) -> str:
     return ""
 
 
+def _coerce_date_series(values: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(values, errors="coerce")
+    finite = numeric.dropna()
+    if not finite.empty:
+        median = float(finite.abs().median())
+        unit = "ms" if median > 1e11 else "s"
+        return pd.to_datetime(numeric, unit=unit, utc=True, errors="coerce").dt.date
+    return pd.to_datetime(values, utc=True, errors="coerce").dt.date
+
+
 def _fetch_spec(spec: Spec, token: str) -> tuple[pd.DataFrame, dict]:
     r = requests.get(
         COINGLASS_BASE + spec.path,
@@ -61,6 +73,7 @@ def _fetch_spec(spec: Spec, token: str) -> tuple[pd.DataFrame, dict]:
         "http_status": r.status_code,
         "rows": 0,
         "status": "",
+        "response_path": "",
         "rate_limit_max": r.headers.get("API-KEY-MAX-LIMIT", ""),
         "rate_limit_used": r.headers.get("API-KEY-USE-LIMIT", ""),
     }
@@ -75,29 +88,44 @@ def _fetch_spec(spec: Spec, token: str) -> tuple[pd.DataFrame, dict]:
     except ValueError:
         status["status"] = "INVALID JSON"
         return pd.DataFrame(), status
-    data = payload.get("data", []) if isinstance(payload, dict) else []
-    if not isinstance(data, list):
-        status["status"] = "UNEXPECTED DATA SHAPE"
+
+    records, response_path = find_metric_records(payload, spec.value_keys)
+    status["response_path"] = response_path or "not located"
+    if not records:
+        status["status"] = "METRIC RECORDS NOT FOUND — " + safe_shape_summary(payload)
         return pd.DataFrame(), status
+
     rows = []
-    for item in data:
+    used_key = ""
+    for item in records:
         if not isinstance(item, dict):
             continue
         ts = item.get("timestamp")
-        value = item.get(spec.value_key)
+        if ts is None:
+            ts = item.get("time")
+        if ts is None:
+            ts = item.get("date")
+        value = None
+        for key in spec.value_keys:
+            if item.get(key) is not None:
+                value = item.get(key)
+                used_key = key
+                break
         if ts is None or value is None:
             continue
         rows.append((ts, value))
+
     if not rows:
-        status["status"] = f"FIELD NOT FOUND: {spec.value_key}"
+        status["status"] = "TIMESTAMP/VALUE ROWS NOT FOUND"
         return pd.DataFrame(), status
+
     df = pd.DataFrame(rows, columns=["timestamp", spec.column])
-    df["date"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True, errors="coerce").dt.date
+    df["date"] = _coerce_date_series(df["timestamp"])
     df[spec.column] = pd.to_numeric(df[spec.column], errors="coerce")
     df = df.dropna(subset=["date", spec.column]).drop(columns=["timestamp"])
     df = df.drop_duplicates(subset=["date"], keep="last").set_index("date").sort_index()
     status["rows"] = len(df)
-    status["status"] = "PARSED"
+    status["status"] = f"PARSED ({used_key})"
     return df, status
 
 
