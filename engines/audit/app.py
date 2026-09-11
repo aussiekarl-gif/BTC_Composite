@@ -164,32 +164,82 @@ def _github_headers(token):
     }
 
 
-def load_remote_audit_memory():
-    """Load the single durable backup CSV from GitHub. Returns (frame, status)."""
+def _github_read_backup():
+    """Read the durable backup from GitHub, including files >1 MB.
+
+    GitHub's Contents API deliberately omits the inline `content` field for files
+    larger than 1 MB.  The old implementation interpreted that as an empty file.
+    We now fetch the raw representation explicitly, so a multi-megabyte audit CSV
+    restores correctly after Streamlit sleeps/restarts.
+
+    Returns (raw_bytes, sha, status).
+    """
     cfg = audit_storage_config()
     if not cfg["token"] or not cfg["repo"]:
-        return pd.DataFrame(), "NOT CONFIGURED"
+        return b"", None, "NOT CONFIGURED"
+
     url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
+    headers = _github_headers(cfg["token"])
     try:
-        r = requests.get(url, headers=_github_headers(cfg["token"]), params={"ref": cfg["branch"]}, timeout=25)
-        if r.status_code == 404:
-            return pd.DataFrame(), "CONNECTED — no remote backup yet"
-        r.raise_for_status()
-        obj = r.json()
-        raw = base64.b64decode(obj.get("content", "").encode())
+        meta = requests.get(url, headers=headers, params={"ref": cfg["branch"]}, timeout=25)
+        if meta.status_code == 404:
+            return b"", None, "CONNECTED — no remote backup yet"
+        meta.raise_for_status()
+        obj = meta.json()
+        sha = obj.get("sha")
+
+        # Small files are normally embedded as base64 in the metadata response.
+        content = obj.get("content")
+        if content:
+            raw = base64.b64decode(content.encode())
+            return raw, sha, f"CONNECTED — remote backup found ({len(raw):,} bytes)"
+
+        # Files >1 MB are not embedded by the Contents API. Request raw bytes.
+        raw_headers = headers.copy()
+        raw_headers["Accept"] = "application/vnd.github.raw"
+        rr = requests.get(url, headers=raw_headers, params={"ref": cfg["branch"]}, timeout=45)
+        rr.raise_for_status()
+        raw = rr.content
+
+        # Defensive fallback: some GitHub/proxy combinations may still return JSON.
+        ctype = (rr.headers.get("content-type") or "").lower()
+        if "json" in ctype:
+            try:
+                robj = rr.json()
+                if robj.get("content"):
+                    raw = base64.b64decode(robj["content"].encode())
+                elif obj.get("download_url"):
+                    dr = requests.get(obj["download_url"], headers=headers, timeout=45)
+                    dr.raise_for_status()
+                    raw = dr.content
+            except Exception:
+                pass
+
         if not raw:
-            return pd.DataFrame(), "CONNECTED — remote backup empty"
-        frame = read_cache_csv(io.BytesIO(raw))
-        return frame, f"CONNECTED — loaded {len(frame):,} remote rows"
+            return b"", sha, "CONNECTED — remote backup is genuinely empty"
+        return raw, sha, f"CONNECTED — remote backup found ({len(raw):,} bytes)"
     except Exception as e:
-        return pd.DataFrame(), f"ERROR — {type(e).__name__}: {e}"
+        return b"", None, f"ERROR — {type(e).__name__}: {e}"
+
+
+def load_remote_audit_memory():
+    """Load the single durable backup CSV from GitHub. Returns (frame, status)."""
+    raw, _sha, status = _github_read_backup()
+    if not raw:
+        return pd.DataFrame(), status
+    try:
+        frame = read_cache_csv(io.BytesIO(raw))
+        if frame is None or frame.empty:
+            return pd.DataFrame(), "CONNECTED — remote CSV read but contained no usable rows"
+        return frame, f"CONNECTED — restored {len(frame):,} remote rows"
+    except Exception as e:
+        return pd.DataFrame(), f"ERROR — remote CSV parse failed: {type(e).__name__}: {e}"
 
 
 def save_remote_audit_memory(memory):
     """Persist the entire audit memory as ONE CSV in GitHub, only when changed.
 
-    Returns a short status string. GitHub is authoritative on Streamlit Cloud because
-    local runtime files disappear when the app sleeps/restarts/redeploys.
+    Handles backups larger than 1 MB and returns explicit HTTP details on failure.
     """
     cfg = audit_storage_config()
     if memory is None or memory.empty:
@@ -203,18 +253,12 @@ def save_remote_audit_memory(memory):
     url = f"https://api.github.com/repos/{cfg['repo']}/contents/{cfg['path']}"
     headers = _github_headers(cfg["token"])
     try:
-        sha = None
-        old_raw = b""
-        g = requests.get(url, headers=headers, params={"ref": cfg["branch"]}, timeout=25)
-        if g.status_code == 200:
-            obj = g.json()
-            sha = obj.get("sha")
-            old_raw = base64.b64decode(obj.get("content", "").encode()) if obj.get("content") else b""
-        elif g.status_code != 404:
-            g.raise_for_status()
+        old_raw, sha, read_status = _github_read_backup()
+        if read_status.startswith("ERROR"):
+            return "SAVE FAILED — " + read_status
 
-        if hashlib.sha256(old_raw).digest() == hashlib.sha256(raw).digest():
-            return "CONNECTED — remote backup already current"
+        if old_raw and hashlib.sha256(old_raw).digest() == hashlib.sha256(raw).digest():
+            return f"CURRENT — {len(memory):,} rows already stored in GitHub"
 
         payload = {
             "message": "Update BTC audit persistent backup",
@@ -223,12 +267,27 @@ def save_remote_audit_memory(memory):
         }
         if sha:
             payload["sha"] = sha
-        r = requests.put(url, headers=headers, json=payload, timeout=30)
-        r.raise_for_status()
-        return f"SAVED — {len(memory):,} rows to durable GitHub backup"
-    except Exception as e:
-        return f"ERROR — {type(e).__name__}: {e}"
 
+        r = requests.put(url, headers=headers, json=payload, timeout=60)
+        if r.status_code not in (200, 201):
+            detail = r.text[:500].replace("\n", " ")
+            return f"SAVE FAILED — GitHub HTTP {r.status_code}: {detail}"
+
+        # Verify immediately. This catches permissions/path/branch problems now,
+        # rather than after the user leaves the website.
+        verify_raw, _verify_sha, verify_status = _github_read_backup()
+        if not verify_raw:
+            return f"SAVE UNVERIFIED — write returned HTTP {r.status_code}; {verify_status}"
+        try:
+            verify = read_cache_csv(io.BytesIO(verify_raw))
+            vrows = len(verify)
+        except Exception:
+            vrows = -1
+        if vrows != len(memory):
+            return f"SAVE UNVERIFIED — local {len(memory):,} rows, remote {vrows if vrows >= 0 else 'unreadable'} rows"
+        return f"SAVED + VERIFIED — {len(memory):,} rows in durable GitHub backup"
+    except Exception as e:
+        return f"SAVE FAILED — {type(e).__name__}: {e}"
 
 def _pick(frame, aliases):
     if frame is None or frame.empty:
