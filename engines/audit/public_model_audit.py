@@ -839,11 +839,17 @@ def fetch_frankfurter_source_history(start_date, end_date):
 
 
 def fetch_bgeometrics_production_sources(start_date, end_date, token):
-    """Capture the same BGeometrics endpoints/fields used by Production for parity."""
+    """Capture Production BGeometrics sources without letting one forbidden endpoint abort all others.
+
+    BGeometrics can return HTTP 403 for an individual endpoint that is not included in the
+    current account tier. That is not proof that the token itself is invalid. Each endpoint
+    is therefore attempted independently, using the same fetch_endpoint() authentication
+    path as the existing audit collector. Rate limits still stop the run immediately.
+    """
     out = pd.DataFrame()
     statuses = []
     specs = [
-        ("btc-price", {"src__bgeometrics_btc_price": ["price", "btcPrice", "btc_price", "value", "close"]}),
+        # Migration-critical inputs first so an optional endpoint cannot block them.
         ("mvrv-zscore", {"src__bgeometrics_mvrv_z": ["mvrvZScore", "mvrv_zscore", "zscore", "mvrvZ"]}),
         ("fear-greed", {"src__bgeometrics_fear_greed": ["fearGreed", "fearAndGreed", "fear_greed", "value", "score"]}),
         ("regime-score", {
@@ -852,28 +858,40 @@ def fetch_bgeometrics_production_sources(start_date, end_date, token):
             "src__bgeometrics_regime_active_weight": ["activeWeight"],
             "src__bgeometrics_regime": ["regime"],
         }),
+        # Optional parity/archive field. Production does not use this as its main BTC price feed.
+        ("btc-price", {"src__bgeometrics_btc_price": ["price", "btcPrice", "btc_price", "value", "close"]}),
     ]
+
     for endpoint, mapping in specs:
-        frame, rate = fetch_endpoint(endpoint, start_date, end_date, token)
-        if frame is None or frame.empty:
-            statuses.append({"Source": endpoint, "Status": "No usable rows returned"})
+        try:
+            frame, rate = fetch_endpoint(endpoint, start_date, end_date, token)
+        except RateLimitError:
+            raise
+        except Exception as exc:
+            statuses.append({"Endpoint": endpoint, "Status": f"Unavailable — {exc}"})
             continue
-        piece = pd.DataFrame(index=frame.index)
+
+        if frame is None or frame.empty:
+            statuses.append({"Endpoint": endpoint, "Status": "No rows returned"})
+            continue
+
+        captured = 0
         for dest, aliases in mapping.items():
-            col = _pick(frame, aliases)
+            col = pick_column(frame, aliases)
             if col is None:
                 continue
-            if dest.endswith("__regime"):
-                piece[dest] = frame[col].astype(str)
-            else:
-                piece[dest] = pd.to_numeric(frame[col], errors="coerce")
-        if not piece.empty:
-            out = combine_caches(out, piece)
-            statuses.append({"Source": endpoint, "Status": f"Captured {len(piece):,} source rows"})
-        else:
-            statuses.append({"Source": endpoint, "Status": "Endpoint returned rows but expected fields were not found"})
-    return out, statuses
+            series = frame[col].rename(dest)
+            if dest != "src__bgeometrics_regime":
+                series = pd.to_numeric(series, errors="coerce")
+            out = out.join(series, how="outer") if not out.empty else series.to_frame()
+            captured += int(series.notna().sum())
 
+        statuses.append({
+            "Endpoint": endpoint,
+            "Status": f"Captured {captured:,} values" if captured else "Endpoint returned rows but expected fields were not found",
+        })
+
+    return (out.sort_index() if not out.empty else pd.DataFrame()), statuses
 
 def puell_threshold_research(merged, total_capital=500000.0):
     """Causal Monday accumulation comparison for Puell thresholds in AUD.
