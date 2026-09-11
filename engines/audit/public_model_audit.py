@@ -1205,9 +1205,14 @@ with st.expander("Optional one-file recovery — normally leave empty", expanded
 restored = read_cache_csv(backup_restore) if backup_restore is not None else pd.DataFrame()
 cache = combine_caches(memory, bundled, bundled_master, restored)
 if backup_restore is not None and not restored.empty:
+    # A deliberate restore is a real state change, so persist it transactionally.
     memory = save_audit_memory(memory, restored, base)
 else:
-    memory = save_audit_memory(memory, cache, base)
+    # Ordinary Streamlit reruns must be read-only. Previously this called
+    # save_audit_memory() on every rerun, which repeatedly downloaded the ~3 MB
+    # GitHub master several times even when nothing had changed. That made the
+    # page appear to blink/hang while the backend was doing redundant network I/O.
+    memory = combine_caches(memory, cache, base)
 
 cached_count = sum(dataset_cached(cache, d) for d in MASTER_DATASETS)
 missing_count = len(MASTER_DATASETS) - cached_count
