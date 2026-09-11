@@ -77,13 +77,12 @@ section = st.sidebar.selectbox(
     ),
 )
 
-engine_folder = {
-    "V5.9 Research": "research",
-    "V5.8.2 Production": "production",
-    "Public Model Audit": "audit",
+engine_path = {
+    "V5.9 Research": Path(__file__).parent / "engines" / "research" / "app.py",
+    "V5.8.2 Production": Path(__file__).parent / "engines" / "production" / "app.py",
+    "Public Model Audit": Path(__file__).parent / "engines" / "audit" / "public_model_audit.py",
 }[section]
 
-engine_path = Path(__file__).parent / "engines" / engine_folder / "app.py"
 if not engine_path.exists():
     st.error(f"Missing engine file: {engine_path}")
     st.stop()
