@@ -8,6 +8,7 @@ from engines.audit.provider_probe import (
     run_cryptoquant_catalogue_probe,
 )
 from engines.audit.provider_source_matrix import source_matrix_df, relevant_cryptoquant_paths
+from engines.audit.coinglass_staging import collect_specialist_history, save_staging_csv
 
 st.title("BTC Data Provider Capability Probe")
 st.caption(
@@ -82,3 +83,29 @@ st.info(
     "Production-source MVRV-Z and Fear & Greed remain protected by parity requirements. "
     "An alternate provider is not allowed to silently replace the exact Production source."
 )
+
+st.divider()
+st.subheader("CoinGlass specialist staging")
+st.caption(
+    "This collects only specialist datasets where CoinGlass is now our preferred research source: STH/LTH SOPR, "
+    "STH/LTH realized price, RHODL, STH/LTH supply and Reserve Risk. Results are written only to "
+    "btc-audit-data/staging/coinglass_specialist.csv — never to the authoritative master and never to Production."
+)
+if st.button("COLLECT + SAVE COINGLASS SPECIALIST STAGING", type="secondary"):
+    with st.spinner("Collecting CoinGlass specialist history and saving non-authoritative staging data..."):
+        frame, statuses = collect_specialist_history(st)
+        save_status = save_staging_csv(st, frame)
+    st.session_state["coinglass_staging_statuses"] = statuses
+    st.session_state["coinglass_staging_save_status"] = save_status
+    st.session_state["coinglass_staging_shape"] = tuple(frame.shape) if frame is not None else (0, 0)
+
+staging_statuses = st.session_state.get("coinglass_staging_statuses")
+if staging_statuses:
+    st.dataframe(pd.DataFrame(staging_statuses), use_container_width=True, hide_index=True)
+    shape = st.session_state.get("coinglass_staging_shape", (0, 0))
+    st.caption(f"Parsed staging shape: {shape[0]:,} dates × {shape[1]} provider columns")
+    save_status = st.session_state.get("coinglass_staging_save_status", "")
+    if save_status.startswith("SAVED + VERIFIED"):
+        st.success(save_status)
+    else:
+        st.warning(save_status or "Staging save status unavailable")
