@@ -1,0 +1,137 @@
+name: Add shadow Production engine test
+on:
+  push:
+    branches: [shadow-production-engine-test]
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Patch parity lab
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('engines/shared/parity_app.py')
+          s = p.read_text()
+          anchor = 'st.caption("No files were written and no Production/Research data source was changed by this parity check.")\n'
+          if anchor not in s:
+              raise SystemExit('anchor not found')
+          block = r'''
+st.subheader("4. Shadow Production engine test")
+st.caption(
+    "This runs the actual V5.8.2 Production risk engine against the SHADOW-ONLY central candidate export. "
+    "It does not change Production and is not a final parity proof for MVRV-Z/Fear & Greed."
+)
+
+shadow_cfg = CentralDataConfig(
+    repository=cfg.repository,
+    token=cfg.token,
+    ref=cfg.ref,
+    master_path="shadow/production_input_candidate.csv",
+)
+try:
+    shadow = load_master(config=shadow_cfg)
+except Exception as exc:
+    st.warning(
+        "Shadow candidate export is not available on the central-data main branch yet. "
+        f"Once the data PR is merged this section will run automatically. ({type(exc).__name__}: {exc})"
+    )
+else:
+    required_shadow = ["btc_usd", "usd_per_aud", "mvrv_z", "fear_greed"]
+    missing_shadow = [c for c in required_shadow if c not in shadow.columns]
+    if missing_shadow:
+        st.error(f"Shadow export is missing required columns: {missing_shadow}")
+    else:
+        base = pd.DataFrame(index=shadow.index.copy())
+        base["price"] = pd.to_numeric(shadow["btc_usd"], errors="coerce")
+        fx_shadow = pd.to_numeric(shadow["usd_per_aud"], errors="coerce")
+        base = prod.align_fx_to_dates(base, fx_shadow)
+        ext = pd.DataFrame(index=shadow.index.copy())
+        ext["mvrv_z"] = pd.to_numeric(shadow["mvrv_z"], errors="coerce")
+        ext["fear_greed"] = pd.to_numeric(shadow["fear_greed"], errors="coerce")
+        base = prod.merge_bgeometrics(base, ext)
+
+        shadow_params = {
+            "pl_cheap": prod.DEFAULT_PL_CHEAP,
+            "pl_expensive": prod.DEFAULT_PL_EXPENSIVE,
+            "valuation_strength": prod.DEFAULT_VALUATION_STRENGTH,
+            "min_valuation_mult": prod.DEFAULT_MIN_VALUATION_MULT,
+            "max_valuation_mult": min(prod.DEFAULT_MAX_VALUATION_MULT, 2.0),
+            "min_risk_components": prod.DEFAULT_MIN_RISK_COMPONENTS,
+            "price_position_window": prod.DEFAULT_PRICE_POSITION_WINDOW,
+            "risk_calibration_min_periods": prod.DEFAULT_RISK_CALIBRATION_MIN_PERIODS,
+            "risk_calibration_window": prod.DEFAULT_RISK_CALIBRATION_WINDOW,
+            "risk_calibration_blend": prod.DEFAULT_RISK_CALIBRATION_BLEND,
+            "absolute_risk_weight": prod.DEFAULT_ABSOLUTE_RISK_WEIGHT,
+            "relative_risk_weight": prod.DEFAULT_RELATIVE_RISK_WEIGHT,
+            "trend_er_period": prod.DEFAULT_TREND_ER_PERIOD,
+            "trend_fast": prod.DEFAULT_TREND_FAST,
+            "trend_slow": prod.DEFAULT_TREND_SLOW,
+            "trend_range_period": prod.DEFAULT_TREND_RANGE_PERIOD,
+            "trend_band_mult": prod.DEFAULT_TREND_BAND_MULT,
+        }
+        shadow_risk = prod.add_risk_indicators(base, "Composite V3.6", shadow_params)
+        valid_shadow = shadow_risk.dropna(subset=["risk_score", "price"])
+
+        if valid_shadow.empty:
+            st.error("The Production risk engine could not produce a valid Risk Score from the shadow export.")
+        else:
+            latest_shadow = valid_shadow.iloc[-1]
+            latest_date = valid_shadow.index[-1]
+            latest_risk = float(latest_shadow["risk_score"])
+            latest_mult = float(prod.interpolate(prod.SMART_DCA_POINTS, latest_risk))
+            component_count = int(latest_shadow.get("risk_components_available", 0))
+
+            s1, s2, s3, s4 = st.columns(4)
+            s1.metric("Shadow valid risk dates", f"{len(valid_shadow):,}")
+            s2.metric("Latest shadow Risk Score", f"{latest_risk:.6f}")
+            s3.metric("Latest Smart DCA weight", f"{latest_mult:.4f}x")
+            s4.metric("Risk components available", f"{component_count}/6")
+            st.caption(
+                f"Latest shadow engine date: {latest_date.date()} • BTC/USD {float(latest_shadow['price']):,.2f} • "
+                f"MVRV-Z {float(latest_shadow['mvrv_z']):.4f} • Fear & Greed {float(latest_shadow['fear_greed']):.2f}"
+            )
+
+            # Determinism check: the same shadow inputs must produce exactly the same risk output twice.
+            shadow_risk_2 = prod.add_risk_indicators(base, "Composite V3.6", shadow_params)
+            a = pd.to_numeric(shadow_risk["risk_score"], errors="coerce")
+            b = pd.to_numeric(shadow_risk_2["risk_score"], errors="coerce")
+            joined_shadow = pd.concat([a.rename("a"), b.rename("b")], axis=1).dropna()
+            max_repeat_diff = float((joined_shadow["a"] - joined_shadow["b"]).abs().max()) if len(joined_shadow) else float("nan")
+            if np.isfinite(max_repeat_diff) and max_repeat_diff <= 1e-12:
+                st.success("Shadow engine determinism check: PASS — repeated V5.8.2 calculations are exactly identical.")
+            else:
+                st.error(f"Shadow engine determinism check failed. Max repeated Risk Score difference: {max_repeat_diff}")
+
+            st.info(
+                "This proves the central shadow export can drive the frozen V5.8.2 risk engine reproducibly. "
+                "It does NOT yet prove fresh live parity for MVRV-Z and Fear & Greed, and Production remains on its existing live data path."
+            )
+
+'''
+          s = s.replace(anchor, block + anchor, 1)
+          p.write_text(s)
+          PY
+      - name: Validate
+        run: |
+          python -m py_compile engines/shared/parity_app.py
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('engines/shared/parity_app.py').read_text()
+          assert 'Shadow Production engine test' in s
+          assert 'shadow/production_input_candidate.csv' in s
+          assert 'Production remains on its existing live data path' in s
+          PY
+      - name: Commit patch and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/add-shadow-engine-test.yml
+          git add engines/shared/parity_app.py .github/workflows/add-shadow-engine-test.yml
+          git commit -m "Add shadow Production engine test to parity lab"
+          git push
