@@ -3,6 +3,12 @@
 from pathlib import Path
 import streamlit as st
 
+from engines.audit.bgeometrics_guard import (
+    guard_status,
+    install_bgeometrics_guard,
+    uninstall_bgeometrics_guard,
+)
+
 st.set_page_config(page_title="BTC Dynamic DCA", layout="wide")
 
 # Shared top chrome/theme fix. Applied before any engine widgets render.
@@ -78,6 +84,15 @@ section = st.sidebar.selectbox(
         "Central Data Parity compares the shared research database with current live model inputs without changing either model."
     ),
 )
+
+if section == "Public Model Audit":
+    install_bgeometrics_guard(st)
+    active, text = guard_status(st)
+    if active:
+        st.warning(text)
+else:
+    # Never let the research quota wrapper leak into Production/Research/Parity sections.
+    uninstall_bgeometrics_guard()
 
 engine_path = {
     "V5.9 Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
