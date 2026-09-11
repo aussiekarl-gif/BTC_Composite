@@ -3,8 +3,8 @@
 Temporary dual-model ntfy comparison for BTC Dynamic DCA.
 
 Compares, side-by-side:
-- V5.8.2 Production (engines/production/production_app.py)
-- V5.9 Research (engines/research/research_app.py)
+- V5.8.2 Production (engines/production/production_model.py)
+- V5.9 Research (engines/research/research_model.py)
 
 Privacy / behavior:
 - No portfolio balance, holdings, capital amount, or recommended AUD amount is sent.
@@ -14,43 +14,19 @@ Privacy / behavior:
 
 from __future__ import annotations
 
-import ast
 import datetime as dt
 import os
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
-ROOT = Path(__file__).resolve().parent
-PROD_APP = ROOT / "engines" / "production" / "production_app.py"
-RESEARCH_APP = ROOT / "engines" / "research" / "research_app.py"
+from engines.production import production_model as PROD_MODEL
+from engines.research import research_model as RESEARCH_MODEL
+
 BRISBANE = ZoneInfo("Australia/Brisbane")
 
 
-def load_app_engine(app_file: Path):
-    if not app_file.exists():
-        raise RuntimeError(f"Engine file not found: {app_file}")
-
-    source = app_file.read_text(encoding="utf-8")
-    tree = ast.parse(source, filename=str(app_file))
-    safe_nodes = []
-
-    for node in tree.body:
-        if (
-            isinstance(node, ast.Expr)
-            and isinstance(node.value, ast.Call)
-            and isinstance(node.value.func, ast.Attribute)
-            and isinstance(node.value.func.value, ast.Name)
-            and node.value.func.value.id == "st"
-            and node.value.func.attr == "set_page_config"
-        ):
-            break
-        safe_nodes.append(node)
-
-    module = ast.Module(body=safe_nodes, type_ignores=[])
-    ast.fix_missing_locations(module)
-    ns = {"__file__": str(app_file), "__name__": f"btc_engine_{app_file.parent.name}"}
-    exec(compile(module, str(app_file), "exec"), ns)
-    return ns
+def load_model_engine(engine_module):
+    """Expose the imported calculation module using the notifier's existing dict API."""
+    return vars(engine_module)
 
 
 def fixed_engine_params(e, model: str, start_date: dt.date, end_date: dt.datetime):
@@ -122,8 +98,8 @@ def risk_label(risk: float) -> str:
     return "VERY HIGH"
 
 
-def calculate_model_summary(app_file: Path, model: str):
-    e = load_app_engine(app_file)
+def calculate_model_summary(engine_module, model: str):
+    e = load_model_engine(engine_module)
     np, pd = e["np"], e["pd"]
     now_utc = dt.datetime.now(dt.timezone.utc)
 
@@ -282,8 +258,8 @@ def send_ntfy(prod, research, btc_aud, btc_usd):
 
 
 def main():
-    prod, prod_engine, prod_latest = calculate_model_summary(PROD_APP, "Composite V3.6")
-    research, research_engine, research_latest = calculate_model_summary(RESEARCH_APP, "Research WF Power Law")
+    prod, prod_engine, prod_latest = calculate_model_summary(PROD_MODEL, "Composite V3.6")
+    research, research_engine, research_latest = calculate_model_summary(RESEARCH_MODEL, "Research WF Power Law")
     btc_aud, btc_usd = fetch_live_prices(prod_engine, prod_latest)
 
     print(
