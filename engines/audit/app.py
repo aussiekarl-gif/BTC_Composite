@@ -281,13 +281,37 @@ def save_remote_audit_memory(memory):
         try:
             verify = read_cache_csv(io.BytesIO(verify_raw))
             vrows = len(verify)
+            vcols = set(map(str, verify.columns))
+            lcols = set(map(str, memory.columns))
         except Exception:
             vrows = -1
-        if vrows != len(memory):
-            return f"SAVE UNVERIFIED — local {len(memory):,} rows, remote {vrows if vrows >= 0 else 'unreadable'} rows"
-        return f"SAVED + VERIFIED — {len(memory):,} rows in durable GitHub backup"
+            vcols = set()
+            lcols = set(map(str, memory.columns))
+        if vrows != len(memory) or vcols != lcols:
+            missing_cols = sorted(lcols - vcols)[:8]
+            return (f"SAVE UNVERIFIED — local {len(memory):,} dates/{len(lcols):,} columns; "
+                    f"remote {vrows if vrows >= 0 else 'unreadable'} dates/{len(vcols):,} columns; "
+                    f"missing remotely: {missing_cols if missing_cols else 'none'}")
+        return f"SAVED + VERIFIED — {len(memory):,} unique dates / {len(lcols):,} columns in durable GitHub master"
     except Exception as e:
         return f"SAVE FAILED — {type(e).__name__}: {e}"
+
+
+
+def download_button_no_state_change(label, data, file_name, mime, **kwargs):
+    """Render a download that does not intentionally mutate audit state.
+
+    Newer Streamlit versions support on_click='ignore', which avoids a rerun.
+    Older versions fall back to the standard download button; any rerun remains safe
+    because GitHub is the transactional source of truth.
+    """
+    try:
+        import inspect
+        if "on_click" in inspect.signature(st.download_button).parameters:
+            kwargs.setdefault("on_click", "ignore")
+    except Exception:
+        pass
+    return st.download_button(label, data, file_name, mime, **kwargs)
 
 def _pick(frame, aliases):
     if frame is None or frame.empty:
@@ -373,14 +397,30 @@ def save_runtime_master_cache(cache):
         pass
 
 
-def save_audit_memory(*frames):
-    """Save one consolidated audit memory locally AND to durable remote storage.
+def master_dataset_count(frame):
+    """Count BGeometrics catalogue datasets actually represented in a wide master frame."""
+    if frame is None or frame.empty:
+        return 0
+    return sum(dataset_cached(frame, d) for d in MASTER_DATASETS)
 
-    The local file is only a speed cache. On Streamlit Cloud it is ephemeral.
-    GitHub remote storage (when configured) is the durable source of truth and is
-    restored automatically every time a new Streamlit session starts.
+
+def master_schema_text(frame):
+    """Human-readable master shape. Rows are UNIQUE DATES, not total observations."""
+    if frame is None or frame.empty:
+        return "0 dates • 0 columns • 0 cached datasets"
+    return f"{len(frame):,} unique dates • {len(frame.columns):,} columns • {master_dataset_count(frame)} cached datasets"
+
+
+def save_audit_memory(*frames):
+    """Transactional single-master persistence.
+
+    GitHub is the durable source of truth. Before EVERY write we re-read the latest
+    remote master and merge it with the caller's frames. This prevents a stale
+    Streamlit session/rerun from overwriting newer columns that were already saved.
+    The local CSV is only a speed cache.
     """
-    memory = combine_caches(*frames)
+    latest_remote, remote_status = load_remote_audit_memory()
+    memory = combine_caches(latest_remote, *frames)
     if memory.empty:
         return memory
     try:
@@ -390,9 +430,9 @@ def save_audit_memory(*frames):
         tmp.reset_index().to_csv(AUDIT_MEMORY, index=False)
     except Exception:
         pass
-    # Durable write. It first compares the remote bytes, so ordinary Streamlit reruns
-    # do not create needless commits.
-    st.session_state["audit_remote_save_status"] = save_remote_audit_memory(memory)
+    status = save_remote_audit_memory(memory)
+    st.session_state["audit_remote_save_status"] = status
+    st.session_state["audit_master_schema"] = master_schema_text(memory)
     return memory
 
 
@@ -1058,7 +1098,7 @@ def missing_ranges(cache, column, start, end):
     return [(a, b) for a, b in ranges if a <= b]
 
 
-st.title("BTC Public Model Audit — Guided Mode")
+st.title("BTC Public Model Audit — Guided Mode V5.4")
 st.caption(
     "Research only. This page is designed to be used in order: 1 → 2 → 3 → 4. "
     "Free/self-calculated indicators are built first; BGeometrics is used only for metrics we cannot reproduce safely. "
@@ -1099,7 +1139,9 @@ benchmark_upload = st.file_uploader(
 
 local_memory = read_cache_csv(AUDIT_MEMORY) if AUDIT_MEMORY.exists() else pd.DataFrame()
 remote_memory, remote_load_status = load_remote_audit_memory()
-# Remote data is loaded first; any newer local rows/columns win within this live session.
+# GitHub is authoritative. Local runtime data is only an additional recovery/speed source.
+# The transactional saver re-reads GitHub again before any write, so a stale session
+# cannot overwrite newer remotely-saved columns.
 memory = combine_caches(remote_memory, local_memory)
 
 storage_cfg = audit_storage_config()
@@ -1172,7 +1214,8 @@ missing_count = len(MASTER_DATASETS) - cached_count
 m1, m2, m3 = st.columns(3)
 m1.metric("Datasets cached", cached_count)
 m2.metric("Still missing", missing_count)
-m3.metric("Master rows", 0 if cache.empty else f"{len(cache):,}")
+m3.metric("Unique dates in master", 0 if cache.empty else f"{len(cache):,}")
+st.caption("Master storage is a WIDE time-series table: row count is unique dates, not the sum of all dataset observations. Adding a new indicator usually adds columns, so 5,900 dates can remain 5,900 while cached datasets increase.")
 
 if cache.empty:
     st.warning("No cache is loaded yet. The next download would start from zero.")
@@ -1206,10 +1249,12 @@ with st.expander("Show numbered dataset list", expanded=False):
 backup_now = audit_backup_frame(cache, base, memory)
 if st.session_state.get("audit_remote_save_status"):
     st.caption("Last persistent save: " + st.session_state["audit_remote_save_status"])
+    if st.session_state.get("audit_master_schema"):
+        st.caption("Current durable master: " + st.session_state["audit_master_schema"])
 
 if not backup_now.empty:
-    st.download_button(
-        "DOWNLOAD SINGLE AUDIT BACKUP",
+    download_button_no_state_change(
+        "DOWNLOAD SINGLE AUDIT BACKUP (NO STATE CHANGE)",
         backup_now.reset_index().to_csv(index=False).encode(),
         "btc_audit_backup.csv",
         "text/csv",
@@ -1308,10 +1353,14 @@ if st.button(
                 cache = combine_caches(cache, frame)
                 a, b = frame.index.min().date(), frame.index.max().date()
                 status = f"Saved {len(frame):,} rows ({a} → {b})"
-            master_rows.append({"Dataset": ds["label"], "Status": status})
             save_runtime_master_cache(cache)
             save_runtime_cache(cache)
             memory = save_audit_memory(memory, cache, base)
+            # Rebuild working cache from the exact transactional master returned by the saver.
+            cache = combine_caches(memory, cache)
+            durable = st.session_state.get("audit_remote_save_status", "save status unavailable")
+            status = status + " | " + master_schema_text(memory) + " | " + durable
+            master_rows.append({"Dataset": ds["label"], "Status": status})
 
             time.sleep(1.2)
         except RateLimitError as exc:
@@ -1525,21 +1574,19 @@ else:
 
 out = merged.copy()
 out.index.name = "date"
-st.download_button(
-    "Download merged audit dataset",
+download_button_no_state_change(
+    "DOWNLOAD MERGED AUDIT DATA (NO STATE CHANGE)",
     out.reset_index().to_csv(index=False).encode(),
     "btc_public_model_audit_merged.csv",
     "text/csv",
 )
-st.download_button(
-    "Download audit summary",
+download_button_no_state_change(
+    "DOWNLOAD AUDIT SUMMARY (NO STATE CHANGE)",
     res.to_csv(index=False).encode(),
     "btc_public_model_audit_summary.csv",
     "text/csv",
 )
 
 st.caption(
-    "Memory note: the audit now auto-saves benchmark + free-derived + specialist history into cache/btc_audit_memory.csv. "
-    "Normal reruns require no re-upload. Streamlit Cloud can still lose runtime files on a redeploy/cold replacement, so use the single "
-    "btc_audit_backup.csv download when you want a portable recovery copy."
+    "Persistence note: GitHub btc_audit_backup.csv is the single durable source of truth. Every write first re-reads and merges the latest remote master, then saves and verifies BOTH dates and columns. Downloads do not intentionally change state. The local cache is only a speed/recovery copy."
 )
