@@ -14,9 +14,9 @@ version = st.sidebar.selectbox(
 )
 
 if version == "V5.9 Research":
-    engine_path = Path(__file__).parent / "engines" / "research" / "app.py"
+    engine_path = Path(__file__).parent / "engines" / "research" / "research_app.py"
 else:
-    engine_path = Path(__file__).parent / "engines" / "production" / "app.py"
+    engine_path = Path(__file__).parent / "engines" / "production" / "production_app.py"
 
 # Execute only the selected engine. Keeping the engines in separate folders prevents
 # accidental cross-imports or shared calculation globals.

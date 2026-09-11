@@ -1,4 +1,4 @@
-name: Daily BTC DCA ntfy
+name: Daily BTC DCA model comparison
 
 on:
   schedule:
@@ -23,8 +23,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Send BTC DCA summary to ntfy
+      - name: Send BTC DCA comparison to ntfy
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           BGEOMETRICS_TOKEN: ${{ secrets.BGEOMETRICS_TOKEN }}
-        run: python daily_ntfy.py
+        run: python dca_model_compare_notify.py
