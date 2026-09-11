@@ -794,6 +794,87 @@ def build_free_indicator_cache(start_date, end_date):
     return out, status_rows
 
 
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def fetch_blockchain_source_history(start_date, end_date):
+    """Capture the exact Blockchain.com BTC/USD source used by Production."""
+    start_ts = pd.Timestamp(start_date, tz="UTC") if pd.Timestamp(start_date).tzinfo is None else pd.Timestamp(start_date).tz_convert("UTC")
+    end_ts = pd.Timestamp(end_date, tz="UTC") if pd.Timestamp(end_date).tzinfo is None else pd.Timestamp(end_date).tz_convert("UTC")
+    r = requests.get(
+        "https://api.blockchain.info/charts/market-price",
+        params={"timespan": "all", "format": "json", "sampled": "false"},
+        headers={"User-Agent": "BTC-DCA-Simulator/3.4"},
+        timeout=30,
+    )
+    r.raise_for_status()
+    rows = []
+    for point in r.json().get("values", []):
+        try:
+            ts = pd.to_datetime(float(point["x"]), unit="s", utc=True).normalize()
+            value = float(point["y"])
+            if value > 0 and start_ts.normalize() <= ts <= end_ts.normalize():
+                rows.append((ts, value))
+        except Exception:
+            continue
+    if not rows:
+        return pd.DataFrame()
+    out = pd.DataFrame(rows, columns=["date", "src__blockchain_btc_usd"]).drop_duplicates("date", keep="last").set_index("date").sort_index()
+    return out
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def fetch_frankfurter_source_history(start_date, end_date):
+    """Capture the exact Frankfurter USD/AUD source used by Production."""
+    url = f"https://api.frankfurter.app/{pd.Timestamp(start_date).strftime('%Y-%m-%d')}..{pd.Timestamp(end_date).strftime('%Y-%m-%d')}?from=USD&to=AUD"
+    r = requests.get(url, headers={"User-Agent": "BTC-DCA-Simulator/3.4"}, timeout=30)
+    r.raise_for_status()
+    rows = []
+    for day, vals in r.json().get("rates", {}).items():
+        aud_per_usd = float(vals.get("AUD", 0) or 0)
+        if aud_per_usd > 0:
+            rows.append((pd.to_datetime(day, utc=True), 1.0 / aud_per_usd))
+    if not rows:
+        return pd.DataFrame()
+    return pd.DataFrame(rows, columns=["date", "src__frankfurter_usd_per_aud"]).drop_duplicates("date", keep="last").set_index("date").sort_index()
+
+
+def fetch_bgeometrics_production_sources(start_date, end_date, token):
+    """Capture the same BGeometrics endpoints/fields used by Production for parity."""
+    out = pd.DataFrame()
+    statuses = []
+    specs = [
+        ("btc-price", {"src__bgeometrics_btc_price": ["price", "btcPrice", "btc_price", "value", "close"]}),
+        ("mvrv-zscore", {"src__bgeometrics_mvrv_z": ["mvrvZScore", "mvrv_zscore", "zscore", "mvrvZ"]}),
+        ("fear-greed", {"src__bgeometrics_fear_greed": ["fearGreed", "fearAndGreed", "fear_greed", "value", "score"]}),
+        ("regime-score", {
+            "src__bgeometrics_regime_score": ["regimeScore"],
+            "src__bgeometrics_regime_delta_30d": ["regimeDelta30d"],
+            "src__bgeometrics_regime_active_weight": ["activeWeight"],
+            "src__bgeometrics_regime": ["regime"],
+        }),
+    ]
+    for endpoint, mapping in specs:
+        frame, rate = fetch_endpoint(endpoint, start_date, end_date, token)
+        if frame is None or frame.empty:
+            statuses.append({"Source": endpoint, "Status": "No usable rows returned"})
+            continue
+        piece = pd.DataFrame(index=frame.index)
+        for dest, aliases in mapping.items():
+            col = _pick(frame, aliases)
+            if col is None:
+                continue
+            if dest.endswith("__regime"):
+                piece[dest] = frame[col].astype(str)
+            else:
+                piece[dest] = pd.to_numeric(frame[col], errors="coerce")
+        if not piece.empty:
+            out = combine_caches(out, piece)
+            statuses.append({"Source": endpoint, "Status": f"Captured {len(piece):,} source rows"})
+        else:
+            statuses.append({"Source": endpoint, "Status": "Endpoint returned rows but expected fields were not found"})
+    return out, statuses
+
+
 def puell_threshold_research(merged, total_capital=500000.0):
     """Causal Monday accumulation comparison for Puell thresholds in AUD.
 
@@ -1286,18 +1367,65 @@ if st.button("BUILD / REFRESH FREE INDICATORS", type="primary", key="build_free_
         free_frame, free_status = build_free_indicator_cache(free_start, free_end)
     if free_status:
         st.dataframe(pd.DataFrame(free_status), use_container_width=True, hide_index=True)
+    source_status = []
+    try:
+        blockchain_source = fetch_blockchain_source_history(free_start, free_end)
+        if not blockchain_source.empty:
+            free_frame = combine_caches(free_frame, blockchain_source)
+            source_status.append({"Production source": "Blockchain.com BTC/USD", "Status": f"Captured {len(blockchain_source):,} rows"})
+    except Exception as exc:
+        source_status.append({"Production source": "Blockchain.com BTC/USD", "Status": f"Unavailable: {str(exc)[:120]}"})
+    try:
+        fx_source = fetch_frankfurter_source_history(free_start, free_end)
+        if not fx_source.empty:
+            free_frame = combine_caches(free_frame, fx_source)
+            source_status.append({"Production source": "Frankfurter USD/AUD", "Status": f"Captured {len(fx_source):,} rows"})
+    except Exception as exc:
+        source_status.append({"Production source": "Frankfurter USD/AUD", "Status": f"Unavailable: {str(exc)[:120]}"})
+    if source_status:
+        st.dataframe(pd.DataFrame(source_status), use_container_width=True, hide_index=True)
     if free_frame is not None and not free_frame.empty:
         cache = combine_caches(cache, free_frame)
         save_runtime_master_cache(cache)
         save_runtime_cache(cache)
         memory = save_audit_memory(memory, cache, base)
-        st.success(f"Free indicator cache updated: {len(free_frame):,} daily rows. No BGeometrics quota used. Audit memory saved automatically.")
+        st.success(f"Free/source-preserving cache updated: {len(free_frame):,} daily rows. No BGeometrics quota used. Audit memory saved automatically.")
     else:
-        st.warning("No Coin Metrics Community rows were available. Price-only indicators still work and BGeometrics was not contacted.")
+        st.warning("No free/source-preserving rows were available. Price-only indicators still work and BGeometrics was not contacted.")
 
 # Recalculate specialist-cache counts after the free step.
 cached_count = sum(dataset_cached(cache, d) for d in MASTER_DATASETS)
 missing_count = len(MASTER_DATASETS) - cached_count
+
+st.subheader("④A Preserve exact Production-source inputs")
+st.caption(
+    "Source-preserving archive for parity only. Blockchain.com and Frankfurter are captured in the free step above. "
+    "This button captures the exact BGeometrics endpoints used by Production (btc-price, MVRV-Z, Fear & Greed, Regime Score) into dedicated src__ columns. "
+    "It does not change Production and uses up to four BGeometrics requests."
+)
+source_token = get_token()
+if st.button(
+    "CAPTURE BGEOMETRICS PRODUCTION SOURCES (USES UP TO 4 REQUESTS)",
+    disabled=not bool(source_token),
+    key="capture_production_sources",
+):
+    try:
+        with st.spinner("Capturing exact Production-source BGeometrics history..."):
+            source_frame, source_rows = fetch_bgeometrics_production_sources(MASTER_START_DATE, dt.date.today(), source_token)
+        if source_rows:
+            st.dataframe(pd.DataFrame(source_rows), use_container_width=True, hide_index=True)
+        if source_frame is not None and not source_frame.empty:
+            cache = combine_caches(cache, source_frame)
+            save_runtime_master_cache(cache)
+            save_runtime_cache(cache)
+            memory = save_audit_memory(memory, cache, base)
+            st.success("Exact Production-source BGeometrics history saved to the durable central master in src__ columns.")
+        else:
+            st.warning("No source-preserving BGeometrics rows were returned.")
+    except RateLimitError as exc:
+        st.warning("BGeometrics quota reached before source capture completed. " + rate_text(exc.rate))
+    except Exception as exc:
+        st.error(f"Production-source capture failed: {exc}")
 
 # -----------------------------------------------------------------------------
 # STEP 4 — Acquire only specialist history still missing
