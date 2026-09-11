@@ -1,7 +1,8 @@
-"""Read-only capability probes for optional BTC data providers.
+"""Read-only capability and entitlement probes for optional BTC data providers.
 
-Never logs or displays secret values. Each probe performs at most one lightweight
-request and never writes to Production, Research, or the central data repository.
+Never logs or displays secret values. Capability probe makes at most one lightweight
+request per enabled provider. Entitlement probe is explicit and read-only; it samples
+selected datasets without writing Production, Research, or the central data repository.
 """
 from __future__ import annotations
 import os
@@ -52,3 +53,54 @@ def run_provider_probes(st) -> list[dict]:
     kote,kn=_secret(st,"KOTECHARTS_API")
     out.append(ProbeResult("Kotecharts",kn,bool(kote),"CONFIGURED — ENDPOINT NOT PROBED" if kote else "NOT CONFIGURED",detail="No request made until authenticated API contract is verified"))
     return [r.row() for r in out]
+
+COINGLASS_DATASETS = [
+    ("Puell Multiple", "/api/index/puell-multiple"),
+    ("Fear & Greed", "/api/index/fear-greed-history"),
+    ("2Y MA Multiplier", "/api/index/2-year-ma-multiplier"),
+    ("200W MA", "/api/index/200-week-moving-average-heatmap"),
+    ("STH SOPR", "/api/index/bitcoin-sth-sopr"),
+    ("LTH SOPR", "/api/index/bitcoin-lth-sopr"),
+    ("STH Realized Price", "/api/index/bitcoin-sth-realized-price"),
+    ("LTH Realized Price", "/api/index/bitcoin-lth-realized-price"),
+    ("RHODL Ratio", "/api/index/bitcoin-rhodl-ratio"),
+    ("STH Supply", "/api/index/bitcoin-short-term-holder-supply"),
+    ("LTH Supply", "/api/index/bitcoin-long-term-holder-supply"),
+    ("Reserve Risk", "/api/index/bitcoin-reserve-risk"),
+    ("NUPL", "/api/index/bitcoin-net-unrealized-profit-loss"),
+]
+
+def run_coinglass_entitlement_probe(st) -> list[dict]:
+    """Test selected CoinGlass BTC datasets one-by-one, stopping immediately on 429."""
+    token, secret_name = _secret(st, "COINGLASS_API_KEY")
+    out=[]
+    for label, path in COINGLASS_DATASETS:
+        result=_classify(
+            f"CoinGlass — {label}", secret_name, token,
+            lambda key, p=path: requests.get(
+                "https://open-api-v4.coinglass.com"+p,
+                headers={"CG-API-KEY":key,"Accept":"application/json"}, timeout=20,
+            ),
+        )
+        out.append(result.row())
+        if result.status == "RATE LIMITED": break
+    return out
+
+def run_cryptoquant_catalogue_probe(st) -> dict:
+    """Fetch CryptoQuant discovery catalogue once and summarize paths only; no metric data calls."""
+    token, secret_name = _secret(st, "CRYPTOQUANT_API_KEY")
+    if not token:
+        return {"configured":False,"status":"NOT CONFIGURED","secret_name":secret_name,"endpoint_count":0,"btc_endpoint_count":0,"btc_paths":[]}
+    try:
+        r=requests.get("https://api.cryptoquant.com/v1/discovery/endpoints",headers={"Authorization":f"Bearer {token}","Accept":"application/json"},params={"format":"json"},timeout=20)
+    except requests.RequestException as exc:
+        return {"configured":True,"status":"NETWORK ERROR","secret_name":secret_name,"endpoint_count":0,"btc_endpoint_count":0,"btc_paths":[],"detail":type(exc).__name__}
+    if r.status_code != 200:
+        return {"configured":True,"status":f"HTTP {r.status_code}","secret_name":secret_name,"endpoint_count":0,"btc_endpoint_count":0,"btc_paths":[]}
+    try: payload=r.json()
+    except ValueError:
+        return {"configured":True,"status":"INVALID JSON","secret_name":secret_name,"endpoint_count":0,"btc_endpoint_count":0,"btc_paths":[]}
+    data=((payload.get("result") or {}).get("data") or []) if isinstance(payload,dict) else []
+    paths=[str(x.get("path","")) for x in data if isinstance(x,dict) and x.get("path")]
+    btc=[p for p in paths if "/btc/" in p]
+    return {"configured":True,"status":"ACCESSIBLE","secret_name":secret_name,"endpoint_count":len(paths),"btc_endpoint_count":len(btc),"btc_paths":btc}
