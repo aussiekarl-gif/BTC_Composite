@@ -78,8 +78,8 @@ section = st.sidebar.selectbox(
 )
 
 engine_path = {
-    "V5.9 Research": Path(__file__).parent / "engines" / "research" / "app.py",
-    "V5.8.2 Production": Path(__file__).parent / "engines" / "production" / "app.py",
+    "V5.9 Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
+    "V5.8.2 Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Public Model Audit": Path(__file__).parent / "engines" / "audit" / "public_model_audit.py",
 }[section]
 

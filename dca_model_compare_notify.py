@@ -3,15 +3,13 @@
 Temporary dual-model ntfy comparison for BTC Dynamic DCA.
 
 Compares, side-by-side:
-- V5.8.2 Production (engines/production/app.py)
-- V5.9 Research (engines/research/app.py)
+- V5.8.2 Production (engines/production/production_app.py)
+- V5.9 Research (engines/research/research_app.py)
 
 Privacy / behavior:
 - No portfolio balance, holdings, capital amount, or recommended AUD amount is sent.
 - The notification shows each model's Risk Score and DCA multiplier only.
 - Risk calculations use the latest fully closed UTC day; BTC prices are live.
-- The existing GitHub Actions workflow can remain unchanged: it still runs
-  `python daily_ntfy.py`.
 """
 
 from __future__ import annotations
@@ -23,8 +21,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent
-PROD_APP = ROOT / "engines" / "production" / "app.py"
-RESEARCH_APP = ROOT / "engines" / "research" / "app.py"
+PROD_APP = ROOT / "engines" / "production" / "production_app.py"
+RESEARCH_APP = ROOT / "engines" / "research" / "research_app.py"
 BRISBANE = ZoneInfo("Australia/Brisbane")
 
 
@@ -64,7 +62,7 @@ def fixed_engine_params(e, model: str, start_date: dt.date, end_date: dt.datetim
         "fund_expensive": e["DEFAULT_FUND_EXPENSIVE"],
         "pl_cheap": e["DEFAULT_PL_CHEAP"],
         "pl_expensive": e["DEFAULT_PL_EXPENSIVE"],
-        "total_capital_aud": 500000.0,  # compatibility only; never sent
+        "total_capital_aud": 500000.0,
         "base_dca_pct": 0.01,
         "pressure_strength": 0.0,
         "max_period_pct": 0.05,
@@ -133,7 +131,6 @@ def calculate_model_summary(app_file: Path, model: str):
     closed_end_utc = closed_cutoff_utc - dt.timedelta(microseconds=1)
 
     if model == "Research WF Power Law":
-        # R2/R3 research engine defines its calibration history start explicitly.
         hist_start = e.get("RESEARCH_PL_HISTORY_START", pd.Timestamp("2012-01-01", tz="UTC"))
         lookback_start = pd.Timestamp(hist_start).to_pydatetime()
     else:
