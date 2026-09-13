@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BTC Dynamic DCA launcher — Research, Production control, Public Model Audit, provider probe, signal timeline, and Central Data Parity."""
+"""BTC Dynamic DCA launcher — streamlined everyday UI with optional maintenance tools."""
 from pathlib import Path
 import streamlit as st
 
@@ -71,25 +71,36 @@ header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader,
 </style>
 """, unsafe_allow_html=True)
 
+# Everyday sections stay visible. Diagnostic/maintenance pages remain available
+# behind one opt-in toggle so we keep the tools without cluttering the normal UI.
+primary_sections = [
+    "V5.8.2 Production",
+    "V5.9 Research",
+    "Bottom Signal Timeline",
+]
+maintenance_sections = [
+    "Public Model Audit",
+    "Provider Capability Probe",
+    "Central Data Parity",
+]
+
+show_maintenance = st.sidebar.toggle(
+    "Show maintenance tools",
+    value=False,
+    help="Show audit, provider and data-parity diagnostics. These tools do not change Production sizing.",
+)
+
+section_options = primary_sections + (maintenance_sections if show_maintenance else [])
 section = st.sidebar.selectbox(
     "App section",
-    [
-        "V5.9 Research",
-        "V5.8.2 Production",
-        "Bottom Signal Timeline",
-        "Public Model Audit",
-        "Provider Capability Probe",
-        "Central Data Parity",
-    ],
+    section_options,
     index=0,
     key="combined_app_section_selector",
     help=(
+        "V5.8.2 Production is the frozen live model. "
         "V5.9 Research is the working development version. "
-        "V5.8.2 Production remains the frozen control. "
-        "Bottom Signal Timeline visualises multi-indicator historical value/extreme states from the central audit database without changing strategy sizing. "
-        "Public Model Audit screens external/public Bitcoin models before any idea is allowed into Research. "
-        "Provider Capability Probe checks configured data-provider access without changing data or models. "
-        "Central Data Parity compares the shared research database with current live model inputs without changing either model."
+        "Bottom Signal Timeline visualises historical multi-indicator states. "
+        "Enable maintenance tools only when audit/provider/parity diagnostics are needed."
     ),
 )
 
@@ -103,8 +114,8 @@ else:
     uninstall_bgeometrics_guard()
 
 engine_path = {
-    "V5.9 Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "V5.8.2 Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
+    "V5.9 Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
     "Public Model Audit": Path(__file__).parent / "engines" / "audit" / "public_model_audit.py",
     "Provider Capability Probe": Path(__file__).parent / "engines" / "audit" / "provider_probe_app.py",
