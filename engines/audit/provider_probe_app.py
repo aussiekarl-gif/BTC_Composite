@@ -7,66 +7,68 @@ from engines.audit.provider_probe import (
     run_cryptoquant_catalogue_probe, run_cryptoquant_targeted_entitlement_probe,
 )
 from engines.audit.provider_source_matrix import source_matrix_df, relevant_cryptoquant_paths
-from engines.audit.coinglass_staging import collect_specialist_history, save_staging_csv
 
 st.title("BTC Data Provider Capability Probe")
 st.caption("Read-only diagnostics. Nothing here changes Production, Research, the central BTC database, or any strategy setting. Secret values are never displayed.")
 st.info("Basic capability makes at most one lightweight request to each enabled provider. Dataset entitlement tests are separate and run only when you explicitly press their buttons.")
 
 if st.button("RUN PROVIDER CAPABILITY PROBE", type="primary"):
-    with st.spinner("Checking configured provider access..."): st.session_state["provider_probe_rows"]=run_provider_probes(st)
-rows=st.session_state.get("provider_probe_rows")
+    with st.spinner("Checking configured provider access..."):
+        st.session_state["provider_probe_rows"] = run_provider_probes(st)
+rows = st.session_state.get("provider_probe_rows")
 if rows:
-    df=pd.DataFrame(rows); st.dataframe(df,use_container_width=True,hide_index=True)
-    accessible=int((df["status"]=="ACCESSIBLE").sum()) if "status" in df else 0; configured=int(df["configured"].sum()) if "configured" in df else 0
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    accessible = int((df["status"] == "ACCESSIBLE").sum()) if "status" in df else 0
+    configured = int(df["configured"].sum()) if "configured" in df else 0
     st.caption(f"Configured providers checked: {configured}. Accessible probe endpoints: {accessible}.")
     st.warning("A blocked result only describes the tested endpoint/plan; it does not prove every endpoint from that provider is unavailable.")
-else: st.caption("No provider requests have been made yet.")
+else:
+    st.caption("No provider requests have been made yet.")
 
-st.divider(); st.subheader("Dataset entitlement mapping")
+st.divider()
+st.subheader("Dataset entitlement mapping")
 st.caption("These checks are read-only and provider-specific. They do not write any returned data to the central database.")
-col1,col2=st.columns(2)
+col1, col2 = st.columns(2)
 with col1:
     if st.button("MAP COINGLASS BTC DATASET ACCESS"):
-        with st.spinner("Testing selected CoinGlass BTC datasets..."): st.session_state["coinglass_entitlement_rows"]=run_coinglass_entitlement_probe(st)
+        with st.spinner("Testing selected CoinGlass BTC datasets..."):
+            st.session_state["coinglass_entitlement_rows"] = run_coinglass_entitlement_probe(st)
 with col2:
     if st.button("READ CRYPTOQUANT ENDPOINT CATALOGUE"):
-        with st.spinner("Reading CryptoQuant endpoint catalogue..."): st.session_state["cryptoquant_catalogue"]=run_cryptoquant_catalogue_probe(st)
+        with st.spinner("Reading CryptoQuant endpoint catalogue..."):
+            st.session_state["cryptoquant_catalogue"] = run_cryptoquant_catalogue_probe(st)
 
-cg_rows=st.session_state.get("coinglass_entitlement_rows")
+cg_rows = st.session_state.get("coinglass_entitlement_rows")
 if cg_rows:
-    st.markdown("**CoinGlass selected BTC datasets**"); st.dataframe(pd.DataFrame(cg_rows),use_container_width=True,hide_index=True); st.caption("Stops immediately if CoinGlass returns HTTP 429; no automatic retry.")
+    st.markdown("**CoinGlass selected BTC datasets**")
+    st.dataframe(pd.DataFrame(cg_rows), use_container_width=True, hide_index=True)
+    st.caption("Stops immediately if CoinGlass returns HTTP 429; no automatic retry.")
 
-cq=st.session_state.get("cryptoquant_catalogue")
+cq = st.session_state.get("cryptoquant_catalogue")
 if cq:
-    st.markdown("**CryptoQuant discovery catalogue**"); st.write({k:v for k,v in cq.items() if k!="btc_paths"}); paths=cq.get("btc_paths") or []
+    st.markdown("**CryptoQuant discovery catalogue**")
+    st.write({k: v for k, v in cq.items() if k != "btc_paths"})
+    paths = cq.get("btc_paths") or []
     if paths:
-        relevant=relevant_cryptoquant_paths(paths)
+        relevant = relevant_cryptoquant_paths(paths)
         if not relevant.empty:
-            st.markdown("**CryptoQuant BTC endpoints relevant to our audit**"); st.dataframe(relevant,use_container_width=True,hide_index=True)
+            st.markdown("**CryptoQuant BTC endpoints relevant to our audit**")
+            st.dataframe(relevant, use_container_width=True, hide_index=True)
         if st.button("TEST CRYPTOQUANT TARGETED DATA ACCESS"):
             with st.spinner("Testing at most 12 catalogue-confirmed CryptoQuant audit endpoints..."):
-                st.session_state["cryptoquant_targeted_rows"]=run_cryptoquant_targeted_entitlement_probe(st,paths)
-        with st.expander("Show all CryptoQuant BTC endpoint paths",expanded=False): st.dataframe(pd.DataFrame({"btc_endpoint_path":paths}),use_container_width=True,hide_index=True)
+                st.session_state["cryptoquant_targeted_rows"] = run_cryptoquant_targeted_entitlement_probe(st, paths)
+        with st.expander("Show all CryptoQuant BTC endpoint paths", expanded=False):
+            st.dataframe(pd.DataFrame({"btc_endpoint_path": paths}), use_container_width=True, hide_index=True)
     st.caption("Catalogue reads endpoint names only. Targeted access testing is bounded to at most 12 minimal requests and stops on HTTP 429.")
 
-cq_targeted=st.session_state.get("cryptoquant_targeted_rows")
+cq_targeted = st.session_state.get("cryptoquant_targeted_rows")
 if cq_targeted:
-    st.markdown("**CryptoQuant targeted entitlement results**"); st.dataframe(pd.DataFrame(cq_targeted),use_container_width=True,hide_index=True)
+    st.markdown("**CryptoQuant targeted entitlement results**")
+    st.dataframe(pd.DataFrame(cq_targeted), use_container_width=True, hide_index=True)
 
-st.divider(); st.subheader("Research source-priority matrix")
+st.divider()
+st.subheader("Research source-priority matrix")
 st.caption("Planning only. Audit/Research uses self-calculated/free first, then verified alternate providers, then BGeometrics only where needed. It does not switch Production.")
-st.dataframe(source_matrix_df(),use_container_width=True,hide_index=True)
+st.dataframe(source_matrix_df(), use_container_width=True, hide_index=True)
 st.info("Production-source MVRV-Z and Fear & Greed remain protected by parity requirements. An alternate provider is not allowed to silently replace the exact Production source.")
-
-st.divider(); st.subheader("CoinGlass specialist staging")
-st.caption("CoinGlass specialist staging is retained as a diagnostic only. Current-plan specialist access may be blocked; nothing here writes to the authoritative master or Production.")
-if st.button("COLLECT + SAVE COINGLASS SPECIALIST STAGING",type="secondary"):
-    with st.spinner("Collecting CoinGlass specialist history and saving non-authoritative staging data..."):
-        frame,statuses=collect_specialist_history(st); save_status=save_staging_csv(st,frame)
-    st.session_state["coinglass_staging_statuses"]=statuses; st.session_state["coinglass_staging_save_status"]=save_status; st.session_state["coinglass_staging_shape"]=tuple(frame.shape) if frame is not None else (0,0)
-staging_statuses=st.session_state.get("coinglass_staging_statuses")
-if staging_statuses:
-    st.dataframe(pd.DataFrame(staging_statuses),use_container_width=True,hide_index=True); shape=st.session_state.get("coinglass_staging_shape",(0,0)); st.caption(f"Parsed staging shape: {shape[0]:,} dates × {shape[1]} provider columns"); save_status=st.session_state.get("coinglass_staging_save_status","")
-    if save_status.startswith("SAVED + VERIFIED"): st.success(save_status)
-    else: st.warning(save_status or "Staging save status unavailable")
