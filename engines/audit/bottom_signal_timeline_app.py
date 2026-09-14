@@ -102,6 +102,31 @@ def load_audit_master():
         raise RuntimeError("Central audit master has no date column.")
     df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
     df = df.dropna(subset=["date"]).set_index("date").sort_index()
+
+    # Optional provisional research fallback. It remains in its own explicitly
+    # digitized column and never overwrites authoritative provider NUPL.
+    digitized_path = "digitized/nupl_lookintobitcoin_chart_read.csv"
+    try:
+        digitized_meta = requests.get(
+            f"https://api.github.com/repos/{repo}/contents/{digitized_path}",
+            headers=headers,
+            params={"ref": branch},
+            timeout=30,
+        )
+        digitized_meta.raise_for_status()
+        digitized_obj = digitized_meta.json()
+        digitized_raw = base64.b64decode(digitized_obj["content"].encode())
+        digitized = pd.read_csv(io.BytesIO(digitized_raw))
+        digitized["date"] = pd.to_datetime(digitized["date"], utc=True, errors="coerce")
+        digitized = digitized.dropna(subset=["date"]).set_index("date").sort_index()
+        chart_col = "digitized__lookintobitcoin_nupl"
+        if chart_col in digitized.columns:
+            chart_values = pd.to_numeric(digitized[chart_col], errors="coerce")
+            df[chart_col] = chart_values.reindex(df.index)
+    except Exception:
+        # The main audit master must remain usable if this optional research
+        # artifact is missing or temporarily unavailable.
+        pass
     return df
 
 
@@ -163,15 +188,27 @@ def build_timeline(master):
     states = pd.DataFrame(index=monday_idx)
     available = []
     for label, col in INDICATORS:
-        if col not in master.columns:
-            continue
-        series = _asof_to_mondays(master[col], monday_idx)
+        source = (
+            pd.to_numeric(master[col], errors="coerce")
+            if col in master.columns
+            else pd.Series(np.nan, index=master.index, dtype=float)
+        )
+        output_label = label
+        if col == "NUPL":
+            fallback_col = "digitized__lookintobitcoin_nupl"
+            if fallback_col in master.columns:
+                fallback = pd.to_numeric(master[fallback_col], errors="coerce")
+                fallback_used = bool((source.isna() & fallback.notna()).any())
+                source = source.combine_first(fallback)
+                if fallback_used:
+                    output_label = "NUPL (chart-read approx.)"
+        series = _asof_to_mondays(source, monday_idx)
         if series.notna().sum() < 52:
             continue
-        values[label] = series
+        values[output_label] = series
         pct = _expanding_percentile(series, min_periods=52)
-        states[label] = pct.map(_percentile_to_state)
-        available.append(label)
+        states[output_label] = pct.map(_percentile_to_state)
+        available.append(output_label)
 
     if states.empty:
         raise RuntimeError("Not enough indicator history is available yet to build the timeline.")
@@ -226,6 +263,11 @@ show_states = states.loc[mask].copy()
 show_values = values.reindex(show_states.index)
 
 indicator_rows = [c for c in show_states.columns if c != "Bottom Consensus"]
+if "NUPL (chart-read approx.)" in indicator_rows:
+    st.warning(
+        "NUPL currently uses an approximate weekly series digitized from a Look Into Bitcoin chart. "
+        "It is research-only and will be superseded automatically where direct provider NUPL becomes available."
+    )
 if not indicator_rows:
     st.warning("No indicators are available in the selected range.")
     st.stop()
