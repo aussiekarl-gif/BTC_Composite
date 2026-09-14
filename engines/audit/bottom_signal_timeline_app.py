@@ -23,6 +23,7 @@ INDICATORS = [
     ("NVT Signal", "NVT Signal"),
     ("ThermoCap Multiple", "ThermoCap Multiple"),
     ("Hash Ribbon Ratio (30D/60D)", "derived__hash_ribbon_ratio_30d_60d"),
+    ("Difficulty Ribbon Compression (context)", "derived__difficulty_ribbon_compression"),
     ("VDD Multiple", "VDD Multiple"),
     ("STH MVRV", "STH MVRV"),
     ("LTH MVRV", "LTH MVRV"),
@@ -34,6 +35,8 @@ INDICATORS = [
     ("STH SOPR", "STH SOPR"),
     ("LTH SOPR", "LTH SOPR"),
 ]
+
+CONTEXT_ONLY_LABELS = {"Difficulty Ribbon Compression (context)"}
 
 STATE_NAMES = {
     0: "Deep Value",
@@ -110,6 +113,7 @@ def load_audit_master():
         ("digitized/nupl_lookintobitcoin_chart_read.csv", "digitized__lookintobitcoin_nupl"),
         ("provider/nvt_blockchain_daily.csv", "source__blockchain_nvt"),
         ("provider/nvts_blockchain_observations.csv", "source__blockchain_nvts"),
+        ("provider/difficulty_blockchain_sampled.csv", "source__blockchain_difficulty"),
         ("provider/mvrv_blockchain_daily.csv", "source__blockchain_mvrv"),
     )
     for digitized_path, chart_col in digitized_artifacts:
@@ -208,6 +212,34 @@ def build_timeline(master):
         if col == "MVRV" and "source__blockchain_mvrv" in master.columns:
             provider = pd.to_numeric(master["source__blockchain_mvrv"], errors="coerce")
             series = series.combine_first(_asof_to_mondays(provider, monday_idx))
+
+        if col == "derived__difficulty_ribbon_compression" and "source__blockchain_difficulty" in master.columns:
+            blockchain_difficulty = pd.to_numeric(
+                master["source__blockchain_difficulty"], errors="coerce"
+            ).replace(0.0, np.nan)
+            daily_difficulty_index = pd.date_range(
+                master.index.min().normalize(),
+                master.index.max().normalize(),
+                freq="D",
+            )
+            daily_difficulty = blockchain_difficulty.reindex(
+                daily_difficulty_index
+            ).ffill()
+            ribbon_windows = (9, 14, 25, 40, 60, 90, 128, 200)
+            difficulty_ribbon = pd.concat(
+                [
+                    daily_difficulty.rolling(window, min_periods=window).mean()
+                    for window in ribbon_windows
+                ],
+                axis=1,
+            )
+            derived_difficulty_compression = (
+                difficulty_ribbon.std(axis=1, ddof=0)
+                / difficulty_ribbon.mean(axis=1).replace(0.0, np.nan)
+            ).replace([np.inf, -np.inf], np.nan)
+            series = series.combine_first(
+                _asof_to_mondays(derived_difficulty_compression, monday_idx)
+            )
 
         if col == "derived__hash_ribbon_ratio_30d_60d" and "cm__HashRate" in master.columns:
             cm_hash_rate = pd.to_numeric(master["cm__HashRate"], errors="coerce")
@@ -327,8 +359,11 @@ def build_timeline(master):
     if states.empty:
         raise RuntimeError("Not enough indicator history is available yet to build the timeline.")
 
-    states["Bottom Consensus"] = states.mean(axis=1, skipna=True).round()
-    counts = states.drop(columns=["Bottom Consensus"]).notna().sum(axis=1)
+    consensus_inputs = states.drop(
+        columns=list(CONTEXT_ONLY_LABELS), errors="ignore"
+    )
+    states["Bottom Consensus"] = consensus_inputs.mean(axis=1, skipna=True).round()
+    counts = consensus_inputs.notna().sum(axis=1)
     consensus = states["Bottom Consensus"]
     consensus[counts < 3] = np.nan
     states["Bottom Consensus"] = consensus
@@ -432,7 +467,8 @@ selected = st.select_slider(
 )
 
 row = show_states.loc[selected, indicator_rows]
-counts = _state_counts(row)
+consensus_row = row.drop(labels=list(CONTEXT_ONLY_LABELS), errors="ignore")
+counts = _state_counts(consensus_row)
 consensus_state = show_states.loc[selected, "Bottom Consensus"]
 consensus_name = "Unavailable" if pd.isna(consensus_state) else STATE_NAMES[int(round(float(consensus_state)))]
 
@@ -442,7 +478,7 @@ m2.metric("Value", counts["Value"])
 m3.metric("Neutral", counts["Neutral"])
 m4.metric("Elevated", counts["Elevated"])
 m5.metric("Extreme", counts["Extreme"])
-st.info(f"Bottom Consensus: **{consensus_name}** — based on {int(row.notna().sum())} available indicators for {pd.Timestamp(selected).strftime('%d %b %Y')}.")
+st.info(f"Bottom Consensus: **{consensus_name}** — based on {int(consensus_row.notna().sum())} voting indicators for {pd.Timestamp(selected).strftime('%d %b %Y')}. Context-only rows are excluded.")
 
 price_sources = [
     col for col in ("price_usd", "cm__PriceUSD", "src__blockchain_btc_usd")
