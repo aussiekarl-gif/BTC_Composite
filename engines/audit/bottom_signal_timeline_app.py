@@ -155,7 +155,7 @@ def build_timeline(master):
         first_monday += pd.Timedelta(days=(7 - first_monday.weekday()))
     last_monday = pd.Timestamp(master.index.max()).normalize()
     last_monday -= pd.Timedelta(days=last_monday.weekday())
-    monday_idx = pd.date_range(first_monday, last_monday, freq="W-MON", tz=first_monday.tz)
+    monday_idx = pd.date_range(first_monday, last_monday, freq="W-MON")
     if len(monday_idx) == 0:
         raise RuntimeError("No Monday observations found in central audit master.")
 
