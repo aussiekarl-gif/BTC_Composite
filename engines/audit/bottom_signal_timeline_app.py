@@ -259,6 +259,30 @@ def build_timeline(master):
             )
             series = series.combine_first(aligned_hash_ribbon)
 
+        if (
+            col == "derived__hash_ribbon_ratio_30d_60d"
+            and "source__blockchain_hash_rate_th_s" in master.columns
+        ):
+            # Blockchain.com's all-history series is sampled roughly every four
+            # days. Time-window rolling means use only genuine observations;
+            # no daily values are interpolated or invented.
+            blockchain_hash = pd.to_numeric(
+                master["source__blockchain_hash_rate_th_s"], errors="coerce"
+            ).replace(0.0, np.nan).dropna().sort_index()
+            blockchain_hash_30d = blockchain_hash.rolling(
+                "30D", min_periods=6
+            ).mean()
+            blockchain_hash_60d = blockchain_hash.rolling(
+                "60D", min_periods=12
+            ).mean()
+            blockchain_hash_ribbon = (
+                blockchain_hash_30d
+                / blockchain_hash_60d.replace(0.0, np.nan)
+            ).replace([np.inf, -np.inf], np.nan)
+            series = series.combine_first(
+                _asof_to_mondays(blockchain_hash_ribbon, monday_idx)
+            )
+
         if col == "ThermoCap Multiple":
             thermocap_inputs = (
                 "cm__PriceUSD",
@@ -426,6 +450,52 @@ if provisional_labels:
 if not indicator_rows:
     st.warning("No indicators are available in the selected range.")
     st.stop()
+
+coverage_rows = []
+for coverage_label in indicator_rows:
+    coverage_values = pd.to_numeric(
+        values[coverage_label], errors="coerce"
+    ).dropna()
+    coverage_states = pd.to_numeric(
+        states[coverage_label], errors="coerce"
+    ).dropna()
+    coverage_rows.append({
+        "Indicator": coverage_label,
+        "First value": (
+            coverage_values.index.min().date().isoformat()
+            if not coverage_values.empty else ""
+        ),
+        "First classified state": (
+            coverage_states.index.min().date().isoformat()
+            if not coverage_states.empty else ""
+        ),
+        "Last value": (
+            coverage_values.index.max().date().isoformat()
+            if not coverage_values.empty else ""
+        ),
+        "Weekly values": int(len(coverage_values)),
+        "Missing-history reason": (
+            "52-observation causal warm-up after first value"
+            if not coverage_values.empty and not coverage_states.empty
+            and coverage_states.index.min() > coverage_values.index.min()
+            else ""
+        ),
+    })
+coverage_report = pd.DataFrame(coverage_rows)
+with st.expander("DATA COVERAGE AND REMAINING GAPS", expanded=False):
+    st.caption(
+        "Black periods before First value are unavailable source history. "
+        "Periods between First value and First classified state are the required "
+        "52-observation causal warm-up, not missing data."
+    )
+    st.dataframe(coverage_report, use_container_width=True, hide_index=True)
+    st.download_button(
+        "DOWNLOAD TIMELINE COVERAGE REPORT (.CSV)",
+        coverage_report.to_csv(index=False).encode("utf-8"),
+        "btc_bottom_timeline_coverage_report.csv",
+        "text/csv",
+        key="download_timeline_coverage_report",
+    )
 
 z = show_states[indicator_rows + ["Bottom Consensus"]].T.to_numpy(dtype=float)
 heat = go.Figure(
