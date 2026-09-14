@@ -512,6 +512,38 @@ if price_sources:
 st.subheader("Individual indicator histories")
 st.caption("Each chart uses the same Monday-aligned source values and selected week as the heatmap. Missing source periods remain blank.")
 
+combined_export_parts = []
+for export_label in indicator_rows:
+    if export_label not in show_values.columns:
+        continue
+    export_value = pd.to_numeric(show_values[export_label], errors="coerce")
+    export_state = pd.to_numeric(show_states[export_label], errors="coerce")
+    export_frame = pd.DataFrame({
+        "date": export_value.index,
+        "indicator": export_label,
+        "value": export_value.to_numpy(),
+        "state_code": export_state.to_numpy(),
+        "state": export_state.map(
+            lambda value: "" if pd.isna(value)
+            else STATE_NAMES[int(round(float(value)))]
+        ).to_numpy(),
+    })
+    # Keep genuine missing weeks visible in the export rather than filling them.
+    combined_export_parts.append(export_frame)
+
+if combined_export_parts:
+    combined_indicator_export = pd.concat(
+        combined_export_parts, ignore_index=True
+    ).sort_values(["date", "indicator"])
+    st.download_button(
+        "DOWNLOAD ALL TIMELINE INDICATORS (.CSV)",
+        combined_indicator_export.to_csv(index=False).encode("utf-8"),
+        "btc_bottom_timeline_all_indicators.csv",
+        "text/csv",
+        key="download_all_timeline_indicators",
+        help="Long-format export of every displayed weekly indicator value and state. Genuine gaps remain blank.",
+    )
+
 chart_columns = st.columns(2)
 for chart_index, label in enumerate(indicator_rows):
     raw = pd.to_numeric(show_values[label], errors="coerce") if label in show_values.columns else pd.Series(np.nan, index=show_values.index)
@@ -574,6 +606,29 @@ for chart_index, label in enumerate(indicator_rows):
             indicator_fig,
             use_container_width=True,
             key=f"indicator_history_{chart_index}_{label}",
+        )
+        indicator_export = pd.DataFrame({
+            "date": raw.index,
+            "indicator": label,
+            "value": raw.to_numpy(),
+            "state_code": pd.to_numeric(
+                state_series, errors="coerce"
+            ).to_numpy(),
+            "state": pd.to_numeric(state_series, errors="coerce").map(
+                lambda value: "" if pd.isna(value)
+                else STATE_NAMES[int(round(float(value)))]
+            ).to_numpy(),
+        })
+        safe_label = "".join(
+            char.lower() if char.isalnum() else "_" for char in label
+        ).strip("_")
+        st.download_button(
+            f"DOWNLOAD {label} (.CSV)",
+            indicator_export.to_csv(index=False).encode("utf-8"),
+            f"btc_bottom_timeline_{safe_label}.csv",
+            "text/csv",
+            key=f"download_indicator_{chart_index}_{safe_label}",
+            help="The exact Monday-aligned values and states displayed in this chart. Genuine gaps remain blank.",
         )
 
 st.subheader("Indicator values — selected week")
