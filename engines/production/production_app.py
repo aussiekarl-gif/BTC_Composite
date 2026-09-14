@@ -182,6 +182,36 @@ header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader,
     pointer-events: auto !important;
 }
 
+/* Sidebar fail-safe: the installed Streamlit build places its sidebar control
+   inside the toolbar. Keep the native header/toolbar interactive so the
+   sidebar can always be opened and closed. */
+header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader,
+[data-testid="stAppHeader"] {
+    display: block !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+.stAppToolbar, [data-testid="stToolbar"], [data-testid="stAppToolbar"] {
+    display: flex !important;
+    visibility: visible !important;
+    position: relative !important;
+    top: auto !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"],
+button[data-testid="stSidebarCollapseButton"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
