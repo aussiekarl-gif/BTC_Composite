@@ -17,6 +17,8 @@ BASE = "https://bitcoin-data.com/v1"
 HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
 COINMETRICS_BASE = "https://community-api.coinmetrics.io/v4"
 COINMETRICS_ASSET = "btc"
+BGEOMETRICS_RATE_SNAPSHOT_KEY = "bgeometrics_rate_snapshot"
+BGEOMETRICS_SESSION_CALLS_KEY = "bgeometrics_network_calls_this_session"
 
 # Names below are deliberately protected from BGeometrics acquisition.
 # They are either calculated from the frozen benchmark price or from free Coin Metrics inputs.
@@ -473,6 +475,7 @@ def fetch_endpoint(endpoint, start_date, end_date, token):
 
     r = requests.get(f"{BASE}/{endpoint}", params=params, headers=h, timeout=45)
     rate = parse_rate_headers(r.headers)
+    remember_bgeometrics_rate(rate)
 
     if r.status_code == 429:
         raise RateLimitError(rate)
@@ -578,6 +581,81 @@ def rate_text(rate):
             m, ss = divmod(rem, 60)
             bits.append(f"about {h}h {m}m {ss}s remaining")
     return " · ".join(bits) if bits else "Reset time not supplied by BGeometrics."
+
+
+def _rate_int(value):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def remember_bgeometrics_rate(rate):
+    """Remember provider quota headers without making a separate quota-check request."""
+    st.session_state[BGEOMETRICS_SESSION_CALLS_KEY] = (
+        int(st.session_state.get(BGEOMETRICS_SESSION_CALLS_KEY, 0)) + 1
+    )
+    if not rate:
+        return
+    snapshot = dict(rate)
+    snapshot["limit"] = _rate_int(snapshot.get("limit"))
+    snapshot["remaining"] = _rate_int(snapshot.get("remaining"))
+    snapshot["observed_at"] = dt.datetime.now(BRISBANE_TZ).isoformat()
+    st.session_state[BGEOMETRICS_RATE_SNAPSHOT_KEY] = snapshot
+
+
+def render_bgeometrics_quota_monitor(rate=None):
+    """Render the latest known quota position; never spends a request to refresh it."""
+    snapshot = dict(rate or st.session_state.get(BGEOMETRICS_RATE_SNAPSHOT_KEY) or {})
+    limit = _rate_int(snapshot.get("limit"))
+    remaining = _rate_int(snapshot.get("remaining"))
+    session_calls = int(st.session_state.get(BGEOMETRICS_SESSION_CALLS_KEY, 0))
+
+    st.subheader("BGeometrics quota monitor")
+    if limit is None or remaining is None:
+        cols = st.columns(2)
+        cols[0].metric("API calls this app session", f"{session_calls:,}")
+        cols[1].metric("Provider quota", "Waiting for headers")
+        st.info(
+            "The exact quota will appear after BGeometrics returns limit and remaining headers. "
+            "The app will not make an extra request just to check the quota."
+        )
+        return
+
+    remaining = max(0, min(limit, remaining))
+    used = max(0, limit - remaining)
+    used_pct = (100.0 * used / limit) if limit else 0.0
+    cols = st.columns(4)
+    cols[0].metric("Quota used", f"{used:,}")
+    cols[1].metric("Quota remaining", f"{remaining:,}")
+    cols[2].metric("Quota limit", f"{limit:,}")
+    cols[3].metric("API calls this app session", f"{session_calls:,}")
+    st.progress(
+        min(1.0, max(0.0, used_pct / 100.0)),
+        text=f"{used:,} of {limit:,} requests used ({used_pct:.1f}%)",
+    )
+
+    if used_pct >= 90:
+        st.error("Quota critical: 90% or more has been used. Avoid optional refreshes.")
+    elif used_pct >= 70:
+        st.warning("Quota getting low: 70% or more has been used.")
+    else:
+        st.success("Quota level is currently comfortable.")
+
+    reset = snapshot.get("reset_local")
+    observed = snapshot.get("observed_at")
+    notes = []
+    if reset is not None:
+        notes.append(f"Resets {reset.strftime('%-I:%M %p on %d %b %Y')} Brisbane time")
+    if observed:
+        try:
+            seen = dt.datetime.fromisoformat(str(observed)).astimezone(BRISBANE_TZ)
+            notes.append(f"last updated {seen.strftime('%-I:%M:%S %p')} Brisbane time")
+        except Exception:
+            pass
+    if notes:
+        st.caption(" · ".join(notes))
+    st.caption("This display uses headers from real data requests and consumes no additional quota.")
 
 
 class RateLimitError(RuntimeError):
@@ -1514,6 +1592,8 @@ if st.button(
 st.header("④ BTC research collector — acquire all missing BGeometrics history")
 st.caption("Free/self-calculated metrics are protected from BGeometrics requests. The collector uses the available quota only for specialist BTC datasets not already stored, saves each success immediately, and resumes where it stopped next time.")
 
+render_bgeometrics_quota_monitor()
+
 token = get_token()
 if token:
     st.success("BGeometrics token detected.")
@@ -1589,7 +1669,7 @@ if st.button(
     if master_rows:
         st.dataframe(pd.DataFrame(master_rows), use_container_width=True, hide_index=True)
     if master_rate:
-        st.info("BGeometrics quota: " + rate_text(master_rate))
+        render_bgeometrics_quota_monitor(master_rate)
     if master_limited:
         st.warning("Quota reached. Everything downloaded before the 429 is already saved permanently. If BGeometrics supplied a reset time it is shown above in Brisbane time; otherwise the provider did not expose one. Run this same collector later and all cached datasets will be skipped automatically.")
 
