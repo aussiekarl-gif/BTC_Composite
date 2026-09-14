@@ -22,6 +22,7 @@ INDICATORS = [
     ("NVT", "NVT"),
     ("NVT Signal", "NVT Signal"),
     ("ThermoCap Multiple", "ThermoCap Multiple"),
+    ("Hash Ribbon Ratio (30D/60D)", "derived__hash_ribbon_ratio_30d_60d"),
     ("VDD Multiple", "VDD Multiple"),
     ("STH MVRV", "STH MVRV"),
     ("LTH MVRV", "LTH MVRV"),
@@ -207,6 +208,24 @@ def build_timeline(master):
         if col == "MVRV" and "source__blockchain_mvrv" in master.columns:
             provider = pd.to_numeric(master["source__blockchain_mvrv"], errors="coerce")
             series = series.combine_first(_asof_to_mondays(provider, monday_idx))
+
+        if col == "derived__hash_ribbon_ratio_30d_60d" and "cm__HashRate" in master.columns:
+            cm_hash_rate = pd.to_numeric(master["cm__HashRate"], errors="coerce")
+            daily_hash_index = pd.date_range(
+                master.index.min().normalize(),
+                master.index.max().normalize(),
+                freq="D",
+            )
+            daily_hash_rate = cm_hash_rate.reindex(daily_hash_index)
+            hash_ma_30d = daily_hash_rate.rolling(30, min_periods=30).mean()
+            hash_ma_60d = daily_hash_rate.rolling(60, min_periods=60).mean()
+            derived_hash_ribbon = (
+                hash_ma_30d / hash_ma_60d.replace(0.0, np.nan)
+            ).replace([np.inf, -np.inf], np.nan)
+            aligned_hash_ribbon = _asof_to_mondays(
+                derived_hash_ribbon, monday_idx
+            )
+            series = series.combine_first(aligned_hash_ribbon)
 
         if col == "ThermoCap Multiple":
             thermocap_inputs = (
