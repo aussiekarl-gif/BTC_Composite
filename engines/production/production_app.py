@@ -219,6 +219,7 @@ button[data-testid="stSidebarCollapseButton"] {
 # CSV export remains available as a portable backup.
 PERSISTENCE_KEY = "btc_dynamic_dca_v58_state"
 SHARED_PORTFOLIO_KEY = "btc_dynamic_dca_shared_portfolio_v1"
+PORTFOLIO_BACKUPS_KEY = "btc_dynamic_dca_portfolio_backups_v1"
 browser_state = {}
 local_storage = None
 
@@ -302,17 +303,104 @@ def _load_shared_portfolio(fallback_state=None):
     return fallback.copy()
 
 
+def _decode_local_storage_value(raw):
+    if isinstance(raw, str) and raw.strip():
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+    return raw if isinstance(raw, (dict, list)) else None
+
+
+def _load_portfolio_snapshots(fallback_state=None):
+    """Return every recoverable browser portfolio without choosing or merging it."""
+    snapshots = []
+    seen = set()
+    fallback_state = fallback_state if isinstance(fallback_state, dict) else {}
+
+    def add_snapshot(source, candidate):
+        if not isinstance(candidate, dict):
+            return
+        rows = candidate.get("rows", [])
+        if not isinstance(rows, list) or not rows:
+            return
+        fingerprint = json.dumps(candidate, sort_keys=True, default=str)
+        if fingerprint in seen:
+            return
+        seen.add(fingerprint)
+        parsed_dates = pd.to_datetime(
+            [row.get("Date") for row in rows if isinstance(row, dict)],
+            dayfirst=True,
+            errors="coerce",
+        )
+        valid_dates = parsed_dates[~pd.isna(parsed_dates)]
+        latest = valid_dates.max().strftime("%d/%m/%Y") if len(valid_dates) else "unknown"
+        snapshots.append({
+            "source": source,
+            "portfolio": candidate.copy(),
+            "rows": len(rows),
+            "latest": latest,
+        })
+
+    add_snapshot("Current V5.8 browser state", fallback_state.get("portfolio"))
+    if not LOCAL_STORAGE_AVAILABLE:
+        return snapshots
+
+    try:
+        store = LocalStorage()
+        shared_raw = _decode_local_storage_value(store.getItem(SHARED_PORTFOLIO_KEY))
+        add_snapshot("Shared portfolio", shared_raw)
+
+        for key, label in (
+            ("btc_dynamic_dca_v58_state", "Legacy V5.8 browser state"),
+            ("btc_dynamic_dca_v59_research_state", "Legacy V5.9 research state"),
+        ):
+            state = _decode_local_storage_value(store.getItem(key))
+            if isinstance(state, dict):
+                add_snapshot(label, state.get("portfolio"))
+
+        backups = _decode_local_storage_value(store.getItem(PORTFOLIO_BACKUPS_KEY))
+        if isinstance(backups, list):
+            for index, item in enumerate(reversed(backups)):
+                if isinstance(item, dict):
+                    add_snapshot(
+                        f"Automatic backup {index + 1} ({item.get('saved_at', 'unknown time')})",
+                        item.get("portfolio"),
+                    )
+    except Exception:
+        pass
+    return snapshots
+
+
 def _save_shared_portfolio(portfolio):
-    """Persist only portfolio inputs in a cross-version shared namespace."""
+    """Persist portfolio inputs and retain rotating pre-save browser backups."""
     if not LOCAL_STORAGE_AVAILABLE or not isinstance(portfolio, dict):
         return
     try:
         store = LocalStorage()
+        previous = _decode_local_storage_value(store.getItem(SHARED_PORTFOLIO_KEY))
+        if isinstance(previous, dict) and previous.get("rows"):
+            backups = _decode_local_storage_value(store.getItem(PORTFOLIO_BACKUPS_KEY))
+            backups = backups if isinstance(backups, list) else []
+            previous_fingerprint = json.dumps(previous, sort_keys=True, default=str)
+            latest_fingerprint = (
+                json.dumps(backups[-1].get("portfolio"), sort_keys=True, default=str)
+                if backups and isinstance(backups[-1], dict)
+                else None
+            )
+            if previous_fingerprint != latest_fingerprint:
+                backups.append({
+                    "saved_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                    "portfolio": previous,
+                })
+                backups = backups[-10:]
+                store.setItem(PORTFOLIO_BACKUPS_KEY, json.dumps(backups, default=str))
         store.setItem(SHARED_PORTFOLIO_KEY, json.dumps(portfolio, default=str))
     except Exception:
         pass
 
 browser_state = _load_browser_state()
+portfolio_snapshots = _load_portfolio_snapshots(browser_state)
 shared_portfolio = _load_shared_portfolio(browser_state)
 
 st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
@@ -1153,8 +1241,44 @@ elif mode == "My Portfolio":
         "BTC AUD Price",
     ]
 
+    if portfolio_snapshots:
+        with st.expander("Recover a browser portfolio snapshot", expanded=False):
+            st.caption(
+                "This reads existing browser copies only. Loading a snapshot does not overwrite storage "
+                "until you inspect it and press Save Portfolio Changes."
+            )
+            snapshot_labels = [
+                f"{item['source']} — {item['rows']} rows, latest {item['latest']}"
+                for item in portfolio_snapshots
+            ]
+            selected_snapshot_label = st.selectbox(
+                "Available browser snapshots",
+                snapshot_labels,
+                key="portfolio_recovery_snapshot",
+            )
+            if st.button(
+                "Load selected snapshot into editor",
+                key="portfolio_recovery_load",
+                use_container_width=True,
+            ):
+                selected_snapshot = portfolio_snapshots[
+                    snapshot_labels.index(selected_snapshot_label)
+                ]["portfolio"]
+                st.session_state["portfolio_live_rows"] = selected_snapshot.get("rows", [])
+                st.session_state["portfolio_live_starting_capital"] = float(
+                    selected_snapshot.get("starting_capital_aud", 500000.0)
+                )
+                st.session_state["portfolio_recovery_loaded"] = selected_snapshot_label
+                st.rerun()
+
     saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
     saved_rows = saved_portfolio.get("rows", [])
+    if not saved_rows:
+        st.warning(
+            "No saved browser portfolio was loaded. The built-in starter rows ending 02/09/26 "
+            "will be shown. If you expected newer transactions, do not press Save until you "
+            "recover a browser snapshot or import your CSV backup."
+        )
 
     # Reliable editing model:
     # keep one authoritative copy in Streamlit session state and submit all
