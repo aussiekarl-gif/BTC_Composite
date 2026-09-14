@@ -109,7 +109,7 @@ def load_audit_master():
         ("digitized/nupl_lookintobitcoin_chart_read.csv", "digitized__lookintobitcoin_nupl"),
         ("digitized/nvt_bitbo_chart_read.csv", "digitized__bitbo_nvt"),
         ("digitized/thermocap_multiple_bitbo_chart_read.csv", "digitized__bitbo_thermocap_multiple"),
-        ("provider/mvrv_bitbo_daily.csv", "source__bitbo_mvrv"),
+        ("provider/mvrv_blockchain_daily.csv", "source__blockchain_mvrv"),
     )
     for digitized_path, chart_col in digitized_artifacts:
         try:
@@ -204,9 +204,20 @@ def build_timeline(master):
         series = _asof_to_mondays(direct, monday_idx)
         output_label = label
 
-        if col == "MVRV" and "source__bitbo_mvrv" in master.columns:
-            provider = pd.to_numeric(master["source__bitbo_mvrv"], errors="coerce")
+        if col == "MVRV" and "source__blockchain_mvrv" in master.columns:
+            provider = pd.to_numeric(master["source__blockchain_mvrv"], errors="coerce")
             series = series.combine_first(_asof_to_mondays(provider, monday_idx))
+
+        if col == "NUPL" and "source__blockchain_mvrv" in master.columns:
+            provider_mvrv = pd.to_numeric(
+                master["source__blockchain_mvrv"], errors="coerce"
+            )
+            provider_nupl = (1.0 - (1.0 / provider_mvrv)).replace(
+                [np.inf, -np.inf], np.nan
+            ) * 100.0
+            series = series.combine_first(
+                _asof_to_mondays(provider_nupl, monday_idx)
+            )
 
         fallback_specs = {
             "NUPL": (
