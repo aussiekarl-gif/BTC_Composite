@@ -20,6 +20,7 @@ globals().update({k: v for k, v in vars(_model).items() if not k.startswith("__"
 st.set_page_config(
     page_title="BTC Dynamic DCA V5.8 FULL",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
@@ -155,6 +156,30 @@ div[role="option"] {
 }
 div[role="option"]:hover {
     background-color: #0a2133 !important;
+}
+
+/* Keep Streamlit's sidebar recovery control available.
+   The launcher lives in the sidebar, so hiding the header must never strand a
+   user after the sidebar is collapsed (Streamlit 1.50+ moved the reopen
+   control into the header). */
+header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader,
+[data-testid="stAppHeader"] {
+    display: block !important;
+    visibility: visible !important;
+    position: fixed !important;
+    top: 0 !important;
+    height: 3rem !important;
+    min-height: 3rem !important;
+    max-height: 3rem !important;
+    background: transparent !important;
+    pointer-events: none !important;
+}
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
 }
 
 </style>
