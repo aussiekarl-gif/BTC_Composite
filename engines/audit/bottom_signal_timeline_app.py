@@ -193,45 +193,59 @@ def build_timeline(master):
     states = pd.DataFrame(index=monday_idx)
     available = []
     for label, col in INDICATORS:
-        source = (
+        direct = (
             pd.to_numeric(master[col], errors="coerce")
             if col in master.columns
             else pd.Series(np.nan, index=master.index, dtype=float)
         )
+        # Align every source independently before combining. This ensures a
+        # chart value dated exactly on Monday cannot outrank a newer-quality
+        # provider observation from the preceding few days.
+        series = _asof_to_mondays(direct, monday_idx)
         output_label = label
-        if col == "MVRV":
-            if "source__bitbo_mvrv" in master.columns:
-                provider = pd.to_numeric(master["source__bitbo_mvrv"], errors="coerce")
-                source = source.combine_first(provider)
-            if "digitized__lookintobitcoin_nupl" in master.columns:
-                chart_nupl = pd.to_numeric(
-                    master["digitized__lookintobitcoin_nupl"], errors="coerce"
-                ) / 100.0
-                chart_mvrv = (1.0 / (1.0 - chart_nupl)).replace(
-                    [np.inf, -np.inf], np.nan
-                )
-                chart_fallback_used = bool((source.isna() & chart_mvrv.notna()).any())
-                source = source.combine_first(chart_mvrv)
-                if chart_fallback_used:
-                    output_label = "MVRV (includes chart-read approx.)"
+
+        if col == "MVRV" and "source__bitbo_mvrv" in master.columns:
+            provider = pd.to_numeric(master["source__bitbo_mvrv"], errors="coerce")
+            series = series.combine_first(_asof_to_mondays(provider, monday_idx))
+
         fallback_specs = {
-            "NUPL": ("digitized__lookintobitcoin_nupl", "NUPL (chart-read approx.)"),
-            "NVT": ("digitized__bitbo_nvt", "NVT (chart-read approx.)"),
+            "NUPL": (
+                pd.to_numeric(master["digitized__lookintobitcoin_nupl"], errors="coerce")
+                if "digitized__lookintobitcoin_nupl" in master.columns else None,
+                "NUPL (chart-read approx.)",
+            ),
+            "NVT": (
+                pd.to_numeric(master["digitized__bitbo_nvt"], errors="coerce")
+                if "digitized__bitbo_nvt" in master.columns else None,
+                "NVT (chart-read approx.)",
+            ),
             "ThermoCap Multiple": (
-                "digitized__bitbo_thermocap_multiple",
+                pd.to_numeric(master["digitized__bitbo_thermocap_multiple"], errors="coerce")
+                if "digitized__bitbo_thermocap_multiple" in master.columns else None,
                 "ThermoCap Multiple (chart-read approx.)",
-        "MVRV (includes chart-read approx.)",
             ),
         }
+        if col == "MVRV" and "digitized__lookintobitcoin_nupl" in master.columns:
+            chart_nupl = pd.to_numeric(
+                master["digitized__lookintobitcoin_nupl"], errors="coerce"
+            ) / 100.0
+            chart_mvrv = (1.0 / (1.0 - chart_nupl)).replace(
+                [np.inf, -np.inf], np.nan
+            )
+            fallback_specs["MVRV"] = (
+                chart_mvrv,
+                "MVRV (includes chart-read approx.)",
+            )
+
         if col in fallback_specs:
-            fallback_col, fallback_label = fallback_specs[col]
-            if fallback_col in master.columns:
-                fallback = pd.to_numeric(master[fallback_col], errors="coerce")
-                fallback_used = bool((source.isna() & fallback.notna()).any())
-                source = source.combine_first(fallback)
+            fallback, fallback_label = fallback_specs[col]
+            if fallback is not None:
+                aligned_fallback = _asof_to_mondays(fallback, monday_idx)
+                fallback_used = bool((series.isna() & aligned_fallback.notna()).any())
+                series = series.combine_first(aligned_fallback)
                 if fallback_used:
                     output_label = fallback_label
-        series = _asof_to_mondays(source, monday_idx)
+
         if series.notna().sum() < 52:
             continue
         values[output_label] = series
