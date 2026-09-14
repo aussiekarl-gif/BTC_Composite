@@ -103,30 +103,33 @@ def load_audit_master():
     df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
     df = df.dropna(subset=["date"]).set_index("date").sort_index()
 
-    # Optional provisional research fallback. It remains in its own explicitly
-    # digitized column and never overwrites authoritative provider NUPL.
-    digitized_path = "digitized/nupl_lookintobitcoin_chart_read.csv"
-    try:
-        digitized_meta = requests.get(
-            f"https://api.github.com/repos/{repo}/contents/{digitized_path}",
-            headers=headers,
-            params={"ref": branch},
-            timeout=30,
-        )
-        digitized_meta.raise_for_status()
-        digitized_obj = digitized_meta.json()
-        digitized_raw = base64.b64decode(digitized_obj["content"].encode())
-        digitized = pd.read_csv(io.BytesIO(digitized_raw))
-        digitized["date"] = pd.to_datetime(digitized["date"], utc=True, errors="coerce")
-        digitized = digitized.dropna(subset=["date"]).set_index("date").sort_index()
-        chart_col = "digitized__lookintobitcoin_nupl"
-        if chart_col in digitized.columns:
-            chart_values = pd.to_numeric(digitized[chart_col], errors="coerce")
-            df[chart_col] = chart_values.reindex(df.index)
-    except Exception:
-        # The main audit master must remain usable if this optional research
-        # artifact is missing or temporarily unavailable.
-        pass
+    # Optional provisional research fallbacks. They remain in explicitly
+    # digitized columns and never overwrite authoritative provider observations.
+    digitized_artifacts = (
+        ("digitized/nupl_lookintobitcoin_chart_read.csv", "digitized__lookintobitcoin_nupl"),
+        ("digitized/nvt_bitbo_chart_read.csv", "digitized__bitbo_nvt"),
+    )
+    for digitized_path, chart_col in digitized_artifacts:
+        try:
+            digitized_meta = requests.get(
+                f"https://api.github.com/repos/{repo}/contents/{digitized_path}",
+                headers=headers,
+                params={"ref": branch},
+                timeout=30,
+            )
+            digitized_meta.raise_for_status()
+            digitized_obj = digitized_meta.json()
+            digitized_raw = base64.b64decode(digitized_obj["content"].encode())
+            digitized = pd.read_csv(io.BytesIO(digitized_raw))
+            digitized["date"] = pd.to_datetime(digitized["date"], utc=True, errors="coerce")
+            digitized = digitized.dropna(subset=["date"]).set_index("date").sort_index()
+            if chart_col in digitized.columns:
+                chart_values = pd.to_numeric(digitized[chart_col], errors="coerce")
+                df[chart_col] = chart_values.reindex(df.index)
+        except Exception:
+            # The main audit master must remain usable if an optional research
+            # artifact is missing or temporarily unavailable.
+            pass
     return df
 
 
@@ -194,14 +197,18 @@ def build_timeline(master):
             else pd.Series(np.nan, index=master.index, dtype=float)
         )
         output_label = label
-        if col == "NUPL":
-            fallback_col = "digitized__lookintobitcoin_nupl"
+        fallback_specs = {
+            "NUPL": ("digitized__lookintobitcoin_nupl", "NUPL (chart-read approx.)"),
+            "NVT": ("digitized__bitbo_nvt", "NVT (chart-read approx.)"),
+        }
+        if col in fallback_specs:
+            fallback_col, fallback_label = fallback_specs[col]
             if fallback_col in master.columns:
                 fallback = pd.to_numeric(master[fallback_col], errors="coerce")
                 fallback_used = bool((source.isna() & fallback.notna()).any())
                 source = source.combine_first(fallback)
                 if fallback_used:
-                    output_label = "NUPL (chart-read approx.)"
+                    output_label = fallback_label
         series = _asof_to_mondays(source, monday_idx)
         if series.notna().sum() < 52:
             continue
@@ -263,10 +270,14 @@ show_states = states.loc[mask].copy()
 show_values = values.reindex(show_states.index)
 
 indicator_rows = [c for c in show_states.columns if c != "Bottom Consensus"]
-if "NUPL (chart-read approx.)" in indicator_rows:
+provisional_labels = [
+    label for label in ("NUPL (chart-read approx.)", "NVT (chart-read approx.)")
+    if label in indicator_rows
+]
+if provisional_labels:
     st.warning(
-        "NUPL currently uses an approximate weekly series digitized from a Look Into Bitcoin chart. "
-        "It is research-only and will be superseded automatically where direct provider NUPL becomes available."
+        f"{', '.join(provisional_labels)} currently use approximate weekly series digitized from charts. "
+        "They are research-only and will be superseded automatically where direct provider data becomes available."
     )
 if not indicator_rows:
     st.warning("No indicators are available in the selected range.")
