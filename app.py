@@ -9,7 +9,11 @@ from engines.audit.bgeometrics_guard import (
     uninstall_bgeometrics_guard,
 )
 
-st.set_page_config(\n    page_title="BTC Dynamic DCA",\n    layout="wide",\n    initial_sidebar_state="expanded",\n)
+st.set_page_config(
+    page_title="BTC Dynamic DCA",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 # Shared top chrome/theme fix. Applied before any engine widgets render.
 st.markdown("""
