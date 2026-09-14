@@ -298,6 +298,64 @@ if price_col:
             ret = _forward_return(price, selected, weeks)
             st.metric(f"{weeks} weeks", "—" if not np.isfinite(ret) else f"{ret:+.1%}")
 
+st.subheader("Individual indicator histories")
+st.caption("Each chart uses the same Monday-aligned source values and selected week as the heatmap. Missing source periods remain blank.")
+
+chart_columns = st.columns(2)
+for chart_index, label in enumerate(indicator_rows):
+    raw = pd.to_numeric(show_values[label], errors="coerce") if label in show_values.columns else pd.Series(np.nan, index=show_values.index)
+    state_series = show_states[label] if label in show_states.columns else pd.Series(np.nan, index=show_states.index)
+    available_raw = raw.dropna()
+    with chart_columns[chart_index % 2]:
+        if available_raw.empty:
+            st.info(f"{label}: no values are available in the selected history range.")
+            continue
+
+        indicator_fig = go.Figure()
+        indicator_fig.add_trace(
+            go.Scatter(
+                x=raw.index,
+                y=raw,
+                mode="lines",
+                name=label,
+                line=dict(color="#60b8f4", width=1.7),
+                connectgaps=False,
+                hovertemplate="%{x|%d %b %Y}<br>Value: %{y:.4g}<extra></extra>",
+            )
+        )
+        selected_value = raw.get(selected, np.nan)
+        selected_state = state_series.get(selected, np.nan)
+        if np.isfinite(selected_value):
+            selected_name = "Unavailable" if pd.isna(selected_state) else STATE_NAMES[int(round(float(selected_state)))]
+            indicator_fig.add_trace(
+                go.Scatter(
+                    x=[selected],
+                    y=[selected_value],
+                    mode="markers",
+                    name=f"Selected week: {selected_name}",
+                    marker=dict(color="#ff4b55", size=9, line=dict(color="#ffffff", width=1)),
+                    hovertemplate=(
+                        f"{pd.Timestamp(selected).strftime('%d %b %Y')}<br>"
+                        f"Value: {selected_value:.4g}<br>State: {selected_name}<extra></extra>"
+                    ),
+                )
+            )
+        indicator_fig.add_vline(x=selected, line_dash="dash", line_width=1.2, line_color="#ff4b55")
+        indicator_fig.update_layout(
+            height=300,
+            margin=dict(l=8, r=8, t=42, b=8),
+            title=label,
+            showlegend=False,
+            xaxis=dict(title=None, rangeslider=dict(visible=False)),
+            yaxis=dict(title="Value", fixedrange=False),
+            hovermode="x unified",
+        )
+        st.plotly_chart(
+            indicator_fig,
+            use_container_width=True,
+            key=f"indicator_history_{chart_index}_{label}",
+        )
+
 st.subheader("Indicator values — selected week")
 detail_rows = []
 for label in indicator_rows:
