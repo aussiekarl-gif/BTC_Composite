@@ -9,7 +9,7 @@ from engines.audit.bgeometrics_guard import (
     uninstall_bgeometrics_guard,
 )
 
-st.set_page_config(page_title="BTC Dynamic DCA", layout="wide")
+st.set_page_config(\n    page_title="BTC Dynamic DCA",\n    layout="wide",\n    initial_sidebar_state="expanded",\n)
 
 # Shared top chrome/theme fix. Applied before any engine widgets render.
 st.markdown("""
@@ -68,6 +68,30 @@ header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader,
 [data-testid="stAppViewContainer"] > section {
     background-color: #071521 !important;
 }
+/* Keep Streamlit's sidebar recovery control available.
+   The launcher lives in the sidebar, so hiding the header must never strand a
+   user after the sidebar is collapsed (Streamlit 1.50+ moved the reopen
+   control into the header). */
+header[data-testid="stHeader"], [data-testid="stHeader"], .stAppHeader,
+[data-testid="stAppHeader"] {
+    display: block !important;
+    visibility: visible !important;
+    position: fixed !important;
+    top: 0 !important;
+    height: 3rem !important;
+    min-height: 3rem !important;
+    max-height: 3rem !important;
+    background: transparent !important;
+    pointer-events: none !important;
+}
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="collapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
