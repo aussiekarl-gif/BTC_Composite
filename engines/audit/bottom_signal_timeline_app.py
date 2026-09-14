@@ -108,6 +108,7 @@ def load_audit_master():
     digitized_artifacts = (
         ("digitized/nupl_lookintobitcoin_chart_read.csv", "digitized__lookintobitcoin_nupl"),
         ("provider/nvt_blockchain_daily.csv", "source__blockchain_nvt"),
+        ("provider/nvts_blockchain_observations.csv", "source__blockchain_nvts"),
         ("digitized/thermocap_multiple_bitbo_chart_read.csv", "digitized__bitbo_thermocap_multiple"),
         ("provider/mvrv_blockchain_daily.csv", "source__blockchain_mvrv"),
     )
@@ -207,6 +208,14 @@ def build_timeline(master):
         if col == "MVRV" and "source__blockchain_mvrv" in master.columns:
             provider = pd.to_numeric(master["source__blockchain_mvrv"], errors="coerce")
             series = series.combine_first(_asof_to_mondays(provider, monday_idx))
+
+        if col == "NVT Signal" and "source__blockchain_nvts" in master.columns:
+            provider_nvts = pd.to_numeric(
+                master["source__blockchain_nvts"], errors="coerce"
+            )
+            series = series.combine_first(
+                _asof_to_mondays(provider_nvts, monday_idx)
+            )
 
         if col == "NVT" and "source__blockchain_nvt" in master.columns:
             provider_nvt = pd.to_numeric(
