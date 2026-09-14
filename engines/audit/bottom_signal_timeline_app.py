@@ -107,7 +107,7 @@ def load_audit_master():
     # digitized columns and never overwrite authoritative provider observations.
     digitized_artifacts = (
         ("digitized/nupl_lookintobitcoin_chart_read.csv", "digitized__lookintobitcoin_nupl"),
-        ("digitized/nvt_bitbo_chart_read.csv", "digitized__bitbo_nvt"),
+        ("provider/nvt_blockchain_daily.csv", "source__blockchain_nvt"),
         ("digitized/thermocap_multiple_bitbo_chart_read.csv", "digitized__bitbo_thermocap_multiple"),
         ("provider/mvrv_blockchain_daily.csv", "source__blockchain_mvrv"),
     )
@@ -208,6 +208,14 @@ def build_timeline(master):
             provider = pd.to_numeric(master["source__blockchain_mvrv"], errors="coerce")
             series = series.combine_first(_asof_to_mondays(provider, monday_idx))
 
+        if col == "NVT" and "source__blockchain_nvt" in master.columns:
+            provider_nvt = pd.to_numeric(
+                master["source__blockchain_nvt"], errors="coerce"
+            )
+            series = series.combine_first(
+                _asof_to_mondays(provider_nvt, monday_idx)
+            )
+
         if col == "NUPL" and "source__blockchain_mvrv" in master.columns:
             provider_mvrv = pd.to_numeric(
                 master["source__blockchain_mvrv"], errors="coerce"
@@ -224,11 +232,6 @@ def build_timeline(master):
                 pd.to_numeric(master["digitized__lookintobitcoin_nupl"], errors="coerce")
                 if "digitized__lookintobitcoin_nupl" in master.columns else None,
                 "NUPL (chart-read approx.)",
-            ),
-            "NVT": (
-                pd.to_numeric(master["digitized__bitbo_nvt"], errors="coerce")
-                if "digitized__bitbo_nvt" in master.columns else None,
-                "NVT (chart-read approx.)",
             ),
             "ThermoCap Multiple": (
                 pd.to_numeric(master["digitized__bitbo_thermocap_multiple"], errors="coerce")
@@ -320,7 +323,6 @@ indicator_rows = [c for c in show_states.columns if c != "Bottom Consensus"]
 provisional_labels = [
     label for label in (
         "NUPL (chart-read approx.)",
-        "NVT (chart-read approx.)",
         "ThermoCap Multiple (chart-read approx.)",
     )
     if label in indicator_rows
