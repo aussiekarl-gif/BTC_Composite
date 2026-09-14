@@ -109,7 +109,6 @@ def load_audit_master():
         ("digitized/nupl_lookintobitcoin_chart_read.csv", "digitized__lookintobitcoin_nupl"),
         ("provider/nvt_blockchain_daily.csv", "source__blockchain_nvt"),
         ("provider/nvts_blockchain_observations.csv", "source__blockchain_nvts"),
-        ("digitized/thermocap_multiple_bitbo_chart_read.csv", "digitized__bitbo_thermocap_multiple"),
         ("provider/mvrv_blockchain_daily.csv", "source__blockchain_mvrv"),
     )
     for digitized_path, chart_col in digitized_artifacts:
@@ -209,6 +208,41 @@ def build_timeline(master):
             provider = pd.to_numeric(master["source__blockchain_mvrv"], errors="coerce")
             series = series.combine_first(_asof_to_mondays(provider, monday_idx))
 
+        if col == "ThermoCap Multiple":
+            thermocap_inputs = (
+                "cm__PriceUSD",
+                "cm__FeeTotNtv",
+                "cm__IssTotNtv",
+                "cm__CapMrktCurUSD",
+            )
+            if all(input_col in master.columns for input_col in thermocap_inputs):
+                cm_price = pd.to_numeric(master["cm__PriceUSD"], errors="coerce")
+                cm_fees = pd.to_numeric(master["cm__FeeTotNtv"], errors="coerce")
+                cm_issuance = pd.to_numeric(master["cm__IssTotNtv"], errors="coerce")
+                cm_market_cap = pd.to_numeric(master["cm__CapMrktCurUSD"], errors="coerce")
+                valid_revenue = (
+                    cm_price.notna()
+                    & cm_fees.notna()
+                    & cm_issuance.notna()
+                    & (cm_price > 0)
+                )
+                daily_miner_revenue_usd = (
+                    (cm_issuance + cm_fees) * cm_price
+                ).where(valid_revenue)
+                cumulative_miner_revenue_usd = (
+                    daily_miner_revenue_usd.fillna(0.0).cumsum()
+                )
+                derived_thermocap = (
+                    cm_market_cap / cumulative_miner_revenue_usd.replace(0.0, np.nan)
+                ).replace([np.inf, -np.inf], np.nan)
+                aligned_thermocap = _asof_to_mondays(
+                    derived_thermocap, monday_idx
+                )
+                derived_used = bool((series.isna() & aligned_thermocap.notna()).any())
+                series = series.combine_first(aligned_thermocap)
+                if derived_used:
+                    output_label = "ThermoCap Multiple (daily derived)"
+
         if col == "NVT Signal" and "source__blockchain_nvts" in master.columns:
             provider_nvts = pd.to_numeric(
                 master["source__blockchain_nvts"], errors="coerce"
@@ -241,11 +275,6 @@ def build_timeline(master):
                 pd.to_numeric(master["digitized__lookintobitcoin_nupl"], errors="coerce")
                 if "digitized__lookintobitcoin_nupl" in master.columns else None,
                 "NUPL (chart-read approx.)",
-            ),
-            "ThermoCap Multiple": (
-                pd.to_numeric(master["digitized__bitbo_thermocap_multiple"], errors="coerce")
-                if "digitized__bitbo_thermocap_multiple" in master.columns else None,
-                "ThermoCap Multiple (chart-read approx.)",
             ),
         }
         if col == "MVRV" and "digitized__lookintobitcoin_nupl" in master.columns:
@@ -332,7 +361,6 @@ indicator_rows = [c for c in show_states.columns if c != "Bottom Consensus"]
 provisional_labels = [
     label for label in (
         "NUPL (chart-read approx.)",
-        "ThermoCap Multiple (chart-read approx.)",
     )
     if label in indicator_rows
 ]
