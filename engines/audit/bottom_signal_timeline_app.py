@@ -109,6 +109,7 @@ def load_audit_master():
         ("digitized/nupl_lookintobitcoin_chart_read.csv", "digitized__lookintobitcoin_nupl"),
         ("digitized/nvt_bitbo_chart_read.csv", "digitized__bitbo_nvt"),
         ("digitized/thermocap_multiple_bitbo_chart_read.csv", "digitized__bitbo_thermocap_multiple"),
+        ("provider/mvrv_bitbo_daily.csv", "source__bitbo_mvrv"),
     )
     for digitized_path, chart_col in digitized_artifacts:
         try:
@@ -198,12 +199,28 @@ def build_timeline(master):
             else pd.Series(np.nan, index=master.index, dtype=float)
         )
         output_label = label
+        if col == "MVRV":
+            if "source__bitbo_mvrv" in master.columns:
+                provider = pd.to_numeric(master["source__bitbo_mvrv"], errors="coerce")
+                source = source.combine_first(provider)
+            if "digitized__lookintobitcoin_nupl" in master.columns:
+                chart_nupl = pd.to_numeric(
+                    master["digitized__lookintobitcoin_nupl"], errors="coerce"
+                ) / 100.0
+                chart_mvrv = (1.0 / (1.0 - chart_nupl)).replace(
+                    [np.inf, -np.inf], np.nan
+                )
+                chart_fallback_used = bool((source.isna() & chart_mvrv.notna()).any())
+                source = source.combine_first(chart_mvrv)
+                if chart_fallback_used:
+                    output_label = "MVRV (includes chart-read approx.)"
         fallback_specs = {
             "NUPL": ("digitized__lookintobitcoin_nupl", "NUPL (chart-read approx.)"),
             "NVT": ("digitized__bitbo_nvt", "NVT (chart-read approx.)"),
             "ThermoCap Multiple": (
                 "digitized__bitbo_thermocap_multiple",
                 "ThermoCap Multiple (chart-read approx.)",
+        "MVRV (includes chart-read approx.)",
             ),
         }
         if col in fallback_specs:
