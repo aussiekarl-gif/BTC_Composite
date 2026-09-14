@@ -108,6 +108,7 @@ def load_audit_master():
     digitized_artifacts = (
         ("digitized/nupl_lookintobitcoin_chart_read.csv", "digitized__lookintobitcoin_nupl"),
         ("digitized/nvt_bitbo_chart_read.csv", "digitized__bitbo_nvt"),
+        ("digitized/thermocap_multiple_bitbo_chart_read.csv", "digitized__bitbo_thermocap_multiple"),
     )
     for digitized_path, chart_col in digitized_artifacts:
         try:
@@ -200,6 +201,10 @@ def build_timeline(master):
         fallback_specs = {
             "NUPL": ("digitized__lookintobitcoin_nupl", "NUPL (chart-read approx.)"),
             "NVT": ("digitized__bitbo_nvt", "NVT (chart-read approx.)"),
+            "ThermoCap Multiple": (
+                "digitized__bitbo_thermocap_multiple",
+                "ThermoCap Multiple (chart-read approx.)",
+            ),
         }
         if col in fallback_specs:
             fallback_col, fallback_label = fallback_specs[col]
@@ -271,7 +276,11 @@ show_values = values.reindex(show_states.index)
 
 indicator_rows = [c for c in show_states.columns if c != "Bottom Consensus"]
 provisional_labels = [
-    label for label in ("NUPL (chart-read approx.)", "NVT (chart-read approx.)")
+    label for label in (
+        "NUPL (chart-read approx.)",
+        "NVT (chart-read approx.)",
+        "ThermoCap Multiple (chart-read approx.)",
+    )
     if label in indicator_rows
 ]
 if provisional_labels:
