@@ -282,9 +282,19 @@ m4.metric("Elevated", counts["Elevated"])
 m5.metric("Extreme", counts["Extreme"])
 st.info(f"Bottom Consensus: **{consensus_name}** — based on {int(row.notna().sum())} available indicators for {pd.Timestamp(selected).strftime('%d %b %Y')}.")
 
-price_col = "price_usd" if "price_usd" in master.columns else "src__blockchain_btc_usd" if "src__blockchain_btc_usd" in master.columns else None
-if price_col:
-    price = _asof_to_mondays(master[price_col], states.index)
+price_sources = [
+    col for col in ("price_usd", "cm__PriceUSD", "src__blockchain_btc_usd")
+    if col in master.columns
+]
+if price_sources:
+    # Preserve the preferred audited price where it exists, but fill its early
+    # null history from the independent Coin Metrics/blockchain sources.
+    combined_price = pd.to_numeric(master[price_sources[0]], errors="coerce")
+    for source_col in price_sources[1:]:
+        combined_price = combined_price.combine_first(
+            pd.to_numeric(master[source_col], errors="coerce")
+        )
+    price = _asof_to_mondays(combined_price, states.index)
     price = pd.to_numeric(price, errors="coerce")
     c1, c2 = st.columns([2, 1])
     with c1:
