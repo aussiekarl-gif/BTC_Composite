@@ -311,6 +311,13 @@ for chart_index, label in enumerate(indicator_rows):
             st.info(f"{label}: no values are available in the selected history range.")
             continue
 
+        # Give every chart its own honest time range. Plotly otherwise includes
+        # leading/trailing dates even when all corresponding values are null.
+        first_actual = available_raw.index[0]
+        last_actual = available_raw.index[-1]
+        raw = raw.loc[first_actual:last_actual]
+        state_series = state_series.reindex(raw.index)
+
         indicator_fig = go.Figure()
         indicator_fig.add_trace(
             go.Scatter(
@@ -323,8 +330,9 @@ for chart_index, label in enumerate(indicator_rows):
                 hovertemplate="%{x|%d %b %Y}<br>Value: %{y:.4g}<extra></extra>",
             )
         )
-        selected_value = raw.get(selected, np.nan)
-        selected_state = state_series.get(selected, np.nan)
+        selected_in_range = first_actual <= selected <= last_actual
+        selected_value = raw.get(selected, np.nan) if selected_in_range else np.nan
+        selected_state = state_series.get(selected, np.nan) if selected_in_range else np.nan
         if np.isfinite(selected_value):
             selected_name = "Unavailable" if pd.isna(selected_state) else STATE_NAMES[int(round(float(selected_state)))]
             indicator_fig.add_trace(
@@ -340,7 +348,8 @@ for chart_index, label in enumerate(indicator_rows):
                     ),
                 )
             )
-        indicator_fig.add_vline(x=selected, line_dash="dash", line_width=1.2, line_color="#ff4b55")
+        if selected_in_range:
+            indicator_fig.add_vline(x=selected, line_dash="dash", line_width=1.2, line_color="#ff4b55")
         indicator_fig.update_layout(
             height=300,
             margin=dict(l=8, r=8, t=42, b=8),
