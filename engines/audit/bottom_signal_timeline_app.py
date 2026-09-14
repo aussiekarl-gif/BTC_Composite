@@ -147,12 +147,15 @@ def _percentile_to_state(percentile):
 
 
 def build_timeline(master):
-    if "risk_score" in master.columns:
-        monday_idx = master.index[pd.to_numeric(master["risk_score"], errors="coerce").notna()]
-    else:
-        monday_idx = master.resample("W-MON").last().index
-    monday_idx = pd.DatetimeIndex(monday_idx).sort_values().unique()
-    monday_idx = monday_idx[monday_idx.weekday == 0]
+    # Use the central master's full calendar instead of anchoring every series
+    # to Risk Score, which only begins in 2016. Each indicator remains blank
+    # until its own first genuine observation.
+    first_monday = pd.Timestamp(master.index.min()).normalize()
+    if first_monday.weekday() != 0:
+        first_monday += pd.Timedelta(days=(7 - first_monday.weekday()))
+    last_monday = pd.Timestamp(master.index.max()).normalize()
+    last_monday -= pd.Timedelta(days=last_monday.weekday())
+    monday_idx = pd.date_range(first_monday, last_monday, freq="W-MON", tz=first_monday.tz)
     if len(monday_idx) == 0:
         raise RuntimeError("No Monday observations found in central audit master.")
 
