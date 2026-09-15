@@ -257,6 +257,67 @@ def _save_browser_state(state):
         pass
 
 
+def _multiplier_curve_controls(default_curve, storage_key):
+    """Render a safe, browser-persistent custom multiplier curve."""
+    defaults = [(float(risk), float(mult)) for risk, mult in default_curve]
+    saved = browser_state.get(storage_key, {}) if isinstance(browser_state, dict) else {}
+    saved_points = saved.get("points", []) if isinstance(saved, dict) else []
+    saved_by_risk = {}
+    for point in saved_points if isinstance(saved_points, list) else []:
+        try:
+            saved_by_risk[round(float(point[0]), 6)] = float(point[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+
+    with st.expander("Advanced Multiplier Settings", expanded=False):
+        st.caption(
+            "Custom settings affect this model only. Multipliers must stay level or decrease as risk rises."
+        )
+        reset = st.button("Restore model defaults", key=f"{storage_key}_restore")
+        if reset:
+            st.session_state.pop(f"{storage_key}_enabled", None)
+            for risk, _ in defaults:
+                st.session_state.pop(f"{storage_key}_{risk:.2f}", None)
+            saved = {"enabled": False, "points": []}
+            saved_by_risk = {}
+        enabled = st.toggle(
+            "Use custom multiplier curve",
+            value=bool(saved.get("enabled", False)),
+            key=f"{storage_key}_enabled",
+        )
+
+        curve = []
+        for risk, default_mult in defaults:
+            initial = default_mult if reset else saved_by_risk.get(round(risk, 6), default_mult)
+            mult = st.number_input(
+                f"Risk {risk:.2f}",
+                min_value=0.0,
+                max_value=10.0,
+                value=float(initial),
+                step=0.05,
+                format="%.2f",
+                key=f"{storage_key}_{risk:.2f}",
+                disabled=not enabled,
+            )
+            curve.append((risk, float(mult)))
+
+        valid = all(curve[i][1] >= curve[i + 1][1] for i in range(len(curve) - 1))
+        if enabled and not valid:
+            st.error("Custom curve not applied: multipliers cannot increase as risk rises.")
+        elif enabled:
+            st.success("Custom curve active")
+        else:
+            st.caption("Model default curve active")
+
+    active_curve = curve if enabled and valid else defaults
+    browser_state[storage_key] = {
+        "enabled": bool(enabled),
+        "points": [[risk, mult] for risk, mult in curve],
+    }
+    _save_browser_state(browser_state)
+    return active_curve, bool(enabled and valid)
+
+
 def _load_shared_portfolio(fallback_state=None):
     """Load portfolio data shared by V5.8.2 and V5.9 on this browser/device.
 
@@ -425,6 +486,12 @@ with st.sidebar:
 
     st.divider()
 
+    active_smart_dca_curve, custom_curve_active = _multiplier_curve_controls(
+        SMART_DCA_POINTS, "production_multiplier_curve"
+    )
+
+    st.divider()
+
     day_map = {
         "Monday": 0,
         "Tuesday": 1,
@@ -462,7 +529,7 @@ with st.sidebar:
         # Fixed, walk-forward-tested Smart DCA curve.
         low_risk_weight = SMART_DCA_LOW_RISK_WEIGHT
         high_risk_weight = SMART_DCA_HIGH_RISK_WEIGHT
-        smart_dca_curve = SMART_DCA_POINTS
+        smart_dca_curve = active_smart_dca_curve
 
         dca_backtest_start_date = st.date_input(
             "Start Date", value=_parse_saved_date(saved_bt.get("start_date"), dt.date(2015, 1, 1)),
@@ -491,7 +558,7 @@ with st.sidebar:
         frequency = dca_frequency
 
         st.caption(
-            "Same budget and dates. Plain DCA invests evenly; Smart DCA uses the fixed tested risk curve."
+            "Same budget and dates. Plain DCA invests evenly; Smart DCA uses the selected risk curve."
         )
         browser_state["backtest"] = {
             "frequency": dca_frequency,
@@ -546,11 +613,12 @@ with st.sidebar:
 
         low_risk_weight = SMART_DCA_LOW_RISK_WEIGHT
         high_risk_weight = SMART_DCA_HIGH_RISK_WEIGHT
-        smart_dca_curve = SMART_DCA_POINTS
+        smart_dca_curve = active_smart_dca_curve
 
         st.caption(
-            "Smart DCA sizing is fixed internally from walk-forward testing: "
-            "2.75× at risk 0.00, 1.00× at risk 0.50, and 0.05× at risk 1.00."
+            "Custom V5.8.2 multiplier curve is active."
+            if custom_curve_active else
+            "V5.8.2 default: 2.75× at risk 0.00, 1.00× at risk 0.50, and 0.05× at risk 1.00."
         )
 
         browser_state["today"] = {
@@ -575,11 +643,11 @@ with st.sidebar:
         selected_day = dt.date.today().weekday()
         low_risk_weight = SMART_DCA_LOW_RISK_WEIGHT
         high_risk_weight = SMART_DCA_HIGH_RISK_WEIGHT
-        smart_dca_curve = SMART_DCA_POINTS
+        smart_dca_curve = active_smart_dca_curve
 
     st.divider()
     st.caption(
-        "Engine settings are fixed internally for consistency between Backtest and DCA Today."
+        "The selected multiplier curve is used consistently by Backtest and DCA Today."
     )
 
     # Fixed calibrated engine defaults. These remain in code but are no longer user-facing.
@@ -959,7 +1027,8 @@ elif mode == "DCA Today":
 
     st.header("DCA Today")
     st.caption(
-        "Uses the calibrated Risk Score with the fixed walk-forward-tested Smart DCA curve. "
+        ("Uses your custom V5.8.2 Risk Score multiplier curve. " if custom_curve_active else
+         "Uses the default walk-forward-tested V5.8.2 Smart DCA curve. ") +
         "Opportunity Rarity and Better Entry Evidence are informational only."
     )
 
@@ -1742,4 +1811,3 @@ elif mode == "My Portfolio":
         st.warning(
             "Browser-local saving is unavailable in this deployment. Use the CSV download as backup."
         )
-
