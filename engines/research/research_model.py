@@ -136,7 +136,9 @@ BOTTOM_CHALLENGER_RECENT_WEEKS = 26
 # based only on elapsed days since the previous known halving (no future-date look-ahead).
 HALVING_ACCUMULATION_START_DAY = 800
 HALVING_ACCUMULATION_END_DAY = 1000
-HALVING_ACCUMULATION_FLOOR_MULT = 2.50
+# Retained for compatibility with older exports. The halving zone is now
+# context-only and applies no sizing floor.
+HALVING_ACCUMULATION_FLOOR_MULT = 1.00
 
 
 DEFAULT_TREND_ER_PERIOD = 20
@@ -1941,7 +1943,7 @@ def _days_since_previous_halving(index):
 
 
 def apply_three_pillar_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD, fee_pct=0.0):
-    """Frozen R2 + causal Halving Accumulation Zone + staged Bottom Challenger events."""
+    """Runway-guarded R2 + context-only halving zone + staged bottom events."""
     if result_df.empty:
         return pd.DataFrame(), {}
     x = result_df.copy()
@@ -1949,7 +1951,10 @@ def apply_three_pillar_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGENT
     event = pd.to_numeric(x.get("bottom_challenger_event_multiplier"), errors="coerce")
     days = _days_since_previous_halving(x.index)
     in_zone = days.between(HALVING_ACCUMULATION_START_DAY, HALVING_ACCUMULATION_END_DAY, inclusive="both")
-    timed = np.where(in_zone, np.maximum(base, HALVING_ACCUMULATION_FLOOR_MULT), base)
+    # Ordinary weeks cannot exceed 1.00x, so the remaining budget retains a
+    # full paced runway to the final execution. Only a newly staged exceptional
+    # bottom event is allowed to front-load at its explicit 3x/4x/3x weight.
+    timed = np.minimum(base, 1.0)
     combined = np.where(event.notna(), np.maximum(timed, event), timed)
     x["r2_dca_multiplier"] = base
     x["days_since_previous_halving"] = days.values
