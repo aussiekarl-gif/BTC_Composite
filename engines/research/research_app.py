@@ -370,11 +370,26 @@ with st.sidebar:
         if saved_target < dt.date.today() + dt.timedelta(days=7):
             saved_target = default_target
         target_deployment_date = st.date_input(
-            "Target Deployment Date",
+            "Strategy Review Date",
             value=saved_target,
             min_value=dt.date.today() + dt.timedelta(days=7),
             format="DD/MM/YYYY",
             key="today_target_date",
+            help="Date to reassess the market thesis. Capital is not forced beyond the explicitly deployable amount.",
+        )
+
+        preserved_capital_aud = st.number_input(
+            "Capital to Preserve After Review (AUD)",
+            min_value=0.0,
+            max_value=float(remaining_capital_aud),
+            value=min(
+                float(remaining_capital_aud),
+                max(0.0, float(saved_today.get("preserved_capital_aud", 0.0))),
+            ),
+            step=5_000.0,
+            format="%.0f",
+            key="today_preserved_capital",
+            help="This amount is protected from ordinary pre-review DCA. Set A$0 to make all remaining capital deployable by the review date.",
         )
 
         low_risk_weight = SMART_DCA_LOW_RISK_WEIGHT
@@ -390,6 +405,7 @@ with st.sidebar:
             "starting_capital_aud": float(starting_capital_aud),
             "remaining_capital_aud": float(remaining_capital_aud),
             "target_date": target_deployment_date.isoformat(),
+            "preserved_capital_aud": float(preserved_capital_aud),
         }
         _save_browser_state(browser_state)
 
@@ -858,9 +874,12 @@ elif mode == "DCA Today":
         rarity_source, current_risk, min(weeks_remaining, 156.0)
     )
 
-    normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
+    deployable_before_review = max(
+        0.0, float(remaining_capital_aud) - float(preserved_capital_aud)
+    )
+    normal_weekly_allowance = deployable_before_review / weeks_remaining
     recommended_buy = min(
-        float(remaining_capital_aud),
+        deployable_before_review,
         max(0.0, normal_weekly_allowance * paced_risk_weight),
     )
     # V5.9 sizing: the halving window is context only. Front-loading above the
@@ -875,7 +894,7 @@ elif mode == "DCA Today":
         if np.isfinite(current_challenger_event_mult) else paced_risk_weight
     )
     challenger_recommended_buy = min(
-        float(remaining_capital_aud),
+        deployable_before_review,
         max(0.0, normal_weekly_allowance * challenger_weight),
     )
 
@@ -1033,9 +1052,9 @@ elif mode == "DCA Today":
               <div class="v59-card-sub">{current_challenger_votes}/3 confirming categories<br>{'Event: ' + current_challenger_event if current_challenger_event != 'NONE' else 'No 3× / 4× event this week'}</div>
             </div>
             <div class="v59-card">
-              <div class="v59-card-title">Remaining Capital <span class="v59-q" title="Portfolio capital still scheduled for deployment. Base allowance = remaining capital ÷ remaining deployment weeks.">?</span></div>
+              <div class="v59-card-title">Remaining Capital <span class="v59-q" title="Base allowance = (remaining capital − protected post-review reserve) ÷ weeks to strategy review.">?</span></div>
               <div class="v59-card-value">A$ {remaining_capital_aud:,.0f}</div>
-              <div class="v59-card-sub">~{weeks_remaining:.0f} weeks remaining<br>until {target_deployment_date.strftime('%d %b %Y')}</div>
+              <div class="v59-card-sub">~{weeks_remaining:.0f} weeks to review<br>A${preserved_capital_aud:,.0f} protected after {target_deployment_date.strftime('%d %b %Y')}</div>
             </div>
           </div>
 
@@ -1364,7 +1383,7 @@ elif mode == "DCA Today":
     )
 
     x1, x2, x3 = st.columns(3)
-    x1.metric("Normal Monday DCA", f"A${normal_weekly_allowance:,.0f}")
+    x1.metric("Normal Monday DCA", f"A${normal_weekly_allowance:,.0f}", help="Deployable capital divided by weeks to the Strategy Review Date")
     x2.metric("Capital Remaining After Challenger Buy", f"A${remaining_after:,.0f}")
     x3.metric("Already Deployed", f"A${deployed:,.0f}")
 
@@ -1465,7 +1484,7 @@ elif mode == "DCA Today":
             "then capped at remaining capital."
         )
         st.write(
-            f"A${remaining_capital_aud:,.0f} ÷ {weeks_remaining:.1f} weeks "
+            f"(A${remaining_capital_aud:,.0f} − A${preserved_capital_aud:,.0f} protected) ÷ {weeks_remaining:.1f} weeks "
             f"× {risk_weight:.2f} Risk Score weight "
             f"= A${recommended_buy:,.0f}"
         )
