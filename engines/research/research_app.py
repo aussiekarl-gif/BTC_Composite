@@ -827,6 +827,10 @@ elif mode == "DCA Today":
     price_is_live = bool(np.isfinite(live_price_aud))
 
     risk_weight = float(interpolate(smart_dca_curve, current_risk))
+    # Preserve the deployment runway outside a newly confirmed Exceptional
+    # Bottom event. Ordinary low-risk readings may reach the paced 1.00x
+    # allowance, but cannot front-load capital by themselves.
+    paced_risk_weight = min(risk_weight, 1.0)
 
     # Opportunity rarity: use weekly historical risk observations available up
     # to today. This estimates how often BTC has been at least as cheap as now.
@@ -851,21 +855,18 @@ elif mode == "DCA Today":
     normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
     recommended_buy = min(
         float(remaining_capital_aud),
-        max(0.0, normal_weekly_allowance * risk_weight),
+        max(0.0, normal_weekly_allowance * paced_risk_weight),
     )
-    # Three-pillar research sizing: R2 base + broad causal halving accumulation zone
-    # + staged Bottom Challenger events. The +500 marker remains context only.
+    # V5.9 sizing: the halving window is context only. Front-loading above the
+    # paced allowance is reserved for a newly confirmed Bottom Challenger event.
     current_halving_clock_days = int((pd.Timestamp(now_utc.date()) - pd.Timestamp("2024-04-20")).days)
     current_halving_accumulation_zone = (
         HALVING_ACCUMULATION_START_DAY <= current_halving_clock_days <= HALVING_ACCUMULATION_END_DAY
     )
-    halving_timing_weight = (
-        max(risk_weight, HALVING_ACCUMULATION_FLOOR_MULT)
-        if current_halving_accumulation_zone else risk_weight
-    )
+    halving_timing_weight = paced_risk_weight
     challenger_weight = (
-        max(halving_timing_weight, current_challenger_event_mult)
-        if np.isfinite(current_challenger_event_mult) else halving_timing_weight
+        max(paced_risk_weight, current_challenger_event_mult)
+        if np.isfinite(current_challenger_event_mult) else paced_risk_weight
     )
     challenger_recommended_buy = min(
         float(remaining_capital_aud),
@@ -963,8 +964,8 @@ elif mode == "DCA Today":
     halving_reason_cls = "v59-check" if current_halving_accumulation_zone else "v59-off"
     halving_reason_title = "Halving Accumulation Zone active" if current_halving_accumulation_zone else "Halving Accumulation Zone inactive"
     halving_reason_sub = (
-        f"Raises R2 to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×"
-        if current_halving_accumulation_zone else "No timing floor applied this week"
+        "Context only — no sizing floor"
+        if current_halving_accumulation_zone else "Context only — no sizing change"
     )
     bottom_reason_icon = "✓" if current_challenger_zone else "○"
     bottom_reason_cls = "v59-check" if current_challenger_zone else "v59-off"
@@ -991,13 +992,13 @@ elif mode == "DCA Today":
               <span class="v59-sub" style="margin-left:10px;">That's {challenger_weight:.2f}× your base weekly amount</span>
             </div>
             <div>
-              <div class="v59-title">Current Multiplier <span class="v59-q" title="Effective V5.9 multiplier after R2, Halving Accumulation Zone and any staged Exceptional Bottom event.">?</span></div>
+              <div class="v59-title">Current Multiplier <span class="v59-q" title="Effective V5.9 multiplier after the runway guard and any newly staged Exceptional Bottom event.">?</span></div>
               <div class="v59-mult">{challenger_weight:.2f}×</div>
               <div class="v59-sub"><b>Base Monday DCA</b></div>
               <div class="v59-base">A$ {normal_weekly_allowance:,.0f}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Only R2 valuation, the Halving Accumulation Zone and explicit Exceptional Bottom staged events can change this week's V5.9 recommendation.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Ordinary sizing cannot exceed the paced allowance. Only a newly staged Exceptional Bottom event can front-load capital.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>R2 sizing risk {current_risk:.3f} → {risk_weight:.2f}× base multiplier</small></div></div>
               <div class="v59-reason"><span class="{bottom_reason_cls}">{bottom_reason_icon}</span><div><b>{bottom_reason_title}</b><small>{bottom_reason_sub}</small></div></div>
@@ -1016,7 +1017,7 @@ elif mode == "DCA Today":
               <div class="v59-card-sub">R2 Multiplier: <b style="color:#24e894">{risk_weight:.2f}×</b></div>
             </div>
             <div class="v59-card">
-              <div class="v59-card-title">Halving Accumulation Zone <span class="v59-q" title="Causal timing zone from day +800 to +1000 after the prior halving. While active, ordinary R2 is raised to at least 2.50×.">?</span></div>
+              <div class="v59-card-title">Halving Accumulation Zone <span class="v59-q" title="Causal timing context from day +800 to +1000 after the prior halving. It does not alter this week's amount.">?</span></div>
               <span class="v59-badge {halving_badge_cls}">{halving_badge_text}</span>
               <div class="v59-card-sub">Day +{current_halving_clock_days} (in +{HALVING_ACCUMULATION_START_DAY}–+{HALVING_ACCUMULATION_END_DAY} range)<br>R2 raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×</div>
             </div>
@@ -1044,12 +1045,12 @@ elif mode == "DCA Today":
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
             <div><div class="v59-info-title">How this week's amount is calculated</div>
-            <div class="v59-info-text">Monday's DCA amount is your Base Monday DCA multiplied by the current R2 multiplier, with tested adjustments from the Halving Accumulation Zone and Exceptional Bottom Zone. Cycle-based context such as the exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other descriptive indicators do not independently change the buy amount.</div></div>
+            <div class="v59-info-text">Monday's ordinary DCA cannot exceed the Base Monday DCA, preserving the target-date runway. The Halving Accumulation Zone, exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other cycle indicators are context only. Only a newly confirmed Exceptional Bottom stage can front-load at 3× / 4× / 3×.</div></div>
           </div>
 
           <div class="v59-explain-grid">
             <div class="v59-explain"><h4>📈 R2 Valuation Risk <span class="v59-q" title="The causal walk-forward Power-Law score is the base sizing engine in V5.9.">?</span></h4><p>Compares BTC with the causal walk-forward Power-Law valuation and determines the base DCA multiplier.</p><span class="v59-affects">Affects buy amount</span><p>Lower risk = larger base multiplier.<br>Higher risk = smaller base multiplier.</p></div>
-            <div class="v59-explain"><h4>📅 Halving Accumulation Zone <span class="v59-q" title="Broad research timing zone designed to avoid over-fitting to an exact −500-day date.">?</span></h4><p>Active approximately day +{HALVING_ACCUMULATION_START_DAY}–+{HALVING_ACCUMULATION_END_DAY} after the previous halving. While active, ordinary R2 is raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×.</p><span class="v59-affects">Affects buy amount</span><p>Provides a timing boost to ordinary R2 sizing.</p></div>
+            <div class="v59-explain"><h4>📅 Halving Accumulation Zone <span class="v59-q" title="Broad research timing zone designed to avoid over-fitting to an exact −500-day date.">?</span></h4><p>Active approximately day +{HALVING_ACCUMULATION_START_DAY}–+{HALVING_ACCUMULATION_END_DAY} after the previous halving.</p><span class="v59-context">Context only</span><p>Does not independently change the buy amount.</p></div>
             <div class="v59-explain"><h4>⚠️ Exceptional Bottom Zone <span class="v59-q" title="Requires deep valuation, low trailing price position and multiple independent stress categories.">?</span></h4><p>Identifies exceptional capitulation using independent categories. A new event can override ordinary sizing with 3× initial, 4× deeper, or 3× recovery.</p><span class="v59-affects">Affects buy amount</span><p>No new staged event = no additional override.</p></div>
             <div class="v59-explain"><h4>📊 Opportunity Rarity <span class="v59-q" title="Cycle-based context. It does not modify DCA sizing in V5.9.">?</span></h4><p>Shows how unusual this week's R2 risk is versus comparable periods in this halving cycle and previous cycles.</p><span class="v59-context">Context only</span><p>Helps interpret the opportunity; does not change this week's amount.</p></div>
           </div>
@@ -1324,10 +1325,10 @@ elif mode == "DCA Today":
             "capitulation stage while confluence remains exceptional uses 4x, and a recent recovery confirmation uses 3x.\n\n"
             "**Bull Age / Cycle Stage = context.** They describe how long the current confirmed weekly bull trend "
             "has been active and do not alter sizing.\n\n"
-            "**Halving Accumulation Zone = sizing input.** This is the broad causal day +800 to +1000 research window. "
+            "**Halving Accumulation Zone = context only.** This is the broad causal day +800 to +1000 research window. "
             "While active, it raises ordinary R2 sizing to at least 2.50x. The exact −500/+500 dates remain context markers and do not themselves trigger a trade.\n\n"
             "Opportunity Rarity and Better Entry Evidence remain informational only. Bull Age remains context only. "
-            "The Halving Accumulation Zone and explicit Bottom Challenger staged events are the only research overlays that can raise the purchase above frozen R2."
+            "Only an explicit new Bottom Challenger staged event can raise the purchase above the paced weekly allowance."
         )
 
     with st.expander("Opportunity Rarity Guide", expanded=False):
@@ -1349,11 +1350,11 @@ elif mode == "DCA Today":
 
     st.subheader("R2 Control vs Three-Pillar Challenger — audit view")
     y1, y2 = st.columns(2)
-    y1.metric("Frozen R2 Buy", f"A${recommended_buy:,.0f}", help=f"{risk_weight:.2f}× normal weekly allowance")
+    y1.metric("Frozen R2 Buy", f"A${recommended_buy:,.0f}", help=f"Raw R2 {risk_weight:.2f}×; runway-guarded to {paced_risk_weight:.2f}×")
     y2.metric(
         "Three-Pillar Buy", f"A${challenger_recommended_buy:,.0f}",
         delta=(f"A${challenger_recommended_buy-recommended_buy:+,.0f} vs R2" if challenger_recommended_buy != recommended_buy else "same as R2"),
-        help=f"{challenger_weight:.2f}× normal weekly allowance; R2 + causal halving zone + staged bottom events"
+        help=f"{challenger_weight:.2f}× normal weekly allowance; halving context does not size, staged bottom events may override"
     )
 
     x1, x2, x3 = st.columns(3)
