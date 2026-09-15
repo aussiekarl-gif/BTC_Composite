@@ -892,7 +892,13 @@ elif mode == "DCA Today":
     df_today = merge_bgeometrics(df_today, bg_today)
     risk_today_df = add_risk_indicators(df_today, risk_model, params)
 
-    # Size from the latest fully closed UTC day only. Provider APIs may\n    # expose a changing partial row for the current UTC date; allowing that row\n    # into risk sizing makes the weekly recommendation drift intraday.\n    closed_utc_cutoff = pd.Timestamp(now_utc.date(), tz="UTC")\n    risk_index_utc = pd.to_datetime(risk_today_df.index, utc=True)\n    risk_today_closed = risk_today_df.loc[risk_index_utc < closed_utc_cutoff].copy()\n    valid_today = risk_today_closed.dropna(subset=["risk_score", "price"])
+    # Size from the latest fully closed UTC day only. Provider APIs may
+    # expose a changing partial row for the current UTC date; allowing that row
+    # into risk sizing makes the weekly recommendation drift intraday.
+    closed_utc_cutoff = pd.Timestamp(now_utc.date(), tz="UTC")
+    risk_index_utc = pd.to_datetime(risk_today_df.index, utc=True)
+    risk_today_closed = risk_today_df.loc[risk_index_utc < closed_utc_cutoff].copy()
+    valid_today = risk_today_closed.dropna(subset=["risk_score", "price"])
     if valid_today.empty:
         st.error("Today's risk score could not be calculated from the available data.")
         st.stop()
