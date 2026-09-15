@@ -1972,7 +1972,21 @@ elif mode == "My Portfolio":
         "Units / BTC Received", "ETF Unit Price AUD", "BTC AUD Price",
         "BTC Eq / ETF Unit", "BTC Equivalent"
     ]
-    st.dataframe(clean[display_cols], width="stretch", hide_index=True)
+    transaction_column_config = {
+        "AUD Spent": st.column_config.NumberColumn(format="dollar"),
+        "Brokerage / Fee AUD": st.column_config.NumberColumn(format="dollar"),
+        "Units / BTC Received": st.column_config.NumberColumn(format="%.8g"),
+        "ETF Unit Price AUD": st.column_config.NumberColumn(format="dollar"),
+        "BTC AUD Price": st.column_config.NumberColumn(format="dollar"),
+        "BTC Eq / ETF Unit": st.column_config.NumberColumn(format="%.4f"),
+        "BTC Equivalent": st.column_config.NumberColumn(format="%.4f"),
+    }
+    st.dataframe(
+        clean[display_cols],
+        width="stretch",
+        hide_index=True,
+        column_config=transaction_column_config,
+    )
 
     st.caption(
         "For ASX:IBIT, the app calculates the ETF unit price from AUD spent ÷ units, automatically "
