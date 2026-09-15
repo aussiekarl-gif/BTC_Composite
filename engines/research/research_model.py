@@ -32,6 +32,7 @@ import datetime as dt
 import math
 import os
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 from datetime import timedelta, timezone
@@ -68,6 +69,7 @@ DEFAULT_FEE_PCT = 0.00
 REQUEST_HEADERS = {"User-Agent": "BTC-DCA-Simulator/3.4"}
 
 BGEOMETRICS_BASE = "https://bitcoin-data.com/v1"
+BGEOMETRICS_UI_TIMEOUT_SECONDS = 8
 DEFAULT_VALUATION_STRENGTH = 0.75
 DEFAULT_MIN_VALUATION_MULT = 0.50
 DEFAULT_MAX_VALUATION_MULT = 2.50
@@ -667,7 +669,7 @@ def fetch_bgeometrics_endpoint(endpoint, start_date, end_date, token=""):
         f"{BGEOMETRICS_BASE}/{endpoint}",
         params=params,
         headers=headers,
-        timeout=30,
+        timeout=BGEOMETRICS_UI_TIMEOUT_SECONDS,
     )
     resp.raise_for_status()
     payload = resp.json()
@@ -706,42 +708,54 @@ def fetch_bgeometrics_endpoint(endpoint, start_date, end_date, token=""):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_bgeometrics_bundle(start_date, end_date, token=""):
-    """Fetch the V3.2 external risk inputs; failures remain visible as missing data."""
-    result = pd.DataFrame()
-    endpoints = {
-        "bg_btc_price": ("btc-price", ["price", "btcPrice", "btc_price", "value", "close"]),
-        "mvrv_z": ("mvrv-zscore", ["mvrvZScore", "mvrv_zscore", "zscore", "mvrvZ"]),
-        "fear_greed": ("fear-greed", ["fearGreed", "fearAndGreed", "fear_greed", "value", "score"]),
-    }
-    for dest, (endpoint, aliases) in endpoints.items():
-        try:
-            frame = fetch_bgeometrics_endpoint(endpoint, start_date, end_date, token)
-            col = _pick_api_column(frame, aliases)
-            if col is not None:
-                series = pd.to_numeric(frame[col], errors="coerce").rename(dest)
-                result = result.join(series, how="outer") if not result.empty else series.to_frame()
-        except Exception:
-            pass
+    """Fetch optional bottom-confirmation inputs without blocking core R2 sizing.
 
-    # Subscriber endpoint. Absence never breaks the transparent local composite.
-    try:
-        frame = fetch_bgeometrics_endpoint("regime-score", start_date, end_date, token)
-        mapping = {
-            "regime_score": ["regimeScore"],
-            "regime_delta_30d": ["regimeDelta30d"],
-            "regime_active_weight": ["activeWeight"],
-            "regime": ["regime"],
+    The independent BTC-price endpoint is intentionally omitted because the app
+    already has its primary Blockchain.com price history. Specialist endpoints
+    run concurrently, so an unavailable provider costs at most one short timeout.
+    """
+    endpoint_specs = {
+        "mvrv-zscore": ("mvrv_z", ["mvrvZScore", "mvrv_zscore", "zscore", "mvrvZ"]),
+        "fear-greed": ("fear_greed", ["fearGreed", "fearAndGreed", "fear_greed", "value", "score"]),
+        "regime-score": (None, None),
+    }
+    frames = {}
+    with ThreadPoolExecutor(max_workers=len(endpoint_specs)) as pool:
+        futures = {
+            pool.submit(fetch_bgeometrics_endpoint, endpoint, start_date, end_date, token): endpoint
+            for endpoint in endpoint_specs
         }
-        for dest, aliases in mapping.items():
-            col = _pick_api_column(frame, aliases)
-            if col is None:
-                continue
-            series = frame[col].rename(dest)
-            if dest != "regime":
-                series = pd.to_numeric(series, errors="coerce")
+        for future in as_completed(futures):
+            endpoint = futures[future]
+            try:
+                frames[endpoint] = future.result()
+            except Exception:
+                frames[endpoint] = pd.DataFrame()
+
+    result = pd.DataFrame()
+    for endpoint in ("mvrv-zscore", "fear-greed"):
+        dest, aliases = endpoint_specs[endpoint]
+        frame = frames.get(endpoint, pd.DataFrame())
+        col = _pick_api_column(frame, aliases)
+        if col is not None:
+            series = pd.to_numeric(frame[col], errors="coerce").rename(dest)
             result = result.join(series, how="outer") if not result.empty else series.to_frame()
-    except Exception:
-        pass
+
+    frame = frames.get("regime-score", pd.DataFrame())
+    mapping = {
+        "regime_score": ["regimeScore"],
+        "regime_delta_30d": ["regimeDelta30d"],
+        "regime_active_weight": ["activeWeight"],
+        "regime": ["regime"],
+    }
+    for dest, aliases in mapping.items():
+        col = _pick_api_column(frame, aliases)
+        if col is None:
+            continue
+        series = frame[col].rename(dest)
+        if dest != "regime":
+            series = pd.to_numeric(series, errors="coerce")
+        result = result.join(series, how="outer") if not result.empty else series.to_frame()
 
     return result.sort_index() if not result.empty else pd.DataFrame()
 
