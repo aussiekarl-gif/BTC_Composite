@@ -760,10 +760,11 @@ elif mode == "DCA Today":
     with st.spinner("Calculating today's BTC valuation risk..."):
         df_today = fetch_btc_history(lookback_start, now_utc)
         fx_today = fetch_aud_usd_rates(lookback_start, now_utc)
-        bg_token = get_bgeometrics_token()
-        bg_today = fetch_bgeometrics_bundle(
-            lookback_start - timedelta(days=300), now_utc, bg_token
-        )
+        # DCA Today must remain available even when optional specialist APIs
+        # are slow, quota-limited or unavailable. Core R2 and locally derived
+        # bottom evidence run from BTC/FX history; missing MVRV/Fear inputs stay
+        # explicitly unavailable instead of blocking the Streamlit worker.
+        bg_today = pd.DataFrame()
 
     if df_today.empty:
         st.error("No BTC price data was returned.")
