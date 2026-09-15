@@ -879,7 +879,7 @@ elif mode == "DCA Today":
     )
     normal_weekly_allowance = deployable_before_review / weeks_remaining
     recommended_buy = min(
-        float(remaining_capital_aud),
+        deployable_before_review,
         max(0.0, normal_weekly_allowance * paced_risk_weight),
     )
     # V5.9 sizing: the halving window is context only. Front-loading above the
@@ -894,7 +894,7 @@ elif mode == "DCA Today":
         if np.isfinite(current_challenger_event_mult) else paced_risk_weight
     )
     challenger_recommended_buy = min(
-        float(remaining_capital_aud),
+        deployable_before_review,
         max(0.0, normal_weekly_allowance * challenger_weight),
     )
 
