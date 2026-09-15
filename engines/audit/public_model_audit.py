@@ -1634,6 +1634,9 @@ if st.button(
     master_rate = None
     master_limited = False
     requests_made = 0
+    successful_saves = 0
+    max_successful_saves = 2
+    batch_paused = False
     for ds in sorted(MASTER_DATASETS, key=lambda x: (x["priority"], x["label"])):
         already = dataset_cached(cache, ds)
         if already and not refresh_existing:
@@ -1642,21 +1645,35 @@ if st.button(
             frame, master_rate = fetch_master_dataset(ds, master_start, master_end, token)
             requests_made += 1
             if frame.empty:
-                status = "No usable rows returned"
-            else:
-                cache = combine_caches(cache, frame)
-                a, b = frame.index.min().date(), frame.index.max().date()
-                status = f"Saved {len(frame):,} rows ({a} → {b})"
-            save_runtime_master_cache(cache)
-            save_runtime_cache(cache)
-            memory = save_audit_memory(memory, cache, base)
-            # Rebuild working cache from the exact transactional master returned by the saver.
-            cache = combine_caches(memory, cache)
-            durable = st.session_state.get("audit_remote_save_status", "save status unavailable")
-            status = status + " | " + master_schema_text(memory) + " | " + durable
-            master_rows.append({"Dataset": ds["label"], "Status": status})
+                status = "No usable rows returned — nothing written"
+                master_rows.append({"Dataset": ds["label"], "Status": status})
+                time.sleep(0.5)
+                continue
 
-            time.sleep(1.2)
+            # Save only the newly acquired endpoint. save_audit_memory() re-reads
+            # and merges the latest remote master transactionally. Passing the
+            # entire cache repeatedly created several large duplicate DataFrames,
+            # CSV encodings and local writes per request, which could exhaust a
+            # Streamlit worker even though the GitHub write itself succeeded.
+            memory = save_audit_memory(frame)
+            cache = combine_caches(memory, cache, frame)
+            a, b = frame.index.min().date(), frame.index.max().date()
+            durable = st.session_state.get(
+                "audit_remote_save_status", "save status unavailable"
+            )
+            status = (
+                f"Saved {len(frame):,} rows ({a} → {b}) | "
+                + master_schema_text(memory) + " | " + durable
+            )
+            master_rows.append({"Dataset": ds["label"], "Status": status})
+            successful_saves += 1
+
+            # Keep each Streamlit interaction short and memory-bounded. The next
+            # click resumes automatically because saved endpoints are skipped.
+            if successful_saves >= max_successful_saves:
+                batch_paused = True
+                break
+            time.sleep(0.75)
         except RateLimitError as exc:
             master_rate = exc.rate
             master_limited = True
@@ -1665,7 +1682,17 @@ if st.button(
         except Exception as exc:
             master_rows.append({"Dataset": ds["label"], "Status": f"Error: {str(exc)[:180]}"})
 
+    # Best-effort local speed/recovery copies are written once per batch,
+    # after durable endpoint saves, instead of twice after every request.
+    save_runtime_master_cache(cache)
+    save_runtime_cache(cache)
+
     st.write(f"**API requests used this batch: {requests_made}**")
+    if batch_paused:
+        st.info(
+            "Safe batch complete: two datasets were saved. Click the collector "
+            "again to continue; already-saved endpoints will be skipped."
+        )
     if master_rows:
         st.dataframe(pd.DataFrame(master_rows), use_container_width=True, hide_index=True)
     if master_rate:
