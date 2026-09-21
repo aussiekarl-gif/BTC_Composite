@@ -8,6 +8,7 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.research import research_model as _model
+from engines.shared.portfolio_store import load_portfolio, save_portfolio
 
 # Preserve the historical UI namespace so the unchanged Streamlit UI behaves
 # exactly as before, including helpers whose names begin with an underscore.
@@ -315,7 +316,9 @@ def _save_shared_portfolio(portfolio):
         pass
 
 browser_state = _load_browser_state()
-shared_portfolio = _load_shared_portfolio(browser_state)
+browser_portfolio = _load_shared_portfolio(browser_state)
+server_portfolio, portfolio_storage_error = load_portfolio()
+shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
 
 st.title("Bitcoin Dynamic DCA V5.9 — Three-Pillar Research")
 st.caption("Version 5.9 RESEARCH • R2 Valuation • Exceptional Bottom Zone • Halving Accumulation Zone • Persistent portfolio")
@@ -1587,9 +1590,11 @@ elif mode == "My Portfolio":
         "ISIN AU0000424780. Default brokerage per ETF buy is A$3."
     )
     st.caption(
-        "Portfolio entries are saved automatically in this browser/device when browser storage is available. "
-        "CSV export remains a portable backup for another device or browser."
+        "Portfolio entries are stored in the persistent server database and shared by Production and Research. "
+        "Browser storage and CSV export remain available as recovery backups."
     )
+    if portfolio_storage_error:
+        st.error(f"Persistent portfolio storage is unavailable: {portfolio_storage_error}")
 
     portfolio_cols = [
         "Date",
@@ -2055,21 +2060,22 @@ elif mode == "My Portfolio":
             "capital_remaining_aud": float(capital_remaining),
             "rows": export_clean[portfolio_cols].to_dict(orient="records"),
         }
-        _save_shared_portfolio(browser_state["portfolio"])
-        shared_portfolio = browser_state["portfolio"].copy()
-        _save_browser_state(browser_state)
-        st.success(
-            "Portfolio saved in this browser. Changes are committed only when you press “Save Portfolio Changes”."
-        )
+        saved_ok, save_error = save_portfolio(browser_state["portfolio"])
+        if saved_ok:
+            _save_shared_portfolio(browser_state["portfolio"])
+            shared_portfolio = browser_state["portfolio"].copy()
+            _save_browser_state(browser_state)
+            st.success("Portfolio saved and verified in the persistent database.")
+        else:
+            _save_shared_portfolio(browser_state["portfolio"])
+            _save_browser_state(browser_state)
+            st.error(
+                f"Persistent save failed: {save_error}. A browser recovery copy was retained; "
+                "download the CSV before closing the app."
+            )
     else:
         _save_browser_state(browser_state)
         st.caption("Portfolio changes are committed only when you press “Save Portfolio Changes”.")
 
-    if LOCAL_STORAGE_AVAILABLE:
-        st.success(
-            "Saved automatically in this browser. CSV download remains available as a portable backup."
-        )
-    else:
-        st.warning(
-            "Browser-local saving is unavailable in this deployment. Use the CSV download as backup."
-        )
+    if not LOCAL_STORAGE_AVAILABLE:
+        st.caption("Browser recovery storage is unavailable; persistent database saving remains active.")
