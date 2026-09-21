@@ -45,12 +45,17 @@ def _google_settings() -> tuple[str, dict[str, Any]]:
         try:
             import streamlit as st
 
-            credentials = dict(st.secrets["google_service_account"])
             sheet_id = str(st.secrets.get("BTC_PORTFOLIO_SHEET_ID", sheet_id))
+            secret_json = str(st.secrets.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")).strip()
+            credentials = (
+                json.loads(secret_json)
+                if secret_json
+                else dict(st.secrets["google_service_account"])
+            )
         except Exception as exc:
             raise RuntimeError(
-                "Google Sheets is not configured. Add [google_service_account] "
-                "credentials to the Streamlit app secrets."
+                "Google Sheets is not configured. Add GOOGLE_SERVICE_ACCOUNT_JSON "
+                "to the Streamlit app secrets."
             ) from exc
 
     if not credentials.get("client_email") or not credentials.get("private_key"):
