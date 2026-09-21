@@ -4,3 +4,5 @@ numpy
 requests
 plotly
 streamlit-local-storage>=0.0.23
+gspread>=6.1,<7
+google-auth>=2.35,<3
