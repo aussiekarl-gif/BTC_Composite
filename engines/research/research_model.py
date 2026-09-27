@@ -935,6 +935,9 @@ def add_cycle_context_research(result, params):
     w["close"] = weekly
     w["ma50"] = weekly.rolling(50, min_periods=50).mean()
     w["ma200"] = weekly.rolling(200, min_periods=156).mean()
+    # Exact 200-week signal for execution research. Shift by one complete week
+    # so a Monday decision never uses that Monday's own close in its threshold.
+    w["ma200_strict"] = weekly.rolling(200, min_periods=200).mean()
     above50 = (w["close"] > w["ma50"]) & w["ma50"].notna()
     below50 = (w["close"] < w["ma50"]) & w["ma50"].notna()
     w["bull_reclaim_confirm"] = (above50.astype(int).rolling(3, min_periods=3).sum() >= 3)
@@ -984,6 +987,7 @@ def add_cycle_context_research(result, params):
 
     # Align weekly 200W MA to daily rows without looking ahead.
     ma200_daily = w["ma200"].reindex(out.index, method="ffill")
+    ma200_strict_prior_daily = w["ma200_strict"].shift(1).reindex(out.index, method="ffill")
     ratio_200w = price / ma200_daily.replace(0, np.nan)
     ma200_evidence = ((1.60 - ratio_200w) / (1.60 - 1.10)).clip(0, 1)
 
@@ -1031,6 +1035,7 @@ def add_cycle_context_research(result, params):
     out["bull_confirmation_flip"] = flip_daily
     out["weekly_ma50"] = ma50_daily
     out["weekly_ma200"] = ma200_daily
+    out["weekly_ma200_strict_prior"] = ma200_strict_prior_daily
 
     trend_evidence = bull_daily.astype(float)
     out["bottom_confidence_score"] = (100.0 * (0.75 * recent_zone + 0.25 * trend_evidence)).clip(0, 100)
@@ -1859,6 +1864,11 @@ def simulate_dca_backtest(
             "bottom_challenger_exceptional_zone": row.get("bottom_challenger_exceptional_zone", False),
             "bottom_challenger_category_votes": row.get("bottom_challenger_category_votes", 0),
             "bottom_challenger_price_position": row.get("bottom_challenger_price_position", np.nan),
+            "weekly_ma200_strict_prior": row.get("weekly_ma200_strict_prior", np.nan),
+            "below_200wma": bool(
+                pd.notna(row.get("weekly_ma200_strict_prior", np.nan))
+                and price_usd < float(row.get("weekly_ma200_strict_prior"))
+            ),
             "bottom_challenger_event": (
                 row.get("bottom_challenger_week_event", "NONE") if dca_frequency == "Weekly"
                 else row.get("bottom_challenger_event", "NONE")
@@ -1928,6 +1938,98 @@ def apply_causal_budget_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGEN
                        "avg_cost_aud": float(final["avg_cost_aud"]), "roi_pct": float(final["roi_pct"]),
                        "fees_aud": float(final["cumulative_fees_aud"])}
 
+
+
+def apply_below_200wma_carry_allocator(
+    result_df,
+    total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD,
+    fee_pct=0.0,
+):
+    """Causal Monday DCA that buys only below the prior completed 200 WMA.
+
+    Each scheduled week's equal budget slice is carried as cash when the rule is
+    false. On the next qualifying Monday, all accumulated slices are invested.
+    Any amount never followed by another qualifying Monday remains cash. This
+    avoids hindsight normalization and never forces the final period to buy.
+    """
+    if result_df.empty or total_budget_aud <= 0:
+        return pd.DataFrame(), {}
+
+    out = result_df.copy().reset_index(drop=True)
+    total_budget = float(total_budget_aud)
+    scheduled_slice = total_budget / max(len(out), 1)
+    remaining_cash = total_budget
+    carried_cash = 0.0
+    btc = cumulative = fees = 0.0
+    replay_rows = []
+
+    for i, row in out.iterrows():
+        allocation = (
+            remaining_cash if i == len(out) - 1
+            else min(remaining_cash, scheduled_slice)
+        )
+        carried_cash = min(remaining_cash, carried_cash + allocation)
+
+        price_usd = float(row.get("price_usd", np.nan))
+        ma200 = float(row.get("weekly_ma200_strict_prior", np.nan))
+        eligible = bool(
+            np.isfinite(price_usd)
+            and np.isfinite(ma200)
+            and price_usd < ma200
+        )
+        contribution = min(remaining_cash, carried_cash) if eligible else 0.0
+        if contribution > 0:
+            carried_cash = 0.0
+            remaining_cash -= contribution
+
+        fee = contribution * float(fee_pct)
+        net = max(0.0, contribution - fee)
+        price_aud = float(row["btc_price_aud"])
+        btc_bought = net / price_aud if price_aud > 0 else 0.0
+        btc += btc_bought
+        cumulative += contribution
+        fees += fee
+        btc_value = btc * price_aud
+        total_value = btc_value + remaining_cash
+
+        replay = row.to_dict()
+        replay.update({
+            "below_200wma": eligible,
+            "dca_multiplier": 1.0 if eligible else 0.0,
+            "signal": "BUY BELOW 200 WMA" if eligible else "HOLD CASH ABOVE 200 WMA",
+            "scheduled_slice_aud": scheduled_slice,
+            "carried_cash_before_buy_aud": contribution if eligible else carried_cash,
+            "actual_buy_aud": contribution,
+            "btc_bought": btc_bought,
+            "btc_held": btc,
+            "cumulative_invested_aud": cumulative,
+            "cumulative_fees_aud": fees,
+            "cash_remaining_aud": remaining_cash,
+            "btc_value_aud": btc_value,
+            "total_value_including_cash_aud": total_value,
+            "pnl_aud": total_value - total_budget,
+            "roi_pct": (total_value / total_budget - 1.0) * 100.0,
+            "avg_cost_aud": cumulative / btc if btc > 0 else 0.0,
+        })
+        replay_rows.append(replay)
+
+    replay_df = pd.DataFrame(replay_rows)
+    final = replay_df.iloc[-1]
+    summary = {
+        "budget_aud": total_budget,
+        "total_invested_aud": float(final["cumulative_invested_aud"]),
+        "cash_remaining_aud": float(final["cash_remaining_aud"]),
+        "btc_held": float(final["btc_held"]),
+        "btc_value_aud": float(final["btc_value_aud"]),
+        "total_value_including_cash_aud": float(final["total_value_including_cash_aud"]),
+        "avg_cost_aud": float(final["avg_cost_aud"]),
+        "roi_pct": float(final["roi_pct"]),
+        "fees_aud": float(final["cumulative_fees_aud"]),
+        "execution_count": int(len(replay_df)),
+        "eligible_week_count": int(replay_df["below_200wma"].sum()),
+        "buy_count": int((replay_df["actual_buy_aud"] > 0).sum()),
+    }
+    return replay_df, summary
 
 
 def apply_bottom_challenger_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD, fee_pct=0.0):
