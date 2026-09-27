@@ -642,7 +642,13 @@ if mode == "DCA Backtest":
     params["day_of_week"] = selected_day
 
     with st.spinner("Loading historical BTC and AUD/USD data..."):
-        research_fetch_start = min(pd.Timestamp(params["start_date"], tz="UTC") if pd.Timestamp(params["start_date"]).tzinfo is None else pd.Timestamp(params["start_date"]).tz_convert("UTC"), RESEARCH_PL_HISTORY_START)
+        research_fetch_start = min(
+            pd.Timestamp(params["start_date"], tz="UTC")
+            if pd.Timestamp(params["start_date"]).tzinfo is None
+            else pd.Timestamp(params["start_date"]).tz_convert("UTC"),
+            RESEARCH_PL_HISTORY_START,
+            pd.Timestamp(GENESIS_DATE),
+        )
         df_full = fetch_btc_history(research_fetch_start, params["end_date"])
         fx_series = fetch_aud_usd_rates(params["start_date"], params["end_date"])
         bg_token = get_bgeometrics_token()
@@ -681,12 +687,16 @@ if mode == "DCA Backtest":
             smart_raw, total_budget_aud=capital_target,
             fee_pct=params.get("fee_pct", 0.0)
         )
+        ma200_df, ma200_sm = apply_below_200wma_carry_allocator(
+            smart_raw, total_budget_aud=capital_target,
+            fee_pct=params.get("fee_pct", 0.0)
+        )
         recent_check = validate_smart_dca_recent_period(
             df_full, params, dca_frequency, capital_target, recent_fraction=0.30,
             risk_curve=smart_dca_curve
         )
 
-    if not plain_sm or not smart_sm or not challenger_sm:
+    if not plain_sm or not smart_sm or not challenger_sm or not ma200_sm:
         st.error("Not enough historical data for this DCA Backtest.")
         st.stop()
 
@@ -711,6 +721,18 @@ if mode == "DCA Backtest":
         if plain_sm["btc_held"] > 0 else np.nan
     )
     challenger_events = int((challenger_df.get("bottom_challenger_event", pd.Series(dtype=str)) != "NONE").sum())
+    ma200_vs_plain = (
+        (ma200_sm["btc_held"] / plain_sm["btc_held"] - 1.0) * 100.0
+        if plain_sm["btc_held"] > 0 else np.nan
+    )
+    ma200_vs_r2 = (
+        (ma200_sm["btc_held"] / smart_sm["btc_held"] - 1.0) * 100.0
+        if smart_sm["btc_held"] > 0 else np.nan
+    )
+    ma200_total_value_vs_plain = (
+        (ma200_sm["total_value_including_cash_aud"] / plain_sm["btc_value_aud"] - 1.0) * 100.0
+        if plain_sm["btc_value_aud"] > 0 else np.nan
+    )
 
     st.header("Simple DCA Backtest")
     st.caption(
@@ -719,7 +741,7 @@ if mode == "DCA Backtest":
         f"{dca_backtest_end_date.strftime('%d/%m/%Y')}"
     )
 
-    p1, p2, p3 = st.columns(3)
+    p1, p2, p3, p4 = st.columns(4)
     with p1:
         st.subheader("Plain DCA")
         st.metric("BTC Accumulated", f"{plain_sm['btc_held']:.6f}")
@@ -741,6 +763,15 @@ if mode == "DCA Backtest":
         st.metric("Ending Value", f"A${challenger_sm['btc_value_aud']:,.0f}")
         st.metric("Staged Events", f"{challenger_events}")
 
+    with p4:
+        st.subheader("Below 200 WMA")
+        st.metric("BTC Accumulated", f"{ma200_sm['btc_held']:.6f}", delta=f"{ma200_vs_plain:+.2f}% vs Plain")
+        st.metric("Average Cost", "n/a" if ma200_sm["btc_held"] <= 0 else f"A${ma200_sm['avg_cost_aud']:,.0f}")
+        st.metric("Capital Invested", f"A${ma200_sm['total_invested_aud']:,.0f}")
+        st.metric("Cash Remaining", f"A${ma200_sm['cash_remaining_aud']:,.0f}")
+        st.metric("Total Value + Cash", f"A${ma200_sm['total_value_including_cash_aud']:,.0f}")
+        st.metric("Qualifying Mondays", f"{ma200_sm['eligible_week_count']}")
+
 
     st.subheader("Verdict")
     if challenger_vs_r2 > 0:
@@ -758,6 +789,24 @@ if mode == "DCA Backtest":
     st.caption(
         "Research-only overlay: 3x initial exceptional entry • 4x each new ≥15% lower capitulation stage "
         "while confluence remains exceptional • 3x recent recovery confirmation • no fixed reserve • no all-in."
+    )
+
+    st.subheader("Below-200-WMA Research Rule")
+    if ma200_sm["eligible_week_count"] <= 0:
+        st.warning("No qualifying Monday occurred after a complete prior-week 200 WMA became available.")
+    else:
+        st.info(
+            f"The causal below-200-WMA rule bought on {ma200_sm['eligible_week_count']} Mondays, "
+            f"invested A${ma200_sm['total_invested_aud']:,.0f}, retained "
+            f"A${ma200_sm['cash_remaining_aud']:,.0f} cash, and accumulated "
+            f"{ma200_sm['btc_held']:.6f} BTC ({ma200_vs_plain:+.2f}% vs Plain; "
+            f"{ma200_vs_r2:+.2f}% vs R2). Total ending value including cash was "
+            f"{ma200_total_value_vs_plain:+.2f}% versus Plain DCA."
+        )
+    st.caption(
+        "Rule definition: each Monday receives an equal scheduled budget slice. Above the prior completed "
+        "200-week MA, the slice stays in cash. On the next Monday below that MA, accumulated slices are bought. "
+        "Untriggered cash remains cash at the end; there is no final forced purchase and no future-price look-ahead."
     )
 
     if recent_check:
@@ -785,6 +834,17 @@ if mode == "DCA Backtest":
         curve_df["Relative Weight"] = curve_df["Relative Weight"].map(lambda x: f"{x:.2f}x")
         st.dataframe(curve_df, width="stretch", hide_index=True)
 
+    with st.expander("Below-200-WMA detailed activity", expanded=False):
+        ma200_detail_cols = [
+            "date", "price_usd", "weekly_ma200_strict_prior", "below_200wma",
+            "signal", "scheduled_slice_aud", "carried_cash_before_buy_aud",
+            "actual_buy_aud", "btc_bought", "btc_held",
+            "cumulative_invested_aud", "cash_remaining_aud",
+            "total_value_including_cash_aud", "avg_cost_aud",
+        ]
+        ma200_detail = ma200_df[[col for col in ma200_detail_cols if col in ma200_df.columns]].copy()
+        st.dataframe(ma200_detail.tail(250), width="stretch", hide_index=True)
+
     with st.expander("Detailed activity", expanded=False):
         detail_cols = [
             "date", "price_usd", "risk_score", "continuous_valuation_risk",
@@ -800,7 +860,8 @@ if mode == "DCA Backtest":
     plain_csv = plain_df.to_csv(index=False).encode("utf-8")
     smart_csv = smart_df.to_csv(index=False).encode("utf-8")
     challenger_csv = challenger_df.to_csv(index=False).encode("utf-8")
-    d1, d2, d3 = st.columns(3)
+    ma200_csv = ma200_df.to_csv(index=False).encode("utf-8")
+    d1, d2, d3, d4 = st.columns(4)
     d1.download_button(
         "Download Plain DCA CSV", plain_csv,
         file_name="btc_v5_1_plain_dca.csv", mime="text/csv"
@@ -812,6 +873,10 @@ if mode == "DCA Backtest":
     d3.download_button(
         "Download Bottom Challenger CSV", challenger_csv,
         file_name="btc_v5_9_r2_bottom_challenger.csv", mime="text/csv"
+    )
+    d4.download_button(
+        "Download Below-200-WMA CSV", ma200_csv,
+        file_name="btc_v5_9_below_200wma.csv", mime="text/csv"
     )
 
 
