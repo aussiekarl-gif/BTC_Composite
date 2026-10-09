@@ -66,3 +66,15 @@ The user confirmed that all five newer exports are from BlockHorizon and reporte
 
 The 200WMA export has a more specific unresolved concern: it starts on 2013-01-01 but its first nonblank 200WMA is 2014-05-05. That is only 489 daily rows into this export. Since the 200-week average convention is approximately 1,400 daily closes (or 200 weekly closes), the first valid date must be reconciled with the provider's full upstream price history and calculation. The latest 200WMA is broadly close to a simple 1,400-day mean, but that does not resolve the early-series discrepancy.
 
+
+
+## Provisional Puell calculation (research-only)
+
+Using the exported `Miner Revenue: Total (Daily)` values directly, I calculated the ratio of each daily value to the trailing 365-day simple moving average of the same series. This is **not promoted or yet accepted as the canonical Puell Multiple**; it is a diagnostic to determine whether the series can support the expected calculation.
+
+- First date with a full 365-day window: 2010-01-08.
+- Latest date: 2026-10-06.
+- Latest raw-series ratio: **1.08748** (daily value 490.0327 divided by trailing-365-day average 450.61263).
+- Observed ratio range in this calculation: 0.36548–5.32754.
+
+Because a constant unit multiplier cancels in a ratio, these ratios are mathematically invariant to a fixed scale factor. They are **not** invariant to changes in scaling, missing/revised values, inconsistent aggregation, or a wrong revenue field. The reported USD unit therefore still needs reconciliation with the raw magnitudes before this can be named a validated Puell Multiple. Keep this as an exploratory output only and compare it with an independent Puell series before considering promotion.
