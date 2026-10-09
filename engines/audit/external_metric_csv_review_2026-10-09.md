@@ -4,7 +4,7 @@
 
 This is a structural/data-quality review of the CSVs recently added to `BTC_Composite/data/`. It is **not** a declaration that all indicators have been independently replicated or approved for the authoritative audit master. No Production logic, `btc_audit_backup.csv`, or Production manifest was changed.
 
-The new files were added in the GitHub commit [a0c63a6](https://github.com/aussiekarl-gif/BTC_Composite/commit/a0c63a680b345dc5dd0f904c3a0bc68ca7f033bb). That commit records an upload, but does not identify the original chart/provider page for each CSV. Preserve source provenance per file rather than assuming it from the commit.
+The user confirmed that all five new exports (SOPR, Supply in Profit, 200WMA, Miner Revenue: Total (Daily), and PlanB Realized Prices) were exported from BlockHorizon. The files were added in the GitHub commit [a0c63a6](https://github.com/aussiekarl-gif/BTC_Composite/commit/a0c63a680b345dc5dd0f904c3a0bc68ca7f033bb). Metric-specific chart pages and export dates should still be recorded as part of the provenance record.
 
 ## Structural results
 
@@ -14,8 +14,8 @@ The new files were added in the GitHub commit [a0c63a6](https://github.com/aussi
 | `mvrv_z_score_2026-10-06T21-46-14.csv` | 2010-11-01–2026-10-05; 5,818 daily rows | No missing dates, duplicate dates, or missing metric/price values | Validated in the prior BlockHorizon cross-check |
 | `sopr_spent_output_profit_ratio__2026-10-07T21-21-13.csv` | 2010-11-01–2026-10-06; 5,819 daily rows | No missing dates, duplicate dates, or missing values | Structurally clean; metric semantics and independent parity still pending |
 | `supply_in_profit_2026-10-07T21-21-51.csv` | 2010-11-01–2026-10-06; 5,819 daily rows | No missing dates, duplicate dates, or missing values | Structurally clean; units/definition and independent parity still pending |
-| `price_200_week_moving_average_200wma__2026-10-07T21-20-24.csv` | 2013-01-01–2026-10-06; 5,027 daily rows | Dates are continuous and unique. 489 leading 200WMA blanks; price column present | Leading blanks are consistent with a rolling-window warm-up and must not be backfilled. Verify exact calculation against the benchmark daily close before promotion |
-| `miner_revenue_total_daily__2026-10-07T21-26-46.csv` | 2009-01-09–2026-10-06; 6,480 daily rows | Dates are continuous and unique. Metric series is populated; 555 leading blanks in the accompanying price column | Structural pass; metric units and definition must be confirmed before calculating Puell Multiple |
+| `price_200_week_moving_average_200wma__2026-10-07T21-20-24.csv` | 2013-01-01–2026-10-06; 5,027 daily rows | Dates are continuous and unique. 489 leading 200WMA blanks; first nonblank is 2014-05-05, with a value of 110.47 | Do not yet classify the blanks as a normal warm-up: the first valid date needs reconciliation with the metric's 200-week history and the export's price coverage. Do not backfill; verify against the provider's exact calculation before promotion |
+| `miner_revenue_total_daily__2026-10-07T21-26-46.csv` | 2009-01-09–2026-10-06; 6,480 daily rows | Dates are continuous and unique. Metric series is populated; 555 leading blanks in the accompanying price column | Structural pass; user reports USD units, but the raw scale (700 in Jan 2009 and 490.0327 on 2026-10-06) is not self-evidently consistent with total daily miner revenue in USD. Confirm whether the chart/export applies a scale factor or uses a different unit before calculating Puell Multiple |
 | `planb_realized_prices_2026-10-07T21-19-48.csv` | 2011-12-31–2026-10-06; 5,394 daily rows | Dates are continuous and unique; no missing values in the exported columns | Structural pass; provider/source provenance and formula parity unresolved |
 
 ## Cross-file price consistency
@@ -58,5 +58,11 @@ A second pass computed basic ranges from the full CSV contents:
 - **200WMA:** latest exported value 66,525.51 on 2026-10-06. A diagnostic comparison against a simple rolling mean of the previous 1,400 daily price rows did **not** match exactly (latest simple daily mean 66,189.22). This is not automatically a defect: a true 200-week moving average is normally based on weekly observations/candles, not a simple 1,400-day mean. Validate against the provider's weekly calculation and benchmark candle convention instead of replacing the series with a daily rolling average.
 - **Miner Revenue: Total (Daily):** latest exported value 490.0327, with observed range 200–34,600. The CSV itself does not encode a unit. These magnitudes are not enough to establish whether the field is BTC-denominated, fiat-denominated, scaled, or otherwise transformed. **Do not calculate Puell from this series until its units and definition are confirmed.**
 
-These checks increase confidence that the data is parseable and broadly plausible, but they do not replace source documentation or an independent metric-level parity test.
+These checks increase confidence that the data is parseable, but they do not replace source documentation or an independent metric-level parity test. The user has confirmed the source as BlockHorizon; the remaining issue is metric-specific unit/methodology reconciliation.
+
+## User-confirmed provenance and follow-up
+
+The user confirmed that all five newer exports are from BlockHorizon and reported that Miner Revenue: Total (Daily) is displayed in USD. The raw revenue series' scale still needs checking against the chart's axis/tooltip and any export scale convention before it is used for Puell. The usual conceptual relationship is daily total miner revenue divided by its 365-day simple moving average; because the scale cancels in the ratio, a constant scale factor would not change Puell, but a unit or field mismatch could. Do not create a Puell series until the daily revenue values and date alignment are confirmed.
+
+The 200WMA export has a more specific unresolved concern: it starts on 2013-01-01 but its first nonblank 200WMA is 2014-05-05. That is only 489 daily rows into this export. Since the 200-week average convention is approximately 1,400 daily closes (or 200 weekly closes), the first valid date must be reconciled with the provider's full upstream price history and calculation. The latest 200WMA is broadly close to a simple 1,400-day mean, but that does not resolve the early-series discrepancy.
 
