@@ -47,3 +47,16 @@ Before any of these new indicators enter `btc_audit_backup.csv` or a Production 
 - **NUPL and MVRV Z:** retain the existing validated BlockHorizon status; no Production/master promotion.
 - **SOPR, Supply in Profit, 200WMA, Miner Revenue, Realized Price:** structurally reviewed only; do not mark as independently validated yet.
 - **Authoritative master and Production:** unchanged.
+
+## Follow-up numerical sanity checks
+
+A second pass computed basic ranges from the full CSV contents:
+
+- **SOPR:** 0.6720–2.1324; latest exported value 1.0042 on 2026-10-06. The range is plausible for SOPR, but plausibility is not independent validation.
+- **Supply in Profit:** 3.49 million–19.93 million units; latest 15.28 million on 2026-10-06. The scale is plausible for BTC supply, but the provider's exact supply definition remains to be recorded.
+- **Realized-price export:** latest BTC price 85,553.52; Realized Price 53,761.98; 2-Year Realized Price 86,730.07; Realized Price (STS) 74,284.65 on 2026-10-06. These fields have different methodologies; do not treat the 2-Year or STS variants as interchangeable with the ordinary realized price.
+- **200WMA:** latest exported value 66,525.51 on 2026-10-06. A diagnostic comparison against a simple rolling mean of the previous 1,400 daily price rows did **not** match exactly (latest simple daily mean 66,189.22). This is not automatically a defect: a true 200-week moving average is normally based on weekly observations/candles, not a simple 1,400-day mean. Validate against the provider's weekly calculation and benchmark candle convention instead of replacing the series with a daily rolling average.
+- **Miner Revenue: Total (Daily):** latest exported value 490.0327, with observed range 200–34,600. The CSV itself does not encode a unit. These magnitudes are not enough to establish whether the field is BTC-denominated, fiat-denominated, scaled, or otherwise transformed. **Do not calculate Puell from this series until its units and definition are confirmed.**
+
+These checks increase confidence that the data is parseable and broadly plausible, but they do not replace source documentation or an independent metric-level parity test.
+
