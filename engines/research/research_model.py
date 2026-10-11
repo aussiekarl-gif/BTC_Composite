@@ -2032,6 +2032,37 @@ def apply_below_200wma_carry_allocator(
     return replay_df, summary
 
 
+def bottom_challenger_sizing_weight(base_weight, event_multiplier, zone_active, event_name):
+    """Apply staged front-loading only for a live exceptional-zone event.
+
+    Recovery confirmations are informational and must never front-load the
+    budget. The base weight remains the sizing weight when the zone is inactive
+    or the event is missing/unknown.
+    """
+    try:
+        base = float(base_weight)
+    except (TypeError, ValueError):
+        base = 1.0
+    if not np.isfinite(base):
+        base = 1.0
+    base = max(0.0, base)
+
+    eligible_events = {"INITIAL EXCEPTIONAL ZONE", "LOWER CAPITULATION STAGE"}
+    try:
+        event = float(event_multiplier)
+    except (TypeError, ValueError):
+        event = np.nan
+
+    if (
+        bool(zone_active)
+        and str(event_name).strip().upper() in eligible_events
+        and np.isfinite(event)
+        and event > 0
+    ):
+        return max(base, event)
+    return base
+
+
 def apply_bottom_challenger_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGENT_DCA_BUDGET_AUD, fee_pct=0.0):
     """Replay frozen R2 with the staged challenger multiplier only on event weeks."""
     if result_df.empty:
@@ -2039,8 +2070,13 @@ def apply_bottom_challenger_allocator(result_df, total_budget_aud=DEFAULT_INTELL
     x = result_df.copy()
     base = pd.to_numeric(x["dca_multiplier"], errors="coerce").fillna(1.0)
     event = pd.to_numeric(x.get("bottom_challenger_event_multiplier"), errors="coerce")
+    zone = x.get("bottom_challenger_exceptional_zone", pd.Series(False, index=x.index)).fillna(False).astype(bool)
+    names = x.get("bottom_challenger_event", pd.Series("NONE", index=x.index)).fillna("NONE")
     x["r2_dca_multiplier"] = base
-    x["dca_multiplier"] = np.where(event.notna(), np.maximum(base, event), base)
+    x["dca_multiplier"] = [
+        bottom_challenger_sizing_weight(b, e, z, n)
+        for b, e, z, n in zip(base, event, zone, names)
+    ]
     x["challenger_multiplier_applied"] = x["dca_multiplier"]
     return apply_causal_budget_allocator(x, total_budget_aud=total_budget_aud, fee_pct=fee_pct)
 
@@ -2071,7 +2107,12 @@ def apply_three_pillar_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGENT
     # full paced runway to the final execution. Only a newly staged exceptional
     # bottom event is allowed to front-load at its explicit 3x/4x/3x weight.
     timed = np.minimum(base, 1.0)
-    combined = np.where(event.notna(), np.maximum(timed, event), timed)
+    zone = x.get("bottom_challenger_exceptional_zone", pd.Series(False, index=x.index)).fillna(False).astype(bool)
+    names = x.get("bottom_challenger_event", pd.Series("NONE", index=x.index)).fillna("NONE")
+    combined = [
+        bottom_challenger_sizing_weight(b, e, z, n)
+        for b, e, z, n in zip(timed, event, zone, names)
+    ]
     x["r2_dca_multiplier"] = base
     x["days_since_previous_halving"] = days.values
     x["halving_accumulation_zone"] = in_zone.values
