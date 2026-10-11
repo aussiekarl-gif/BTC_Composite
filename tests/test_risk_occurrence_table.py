@@ -30,7 +30,7 @@ class RiskOccurrenceTableTests(unittest.TestCase):
         self.assertEqual(int(by_label.loc["0.000 (floor)", "Weeks"]), 1)
         self.assertEqual(int(by_label.loc["1.000 (cap)", "Weeks"]), 1)
         self.assertEqual(int(by_label.loc["0.01–0.02", "Weeks"]), 1)
-        self.assertEqual(int(by_label.loc["0.80–1.00)", "Weeks"]), 1)
+        self.assertEqual(int(by_label.loc["(0.80, 1.00)", "Weeks"]), 1)
 
 
 if __name__ == "__main__":
