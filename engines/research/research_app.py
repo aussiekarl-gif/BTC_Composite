@@ -1030,11 +1030,26 @@ elif mode == "DCA Today":
     # Exceptional Bottom Zone is currently active. A carried-forward recovery
     # event can remain visible for context, but must not trigger a 3x/4x buy
     # when the dashboard says the zone is inactive.
-    challenger_weight = _model.bottom_challenger_sizing_weight(
-        paced_risk_weight,
-        current_challenger_event_mult,
-        current_challenger_zone,
-        current_challenger_event,
+    # Keep the live UI resilient if a deployment has an older cached
+    # research_model module. Only a live exceptional-zone entry event may
+    # front-load; recovery/unknown events fall back to the paced risk weight.
+    _eligible_challenger_events = {"INITIAL EXCEPTIONAL ZONE", "LOWER CAPITULATION STAGE"}
+    _zone_is_active = (
+        False if pd.isna(current_challenger_zone) else bool(current_challenger_zone)
+    )
+    try:
+        _event_multiplier = float(current_challenger_event_mult)
+    except (TypeError, ValueError):
+        _event_multiplier = float("nan")
+    _event_is_eligible = (
+        _zone_is_active
+        and str(current_challenger_event).strip().upper() in _eligible_challenger_events
+        and np.isfinite(_event_multiplier)
+        and _event_multiplier > 0
+    )
+    challenger_weight = (
+        max(paced_risk_weight, _event_multiplier)
+        if _event_is_eligible else paced_risk_weight
     )
     challenger_recommended_buy = min(
         deployable_before_review,
