@@ -1030,17 +1030,11 @@ elif mode == "DCA Today":
     # Exceptional Bottom Zone is currently active. A carried-forward recovery
     # event can remain visible for context, but must not trigger a 3x/4x buy
     # when the dashboard says the zone is inactive.
-    challenger_event_eligible = (
-        current_challenger_zone
-        and np.isfinite(current_challenger_event_mult)
-        and current_challenger_event in {
-            "INITIAL EXCEPTIONAL ZONE",
-            "LOWER CAPITULATION STAGE",
-        }
-    )
-    challenger_weight = (
-        max(paced_risk_weight, current_challenger_event_mult)
-        if challenger_event_eligible else paced_risk_weight
+    challenger_weight = _model.bottom_challenger_sizing_weight(
+        paced_risk_weight,
+        current_challenger_event_mult,
+        current_challenger_zone,
+        current_challenger_event,
     )
     challenger_recommended_buy = min(
         deployable_before_review,
