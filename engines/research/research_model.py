@@ -2053,8 +2053,13 @@ def bottom_challenger_sizing_weight(base_weight, event_multiplier, zone_active, 
     except (TypeError, ValueError):
         event = np.nan
 
+    try:
+        active_zone = False if pd.isna(zone_active) else bool(zone_active)
+    except (TypeError, ValueError):
+        active_zone = False
+
     if (
-        bool(zone_active)
+        active_zone
         and str(event_name).strip().upper() in eligible_events
         and np.isfinite(event)
         and event > 0
