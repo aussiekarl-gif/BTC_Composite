@@ -41,6 +41,12 @@ class BottomChallengerSizingTests(unittest.TestCase):
             0.9,
         )
 
+    def test_missing_zone_state_is_treated_as_inactive(self):
+        self.assertEqual(
+            bottom_challenger_sizing_weight(1.0, 3.0, math.nan, "INITIAL EXCEPTIONAL ZONE"),
+            1.0,
+        )
+
     def test_event_never_reduces_base_weight(self):
         self.assertEqual(
             bottom_challenger_sizing_weight(1.2, 3.0, True, "INITIAL EXCEPTIONAL ZONE"),
