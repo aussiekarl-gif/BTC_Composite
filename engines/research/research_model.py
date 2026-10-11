@@ -450,9 +450,10 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
 
 
 def risk_occurrence_table(risk_series):
-    """Return simple weekly risk buckets for the DCA Today visibility chart."""
+    """Return weekly risk buckets; percentages account for every numeric observation."""
     s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
     bins = [
+        (float("-inf"), 0.00, "<0.00 (out of range)"),
         (0.00, 0.01, "0.00–0.01"),
         (0.01, 0.02, "0.01–0.02"),
         (0.02, 0.05, "0.02–0.05"),
@@ -461,13 +462,17 @@ def risk_occurrence_table(risk_series):
         (0.20, 0.40, "0.20–0.40"),
         (0.40, 0.60, "0.40–0.60"),
         (0.60, 0.80, "0.60–0.80"),
-        (0.80, 1.000001, "0.80–1.00"),
+        (0.80, float("inf"), "0.80–1.00+"),
     ]
     rows = []
-    total = max(len(s), 1)
+    total = len(s)
     for lo, hi, label in bins:
         count = int(((s >= lo) & (s < hi)).sum())
-        rows.append({"Risk range": label, "Weeks": count, "Percent": 100.0 * count / total})
+        rows.append({
+            "Risk range": label,
+            "Weeks": count,
+            "Percent": 100.0 * count / total if total else 0.0,
+        })
     return pd.DataFrame(rows)
 
 
