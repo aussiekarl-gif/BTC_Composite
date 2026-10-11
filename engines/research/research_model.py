@@ -450,11 +450,16 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
 
 
 def risk_occurrence_table(risk_series):
-    """Return weekly risk buckets; percentages account for every numeric observation."""
+    """Return weekly risk buckets with exact clipped endpoints shown separately.
+
+    Risk scores are clipped to [0, 1] by the model. Separating exact 0 and 1
+    makes that saturation visible instead of hiding it inside the edge buckets.
+    """
     s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
+    # Count infinities as out-of-range too, so every numeric observation is accounted for.
     bins = [
-        (float("-inf"), 0.00, "<0.00 (out of range)"),
-        (0.00, 0.01, "0.00–0.01"),
+        (float("-inf"), 0.0, "<0.00 (invalid)"),
+        (0.0, 0.01, "(0.00, 0.01)"),
         (0.01, 0.02, "0.01–0.02"),
         (0.02, 0.05, "0.02–0.05"),
         (0.05, 0.10, "0.05–0.10"),
@@ -462,12 +467,23 @@ def risk_occurrence_table(risk_series):
         (0.20, 0.40, "0.20–0.40"),
         (0.40, 0.60, "0.40–0.60"),
         (0.60, 0.80, "0.60–0.80"),
-        (0.80, float("inf"), "0.80–1.00+"),
+        (0.80, 1.0, "(0.80, 1.00)"),
+        (1.0, float("inf"), ">1.00 (invalid)"),
     ]
     rows = []
     total = len(s)
     for lo, hi, label in bins:
         count = int(((s >= lo) & (s < hi)).sum())
+        rows.append({
+            "Risk range": label,
+            "Weeks": count,
+            "Percent": 100.0 * count / total if total else 0.0,
+        })
+    # Exact floor/cap are explicit buckets, not blended with near-end values.
+    for label, count in [
+        ("0.000 (floor)", int((s == 0.0).sum())),
+        ("1.000 (cap)", int((s == 1.0).sum())),
+    ]:
         rows.append({
             "Risk range": label,
             "Weeks": count,
