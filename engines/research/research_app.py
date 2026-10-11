@@ -1560,30 +1560,42 @@ elif mode == "DCA Today":
 
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(rarity_source)
+    # Report endpoint saturation separately: exact 0/1 scores are clipped by
+    # the Power Law score transform and should not be mistaken for near-end scores.
+    occurrence_counts = occurrence.set_index("Risk range")
+    floor_pct = float(occurrence_counts.loc["0.000 (floor)", "Percent"])
+    cap_pct = float(occurrence_counts.loc["1.000 (cap)", "Percent"])
     fig_occurrence = go.Figure()
     fig_occurrence.add_bar(
         x=occurrence["Risk range"],
         y=occurrence["Percent"],
         customdata=occurrence[["Weeks"]],
+        marker_color=[
+            "#f0b44d" if label in ("0.000 (floor)", "1.000 (cap)")
+            else "#18a7e0" for label in occurrence["Risk range"]
+        ],
         hovertemplate=(
-            "Risk %{x}<br>%{y:.1f}% of weekly observations"
+            "%{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
             "<extra></extra>"
         ),
     )
     fig_occurrence.update_layout(
-        xaxis_title="BTC Risk Range",
+        xaxis_title="BTC Risk Score (exact floor/cap separated)",
         yaxis_title="Historical Weekly Frequency (%)",
-        margin=dict(l=20, r=20, t=20, b=20),
-        height=380,
+        margin=dict(l=20, r=20, t=20, b=65),
+        height=420,
+        xaxis_tickangle=-35,
+        showlegend=False,
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current risk {current_risk:.3f}. This chart is descriptive: it shows the percentage "
-        "of weekly observations that fell inside each Risk Score range. It does NOT assign "
-        "Opportunity Rarity to individual buckets. Opportunity Rarity is calculated separately "
-        "as how often comparable cycle-phase observations were at or below today's risk "
-        f"(currently: {rarity['rarity_label']})."
+        f"Current risk {current_risk:.3f}. Exact clipped endpoints: floor 0.000 = "
+        f"{floor_pct:.1f}% of weeks; cap 1.000 = {cap_pct:.1f}%. "
+        "These are separated from scores merely near 0 or 1 so endpoint saturation is visible. "
+        "Any out-of-range observations are labelled invalid. This distribution is descriptive "
+        "and does not define Opportunity Rarity, which is calculated separately from comparable "
+        f"cycle-phase observations (currently: {rarity['rarity_label']})."
     )
 
     with st.expander("Chance of a lower-risk entry — current + previous 2 cycles", expanded=False):
