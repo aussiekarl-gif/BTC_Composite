@@ -805,7 +805,11 @@ def build_free_indicator_cache(start_date, end_date):
     if len(idx) == 0:
         return pd.DataFrame(), status_rows
 
-    raw = pd.DataFrame(index=idx.sort_values())
+    # Normalize to one calendar-day row per UTC date before rolling indicators.
+    # Otherwise a missing day could make a 365-row window span more than 365 days.
+    idx = pd.DatetimeIndex(idx).normalize().unique().sort_values()
+    idx = pd.date_range(start=idx.min(), end=idx.max(), freq="D", tz=idx.tz)
+    raw = pd.DataFrame(index=idx)
     for k, x in cm.items():
         if x is not None and not x.empty:
             raw[k] = x.reindex(raw.index)
