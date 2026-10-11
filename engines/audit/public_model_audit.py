@@ -816,21 +816,26 @@ def build_free_indicator_cache(start_date, end_date):
     for c in raw.columns:
         out[f"cm__{c}"] = pd.to_numeric(raw[c], errors="coerce")
 
-    # Puell Multiple: actual native issuance * price, divided by its trailing 365-day mean.
+    # Puell Multiple: native issuance * price, divided by its trailing 365-day mean.
+    # Prefer Coin Metrics' dedicated total-issuance series. Only fall back to
+    # miner revenue less fees, then circulating-supply differences, if needed.
     issuance = pd.Series(np.nan, index=raw.index, dtype=float)
     issuance_source = None
-    # Coin Metrics defines RevNtv as miner revenue = newly issued BTC + transaction fees.
-    # Therefore RevNtv - FeeTotNtv isolates actual daily native issuance.
-    if {"RevNtv", "FeeTotNtv"}.issubset(raw.columns):
+    if "IssTotNtv" in raw.columns:
+        x = pd.to_numeric(raw["IssTotNtv"], errors="coerce").clip(lower=0)
+        if x.notna().sum() >= 365:
+            issuance = x
+            issuance_source = "IssTotNtv"
+    if issuance_source is None and {"RevNtv", "FeeTotNtv"}.issubset(raw.columns):
         x = (pd.to_numeric(raw["RevNtv"], errors="coerce") - pd.to_numeric(raw["FeeTotNtv"], errors="coerce")).clip(lower=0)
         if x.notna().sum() >= 365:
             issuance = x
-            issuance_source = "RevNtv - FeeTotNtv"
+            issuance_source = "RevNtv - FeeTotNtv fallback"
     if issuance_source is None and "SplyCur" in raw:
         x = pd.to_numeric(raw["SplyCur"], errors="coerce").diff().clip(lower=0)
         if x.notna().sum() >= 365:
             issuance = x
-            issuance_source = "SplyCur.diff() proxy"
+            issuance_source = "SplyCur.diff() proxy fallback"
 
     if issuance_source is not None and "PriceUSD" in raw:
         issuance_usd = issuance * pd.to_numeric(raw["PriceUSD"], errors="coerce")
