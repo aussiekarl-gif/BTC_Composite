@@ -1026,9 +1026,21 @@ elif mode == "DCA Today":
         HALVING_ACCUMULATION_START_DAY <= current_halving_clock_days <= HALVING_ACCUMULATION_END_DAY
     )
     halving_timing_weight = paced_risk_weight
+    # Safety guard: event multipliers may front-load only while the
+    # Exceptional Bottom Zone is currently active. A carried-forward recovery
+    # event can remain visible for context, but must not trigger a 3x/4x buy
+    # when the dashboard says the zone is inactive.
+    challenger_event_eligible = (
+        current_challenger_zone
+        and np.isfinite(current_challenger_event_mult)
+        and current_challenger_event in {
+            "INITIAL EXCEPTIONAL ZONE",
+            "LOWER CAPITULATION STAGE",
+        }
+    )
     challenger_weight = (
         max(paced_risk_weight, current_challenger_event_mult)
-        if np.isfinite(current_challenger_event_mult) else paced_risk_weight
+        if challenger_event_eligible else paced_risk_weight
     )
     challenger_recommended_buy = min(
         deployable_before_review,
