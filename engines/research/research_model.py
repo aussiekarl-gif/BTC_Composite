@@ -113,11 +113,11 @@ SMART_DCA_HIGH_RISK_WEIGHT = 0.80
 
 # V5.9 Research: deliberately moderate, neutral-centred sizing curve.
 # Research candidate is intentionally simple: 2.0x at risk 0, 1.0x at 0.5,
-# and 0.8x at risk 1.0, with linear interpolation between anchors.
+# and 0.6x at risk 1.0, with linear interpolation between anchors.
 SMART_DCA_POINTS = [
     (0.00, 2.00),
     (0.50, 1.00),
-    (1.00, 0.80),
+    (1.00, 0.60),
 ]
 
 RESEARCH_PL_REFIT_DAYS = 91
@@ -127,7 +127,7 @@ RESEARCH_PL_HISTORY_START = pd.Timestamp("2012-01-01", tz="UTC")
 # V5.9 R2 Bottom Zone Challenger — research-only staged deployment overlay.
 BOTTOM_CHALLENGER_THRESHOLD = 0.85
 BOTTOM_CHALLENGER_PRICE_POSITION_MAX = 0.20
-BOTTOM_CHALLENGER_REQUIRED_CONFIRMING_CATEGORIES = 2
+BOTTOM_CHALLENGER_REQUIRED_CONFIRMING_CATEGORIES = 3
 BOTTOM_CHALLENGER_STEP_DOWN = 0.15
 BOTTOM_CHALLENGER_INITIAL_MULT = 3.00
 BOTTOM_CHALLENGER_STEP_MULT = 4.00
@@ -136,8 +136,8 @@ BOTTOM_CHALLENGER_RECENT_WEEKS = 26
 
 # V5.9 three-pillar research overlay. Deliberately broad causal timing zone,
 # based only on elapsed days since the previous known halving (no future-date look-ahead).
-HALVING_ACCUMULATION_START_DAY = 800
-HALVING_ACCUMULATION_END_DAY = 1000
+HALVING_ACCUMULATION_START_DAY = 600
+HALVING_ACCUMULATION_END_DAY = 1200
 # Retained for compatibility with older exports. The halving zone is now
 # context-only and applies no sizing floor.
 HALVING_ACCUMULATION_FLOOR_MULT = 1.00
@@ -181,7 +181,6 @@ def interpolate(points, x):
             return y1 + fraction * (y2 - y1)
 
     return points[-1][1]
-
 
 
 BTC_HALVING_DATES = [
@@ -447,8 +446,6 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
     }
 
 
-
-
 def risk_occurrence_table(risk_series):
     """Return simple weekly risk buckets for the DCA Today visibility chart."""
     s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
@@ -469,11 +466,6 @@ def risk_occurrence_table(risk_series):
         count = int(((s >= lo) & (s < hi)).sum())
         rows.append({"Risk range": label, "Weeks": count, "Percent": 100.0 * count / total})
     return pd.DataFrame(rows)
-
-
-
-
-
 
 
 # ================================================================
@@ -842,7 +834,6 @@ def walk_forward_power_law(data, cheap=-0.10, expensive=0.20, min_weeks=52, refi
     return scores, fair, residuals, slopes, intercepts
 
 
-
 def continuous_pl_display_risk(price, fair_value, cheap=-0.10, expensive=0.20):
     """Continuous valuation-risk display that reserves 0.000 for a zero BTC price.
 
@@ -912,7 +903,7 @@ def add_cycle_context_research(result, params):
       * bottom_confidence_score -- recent bottom evidence + trend confirmation (0..100)
 
     Bottom Confidence is an evidence score, NOT a calibrated probability that the
-    exact cycle low is in.  Every input is based only on data available on or
+    exact cycle low is in. Every input is based only on data available on or
     before each timestamp.
     """
     out = result.copy()
@@ -1061,7 +1052,7 @@ def add_bottom_zone_challenger(result):
     """Add a causal staged Exceptional Bottom Zone research overlay.
 
     Frozen R2 is untouched. Weekly signals require deep Power-Law valuation,
-    BTC in the lowest 20% of its trailing 52-week price range, and at least two
+    BTC in the lowest 20% of its trailing 52-week price range, and at least three
     additional strongly-stressed categories. Correlated indicators are grouped.
 
     Staging: 3x on initial exceptional entry; 4x after each new >=15% lower price
@@ -1199,6 +1190,7 @@ def add_bottom_zone_challenger(result):
     out["bottom_challenger_week_multiplier"] = weekly["bottom_challenger_event_multiplier"].reindex(out.index, method="ffill")
     return out
 
+
 def power_law_score(date, price, cheap=-0.10, expensive=0.20):
     """
     Power-law residual score.
@@ -1229,8 +1221,6 @@ def power_law_score(date, price, cheap=-0.10, expensive=0.20):
     score = clamp(score, 0.0, 1.0)
 
     return score, fair_value
-
-
 
 
 def _adaptive_ma(close, er_period=20, fast=2, slow=30):
@@ -1317,6 +1307,20 @@ def _expanding_percentile(series, min_periods=180, rolling_window=1460):
         out[i] = (less + 0.5 * equal) / len(hist)
 
     return pd.Series(out, index=series.index)
+
+
+def drawdown_severity_multiplier(price, recent_peak):
+    """Extra research buying weight when BTC is materially below its recent peak."""
+    try:
+        price = float(price)
+        recent_peak = float(recent_peak)
+    except (TypeError, ValueError):
+        return 0.0
+    if not np.isfinite(price) or not np.isfinite(recent_peak) or recent_peak <= 0:
+        return 0.0
+    if price <= (0.50 * recent_peak):
+        return 0.50
+    return 0.0
 
 
 def add_risk_indicators(data, risk_model, params):
@@ -1602,6 +1606,7 @@ def add_risk_indicators(data, risk_model, params):
     result["drawdown_365"] = (
         result["price"] / rolling_peak_365.replace(0, np.nan) - 1.0
     ).clip(-1.0, 0.0)
+    result["recent_peak_365"] = rolling_peak_365
 
     # A drawdown reduces risk gradually, but does not make an expensive market
     # instantly "ultra-cheap".
@@ -1792,20 +1797,6 @@ def select_execution_dates(df, frequency, day_of_week):
 # Portfolio Engine
 # ================================================================
 
-
-
-
-
-
-
-# ================================================================
-
-
-
-
-
-
-
 def simulate_dca_backtest(
     df_full, params, base_dca_aud, dca_frequency, strategy_mode, risk_curve=None
 ):
@@ -1840,6 +1831,8 @@ def simulate_dca_backtest(
             multiplier, contribution, signal = 1.0, float(base_dca_aud), "FIXED DCA"
         else:
             multiplier = float(interpolate(risk_curve, risk)) if np.isfinite(risk) else 1.0
+            recent_peak = float(row.get("recent_peak_365", price_usd))
+            multiplier += drawdown_severity_multiplier(price_usd, recent_peak)
             contribution = float(base_dca_aud) * multiplier
             signal = "SCALED DCA"
         fee = contribution * float(params.get("fee_pct", 0.0))
@@ -1865,6 +1858,7 @@ def simulate_dca_backtest(
             "bottom_challenger_category_votes": row.get("bottom_challenger_category_votes", 0),
             "bottom_challenger_price_position": row.get("bottom_challenger_price_position", np.nan),
             "weekly_ma200_strict_prior": row.get("weekly_ma200_strict_prior", np.nan),
+            "drawdown_severity_multiplier": drawdown_severity_multiplier(price_usd, float(row.get("recent_peak_365", price_usd))),
             "below_200wma": bool(
                 pd.notna(row.get("weekly_ma200_strict_prior", np.nan))
                 and price_usd < float(row.get("weekly_ma200_strict_prior"))
@@ -1936,8 +1930,7 @@ def apply_causal_budget_allocator(result_df, total_budget_aud=DEFAULT_INTELLIGEN
     return replay_df, {"budget_aud": float(total_budget_aud), "total_invested_aud": float(final["cumulative_invested_aud"]),
                        "btc_held": float(final["btc_held"]), "btc_value_aud": float(final["btc_value_aud"]),
                        "avg_cost_aud": float(final["avg_cost_aud"]), "roi_pct": float(final["roi_pct"]),
-                       "fees_aud": float(final["cumulative_fees_aud"])}
-
+                       "fees_aud": float(final["cumulative_fees_aud"]) }
 
 
 def apply_below_200wma_carry_allocator(
@@ -2213,10 +2206,6 @@ def apply_equal_capital_allocator(
     return replay_df, summary
 
 
-
-
-
-
 def validate_smart_dca_recent_period(
     df_full,
     params,
@@ -2277,14 +2266,6 @@ def validate_smart_dca_recent_period(
 # ================================================================
 
 
-
-
-
 # ================================================================
 # Walk-forward Optimisation (V3.6)
 # ================================================================
-
-
-
-
-
