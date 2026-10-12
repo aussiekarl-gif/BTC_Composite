@@ -1561,9 +1561,20 @@ elif mode == "DCA Today":
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(rarity_source)
     fig_occurrence = go.Figure()
+    # Highlight the bucket that contains today's risk (same edges as risk_occurrence_table).
+    _bucket_edges = [0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80]
+    try:
+        _cur = float(current_risk)
+        _cur_idx = sum(_cur >= e for e in _bucket_edges) if _cur == _cur else -1
+    except (TypeError, ValueError):
+        _cur_idx = -1
+    _bar_colors = [
+        "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
+    ]
     fig_occurrence.add_bar(
         x=occurrence["Risk range"],
         y=occurrence["Percent"],
+        marker_color=_bar_colors,
         customdata=occurrence[["Weeks"]],
         hovertemplate=(
             "Risk %{x}<br>%{y:.1f}% of weekly observations"
@@ -1579,7 +1590,7 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current risk {current_risk:.3f}. This chart is descriptive: it shows the percentage "
+        f"Current risk {current_risk:.3f} (orange bar). This chart is descriptive: it shows the percentage "
         "of weekly observations that fell inside each Risk Score range. It does NOT assign "
         "Opportunity Rarity to individual buckets. Opportunity Rarity is calculated separately "
         "as how often comparable cycle-phase observations were at or below today's risk "
