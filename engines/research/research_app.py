@@ -1000,6 +1000,17 @@ elif mode == "DCA Today":
     else:
         # Safe fallback: use observations in their existing chronological order.
         rarity_source = valid_today["risk_score"].dropna()
+    # Display-only: weekly history of the continuous valuation risk (never clamps at 0.000).
+    # Sizing, Opportunity Rarity and the multiplier keep using the frozen R2 score above.
+    _display_hist = pd.Series(dtype=float)
+    if "continuous_valuation_risk" in valid_today.columns:
+        if isinstance(valid_today.index, pd.DatetimeIndex):
+            _display_hist = valid_today["continuous_valuation_risk"].resample("W-MON").last().dropna()
+        elif "date" in valid_today.columns:
+            _display_hist = valid_today.set_index("date")["continuous_valuation_risk"].resample("W-MON").last().dropna()
+    display_source = _display_hist if len(_display_hist) >= 10 else rarity_source
+    _display_now = current_display_risk if np.isfinite(current_display_risk) else current_risk
+    _display_txt = format_continuous_risk(_display_now, current_price_usd)
     rarity = opportunity_rarity_from_history(rarity_source, current_risk)
     # V5.9 Research: rarity is decision-support context only. Risk Score alone controls sizing.
     effective_weight = risk_weight
@@ -1183,7 +1194,7 @@ elif mode == "DCA Today":
             <div>
               <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Ordinary sizing cannot exceed the paced allowance. Only a newly staged Exceptional Bottom event can front-load capital.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
-              <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>R2 sizing risk {current_risk:.3f} → {risk_weight:.2f}× base multiplier</small></div></div>
+              <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>Valuation risk {_display_txt} • R2 sizing score {current_risk:.3f} → {risk_weight:.2f}× base multiplier</small></div></div>
               <div class="v59-reason"><span class="{bottom_reason_cls}">{bottom_reason_icon}</span><div><b>{bottom_reason_title}</b><small>{bottom_reason_sub}</small></div></div>
             </div>
           </div>
@@ -1324,7 +1335,7 @@ elif mode == "DCA Today":
     )
 
     st.info(
-        f"Frozen R2: Risk {current_risk:.3f} → {risk_weight:.2f}×. "
+        f"Frozen R2: sizing score {current_risk:.3f} (valuation risk {_display_txt}) → {risk_weight:.2f}×. "
         f"Three-Pillar Challenger today: {challenger_weight:.2f}×"
         + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event this week)")
         + ". Production V5.8.2 and the R2 control are unchanged."
@@ -1559,12 +1570,12 @@ elif mode == "DCA Today":
     )
 
     st.subheader("Historical Weekly Risk Distribution")
-    occurrence = risk_occurrence_table(rarity_source)
+    occurrence = risk_occurrence_table(display_source)
     fig_occurrence = go.Figure()
     # Highlight the bucket that contains today's risk (same edges as risk_occurrence_table).
     _bucket_edges = [0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80]
     try:
-        _cur = float(current_risk)
+        _cur = float(_display_now)
         _cur_idx = sum(_cur >= e for e in _bucket_edges) if _cur == _cur else -1
     except (TypeError, ValueError):
         _cur_idx = -1
@@ -1590,8 +1601,9 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current risk {current_risk:.3f} (orange bar). This chart is descriptive: it shows the percentage "
-        "of weekly observations that fell inside each Risk Score range. It does NOT assign "
+        f"Current valuation risk {_display_txt} (orange bar). This chart is descriptive: it shows the percentage "
+        "of weekly observations that fell inside each continuous valuation-risk range. The R2 sizing score "
+        f"({current_risk:.3f}) is separate and still controls the DCA multiplier. It does NOT assign "
         "Opportunity Rarity to individual buckets. Opportunity Rarity is calculated separately "
         "as how often comparable cycle-phase observations were at or below today's risk "
         f"(currently: {rarity['rarity_label']})."
