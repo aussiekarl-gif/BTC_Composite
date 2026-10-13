@@ -1,0 +1,39 @@
+name: Real-History Cycle Backtest
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/run_cycle_backtest.py"
+      - "engines/research/cycle_backtest.py"
+      - "engines/shared/central_data.py"
+      - ".github/workflows/real-history-cycle-backtest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-history-backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pandas numpy requests
+      - name: Compile research backtest
+        run: python -m py_compile engines/research/run_cycle_backtest.py engines/research/cycle_backtest.py engines/shared/central_data.py
+      - name: Run full historical backtest
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python engines/research/run_cycle_backtest.py | tee cycle-backtest-results.json
+      - name: Upload numerical results
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-cycle-backtest-results
+          path: cycle-backtest-results.json
+          if-no-files-found: error
