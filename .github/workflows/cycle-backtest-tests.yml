@@ -1,0 +1,30 @@
+name: Research Cycle Backtest Tests
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/cycle_backtest.py"
+      - "tests/test_cycle_backtest.py"
+      - ".github/workflows/cycle-backtest-tests.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "engines/research/cycle_backtest.py"
+      - "tests/test_cycle_backtest.py"
+      - ".github/workflows/cycle-backtest-tests.yml"
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pandas numpy
+      - name: Run deterministic cycle backtest tests
+        run: python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
