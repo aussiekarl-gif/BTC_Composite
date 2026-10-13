@@ -2,7 +2,10 @@ import unittest
 
 import pandas as pd
 
-from engines.research.cycle_backtest import simulate_cycle_strategy
+from engines.research.cycle_backtest import (
+    simulate_buy_and_hold_benchmark,
+    simulate_cycle_strategy,
+)
 
 
 class CycleBacktestTests(unittest.TestCase):
@@ -50,6 +53,23 @@ class CycleBacktestTests(unittest.TestCase):
         self.assertTrue((frame["cash_aud"].dropna() >= -1e-9).all())
         self.assertLessEqual(frame["buy_gross_aud"].sum(), 1000)
         self.assertEqual(summary["observations"], 3)
+
+    def test_buy_and_hold_benchmark_uses_same_initial_capital(self):
+        result = simulate_buy_and_hold_benchmark(
+            self.data([100, 150, 200], [0.5, 0.5, 0.5]),
+            starting_capital_aud=1000, fee_pct=0,
+        )
+        self.assertAlmostEqual(result["btc_held"], 10.0)
+        self.assertAlmostEqual(result["ending_equity_aud"], 2000.0)
+        self.assertAlmostEqual(result["total_pnl_aud"], 1000.0)
+
+    def test_sell_threshold_boundary_does_not_create_zero_size_sell(self):
+        frame, _ = simulate_cycle_strategy(
+            self.data([100, 100], [0.0, 0.75]),
+            starting_capital_aud=1000, max_buy_pct_period=0.2,
+            max_sell_pct_period=0.5, fee_pct=0,
+        )
+        self.assertEqual(frame.iloc[1]["action"], "HOLD")
 
     def test_empty_input(self):
         empty = pd.DataFrame(columns=["btc_price_aud", "risk_score"])
