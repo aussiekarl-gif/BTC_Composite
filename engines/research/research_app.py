@@ -12,6 +12,7 @@ from engines.shared.portfolio_store import load_portfolio, save_portfolio
 from engines.research.cycle_backtest import (
     simulate_buy_and_hold_benchmark,
     simulate_cycle_strategy,
+    simulate_next_observation_strategy,
     walk_forward_parameter_sweep,
 )
 
