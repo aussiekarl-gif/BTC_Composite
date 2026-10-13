@@ -90,7 +90,7 @@ def main():
     # when eligible; skipped installments remain cash. This avoids using the
     # total number of future eligible signals to size purchases (lookahead).
     installment = CAPITAL / n
-    allocations = np.full(n, installment
+    allocations = np.full(n, installment)
     rows.append(
         summary(
             "fixed_DCA_equal_installment_each_valid_observation",
