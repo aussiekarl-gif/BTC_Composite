@@ -95,6 +95,19 @@ class CycleBacktestTests(unittest.TestCase):
         self.assertGreater(benchmark["observations"], 0)
         self.assertTrue((leaderboard["train_return_pct"].diff().dropna() <= 1e-9).all())
 
+    def test_next_observation_execution_uses_previous_risk_signal(self):
+        data = self.data([100, 80, 70], [0.0, 0.0, 0.9])
+        frame, summary = simulate_next_observation_strategy(
+            data, starting_capital_aud=1000, max_buy_pct_period=0.2,
+            max_sell_pct_period=0.5, fee_pct=0, min_trade_aud=1,
+        )
+        self.assertEqual(frame.iloc[0]["action"], "SKIP_INVALID_INPUT")
+        self.assertEqual(frame.iloc[1]["action"], "BUY")
+        # The high risk on the final row is only a signal for the next price,
+        # so it must not sell at the final row's close.
+        self.assertEqual(frame.iloc[2]["action"], "BUY")
+        self.assertAlmostEqual(frame.iloc[1]["risk_score"], 0.0)
+
     def test_empty_input(self):
         empty = pd.DataFrame(columns=["btc_price_aud", "risk_score"])
         frame, summary = simulate_cycle_strategy(empty)
