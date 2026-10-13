@@ -98,7 +98,7 @@ def simulate_cycle_strategy(
                 lots.append([bought, buy_gross])
                 action = "BUY"
 
-        elif risk >= sell_threshold and btc > 0:
+        elif risk > sell_threshold and btc > 0:
             strength = (risk - sell_threshold) / max(1.0 - sell_threshold, 1e-12)
             fraction = max_sell_pct_period * strength
             sold = btc * fraction
@@ -166,3 +166,37 @@ def simulate_cycle_strategy(
         "observations": int(len(result)),
     }
     return result, summary
+
+
+def simulate_buy_and_hold_benchmark(data, starting_capital_aud=500_000.0, fee_pct=0.001):
+    """Buy BTC once at the first valid observation and hold to the last valid price."""
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("data must be a pandas DataFrame")
+    required = {"btc_price_aud"}
+    missing = required.difference(data.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+    if not np.isfinite(starting_capital_aud) or starting_capital_aud <= 0:
+        raise ValueError("starting_capital_aud must be finite and positive")
+    if not (0 <= fee_pct < 1):
+        raise ValueError("fee_pct must be in [0, 1)")
+    prices = pd.to_numeric(data["btc_price_aud"], errors="coerce")
+    prices = prices[np.isfinite(prices) & (prices > 0)]
+    if prices.empty:
+        return {}
+    first_price = float(prices.iloc[0])
+    final_price = float(prices.iloc[-1])
+    fee = float(starting_capital_aud) * fee_pct
+    btc_bought = (float(starting_capital_aud) - fee) / first_price
+    ending_value = btc_bought * final_price
+    return {
+        "starting_capital_aud": float(starting_capital_aud),
+        "entry_price_aud": first_price,
+        "exit_mark_price_aud": final_price,
+        "btc_held": float(btc_bought),
+        "fees_aud": float(fee),
+        "ending_equity_aud": float(ending_value),
+        "total_pnl_aud": float(ending_value - starting_capital_aud),
+        "total_return_pct": float((ending_value / starting_capital_aud - 1) * 100),
+        "observations": int(len(prices)),
+    }
