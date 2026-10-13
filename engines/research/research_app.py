@@ -9,6 +9,12 @@ if str(_REPO_ROOT) not in _sys.path:
 
 from engines.research import research_model as _model
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
+from engines.research.cycle_backtest import (
+    simulate_buy_and_hold_benchmark,
+    simulate_cycle_strategy,
+    simulate_next_observation_strategy,
+    walk_forward_parameter_sweep,
+)
 
 # Preserve the historical UI namespace so the unchanged Streamlit UI behaves
 # exactly as before, including helpers whose names begin with an underscore.
@@ -695,6 +701,51 @@ if mode == "DCA Backtest":
             df_full, params, dca_frequency, capital_target, recent_fraction=0.30,
             risk_curve=smart_dca_curve
         )
+        # Full-cycle buy/sell test uses the same scored historical dates and initial
+        # AUD capital as the benchmark. A transparent 0.10% fee is charged per side.
+        cycle_fee_pct = 0.001
+        cycle_df, cycle_sm = simulate_next_observation_strategy(
+            smart_raw.set_index("date")[["btc_price_aud", "risk_score"]].copy(),
+            starting_capital_aud=capital_target,
+            buy_threshold=DEFAULT_BUY_THRESHOLD,
+            sell_threshold=DEFAULT_SELL_RISK_THRESHOLD,
+            max_buy_pct_period=0.05,
+            max_sell_pct_period=min(DEFAULT_MAX_SELL_PCT_PERIOD, 0.20),
+            fee_pct=cycle_fee_pct,
+            min_trade_aud=DEFAULT_MIN_TRADE_AUD,
+        )
+        buy_hold_sm = simulate_buy_and_hold_benchmark(
+            smart_raw.set_index("date")[["btc_price_aud"]].copy(),
+            starting_capital_aud=capital_target,
+            fee_pct=cycle_fee_pct,
+        )
+        cycle_input = smart_raw.set_index("date")[["btc_price_aud", "risk_score"]].copy()
+        sweep_leaderboard, sweep_winner, holdout_df, holdout_sm, holdout_benchmark = (
+            walk_forward_parameter_sweep(
+                cycle_input,
+                starting_capital_aud=capital_target,
+                fee_pct=cycle_fee_pct,
+                split_fraction=0.70,
+                buy_thresholds=(0.15, 0.25, 0.35),
+                sell_thresholds=(0.65, 0.75, 0.85),
+                max_buy_pct_periods=(0.02, 0.05, 0.10),
+                max_sell_pct_periods=(0.10, 0.20, 0.25),
+                min_trade_aud=DEFAULT_MIN_TRADE_AUD,
+            )
+        )
+        if not holdout_df.empty and holdout_benchmark:
+            holdout_df["buy_hold_equity_aud"] = (
+                (capital_target * (1.0 - cycle_fee_pct))
+                / float(holdout_benchmark["entry_price_aud"])
+            ) * pd.to_numeric(holdout_df["btc_price_aud"], errors="coerce")
+        if not cycle_df.empty and buy_hold_sm:
+            cycle_df["buy_hold_equity_aud"] = (
+                (capital_target * (1.0 - cycle_fee_pct))
+                / float(buy_hold_sm["entry_price_aud"])
+            ) * pd.to_numeric(cycle_df["btc_price_aud"], errors="coerce")
+            cycle_df["buy_hold_equity_aud"] = cycle_df["buy_hold_equity_aud"].fillna(
+                capital_target
+            )
 
     if not plain_sm or not smart_sm or not challenger_sm or not ma200_sm:
         st.error("Not enough historical data for this DCA Backtest.")
@@ -772,6 +823,105 @@ if mode == "DCA Backtest":
         st.metric("Total Value + Cash", f"A${ma200_sm['total_value_including_cash_aud']:,.0f}")
         st.metric("Qualifying Mondays", f"{ma200_sm['eligible_week_count']}")
 
+
+    st.subheader("Full-Cycle Profit Research")
+    st.caption(
+        "Research-only buy/sell simulation versus buy-and-hold, using the same initial AUD "
+        "capital and historical window. Fees are 0.10% per transaction side; spread, slippage "
+        "and tax are not included. Signals use the prior observation's risk score and execute at the current observation's close."
+    )
+    if cycle_sm and buy_hold_sm:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Cycle Strategy Ending Equity", f"A${cycle_sm['ending_equity_aud']:,.0f}")
+        c2.metric(
+            "Cycle Strategy Net P&L", f"A${cycle_sm['total_pnl_aud']:+,.0f}",
+            delta=f"{cycle_sm['total_return_pct']:+.2f}%"
+        )
+        c3.metric("Realised P&L", f"A${cycle_sm['realized_pnl_aud']:+,.0f}")
+        c4.metric("Cash Remaining", f"A${cycle_sm['cash_remaining_aud']:,.0f}")
+        bh1, bh2, bh3, bh4 = st.columns(4)
+        bh1.metric("Buy-and-Hold Ending Equity", f"A${buy_hold_sm['ending_equity_aud']:,.0f}")
+        bh2.metric("Buy-and-Hold Net P&L", f"A${buy_hold_sm['total_pnl_aud']:+,.0f}")
+        bh3.metric("Cycle BTC Held", f"{cycle_sm['btc_held']:.6f}")
+        bh4.metric("Cycle Fees", f"A${cycle_sm['fees_aud']:,.0f}")
+        if not cycle_df.empty:
+            equity_chart = cycle_df.set_index("date")[["equity_aud", "buy_hold_equity_aud"]].rename(
+                columns={"equity_aud": "Risk-triggered buy/sell", "buy_hold_equity_aud": "Buy and hold"}
+            )
+            st.line_chart(equity_chart, y_label="Portfolio equity (AUD)")
+        with st.expander("Full-cycle transaction history", expanded=False):
+            cycle_cols = [
+                "date", "btc_price_aud", "risk_score", "action", "buy_gross_aud",
+                "sell_gross_aud", "fees_aud", "btc_held", "cash_aud", "equity_aud",
+                "realized_pnl_aud", "unrealized_pnl_aud", "total_pnl_aud",
+            ]
+            st.dataframe(cycle_df[[col for col in cycle_cols if col in cycle_df.columns]].tail(300),
+                         width="stretch", hide_index=True)
+            cycle_csv = cycle_df.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download Full-Cycle Research CSV", cycle_csv,
+                file_name="btc_v5_9_full_cycle_profit_research.csv", mime="text/csv"
+            )
+        advantage_aud = cycle_sm["ending_equity_aud"] - buy_hold_sm["ending_equity_aud"]
+        st.info(
+            f"Cycle strategy ending equity is A${advantage_aud:+,.0f} versus buy-and-hold for this window. "
+            "This is a historical result, not evidence of future outperformance; evaluate multiple cycles "
+            "and out-of-sample periods before changing live settings."
+        )
+
+        st.subheader("Chronological Parameter Selection and Holdout Test")
+        st.caption(
+            "The first 70% of dates select parameters from a fixed 81-combination grid. "
+            "The final 30% is evaluated once with fresh starting capital; holdout results do not "
+            "select the parameters. The split is chronological, not random."
+        )
+        if sweep_winner and holdout_sm and holdout_benchmark:
+            split_pos = int(len(cycle_input) * 0.70)
+            st.write(
+                f"**Training window:** {cycle_input.index[0].date()} to "
+                f"{cycle_input.index[split_pos - 1].date()}  "
+                f"**Holdout:** {pd.Timestamp(holdout_df['date'].min()).date()} to {pd.Timestamp(holdout_df['date'].max()).date()}"
+            )
+            p1, p2, p3, p4 = st.columns(4)
+            p1.metric("Holdout Strategy Equity", f"A${holdout_sm['ending_equity_aud']:,.0f}")
+            p2.metric("Holdout Strategy P&L", f"A${holdout_sm['total_pnl_aud']:+,.0f}")
+            p3.metric("Holdout Buy-and-Hold Equity", f"A${holdout_benchmark['ending_equity_aud']:,.0f}")
+            p4.metric(
+                "Holdout Advantage",
+                f"A${holdout_sm['ending_equity_aud'] - holdout_benchmark['ending_equity_aud']:+,.0f}"
+            )
+            st.write(
+                "Training-selected settings: "
+                f"buy risk < {sweep_winner['buy_threshold']:.2f}, "
+                f"sell risk > {sweep_winner['sell_threshold']:.2f}, "
+                f"max buy {sweep_winner['max_buy_pct_period']:.0%} of starting capital per observation, "
+                f"max sell {sweep_winner['max_sell_pct_period']:.0%} of BTC per observation."
+            )
+            if not holdout_df.empty and "buy_hold_equity_aud" in holdout_df:
+                holdout_chart = holdout_df.set_index("date")[
+                    ["equity_aud", "buy_hold_equity_aud"]
+                ].rename(columns={
+                    "equity_aud": "Selected strategy (holdout)",
+                    "buy_hold_equity_aud": "Buy and hold (holdout)",
+                })
+                st.line_chart(holdout_chart, y_label="Holdout equity (AUD)")
+            with st.expander("Training leaderboard (parameters ranked on training only)", expanded=False):
+                st.dataframe(sweep_leaderboard.head(20), width="stretch", hide_index=True)
+                st.download_button(
+                    "Download Parameter Sweep CSV",
+                    sweep_leaderboard.to_csv(index=False).encode("utf-8"),
+                    file_name="btc_v5_9_cycle_parameter_sweep.csv",
+                    mime="text/csv",
+                )
+            st.warning(
+                "A single 70/30 split is only a first guard against overfitting. "
+                "This holdout starts with fresh cash and no BTC position, so it is an independent-window "
+                "transfer test, not a continuous live portfolio simulation. Do not promote settings from this alone."
+            )
+        else:
+            st.warning("The chronological parameter sweep could not run; too few valid historical observations.")
+    else:
+        st.warning("Full-cycle comparison could not run because valid scored price observations were unavailable.")
 
     st.subheader("Verdict")
     if challenger_vs_r2 > 0:
