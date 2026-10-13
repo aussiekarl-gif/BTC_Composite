@@ -41,8 +41,8 @@ class CycleBacktestTests(unittest.TestCase):
 
     def test_fees_reduce_equity_and_are_reported(self):
         data = self.data([100, 100], [0.0, 0.0])
-        _, no_fee = simulate_cycle_strategy(data, starting_capital_aud=1000, fee_pct=0)
-        _, with_fee = simulate_cycle_strategy(data, starting_capital_aud=1000, fee_pct=0.01)
+        _, no_fee = simulate_cycle_strategy(data, starting_capital_aud=1000, fee_pct=0, min_trade_aud=1)
+        _, with_fee = simulate_cycle_strategy(data, starting_capital_aud=1000, fee_pct=0.01, min_trade_aud=1)
         self.assertGreater(with_fee["fees_aud"], 0)
         self.assertLess(with_fee["ending_equity_aud"], no_fee["ending_equity_aud"])
 
