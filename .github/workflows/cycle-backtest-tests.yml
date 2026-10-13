@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - main
+      - "codex/**"
     paths:
       - "engines/research/cycle_backtest.py"
       - "engines/research/research_app.py"
