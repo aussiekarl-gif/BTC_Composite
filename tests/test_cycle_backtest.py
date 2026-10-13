@@ -89,7 +89,7 @@ class CycleBacktestTests(unittest.TestCase):
             min_trade_aud=1,
         )
         self.assertEqual(len(leaderboard), 4)
-        self.assertEqual(test_df.index.min(), data.index[6])
+        self.assertEqual(pd.Timestamp(test_df["date"].min()), data.index[6])
         self.assertIn("buy_threshold", winner)
         self.assertGreaterEqual(test_summary["observations"], 2)
         self.assertGreater(benchmark["observations"], 0)
