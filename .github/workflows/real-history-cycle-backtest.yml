@@ -27,12 +27,21 @@ jobs:
         run: python -m pip install --upgrade pip pandas numpy requests
       - name: Compile research backtest
         run: python -m py_compile engines/research/run_cycle_backtest.py engines/research/cycle_backtest.py engines/shared/central_data.py
+      - name: Verify central audit-data access
+        env:
+          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN || secrets.BTC_CENTRAL_DATA_TOKEN }}
+        run: |
+          if [[ -z "$AUDIT_GITHUB_TOKEN" ]]; then
+            echo "::error::Configure AUDIT_GITHUB_TOKEN or BTC_CENTRAL_DATA_TOKEN in BTC_Composite repository secrets with read access to aussiekarl-gif/btc-audit-data."
+            exit 1
+          fi
       - name: Run full historical backtest
         env:
           PYTHONUNBUFFERED: "1"
-          # Read access to the private central audit-data repository, if required.
           AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN || secrets.BTC_CENTRAL_DATA_TOKEN }}
-        run: python engines/research/run_cycle_backtest.py | tee cycle-backtest-results.json
+        run: |
+          set -o pipefail
+          python engines/research/run_cycle_backtest.py | tee cycle-backtest-results.json
       - name: Upload numerical results
         uses: actions/upload-artifact@v4
         with:
