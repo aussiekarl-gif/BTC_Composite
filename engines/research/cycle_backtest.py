@@ -203,3 +203,106 @@ def simulate_buy_and_hold_benchmark(data, starting_capital_aud=500_000.0, fee_pc
         "total_return_pct": float((ending_value / starting_capital_aud - 1) * 100),
         "observations": int(len(prices)),
     }
+
+
+def walk_forward_parameter_sweep(
+    data,
+    starting_capital_aud=500_000.0,
+    fee_pct=0.001,
+    split_fraction=0.70,
+    buy_thresholds=(0.15, 0.25, 0.35),
+    sell_thresholds=(0.65, 0.75, 0.85),
+    max_buy_pct_periods=(0.02, 0.05, 0.10),
+    max_sell_pct_periods=(0.10, 0.20, 0.25),
+    min_trade_aud=100.0,
+):
+    """Select parameters on the first chronological segment and evaluate once on the later segment.
+
+    The later segment is a fresh-capital, independent test window: it does not carry BTC
+    acquired during training. This avoids pretending the training and test results are one
+    continuous portfolio, and tests whether the selected rule transfers to unseen dates.
+    Parameters are ranked only on training total return. No test-period result is used
+    to select the winning parameters.
+    """
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("data must be a pandas DataFrame")
+    required = {"btc_price_aud", "risk_score"}
+    missing = required.difference(data.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+    if not (0.50 <= split_fraction <= 0.90):
+        raise ValueError("split_fraction must be between 0.50 and 0.90")
+    if data.empty:
+        return pd.DataFrame(), {}, pd.DataFrame(), {}, {}
+    clean = data.copy().sort_index()
+    clean["btc_price_aud"] = pd.to_numeric(clean["btc_price_aud"], errors="coerce")
+    clean["risk_score"] = pd.to_numeric(clean["risk_score"], errors="coerce")
+    clean = clean[
+        np.isfinite(clean["btc_price_aud"]) & (clean["btc_price_aud"] > 0)
+        & np.isfinite(clean["risk_score"]) & clean["risk_score"].between(0, 1)
+    ]
+    split_at = int(len(clean) * split_fraction)
+    if split_at < 2 or len(clean) - split_at < 2:
+        return pd.DataFrame(), {}, pd.DataFrame(), {}, {}
+    train = clean.iloc[:split_at].copy()
+    test = clean.iloc[split_at:].copy()
+    results = []
+    for buy_threshold in buy_thresholds:
+        for sell_threshold in sell_thresholds:
+            if not (0 <= buy_threshold < sell_threshold <= 1):
+                continue
+            for max_buy in max_buy_pct_periods:
+                for max_sell in max_sell_pct_periods:
+                    _, summary = simulate_cycle_strategy(
+                        train,
+                        starting_capital_aud=starting_capital_aud,
+                        buy_threshold=float(buy_threshold),
+                        sell_threshold=float(sell_threshold),
+                        max_buy_pct_period=float(max_buy),
+                        max_sell_pct_period=float(max_sell),
+                        fee_pct=fee_pct,
+                        min_trade_aud=min_trade_aud,
+                    )
+                    if summary:
+                        results.append({
+                            "buy_threshold": float(buy_threshold),
+                            "sell_threshold": float(sell_threshold),
+                            "max_buy_pct_period": float(max_buy),
+                            "max_sell_pct_period": float(max_sell),
+                            "train_ending_equity_aud": summary["ending_equity_aud"],
+                            "train_total_pnl_aud": summary["total_pnl_aud"],
+                            "train_return_pct": summary["total_return_pct"],
+                            "train_realized_pnl_aud": summary["realized_pnl_aud"],
+                            "train_fees_aud": summary["fees_aud"],
+                            "train_buy_count": summary["buy_count"],
+                            "train_sell_count": summary["sell_count"],
+                        })
+    leaderboard = pd.DataFrame(results)
+    if leaderboard.empty:
+        return leaderboard, {}, pd.DataFrame(), {}, {}
+    leaderboard = leaderboard.sort_values(
+        ["train_return_pct", "train_realized_pnl_aud"],
+        ascending=False,
+        kind="stable",
+    ).reset_index(drop=True)
+    winner = leaderboard.iloc[0]
+    test_df, test_summary = simulate_cycle_strategy(
+        test,
+        starting_capital_aud=starting_capital_aud,
+        buy_threshold=float(winner["buy_threshold"]),
+        sell_threshold=float(winner["sell_threshold"]),
+        max_buy_pct_period=float(winner["max_buy_pct_period"]),
+        max_sell_pct_period=float(winner["max_sell_pct_period"]),
+        fee_pct=fee_pct,
+        min_trade_aud=min_trade_aud,
+    )
+    benchmark = simulate_buy_and_hold_benchmark(
+        test[["btc_price_aud"]],
+        starting_capital_aud=starting_capital_aud,
+        fee_pct=fee_pct,
+    )
+    test_df.attrs["test_start"] = str(test.index[0])
+    test_df.attrs["test_end"] = str(test.index[-1])
+    test_df.attrs["train_start"] = str(train.index[0])
+    test_df.attrs["train_end"] = str(train.index[-1])
+    return leaderboard, winner.to_dict(), test_df, test_summary, benchmark
