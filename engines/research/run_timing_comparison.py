@@ -154,9 +154,18 @@ def main():
         output["btc_held"] / fixed_btc - 1
     ) * 100
 
+    date_gaps = pd.Series(data.index).diff().dropna().dt.total_seconds() / 86400
     result = {
         "dataset": {
             "rows": int(n),
+            "observation_gap_days": {
+                "median": float(date_gaps.median()),
+                "mean": float(date_gaps.mean()),
+                "min": float(date_gaps.min()),
+                "max": float(date_gaps.max()),
+                "gaps_over_14_days": int((date_gaps > 14).sum()),
+                "gaps_over_30_days": int((date_gaps > 30).sum()),
+            },
             "joint_valid_price_risk_rows": int(len(valid)),
             "start": data.index.min().isoformat(),
             "end": data.index.max().isoformat(),
