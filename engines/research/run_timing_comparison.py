@@ -85,8 +85,12 @@ def main():
     n = len(data)
     rows = []
 
-    # Same observation dates and final mark for all strategies.
-    allocations = np.full(n, CAPITAL / n)
+    # Fixed DCA spends one scheduled installment at every valid observation.
+    # Signal strategies can only spend that observation's scheduled installment
+    # when eligible; skipped installments remain cash. This avoids using the
+    # total number of future eligible signals to size purchases (lookahead).
+    installment = CAPITAL / n
+    allocations = np.full(n, installment
     rows.append(
         summary(
             "fixed_DCA_equal_installment_each_valid_observation",
@@ -107,8 +111,7 @@ def main():
     for threshold in (0.15, 0.25, 0.35, 0.45, 0.55):
         eligible = risk < threshold
         allocations = np.zeros(n)
-        if eligible.any():
-            allocations[eligible] = CAPITAL / int(eligible.sum())
+        allocations[eligible] = installment
         rows.append(
             summary(
                 f"risk_DCA_threshold_{threshold:.2f}",
@@ -118,14 +121,16 @@ def main():
             )
         )
 
-    # Capped opportunistic accumulation retains unused cash.
+    # Opportunistic sizing: use the current scheduled installment times a
+    # score-based multiplier, capped at available cash. No future signal count.
+    # Multiplier ranges from 0 to 3x as score moves from threshold to zero.
     for threshold in (0.15, 0.25, 0.35, 0.45):
         allocations = np.zeros(n)
         cash = CAPITAL
         for i, score in enumerate(risk):
             if score < threshold and cash > 0:
                 strength = (threshold - score) / threshold
-                spend = min(cash, CAPITAL * 0.02 * strength)
+                spend = min(cash, installment * 3.0 * strength)
                 if spend >= 100:
                     allocations[i] = spend
                     cash -= spend
@@ -165,7 +170,8 @@ def main():
         "results": output.replace({np.nan: None}).to_dict(orient="records"),
         "caveats": [
             "Risk score is lagged one valid joint price/risk observation before execution; actual publication timestamps and upstream lookahead still require audit.",
-            "Equal-installment DCA is over valid risk-score observations, not every calendar day or necessarily every calendar week.",
+            "DCA schedule uses valid lagged price/risk observations; sparse risk-score coverage may not represent a true weekly schedule.",
+            "Threshold strategies spend at most one scheduled installment per eligible observation; opportunistic strategy scales that installment by a signal multiplier, with no future eligible-count sizing.",
             "Fees included; spread, slippage, tax and terminal liquidation costs excluded.",
             "Threshold strategies are descriptive comparisons, not selected or validated trading rules.",
         ],
