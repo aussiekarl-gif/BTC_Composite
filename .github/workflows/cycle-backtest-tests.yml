@@ -12,6 +12,7 @@ on:
       - main
     paths:
       - "engines/research/cycle_backtest.py"
+      - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
       - ".github/workflows/cycle-backtest-tests.yml"
 
