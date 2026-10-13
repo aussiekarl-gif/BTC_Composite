@@ -171,6 +171,26 @@ def simulate_cycle_strategy(
     return result, summary
 
 
+
+def simulate_next_observation_strategy(data, **kwargs):
+    """Trade at this observation's price using only the previous observation's risk score.
+
+    The first row has no prior signal and is deliberately skipped. This is a more
+    conservative execution-timing check than trading at the same close that generated
+    the signal. It does not model intraperiod fills, spreads, or market impact.
+    """
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("data must be a pandas DataFrame")
+    required = {"btc_price_aud", "risk_score"}
+    missing = required.difference(data.columns)
+    if missing:
+        raise ValueError(f"Missing required columns: {sorted(missing)}")
+    shifted = data.copy().sort_index()
+    shifted["risk_score"] = pd.to_numeric(
+        shifted["risk_score"], errors="coerce"
+    ).shift(1)
+    return simulate_cycle_strategy(shifted, **kwargs)
+
 def simulate_buy_and_hold_benchmark(data, starting_capital_aud=500_000.0, fee_pct=0.001):
     """Buy BTC once at the first valid observation and hold to the last valid price."""
     if not isinstance(data, pd.DataFrame):
