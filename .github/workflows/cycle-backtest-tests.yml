@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "engines/research/cycle_backtest.py"
+      - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
       - ".github/workflows/cycle-backtest-tests.yml"
   push:
@@ -26,5 +27,7 @@ jobs:
           python-version: "3.12"
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pandas numpy
+      - name: Compile Research code
+        run: python -m py_compile engines/research/research_app.py engines/research/cycle_backtest.py
       - name: Run deterministic cycle backtest tests
         run: python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
