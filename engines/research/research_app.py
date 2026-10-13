@@ -703,7 +703,7 @@ if mode == "DCA Backtest":
         # Full-cycle buy/sell test uses the same scored historical dates and initial
         # AUD capital as the benchmark. A transparent 0.10% fee is charged per side.
         cycle_fee_pct = 0.001
-        cycle_df, cycle_sm = simulate_cycle_strategy(
+        cycle_df, cycle_sm = simulate_next_observation_strategy(
             smart_raw.set_index("date")[["btc_price_aud", "risk_score"]].copy(),
             starting_capital_aud=capital_target,
             buy_threshold=DEFAULT_BUY_THRESHOLD,
@@ -827,7 +827,7 @@ if mode == "DCA Backtest":
     st.caption(
         "Research-only buy/sell simulation versus buy-and-hold, using the same initial AUD "
         "capital and historical window. Fees are 0.10% per transaction side; spread, slippage "
-        "and tax are not included. The risk score is treated as available at that observation's close."
+        "and tax are not included. Signals use the prior observation's risk score and execute at the current observation's close."
     )
     if cycle_sm and buy_hold_sm:
         c1, c2, c3, c4 = st.columns(4)
