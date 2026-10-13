@@ -5,6 +5,7 @@ import pandas as pd
 from engines.research.cycle_backtest import (
     simulate_buy_and_hold_benchmark,
     simulate_cycle_strategy,
+    walk_forward_parameter_sweep,
 )
 
 
@@ -70,6 +71,29 @@ class CycleBacktestTests(unittest.TestCase):
             max_sell_pct_period=0.5, fee_pct=0,
         )
         self.assertEqual(frame.iloc[1]["action"], "HOLD")
+
+    def test_walk_forward_sweep_tests_later_dates_separately(self):
+        data = self.data(
+            [100, 80, 90, 120, 150, 180, 160, 200, 220, 240],
+            [0.0, 0.1, 0.2, 0.5, 0.8, 0.9, 0.7, 0.9, 0.4, 0.8],
+        )
+        leaderboard, winner, test_df, test_summary, benchmark = walk_forward_parameter_sweep(
+            data,
+            starting_capital_aud=1000,
+            fee_pct=0,
+            split_fraction=0.6,
+            buy_thresholds=(0.25, 0.35),
+            sell_thresholds=(0.65, 0.75),
+            max_buy_pct_periods=(0.2,),
+            max_sell_pct_periods=(0.2,),
+            min_trade_aud=1,
+        )
+        self.assertEqual(len(leaderboard), 4)
+        self.assertEqual(test_df.index.min(), data.index[6])
+        self.assertIn("buy_threshold", winner)
+        self.assertGreaterEqual(test_summary["observations"], 2)
+        self.assertGreater(benchmark["observations"], 0)
+        self.assertTrue((leaderboard["train_return_pct"].diff().dropna() <= 1e-9).all())
 
     def test_empty_input(self):
         empty = pd.DataFrame(columns=["btc_price_aud", "risk_score"])
