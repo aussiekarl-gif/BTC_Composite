@@ -239,8 +239,8 @@ def walk_forward_parameter_sweep(
     """Select parameters on the first chronological segment and evaluate once on the later segment.
 
     The later segment is a fresh-capital, independent test window: it does not carry BTC
-    acquired during training. This avoids pretending the training and test results are one
-    continuous portfolio, and tests whether the selected rule transfers to unseen dates.
+    acquired during training. The final training observation's risk score is available to
+    signal a trade at the first test observation's close, preserving the one-observation lag.
     Parameters are ranked only on training total return. No test-period result is used
     to select the winning parameters.
     """
@@ -306,8 +306,11 @@ def walk_forward_parameter_sweep(
         kind="stable",
     ).reset_index(drop=True)
     winner = leaderboard.iloc[0]
+    # Keep the final training row only as the prior signal for the first test
+    # close. The simulator starts with fresh capital and no carried BTC positions.
+    test_with_prior_signal = pd.concat([train.iloc[[-1]], test])
     test_df, test_summary = simulate_next_observation_strategy(
-        test,
+        test_with_prior_signal,
         starting_capital_aud=starting_capital_aud,
         buy_threshold=float(winner["buy_threshold"]),
         sell_threshold=float(winner["sell_threshold"]),
@@ -316,6 +319,8 @@ def walk_forward_parameter_sweep(
         fee_pct=fee_pct,
         min_trade_aud=min_trade_aud,
     )
+    test_df = test_df[test_df["date"].isin(test.index)].reset_index(drop=True)
+    test_summary["observations"] = int(len(test_df))
     benchmark = simulate_buy_and_hold_benchmark(
         test[["btc_price_aud"]],
         starting_capital_aud=starting_capital_aud,

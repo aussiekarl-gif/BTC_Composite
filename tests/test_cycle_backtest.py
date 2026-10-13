@@ -76,7 +76,7 @@ class CycleBacktestTests(unittest.TestCase):
     def test_walk_forward_sweep_tests_later_dates_separately(self):
         data = self.data(
             [100, 80, 90, 120, 150, 180, 160, 200, 220, 240],
-            [0.0, 0.1, 0.2, 0.5, 0.8, 0.9, 0.7, 0.9, 0.4, 0.8],
+            [0.0, 0.1, 0.2, 0.5, 0.8, 0.0, 0.7, 0.9, 0.4, 0.8],
         )
         leaderboard, winner, test_df, test_summary, benchmark = walk_forward_parameter_sweep(
             data,
@@ -91,8 +91,10 @@ class CycleBacktestTests(unittest.TestCase):
         )
         self.assertEqual(len(leaderboard), 4)
         self.assertEqual(pd.Timestamp(test_df["date"].min()), data.index[6])
+        self.assertEqual(test_df.iloc[0]["action"], "BUY")
+        self.assertEqual(pd.Timestamp(test_df.iloc[0]["date"]), data.index[6])
         self.assertIn("buy_threshold", winner)
-        self.assertGreaterEqual(test_summary["observations"], 2)
+        self.assertEqual(test_summary["observations"], len(test_df))
         self.assertGreater(benchmark["observations"], 0)
         self.assertTrue((leaderboard["train_return_pct"].diff().dropna() <= 1e-9).all())
 
