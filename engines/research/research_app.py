@@ -879,7 +879,7 @@ if mode == "DCA Backtest":
             st.write(
                 f"**Training window:** {cycle_input.index[0].date()} to "
                 f"{cycle_input.index[split_pos - 1].date()}  "
-                f"**Holdout:** {holdout_df.index.min().date()} to {holdout_df.index.max().date()}"
+                f"**Holdout:** {pd.Timestamp(holdout_df['date'].min()).date()} to {pd.Timestamp(holdout_df['date'].max()).date()}"
             )
             p1, p2, p3, p4 = st.columns(4)
             p1.metric("Holdout Strategy Equity", f"A${holdout_sm['ending_equity_aud']:,.0f}")
