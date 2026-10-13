@@ -30,6 +30,8 @@ jobs:
       - name: Run full historical backtest
         env:
           PYTHONUNBUFFERED: "1"
+          # Read access to the private central audit-data repository, if required.
+          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN || secrets.BTC_CENTRAL_DATA_TOKEN }}
         run: python engines/research/run_cycle_backtest.py | tee cycle-backtest-results.json
       - name: Upload numerical results
         uses: actions/upload-artifact@v4
