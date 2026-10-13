@@ -273,7 +273,7 @@ def walk_forward_parameter_sweep(
                 continue
             for max_buy in max_buy_pct_periods:
                 for max_sell in max_sell_pct_periods:
-                    _, summary = simulate_cycle_strategy(
+                    _, summary = simulate_next_observation_strategy(
                         train,
                         starting_capital_aud=starting_capital_aud,
                         buy_threshold=float(buy_threshold),
@@ -306,7 +306,7 @@ def walk_forward_parameter_sweep(
         kind="stable",
     ).reset_index(drop=True)
     winner = leaderboard.iloc[0]
-    test_df, test_summary = simulate_cycle_strategy(
+    test_df, test_summary = simulate_next_observation_strategy(
         test,
         starting_capital_aud=starting_capital_aud,
         buy_threshold=float(winner["buy_threshold"]),
