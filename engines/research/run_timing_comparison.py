@@ -36,11 +36,14 @@ def main():
     raw = load_master(columns=["btc_price_aud", "risk_score"])
     raw["btc_price_aud"] = pd.to_numeric(raw["btc_price_aud"], errors="coerce")
     raw["risk_score"] = pd.to_numeric(raw["risk_score"], errors="coerce")
+    raw = raw.sort_index()
+    # Decide using the prior observation risk score, executed at current close.
+    raw["decision_risk"] = raw["risk_score"].shift(1)
     data = raw[np.isfinite(raw["btc_price_aud"]) & (raw["btc_price_aud"]>0) &
-               np.isfinite(raw["risk_score"]) & raw["risk_score"].between(0,1)].sort_index()
+               np.isfinite(raw["decision_risk"]) & raw["decision_risk"].between(0,1)].copy()
     if len(data)<20: raise RuntimeError(f"Only {len(data)} valid price/risk rows")
     p = data["btc_price_aud"].to_numpy(float)
-    risk = data["risk_score"].to_numpy(float)
+    risk = data["decision_risk"].to_numpy(float)
     n = len(data)
     rows=[]
     # Same dates and final mark for all strategies.
@@ -68,10 +71,10 @@ def main():
     out["btc_accumulation_vs_fixed_dca_pct"]=(out["btc_held"]/fixed-1)*100
     result={"dataset":{"rows":int(n),"start":str(data.index.min()),"end":str(data.index.max()),
                        "price_start_aud":float(p[0]),"price_end_aud":float(p[-1]),
-                       "risk_score_min":float(risk.min()),"risk_score_max":float(risk.max()),
+                       "decision_risk_min":float(risk.min()),"decision_risk_max":float(risk.max()),
                        "capital_aud":CAPITAL,"fee_per_side_pct":FEE*100},
             "results":out.replace({np.nan:None}).to_dict(orient="records"),
-            "caveats":["Risk-score publication timestamps and upstream lookahead have not yet been independently audited.",
+            "caveats":["Risk score is lagged one observation before execution; actual publication timestamps and upstream lookahead still require audit.",
                        "Equal-installment DCA is over valid risk-score observations, not necessarily every calendar week.",
                        "Fees included; spread, slippage, tax and terminal liquidation costs excluded.",
                        "Threshold strategies are descriptive comparisons, not selected or validated trading rules."]}
