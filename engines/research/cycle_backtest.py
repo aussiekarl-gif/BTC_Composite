@@ -67,15 +67,18 @@ def simulate_cycle_strategy(
 
         if not np.isfinite(price) or price <= 0 or not np.isfinite(risk) or not (0 <= risk <= 1):
             equity = cash + btc * price if np.isfinite(price) and price > 0 else np.nan
+            remaining_cost_basis = sum(lot[1] for lot in lots)
+            btc_value = btc * price if np.isfinite(price) and price > 0 else np.nan
+            unrealized = btc_value - remaining_cost_basis if np.isfinite(btc_value) else np.nan
             rows.append({
                 "date": timestamp, "btc_price_aud": price, "risk_score": risk,
                 "action": "SKIP_INVALID_INPUT", "buy_gross_aud": 0.0,
                 "sell_gross_aud": 0.0, "fees_aud": 0.0, "btc_bought": 0.0,
                 "btc_sold": 0.0, "btc_held": btc, "cash_aud": cash,
-                "btc_value_aud": btc * price if np.isfinite(price) and price > 0 else np.nan,
+                "btc_value_aud": btc_value,
                 "equity_aud": equity, "realized_pnl_aud": realized_pnl,
                 "realized_pnl_period_aud": 0.0,
-                "unrealized_pnl_aud": np.nan,
+                "unrealized_pnl_aud": unrealized,
                 "total_pnl_aud": equity - starting_capital_aud if np.isfinite(equity) else np.nan,
                 "cumulative_buy_gross_aud": cumulative_buy_gross,
                 "cumulative_sell_gross_aud": cumulative_sell_gross,
