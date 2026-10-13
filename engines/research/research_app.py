@@ -703,7 +703,7 @@ if mode == "DCA Backtest":
         # AUD capital as the benchmark. A transparent 0.10% fee is charged per side.
         cycle_fee_pct = 0.001
         cycle_df, cycle_sm = simulate_cycle_strategy(
-            smart_raw[["btc_price_aud", "risk_score"]].copy(),
+            smart_raw.set_index("date")[["btc_price_aud", "risk_score"]].copy(),
             starting_capital_aud=capital_target,
             buy_threshold=DEFAULT_BUY_THRESHOLD,
             sell_threshold=DEFAULT_SELL_RISK_THRESHOLD,
@@ -713,7 +713,7 @@ if mode == "DCA Backtest":
             min_trade_aud=DEFAULT_MIN_TRADE_AUD,
         )
         buy_hold_sm = simulate_buy_and_hold_benchmark(
-            smart_raw[["btc_price_aud"]].copy(),
+            smart_raw.set_index("date")[["btc_price_aud"]].copy(),
             starting_capital_aud=capital_target,
             fee_pct=cycle_fee_pct,
         )
