@@ -93,19 +93,34 @@ def main() -> None:
         if len(test) < 5:
             continue
 
+        # Split each historical training window chronologically: fit candidates
+        # on the first 80%, then select parameters on the final 20% validation slice.
+        # The outer test block remains completely unseen until parameters are frozen.
+        fit_end = max(1, int(len(train) * 0.80))
+        train_fit = train.iloc[:fit_end]
+        train_validation = train.iloc[fit_end:]
+        if len(train_validation) < 5:
+            train_validation = train.iloc[-max(5, len(train) // 5):]
+            train_fit = train.iloc[:len(train) - len(train_validation)]
+
         candidates = []
         for threshold in THRESHOLDS:
             for multiplier in MULTIPLIERS:
-                metrics = run_strategy(train, threshold, multiplier, "signal")
+                fit_metrics = run_strategy(train_fit, threshold, multiplier, "signal")
+                validation_metrics = run_strategy(train_validation, threshold, multiplier, "signal")
                 candidates.append({
                     "threshold": threshold,
                     "multiplier": multiplier,
-                    **metrics,
+                    "fit_ending_equity_aud": fit_metrics["ending_equity_aud"],
+                    "validation_ending_equity_aud": validation_metrics["ending_equity_aud"],
+                    "validation_return_pct": validation_metrics["return_pct"],
+                    "validation_cash_remaining_aud": validation_metrics["cash_remaining_aud"],
+                    "validation_btc_held": validation_metrics["btc_held"],
+                    "validation_buy_observations": validation_metrics["buy_observations"],
                 })
-        # Choose on training terminal equity only; tie-break by lower cash left,
-        # then fewer trades. No test-block values influence parameter selection.
+        # Select using the inner validation slice, not fit performance or outer test.
         candidates.sort(
-            key=lambda x: (x["ending_equity_aud"], -x["cash_remaining_aud"], -x["buy_observations"]),
+            key=lambda x: (x["validation_ending_equity_aud"], -x["validation_cash_remaining_aud"], -x["validation_buy_observations"]),
             reverse=True,
         )
         winner = candidates[0]
@@ -125,8 +140,10 @@ def main() -> None:
                 "multiplier": winner["multiplier"],
                 "threshold_at_grid_boundary": winner["threshold"] in (min(THRESHOLDS), max(THRESHOLDS)),
                 "multiplier_at_grid_boundary": winner["multiplier"] in (min(MULTIPLIERS), max(MULTIPLIERS)),
-                "training_ending_equity_aud": winner["ending_equity_aud"],
-                "training_return_pct": winner["return_pct"],
+                "inner_validation_ending_equity_aud": winner["validation_ending_equity_aud"],
+                "inner_validation_return_pct": winner["validation_return_pct"],
+                "inner_validation_cash_remaining_aud": winner["validation_cash_remaining_aud"],
+                "inner_validation_buy_observations": winner["validation_buy_observations"],
             },
             "test": {
                 "signal": test_signal,
@@ -152,7 +169,7 @@ def main() -> None:
         },
         "method": {
             "folds": "Expanding training window; each next 10% chronological block is unseen test data",
-            "selection_objective": "Training terminal equity after fees, including unspent cash",
+            "selection_objective": "Inner chronological validation terminal equity after fees, including unspent cash; candidate fit uses earlier 80% of each outer training window",
             "parameter_grid": {"thresholds": list(THRESHOLDS), "multipliers": list(MULTIPLIERS)},
             "boundary_warning": "A winner at a grid boundary means the chosen range may not contain an optimum; treat it as a model-stability warning, not evidence the boundary value is best.",
             "capital": "Fresh AUD 500,000 for each test block and each benchmark",
@@ -176,6 +193,7 @@ def main() -> None:
             "Risk-score availability timestamps and upstream lookahead still require independent audit.",
             "Uses close prices; spread, slippage, market impact, tax and terminal liquidation costs excluded.",
             "Each test block is a separate fresh-capital experiment, not a continuous account.",
+            "Each outer training window is split chronologically into an earlier fit slice and a later inner validation slice for parameter selection; both slices start with fresh capital, so this is a selection diagnostic rather than a continuous portfolio simulation.",",
             "Threshold/multiplier grid is limited; performance can be sensitive to the tested parameter choices.",
         ],
     }
