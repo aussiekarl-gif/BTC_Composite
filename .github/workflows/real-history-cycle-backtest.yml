@@ -6,6 +6,7 @@ on:
       - "engines/research/run_cycle_backtest.py"
       - "engines/research/run_timing_comparison.py"
       - "engines/research/run_walk_forward_timing.py"
+      - "engines/research/run_point_in_time_risk_comparison.py"
       - "engines/research/cycle_backtest.py"
       - "engines/shared/central_data.py"
       - ".github/workflows/real-history-cycle-backtest.yml"
@@ -28,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip pandas numpy requests
       - name: Compile research backtests
-        run: python -m py_compile engines/research/run_cycle_backtest.py engines/research/run_timing_comparison.py engines/research/run_walk_forward_timing.py engines/research/cycle_backtest.py engines/shared/central_data.py
+        run: python -m py_compile engines/research/run_cycle_backtest.py engines/research/run_timing_comparison.py engines/research/run_walk_forward_timing.py engines/research/run_point_in_time_risk_comparison.py engines/research/cycle_backtest.py engines/shared/central_data.py
       - name: Verify central audit-data access
         env:
           AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN || secrets.BTC_CENTRAL_DATA_TOKEN }}
@@ -58,6 +59,19 @@ jobs:
         run: |
           set -o pipefail
           python engines/research/run_walk_forward_timing.py | tee walk-forward-timing-results.json
+      - name: Run point-in-time risk reconstruction comparison
+        env:
+          PYTHONUNBUFFERED: "1"
+          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN || secrets.BTC_CENTRAL_DATA_TOKEN }}
+        run: |
+          set -o pipefail
+          python engines/research/run_point_in_time_risk_comparison.py | tee point-in-time-risk-results.json
+      - name: Upload point-in-time risk comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-point-in-time-risk-results
+          path: point-in-time-risk-results.json
+          if-no-files-found: error
       - name: Upload timing comparison
         uses: actions/upload-artifact@v4
         with:
