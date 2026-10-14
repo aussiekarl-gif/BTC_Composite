@@ -22,8 +22,8 @@ from engines.shared.central_data import load_master
 
 CAPITAL = 500_000.0
 FEE = 0.001
-THRESHOLDS = (0.15, 0.25, 0.35, 0.45, 0.55)
-MULTIPLIERS = (1.0, 2.0, 3.0, 4.0)
+THRESHOLDS = (0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75)
+MULTIPLIERS = (1.0, 2.0, 3.0, 4.0, 6.0, 8.0)
 
 
 def run_strategy(data: pd.DataFrame, threshold: float | None, multiplier: float,
@@ -123,6 +123,8 @@ def main() -> None:
             "selected_parameters": {
                 "threshold": winner["threshold"],
                 "multiplier": winner["multiplier"],
+                "threshold_at_grid_boundary": winner["threshold"] in (min(THRESHOLDS), max(THRESHOLDS)),
+                "multiplier_at_grid_boundary": winner["multiplier"] in (min(MULTIPLIERS), max(MULTIPLIERS)),
                 "training_ending_equity_aud": winner["ending_equity_aud"],
                 "training_return_pct": winner["return_pct"],
             },
@@ -152,12 +154,17 @@ def main() -> None:
             "folds": "Expanding training window; each next 10% chronological block is unseen test data",
             "selection_objective": "Training terminal equity after fees, including unspent cash",
             "parameter_grid": {"thresholds": list(THRESHOLDS), "multipliers": list(MULTIPLIERS)},
+            "boundary_warning": "A winner at a grid boundary means the chosen range may not contain an optimum; treat it as a model-stability warning, not evidence the boundary value is best.",
             "capital": "Fresh AUD 500,000 for each test block and each benchmark",
         },
         "aggregate": {
             "fold_count": len(folds),
             "signal_beats_fixed_dca_folds": int(signal_wins_fixed),
             "signal_beats_buy_hold_folds": int(signal_wins_hold),
+            "selected_thresholds": [f["selected_parameters"]["threshold"] for f in folds],
+            "selected_multipliers": [f["selected_parameters"]["multiplier"] for f in folds],
+            "threshold_boundary_wins": int(sum(f["selected_parameters"]["threshold_at_grid_boundary"] for f in folds)),
+            "multiplier_boundary_wins": int(sum(f["selected_parameters"]["multiplier_at_grid_boundary"] for f in folds)),
             "sum_test_ending_equity_signal_aud": float(sum(f["test"]["signal"]["ending_equity_aud"] for f in folds)),
             "sum_test_ending_equity_fixed_dca_aud": float(sum(f["test"]["fixed_dca"]["ending_equity_aud"] for f in folds)),
             "sum_test_ending_equity_buy_hold_aud": float(sum(f["test"]["buy_hold"]["ending_equity_aud"] for f in folds)),
