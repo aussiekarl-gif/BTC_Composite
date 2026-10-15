@@ -129,55 +129,22 @@ button[data-testid="stSidebarCollapseButton"] {
 </style>
 """, unsafe_allow_html=True)
 
-# Everyday sections stay visible. Diagnostic/maintenance pages remain available
-# behind one opt-in toggle so we keep the tools without cluttering the normal UI.
-primary_sections = [
-    "V5.8.2 Production",
-    "V5.9 Research",
-    "Bottom Signal Timeline",
-]
-maintenance_sections = [
-    "Public Model Audit",
-    "Provider Capability Probe",
-    "Central Data Parity",
-]
-
-show_maintenance = st.sidebar.toggle(
-    "Show maintenance tools",
-    value=False,
-    help="Show audit, provider and data-parity diagnostics. These tools do not change Production sizing.",
-)
-
-section_options = primary_sections + (maintenance_sections if show_maintenance else [])
-section = st.sidebar.selectbox(
-    "App section",
-    section_options,
+# The public interface has exactly two choices. Diagnostic engines remain in
+# the repository for offline research and CI; they are not navigable UI pages.
+section = st.sidebar.radio(
+    "Model",
+    ["Production", "Research"],
     index=0,
     key="combined_app_section_selector",
-    help=(
-        "V5.8.2 Production is the frozen live model. "
-        "V5.9 Research is the working development version. "
-        "Bottom Signal Timeline visualises historical multi-indicator states. "
-        "Enable maintenance tools only when audit/provider/parity diagnostics are needed."
-    ),
+    help="Production is the frozen V5.8.2 model; Research is the experimental V5.9 model.",
 )
 
-if section == "Public Model Audit":
-    install_bgeometrics_guard(st)
-    active, text = guard_status(st)
-    if active:
-        st.warning(text)
-else:
-    # Never let the research quota wrapper leak into Production/Research/Timeline/Parity sections.
-    uninstall_bgeometrics_guard()
+# Ensure audit quota guards never leak into either user-facing model.
+uninstall_bgeometrics_guard()
 
 engine_path = {
-    "V5.8.2 Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
-    "V5.9 Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
-    "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
-    "Public Model Audit": Path(__file__).parent / "engines" / "audit" / "public_model_audit.py",
-    "Provider Capability Probe": Path(__file__).parent / "engines" / "audit" / "provider_probe_app.py",
-    "Central Data Parity": Path(__file__).parent / "engines" / "shared" / "parity_app.py",
+    "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
+    "Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
 }[section]
 
 if not engine_path.exists():
