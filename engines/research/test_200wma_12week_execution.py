@@ -17,7 +17,7 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None,weekly_hook=None,cash_recycle_idle_weeks=0,cash_recycle_fraction=0.25,cash_recycle_min_share=0.50):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None,weekly_hook=None,cash_recycle_idle_weeks=0,cash_recycle_fraction=0.25,cash_recycle_min_share=0.50,max_cash_weight_after_sell=None):
     if signal_price is None:signal_price=s
     if not s.index.equals(signal_price.index):raise ValueError("Signal-price and execution-price dates differ")
     buy_levels=BUYS if buy_levels is None else buy_levels
@@ -26,6 +26,8 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     if funding_weeks < 0:raise ValueError("Invalid funding weeks")
     if not 0 <= btc_core_fraction <= 1:raise ValueError("Invalid BTC core fraction")
     if not 0 <= brokerage_fixed < CAP:raise ValueError("Invalid fixed brokerage")
+    if max_cash_weight_after_sell is not None and not 0 <= max_cash_weight_after_sell <= 1:
+        raise ValueError("Cash exposure cap must be between zero and one")
     if cash_recycle_idle_weeks < 0 or not 0 < cash_recycle_fraction <= 1 or not 0 < cash_recycle_min_share < 1:
         raise ValueError("Invalid cash recycling parameters")
     if sell_cross_direction not in ("up","down"):raise ValueError("Invalid sell crossing direction")
@@ -114,6 +116,17 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                 # BTC gained through market rises does not automatically raise the core.
                 available_to_sell=max(0.0,btc-initial_btc*btc_core_fraction)
                 q=min(available_to_sell,requested)
+                if max_cash_weight_after_sell is not None and q>0:
+                    # Stop selling once too much of the portfolio is held in cash,
+                    # INCLUDING funding cash and unfilled reserved buy tranches.
+                    reserved=sum(x["remaining"] for x in jobs if x["side"]=="BUY")
+                    liquid_before=cash+funding_cash+reserved
+                    marked_before=liquid_before+btc*px
+                    net_per_unit=px*(1-fee)*(1-slippage)
+                    target=max_cash_weight_after_sell
+                    capacity=(target*marked_before-liquid_before+(1-target)*brokerage_fixed)
+                    slope=net_per_unit+target*(px-net_per_unit)
+                    q=min(q,max(0.,capacity/slope))
                 received=q*px*(1-fee)*(1-slippage)-brokerage_fixed
                 if q>1e-10 and received>1e-8:
                     btc-=q;cash+=received
