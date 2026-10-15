@@ -14,7 +14,7 @@ class BenchmarkHarnessTests(unittest.TestCase):
 
     def test_invalid_final_price_is_rejected(self):
         data = self.data([1, 2, float("nan")], [0.1, 0.2, 0.3])
-        with self.assertRaisesRegex(ValueError, "Final observation"):
+        with self.assertRaisesRegex(ValueError, "finite positive BTC/AUD price"):
             compare_lagged_cycle_to_benchmarks(data)
 
     def test_duplicate_dates_are_rejected(self):
