@@ -97,6 +97,16 @@ Detailed [cost and tax stress report](https://github.com/aussiekarl-gif/BTC_Comp
 - Gross (0% CGT) results represent only assets **actually eligible** for exempt retirement-phase income. Actual SMSFs may have a mixed ECPI percentage, distributions, actuarial apportionment and pension restrictions.
 - **Decision:** Stay in Research. The strategy has poor short-horizon tails and in-sample fitting concerns despite attractive historical long-horizon medians. Production V5.8.2 is untouched.
 
+## Idle-cash redeployment safeguard sensitivity (verified 2026-10-15)
+
+Detailed [AUD after-tax comparison](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_outputs/200wma_idle_cash_recycling_findings.md), [completed GitHub run 38811194137](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38811194137).
+
+- Research test, no changes to default candidate: if >50% of marked portfolio value is freely held in cash and no tier buy has filled for 26 weeks, buy 25% of remaining cash at next weekly execution price. Trigger uses completed prior weekly data and respects brokerage, ETF fee proxy and annual SMSF CGT accounting.
+- **2-year after-tax AUD**: no safeguard +2.402% median vs DCA / −59.482% worst / 48 of 89 correlated starts win; 26-week safeguard +2.402% median / −49.143% worst / 47 of 89 wins.
+- **4-year after-tax AUD**: no safeguard +33.099% median / −30.502% worst / 53 of 63 wins; 26-week safeguard **+34.682%** median / **−21.260%** worst / **58 of 63 wins**. Four-year 10th-percentile advantage improved from −11.543% to +6.236%.
+- **Warning:** The guard did not fix short-horizon cohort-wide underperformance: **0/13 winning starts in 2019 and 0/13 in 2023** even with the safeguard. 2021 median fell materially.
+- **Do not promote:** The rule was invented after investigating those years. It is now contaminated as an in-sample selection and requires independent validation.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
