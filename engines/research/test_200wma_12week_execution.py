@@ -1,4 +1,4 @@
-"""Compare 12-week time-distributed 200WMA crossing trades with immediate execution.
+"""Compare 12- and 16-week time-distributed 200WMA crossing trades with immediate execution.
 Research-only, no production writes. Completed weekly signal, next-week fill.
 """
 import json
@@ -7,14 +7,16 @@ import numpy as np
 import pandas as pd
 from engines.research.test_200wma_exact_10x10 import CAP,FEE,BUYS,SELLS,simulate
 
-def weights(shape):
-    if shape=="equal":return np.ones(12)/12
-    if shape=="front":return np.arange(12,0,-1)/78
-    if shape=="back":return np.arange(1,13)/78
-    v=np.array([1,2,3,4,5,6,6,5,4,3,2,1],dtype=float)
+def weights(shape,weeks):
+    if shape=="equal":v=np.ones(weeks)
+    elif shape=="front":v=np.arange(weeks,0,-1,dtype=float)
+    elif shape=="back":v=np.arange(1,weeks+1,dtype=float)
+    else:
+        x=np.linspace(-1,1,weeks)
+        v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12):
     btc=CAP*(1-FEE)/float(s.iloc[start+1])
     initial_btc=btc
     cash=0.
@@ -23,7 +25,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False):
     buy_armed=[True]*10
     jobs=[]
     transactions=[]
-    w=weights(shape)
+    w=weights(shape,weeks)
     for i in range(start+2,len(s)):
         j=i-1
         if not np.isfinite(ma.iloc[j]) or ma.iloc[j]<=0:continue
@@ -47,7 +49,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False):
         remaining_jobs=[]
         for job in jobs:
             age=i-job["start"]
-            if age>=12:
+            if age>=weeks:
                 if job["side"]=="BUY":cash+=job["remaining"]
                 continue
             if reverse_cancel and ((job["side"]=="SELL" and ratio<job["threshold"]) or
@@ -69,7 +71,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False):
                     btc+=spend*(1-FEE)/px
                     transactions.append({"week":str(s.index[i].date()),"side":"BUY","tier":job["tier"]+1,"usd":round(spend,2)})
                 job["remaining"]-=spend
-            if age<11 and job["remaining"]>1e-8:remaining_jobs.append(job)
+            if age<weeks-1 and job["remaining"]>1e-8:remaining_jobs.append(job)
             elif job["side"]=="BUY":cash+=job["remaining"]
         jobs=remaining_jobs
         prev=ratio
@@ -89,19 +91,19 @@ def main():
     s=pd.Series(pd.to_numeric(d["Price"],errors="coerce").to_numpy(),index=d["date"]).sort_index().resample("W-MON").last().dropna()
     ma=s.shift(1).rolling(200,min_periods=200).mean()
     starts=[i for i in range(201,len(s)-1) if pd.Timestamp("2018-01-01",tz="UTC")<=s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
-    variants=[("immediate",None,None)]+[(shape,shape,cancel) for shape in ("equal","front","back","bell") for cancel in (False,True)]
+    variants=[("immediate",None,None,None)]+[(f"{weeks}w_{shape}_cancel_{cancel}",shape,cancel,weeks) for weeks in (12,16) for shape in ("equal","front","back","bell") for cancel in (False,True)]
     results={}
-    for label,shape,cancel in variants:
+    for label,shape,cancel,weeks in variants:
         rows=[]
         for i in starts:
-            r=simulate(s,ma,i) if shape is None else staged(s,ma,i,shape,cancel)
+            r=simulate(s,ma,i) if shape is None else staged(s,ma,i,shape,cancel,weeks)
             rows.append({"start":str(s.index[i].date()),"vs_hold_pct":r["vs_hold_pct"]})
         vals=[x["vs_hold_pct"] for x in rows]
-        results[label if shape is None else f"{shape}_cancel_{cancel}"]={
+        results[label]={
             "starts":len(rows),"wins":sum(v>0 for v in vals),
             "median_pct":round(float(np.median(vals)),3),"worst_pct":round(min(vals),3),
             "rows":rows}
-    out={"test":"12-week execution scheduling after 200WMA percentage-tier crossings",
+    out={"test":"12- and 16-week execution scheduling after 200WMA percentage-tier crossings",
          "start_policy":"2018+ only","fee":FEE,"results":results,
          "limitations":"All starts overlap and end at same date. No slippage, tax, AUD conversion or out-of-sample test. Staged sell jobs can overlap and are capped by actual BTC. Cancel uses last known signal."}
     p=Path("research_outputs/200wma_12week_execution.json")
