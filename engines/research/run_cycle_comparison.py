@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--date-column", default="date")
     parser.add_argument("--capital", type=float, default=500_000)
     parser.add_argument("--fee", type=float, default=0.001)
+    parser.add_argument("--out", help="Optional JSONL output path for auditable strategy metrics")
     args = parser.parse_args()
     data = pd.read_csv(args.csv)
     required = {'btc_price_aud', 'risk_score'}
@@ -34,14 +35,22 @@ def main():
     results = compare_lagged_cycle_to_benchmarks(
         data, starting_capital_aud=args.capital, fee_pct=args.fee
     )
+    records = []
     for label, result in results.items():
-        print(json.dumps({
+        record = {
             "strategy": label,
             "ending_equity_aud": float(result["ending_equity_aud"]),
             "btc_held": float(result["btc_held"]),
             "cash_aud": float(result.get("cash_remaining_aud", result.get("ending_cash_aud", 0))),
             "fees_aud": float(result["fees_aud"]),
-        }, sort_keys=True))
+        }
+        records.append(record)
+        print(json.dumps(record, sort_keys=True))
+    if args.out:
+        from pathlib import Path
+        output = Path(args.out)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("".join(json.dumps(item, sort_keys=True) + "\\n" for item in records), encoding="utf-8")
 
 
 if __name__ == "__main__":
