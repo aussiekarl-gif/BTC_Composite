@@ -22,11 +22,16 @@ def weight(dev):
  if dev<=200:return 0.5
  return 0.25
 
-def run(s,ma,start,end,weeks,weighted,only_below=False,signal_price=None):
+def run(s,ma,start,end,weeks,weighted,only_below=False,signal_price=None,brokerage_fixed=0.0,trade_callback=None):
+ if not 0<=brokerage_fixed<CAP:raise ValueError("Invalid brokerage")
  if signal_price is None:signal_price=s
  if not s.index.equals(signal_price.index):raise ValueError("Signal and execution dates differ")
  px=float(s.iloc[start+1])
- btc=CAP*INITIAL_BTC_FRACTION*(1-FEE)*(1-SLIPPAGE)/px
+ initial_spend=CAP*INITIAL_BTC_FRACTION
+ btc=(initial_spend-brokerage_fixed)*(1-FEE)*(1-SLIPPAGE)/px
+ if trade_callback is not None:
+  trade_callback({"side":"BUY","kind":"INITIAL","date":s.index[start+1],"units":btc,
+                  "cash":initial_spend,"price":px,"brokerage":brokerage_fixed})
  cash=CAP*(1-INITIAL_BTC_FRACTION)
  for k in range(weeks):
   i=start+2+k
@@ -36,8 +41,13 @@ def run(s,ma,start,end,weeks,weighted,only_below=False,signal_price=None):
   if only_below and (not np.isfinite(dev) or dev>0):continue
   w=weight(dev) if weighted and np.isfinite(dev) else 1.
   spend=cash if remaining==1 else min(cash,cash/remaining*w)
-  btc+=spend*(1-FEE)*(1-SLIPPAGE)/float(s.iloc[i])
-  cash-=spend
+  if spend>brokerage_fixed+1e-8:
+   acquired=(spend-brokerage_fixed)*(1-FEE)*(1-SLIPPAGE)/float(s.iloc[i])
+   btc+=acquired
+   cash-=spend
+   if trade_callback is not None:
+    trade_callback({"side":"BUY","kind":"FUNDING","date":s.index[i],"units":acquired,
+                    "cash":spend,"price":float(s.iloc[i]),"brokerage":brokerage_fixed})
  terminal=float(s.iloc[end])
  value=cash+btc*terminal
  immediate=CAP*(1-FEE)*(1-SLIPPAGE)/float(s.iloc[start+1])*terminal
