@@ -52,6 +52,10 @@ def fair_trading(s,signal,ma,start,end,
                  sell_guard_lookback=0,
                  trend_reentry_lookback=0):
     ledger=FifoCgtLedger()
+    events=[]
+    def track(event):
+        ledger(event)
+        events.append((event["side"],event.get("kind","UNKNOWN")))
     hook=AnnualSmsfTaxPayment(ledger,BROKER_AUD,FEE,SLIPPAGE)
     state=staged(s,ma,start,shape="bell",reverse_cancel=False,
       buy_weeks=12,sell_weeks=16,block_overlap=True,
@@ -63,7 +67,10 @@ def fair_trading(s,signal,ma,start,end,
       max_cash_weight_after_sell=max_cash_weight_after_sell,
       sell_guard_lookback=sell_guard_lookback,
       trend_reentry_lookback=trend_reentry_lookback,
-      trade_callback=ledger,weekly_hook=hook)
+      trade_callback=track,weekly_hook=hook)
+    state["sell_fills"]=sum(s=="SELL" and kind=="TIER" for s,kind in events)
+    state["tier_buy_fills"]=sum(s=="BUY" and kind=="TIER" for s,kind in events)
+    state["reentry_fills"]=sum(s=="BUY" and kind=="TREND_REENTRY" for s,kind in events)
     if abs(ledger.bought_units-ledger.sold_units-state["btc_held"])>1e-5:
         raise AssertionError("Strategy holdings and FIFO ledger differ")
     # Take the comparison on exactly the same completed weekly bar.
