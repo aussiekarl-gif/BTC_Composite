@@ -61,7 +61,7 @@ GitHub Actions run [38738305322](https://github.com/aussiekarl-gif/BTC_Composite
 - **4-year holding period:** 59/63 wins versus the same cash-only DCA, median **+66.962%**, worst **−14.609%**.
 - Cash-only benchmark has no tier sells or rebuys; both start at identical initial cash/BTC proportions and use identical funding schedules.
 - The strategy does **not** provide a reliable 2-year advantage: some historical outcomes substantially underperform simple buying, and the cohorts overlap.
-- **Ledger reconciliation test** has been added to rerun the integrated engine with all tier trades disabled and require exact agreement with the independent pure-DCA baseline.
+- **Ledger reconciliation passed** in [research quick-regression run 38805836580](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38805836580). With tier trading disabled, integrated backtest agreed with independent pure-DCA portfolio accounting to within $0.05 across representative 2- and 4-year starts, 12- and 26-week cash schedules, and equal/risk-weighted funding.
 
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
