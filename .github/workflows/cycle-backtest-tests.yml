@@ -10,6 +10,8 @@ on:
       - "tests/test_causal_benchmark_robustness.py"
       - "tests/test_execution_error_stress.py"
       - "tests/test_signal_delay_stress.py"
+      - "tests/test_oracle_timing_error.py"
+      - "engines/research/oracle_timing_error.py"
       - "engines/research/signal_delay_stress.py"
       - "engines/research/execution_error_stress.py"
       - "engines/research/run_cycle_comparison.py"
@@ -50,3 +52,4 @@ jobs:
           python -m unittest discover -s tests -p "test_causal_benchmark_robustness.py" -v
           python -m unittest discover -s tests -p "test_execution_error_stress.py" -v
           python -m unittest discover -s tests -p "test_signal_delay_stress.py" -v
+          python -m unittest discover -s tests -p "test_oracle_timing_error.py" -v
