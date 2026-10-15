@@ -63,6 +63,46 @@ class GoldenStreamlitModelTest(unittest.TestCase):
             self.assertAlmostEqual(allocation["summary"]["total_invested_aud"],500000.,places=4)
             self.assertAlmostEqual(allocation["summary"]["fees_aud"],1000.,places=4)
 
+    def test_shared_fx_alignment_matches_frozen_production(self):
+        import pandas as pd
+        from engines.production import production_model as production
+        from engines.research import research_model as research
+        dates=pd.date_range("2026-01-01",periods=6,freq="D",tz="UTC")
+        frame=pd.DataFrame({"price":[10,11,12,13,14,15]},index=dates)
+        rates=pd.Series([.65,.70],index=dates[[1,4]])
+        a=production.align_fx_to_dates(frame,rates)
+        b=research.align_fx_to_dates(frame,rates)
+        pd.testing.assert_frame_equal(a,b,check_exact=True)
+        self.assertEqual(list(b["usd_per_aud"]),[.65,.65,.65,.65,.70,.70])
+        pd.testing.assert_frame_equal(frame,
+            pd.DataFrame({"price":[10,11,12,13,14,15]},index=dates))
+        # Missing FX preserves the original fallback without modifying source.
+        missing=research.align_fx_to_dates(frame,None,fallback=.72)
+        self.assertEqual(list(missing["usd_per_aud"]),[.72]*6)
+
+    def test_risk_bucket_distribution_matches_frozen_production(self):
+        import pandas as pd
+        from engines.production import production_model as production
+        from engines.research import research_model as research
+        example=pd.Series([0.,.01,.015,.3,.8,1.,float("nan")])
+        old=production.risk_occurrence_table(example)
+        new=research.risk_occurrence_table(example)
+        pd.testing.assert_frame_equal(old,new,check_exact=True)
+        self.assertEqual(int(new["Weeks"].sum()),6)
+        self.assertAlmostEqual(float(new["Percent"].sum()),100.)
+        self.assertEqual(list(new.loc[new["Weeks"]>0,"Weeks"]),[1,2,1,2])
+
+    def test_shared_allocator_empty_input_preserves_behavior(self):
+        import pandas as pd
+        from engines.production import production_model as production
+        from engines.research import research_model as research
+        zero=pd.DataFrame({"actual_buy_aud":[0.,0.],
+                           "btc_price_aud":[90000.,100000.]})
+        for model in (production,research):
+            table,summary=model.apply_equal_capital_allocator(zero,500000.,fee_pct=.001)
+            self.assertTrue(table.empty)
+            self.assertEqual(summary,{})
+
     def test_distinct_engines_not_automatically_made_identical(self):
         # This scenario exercises their common calculation path; the two
         # models may diverge for other strategies, which is *intentional*.
