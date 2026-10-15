@@ -16,7 +16,9 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up"):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None):
+    if signal_price is None:signal_price=s
+    if not s.index.equals(signal_price.index):raise ValueError("Signal-price and execution-price dates differ")
     buy_levels=BUYS if buy_levels is None else buy_levels
     sell_levels=SELLS if sell_levels is None else sell_levels
     if not 0 <= initial_btc_fraction <= 1:raise ValueError("Invalid BTC fraction")
@@ -39,7 +41,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     for i in range(start+2,ending+1):
         j=i-1
         if not np.isfinite(ma.iloc[j]) or ma.iloc[j]<=0:continue
-        ratio=100*(float(s.iloc[j])/float(ma.iloc[j])-1)
+        ratio=100*(float(signal_price.iloc[j])/float(ma.iloc[j])-1)
         for k,t in enumerate(sell_levels):
             if (ratio<t if sell_cross_direction=="up" else ratio>t):sell_armed[k]=True
             crossed=(prev<t<=ratio if sell_cross_direction=="up" else prev>t>=ratio) if prev is not None else False
