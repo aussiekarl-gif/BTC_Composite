@@ -7,6 +7,8 @@ on:
       - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
       - "tests/test_benchmark_harness.py"
+      - "tests/test_causal_benchmark_robustness.py"
+      - "engines/research/run_cycle_comparison.py"
       - "engines/research/benchmark_harness.py"
       - ".github/workflows/cycle-backtest-tests.yml"
   push:
@@ -18,6 +20,8 @@ on:
       - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
       - "tests/test_benchmark_harness.py"
+      - "tests/test_causal_benchmark_robustness.py"
+      - "engines/research/run_cycle_comparison.py"
       - "engines/research/benchmark_harness.py"
       - ".github/workflows/cycle-backtest-tests.yml"
 
@@ -39,3 +43,4 @@ jobs:
         run: |
           python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
           python -m unittest discover -s tests -p "test_benchmark_harness.py" -v
+          python -m unittest discover -s tests -p "test_causal_benchmark_robustness.py" -v
