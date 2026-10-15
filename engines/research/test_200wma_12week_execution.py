@@ -105,6 +105,6 @@ def main():
          "start_policy":"2018+ only","fee":FEE,"results":results,
          "limitations":"All starts overlap and end at same date. No slippage, tax, AUD conversion or out-of-sample test. Staged sell jobs can overlap and are capped by actual BTC. Cancel uses last known signal."}
     p=Path("research_outputs/200wma_12week_execution.json")
-    p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(out,indent=2))
+    p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(out,indent=2,default=lambda x: x.item() if hasattr(x,"item") else str(x)))
     print(json.dumps({k:{x:v for x,v in z.items() if x!="rows"} for k,z in results.items()},indent=2))
 if __name__=="__main__":main()
