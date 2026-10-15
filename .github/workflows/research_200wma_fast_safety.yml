@@ -1,0 +1,44 @@
+name: Research BTC fast safety checks
+# Fast, deterministic validation only. Heavy historical parameter searches are
+# preserved in research_causal_history.yml and run via workflow_dispatch.
+on:
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - '.github/workflows/research_200wma_fast_safety.yml'
+      - 'engines/research/**'
+      - 'engines/shared/**'
+      - 'tests/**'
+      - 'research_forward/200wma_v1/config_frozen.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-fast-safety-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  safety-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install offline regression dependencies
+        run: python -m pip install pandas numpy requests openpyxl
+      - name: Compile all research sources (no network calls)
+        run: python -m compileall -q engines/research engines/shared
+      - name: Check FIFO SMSF capital gains and annual tax settlements
+        run: python -m engines.research.test_smsf_cgt_ledger_checks
+      - name: Verify frozen paper strategy and next-week execution
+        run: python -m engines.research.forward_paper_200wma --self-test
+      - name: Verify append-only paper observations and revision rejection
+        run: python -m engines.research.test_paper_forward_integrity
+      - name: Check deterministic portfolio dashboard
+        run: python -m engines.research.test_paper_dashboard
+      - name: Verify independent cycle backtest invariants
+        run: python -m unittest discover -s tests -p 'test_cycle_backtest.py' -v
