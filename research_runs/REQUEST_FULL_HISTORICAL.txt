@@ -1,0 +1,5 @@
+# Deliberate on-demand trigger for the complete 22-module BTC historical research suite.
+# Editing this file and committing it to research/cycle-strategy-optimization starts a full run.
+# This is intentionally separate from routine code pushes; retain the dated GitHub artifacts.
+# Next request: change the timestamp below, then commit. No trading orders are placed.
+request_utc=NOT_REQUESTED
