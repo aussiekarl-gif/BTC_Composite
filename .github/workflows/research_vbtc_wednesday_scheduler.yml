@@ -120,7 +120,7 @@ jobs:
           if [[ -n "$existing" ]]; then
             gh issue comment "$existing" --body "$body"
           else
-            gh issue create --title "$title" --body "$body"
+            gh issue create --title "$title" --assignee "aussiekarl-gif" --body "$body"
           fi
 
       - name: Close a previous failure issue after a clean run
