@@ -80,3 +80,49 @@ class FifoCgtLedger:
                 "purchases":self.purchases,
                 "sell_fills":sum(x["sells"] for x in taxes),
                 "net_units":self.bought_units-self.sold_units}
+
+
+class AnnualSmsfTaxPayment:
+    """Stress: settle preceding financial-year CGT at first weekly July close.
+
+    This is earlier than the usual SMSF annual-return payment schedule, so
+    it is deliberately conservative, not a literal ATO lodgement timetable.
+    Cash is used first; if short, sell enough ETF units to pay tax plus
+    brokerage and dealing friction, adding those new disposals to FIFO CGT.
+    """
+    def __init__(self,ledger,brokerage,fee,slippage):
+        self.ledger=ledger
+        self.brokerage=brokerage
+        self.fee=fee
+        self.slippage=slippage
+        self.previous_fy=None
+        self.financing_sales=0
+        self.financing_units=0.
+
+    def __call__(self,_index,date,price,cash,btc):
+        day=pd.Timestamp(date)
+        fy=int(day.year+(day.month>=7))
+        previous=self.previous_fy
+        self.previous_fy=fy
+        if previous is None or previous==fy:return cash,btc
+        if fy<previous:raise AssertionError("Nonchronological dates")
+        for year in range(previous,fy):
+            tax=self.ledger.settle_year(year)
+            if tax<=0:continue
+            if cash+1e-7<tax:
+                per_unit=float(price)*(1-self.fee)*(1-self.slippage)
+                quantity=(tax-cash+self.brokerage)/per_unit
+                if quantity>btc+1e-7:
+                    raise ArithmeticError("Not enough ETF holdings to fund annual CGT")
+                quantity=min(quantity,btc)
+                received=quantity*per_unit-self.brokerage
+                cash+=received;btc-=quantity
+                self.ledger({"side":"SELL","kind":"TAX_PAYMENT",
+                             "date":day,"units":quantity,"cash":received,
+                             "price":float(price),"brokerage":self.brokerage})
+                self.financing_sales+=1
+                self.financing_units+=quantity
+            if tax>cash+1e-6:raise ArithmeticError("Unfunded tax cash payment")
+            cash-=tax
+            self.ledger.paid_total+=tax
+        return cash,btc
