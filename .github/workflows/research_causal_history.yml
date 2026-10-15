@@ -1,33 +1,7 @@
 name: Research causal history comparison
+# Heavy historical parameter explorations: run on demand only.
+# Kept for reproducibility; never run with each Research commit.
 on:
-  push:
-    branches: [research/cycle-strategy-optimization]
-    paths:
-      - '.github/workflows/research_causal_history.yml'
-      - 'engines/research/build_causal_history.py'
-      - 'engines/research/run_cycle_comparison.py'
-      - 'engines/research/run_stored_usd_comparison.py'
-      - 'engines/research/test_200wma_entry.py'
-      - 'engines/research/test_200wma_weighted.py'
-      - 'engines/research/test_200wma_core_satellite.py'
-      - 'engines/research/test_200wma_roundtrip.py'
-      - 'engines/research/test_200wma_percentage_bands.py'
-      - 'engines/research/test_200wma_tier_ladders.py'
-      - 'engines/research/test_200wma_start_sensitivity.py'
-      - 'engines/research/test_200wma_exact_10x10.py'
-      - 'engines/research/test_200wma_12week_execution.py'
-      - 'engines/research/btc_200wma_history.py'
-      - 'engines/research/test_200wma_aud_currency_impact.py'
-      - 'engines/research/test_200wma_smsf_costs.py'
-      - 'engines/research/test_200wma_idle_cash_recycling.py'
-      - 'engines/research/test_200wma_failure_attribution.py'
-      - 'engines/research/test_200wma_cash_exposure_ceiling.py'
-      - 'engines/research/smsf_cgt_ledger.py'
-      - 'engines/research/test_200wma_lower_tier_sensitivity.py'
-      - 'engines/research/test_200wma_overlap_slippage.py'
-      - 'engines/research/test_200wma_fixed_horizon.py'
-      - 'engines/research/test_200wma_cash_deployment.py'
-      - 'engines/research/test_200wma_integrated_cash_and_trading.py'
   workflow_dispatch:
     inputs:
       start:
