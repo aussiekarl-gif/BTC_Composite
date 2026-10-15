@@ -38,7 +38,7 @@ streamlit run app.py
 
 ## Research development after October 2026 cleanup
 
-- **Daily app and NAS:** `main` remains the deployed Production V5.8.2 control. Research/Paper changes do not automatically promote into Production. The NAS Docker image is published only when deployed runtime inputs change.
+- **Streamlit-only app:** `main` remains the Streamlit Production V5.8.2 control. Research/Paper changes do not automatically promote into Production. The unused NAS Docker publishing workflow and container files were removed from active `main` on 16 October 2026 and preserved under [`research_archive/unused_nas/`](research_archive/unused_nas/README.md).
 - **Fast checks on Research edits:** [Research BTC fast safety checks](https://github.com/aussiekarl-gif/BTC_Composite/actions/workflows/research_200wma_fast_safety.yml) — unit, paper, tax and workflow-syntax tests, not historical optimisation.
 - **Historical backtests only on request:** commit a fresh `request_utc` to `research_runs/REQUEST_FULL_HISTORICAL.txt` (all 22 modules) or `research_runs/REQUEST_EXTENDED_SENSITIVITY.txt` (extended sensitivity). Routine code commits do not relaunch those simulations.
 - **Scheduled forward paper testing:** approved main-branch Wednesday scheduler checks out Research only and updates the frozen paper portfolio dashboard. Do not rewrite past paper observations.
