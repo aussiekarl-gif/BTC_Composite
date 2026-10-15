@@ -12,6 +12,7 @@ import pandas as pd
 from engines.shared.central_data import load_master
 from engines.research.sell_threshold_robustness import run_probe
 from engines.research.sell_threshold_walkforward import expanding_walk_forward
+from engines.research.fixed_sell_sensitivity import fixed_threshold_matrix
 
 
 def main():
@@ -39,6 +40,7 @@ def main():
 
     split = run_probe(data)
     rolling = expanding_walk_forward(data)
+    sensitivity = fixed_threshold_matrix(data)
     summary = {
         "research_only": True,
         "raw_master_rows": raw_rows,
@@ -56,6 +58,7 @@ def main():
             "selected_threshold": split["selected_sell_threshold"],
             "scenarios": split["holdout_scenarios"],
         },
+        "fixed_threshold_sensitivity": sensitivity,
         "expanding_walk_forward": {
             "fold_count": rolling["fold_count"],
             "summary_by_cost": rolling["summary_by_cost"],
