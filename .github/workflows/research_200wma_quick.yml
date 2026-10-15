@@ -1,18 +1,8 @@
-name: BTC 200WMA quick regression
+name: BTC 200WMA extended sensitivity (manual)
+# Prior fast workflow contains multiple historical simulations.
+# Keep for manual research; use research_200wma_fast_safety.yml on every code push.
 on:
-  push:
-    branches: [research/cycle-strategy-optimization]
-    paths:
-      - '.github/workflows/research_200wma_quick.yml'
-      - 'engines/research/test_200wma_12week_execution.py'
-      - 'engines/research/test_200wma_smsf_costs.py'
-      - 'engines/research/smsf_cgt_ledger.py'
-      - 'engines/research/test_smsf_cgt_ledger_checks.py'
-      - 'engines/research/btc_200wma_history.py'
-      - 'engines/research/test_200wma_cash_deployment.py'
-      - 'engines/research/test_200wma_integrated_cash_and_trading.py'
-      - 'engines/research/test_200wma_btc_core_floor.py'
-      - 'engines/research/test_200wma_sell_cross_direction.py'
+irection.py'
   workflow_dispatch:
 jobs:
   quick-check:
