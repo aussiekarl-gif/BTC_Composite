@@ -1,0 +1,62 @@
+{
+  "schema": "btc-200wma-paper-v1",
+  "policy": "Frozen research-only prospective ETF paper experiment; no live orders",
+  "frozen_on_utc": "2026-10-15",
+  "earliest_first_completed_week_utc": "2026-10-19",
+  "weekly_label": "W-MON completed UTC BTC close; executable proxy VBTC issuer last traded ASX price on or before that Monday",
+  "capital_aud": 500000,
+  "initial_btc_etf_fraction": 0.2,
+  "initial_funding_weeks": 12,
+  "funding_risk_weighted": true,
+  "buy_thresholds_pct": [
+    25,
+    20,
+    15,
+    10,
+    5,
+    0,
+    -5,
+    -10,
+    -20,
+    -30
+  ],
+  "sell_thresholds_pct": [
+    100,
+    120,
+    140,
+    160,
+    180,
+    200,
+    220,
+    240,
+    260,
+    280
+  ],
+  "buy_execution_weeks": 12,
+  "sell_execution_weeks": 16,
+  "bell_weights": true,
+  "block_same_tier_overlap": true,
+  "reverse_cancel": false,
+  "btc_core_fraction": 0,
+  "sell_cross_direction": "up",
+  "fee_fraction_per_fill": 0.001,
+  "slippage_assumption_per_fill": 0.005,
+  "brokerage_aud_per_fill": 20,
+  "cash_recycle": {
+    "enabled_for_secondary_candidate": true,
+    "idle_weeks": 26,
+    "allocation_fraction": 0.25,
+    "min_cash_weight": 0.5
+  },
+  "paper_portfolios": [
+    "baseline_dca",
+    "tier_12buy_16sell",
+    "tier_12buy_16sell_recycle26"
+  ],
+  "execution_price_kind": "official VBTC last traded AUD reference, not guaranteed executable bid/ask",
+  "etf_data_url": "https://www.vaneck.com.au/etf/alternatives/vbtc/downloads/fundhistoprices/",
+  "risk_usd_data_url": "https://api.blockchain.info/charts/market-price",
+  "tax_assumption": "Research estimate of 15% compliant SMSF accumulation CGT; pay first weekly July bar; does not imply real tax deadlines or a client's status",
+  "revision_policy": "Observations append-only; reject revisions to prior recorded weeks",
+  "inception_policy": "No backfill of missing weeks after more than 7 days; never use data published in the future"
+}
