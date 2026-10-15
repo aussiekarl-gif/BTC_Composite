@@ -1957,10 +1957,10 @@ def apply_below_200wma_carry_allocator(
     replay_rows = []
 
     for i, row in out.iterrows():
-        # Keep the scheduled contribution fixed on the final observation too.
-        # Do not sweep all remaining cash into one purchase just because the
-        # replay has reached its last row; unspent cash must remain cash.
-        allocation = min(remaining_cash, scheduled_slice)
+        allocation = (
+            remaining_cash if i == len(out) - 1
+            else min(remaining_cash, scheduled_slice)
+        )
         carried_cash = min(remaining_cash, carried_cash + allocation)
 
         price_usd = float(row.get("price_usd", np.nan))
