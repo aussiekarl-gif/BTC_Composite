@@ -17,7 +17,7 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None):
     if signal_price is None:signal_price=s
     if not s.index.equals(signal_price.index):raise ValueError("Signal-price and execution-price dates differ")
     buy_levels=BUYS if buy_levels is None else buy_levels
@@ -25,11 +25,19 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     if not 0 <= initial_btc_fraction <= 1:raise ValueError("Invalid BTC fraction")
     if funding_weeks < 0:raise ValueError("Invalid funding weeks")
     if not 0 <= btc_core_fraction <= 1:raise ValueError("Invalid BTC core fraction")
+    if not 0 <= brokerage_fixed < CAP:raise ValueError("Invalid fixed brokerage")
     if sell_cross_direction not in ("up","down"):raise ValueError("Invalid sell crossing direction")
-    initial_btc=CAP*(1-fee)/float(s.iloc[start+1])
-    btc=initial_btc*initial_btc_fraction*(1-slippage if funding_weeks else 1)
+    first_cash=CAP*initial_btc_fraction
+    first_units=max(0.0,first_cash-brokerage_fixed)*(1-fee)*(1-slippage if funding_weeks else 1)/float(s.iloc[start+1]) if first_cash>brokerage_fixed else 0.0
+    if first_cash and first_cash<=brokerage_fixed:raise ValueError("Initial seed order below fixed brokerage")
+    # Initial sell-tier size remains based on the hypothetical fully-invested starting BTC holding.
+    initial_btc=max(0.0,CAP-brokerage_fixed)*(1-fee)/float(s.iloc[start+1])
+    btc=first_units
     funding_cash=CAP*(1-initial_btc_fraction) if funding_weeks else 0.0
     cash=0.0 if funding_weeks else CAP*(1-initial_btc_fraction)
+    if trade_callback is not None and first_cash>0:
+        trade_callback({"side":"BUY","kind":"INITIAL","date":s.index[start+1],
+                        "units":first_units,"cash":first_cash,"price":float(s.iloc[start+1]),"brokerage":brokerage_fixed})
     prev=None
     sell_armed=[True]*len(sell_levels)
     buy_armed=[True]*len(buy_levels)
@@ -67,8 +75,13 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                 multiplier=(4.0 if ratio<=0 else 2.0 if ratio<=25 else 1.0 if ratio<=100 else 0.5 if ratio<=200 else 0.25)
             else:multiplier=1.0
             amount=funding_cash if remaining_funding_steps==1 else min(funding_cash,funding_cash/remaining_funding_steps*multiplier)
-            btc+=amount*(1-fee)*(1-slippage)/px
-            funding_cash-=amount
+            if amount>brokerage_fixed+1e-8:
+                acquired=(amount-brokerage_fixed)*(1-fee)*(1-slippage)/px
+                btc+=acquired
+                funding_cash-=amount
+                if trade_callback is not None:
+                    trade_callback({"side":"BUY","kind":"FUNDING","date":s.index[i],
+                                    "units":acquired,"cash":amount,"price":px,"brokerage":brokerage_fixed})
         remaining_jobs=[]
         for job in jobs:
             age=i-job["start"]
@@ -89,15 +102,25 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                 # BTC gained through market rises does not automatically raise the core.
                 available_to_sell=max(0.0,btc-initial_btc*btc_core_fraction)
                 q=min(available_to_sell,requested)
-                if q>1e-10:
-                    btc-=q;cash+=q*px*(1-fee)*(1-slippage)
+                received=q*px*(1-fee)*(1-slippage)-brokerage_fixed
+                if q>1e-10 and received>1e-8:
+                    btc-=q;cash+=received
                     transactions.append({"week":str(s.index[i].date()),"side":"SELL","tier":job["tier"]+1,"btc":round(q,8)})
+                    if trade_callback is not None:
+                        trade_callback({"side":"SELL","kind":"TIER","date":s.index[i],
+                                        "units":q,"cash":received,"price":px,"brokerage":brokerage_fixed})
+                else:q=0.0
                 job["remaining"]-=q
             else:
                 spend=min(job["remaining"],requested)
-                if spend>1e-8:
-                    btc+=spend*(1-fee)*(1-slippage)/px
+                if spend>brokerage_fixed+1e-8:
+                    acquired=(spend-brokerage_fixed)*(1-fee)*(1-slippage)/px
+                    btc+=acquired
                     transactions.append({"week":str(s.index[i].date()),"side":"BUY","tier":job["tier"]+1,"usd":round(spend,2)})
+                    if trade_callback is not None:
+                        trade_callback({"side":"BUY","kind":"TIER","date":s.index[i],
+                                        "units":acquired,"cash":spend,"price":px,"brokerage":brokerage_fixed})
+                else:spend=0.0
                 job["remaining"]-=spend
             if age<duration-1 and job["remaining"]>1e-8:remaining_jobs.append(job)
             elif job["side"]=="BUY":cash+=job["remaining"]
