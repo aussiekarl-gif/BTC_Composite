@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: research-forward-200wma-v1
@@ -39,7 +40,7 @@ jobs:
         with:
           ref: research/cycle-strategy-optimization
           fetch-depth: 1
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Verify research checkout and frozen policy
         shell: bash
@@ -66,15 +67,27 @@ jobs:
       - name: Verify append-only and missed-week safeguards
         run: python -m engines.research.test_paper_forward_integrity
 
+      - name: Verify deterministic Research dashboard
+        run: python -m engines.research.test_paper_dashboard
+
       - name: Capture the newly completed BTC and issuer VBTC week
         run: python -m engines.research.forward_paper_200wma --save
 
+      - name: Update dashboard strictly from frozen research scoreboard
+        run: python -m engines.research.paper_dashboard --write
+
+      - name: Publish a weekly portfolio summary in GitHub Actions
+        shell: bash
+        run: cat research_forward/200wma_v1/DASHBOARD.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Commit only new Research observations, never Production
+        env:
+          GH_PUSH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$(git branch --show-current)" == "research/cycle-strategy-optimization" ]]
-          for file in research_forward/200wma_v1/weekly_observations.jsonl research_forward/200wma_v1/scoreboard.json; do
+          for file in research_forward/200wma_v1/weekly_observations.jsonl research_forward/200wma_v1/scoreboard.json research_forward/200wma_v1/DASHBOARD.md; do
             if [[ -f "$file" ]]; then
               git add -- "$file"
             fi
@@ -86,4 +99,41 @@ jobs:
           git config user.name "btc-research-paper-bot"
           git config user.email "btc-research-paper-bot@users.noreply.github.com"
           git commit -m "Research-only forward VBTC paper weekly observation"
-          git push origin HEAD:refs/heads/research/cycle-strategy-optimization
+          # The GitHub write token is supplied ONLY to this commit step,
+          # never persisted in the Research checkout or passed to Python.
+          auth="$(printf 'x-access-token:%s' "$GH_PUSH_TOKEN" | base64 -w0)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" push origin HEAD:refs/heads/research/cycle-strategy-optimization
+
+      - name: Open or update a GitHub issue on scheduler failure
+        if: ${{ failure() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PAPER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="BTC 200WMA Research paper scheduler needs attention"
+          existing="$(gh issue list --state open --limit 100 --json title,number --jq '.[] | select(.title == "BTC 200WMA Research paper scheduler needs attention") | .number' | head -n 1)"
+          body="The Wednesday BTC 200WMA Research-only paper-trading run failed. No successful Research update is confirmed. Review the run: $PAPER_RUN_URL . Do not overwrite or backfill historical paper prices, and do not change Production."
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Close a previous failure issue after a clean run
+        if: ${{ success() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PAPER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --state open --limit 100 --json title,number --jq '.[] | select(.title == "BTC 200WMA Research paper scheduler needs attention") | .number' | head -n 1)"
+          if [[ -n "$existing" ]]; then
+            gh issue close "$existing" --comment "A subsequent Research-only scheduler run completed successfully: $PAPER_RUN_URL"
+          fi
