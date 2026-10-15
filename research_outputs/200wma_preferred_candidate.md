@@ -13,11 +13,11 @@
 - Compare against immediate execution and buy-and-hold.
 
 ## Verified initial rolling-start benchmark
-GitHub Actions run [38738305322](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38738305322), artifact `200wma-12week-execution`:
+GitHub Actions run [38808097501](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38808097501), artifact `200wma-12week-execution`:
 - 92/92 overlapping 2018–2024 starts beat buy-and-hold.
-- Median advantage: **+85.273%**.
-- Worst advantage: **+21.137%**.
-- Immediate execution median: +60.168%; worst: +27.693%.
+- Median advantage: **+85.198%**.
+- Worst advantage: **+21.086%**.
+- Immediate execution median: +60.104%; worst: +27.642%.
 
 ## Additional completed execution robustness audit
 - [GitHub Actions run 38802836578](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38802836578), artifact `200wma-overlap-slippage`.
@@ -79,6 +79,12 @@ GitHub Actions run [38738305322](https://github.com/aussiekarl-gif/BTC_Composite
 - AUD 2-year cohorts by start year include **2019 median −24.662%** (1/13 wins), **2023 median −9.767%** (3/13 wins), **2024 median +48.655%** (10/10 wins). Even if aggregate positive, performance is strongly cycle dependent.
 - Historical AUD/USD rate is a **reference**, not a guaranteed exchange-traded BTC ETF price. Actual Australian ETF tracking differences, spreads, trading hours, portfolio currency, tax and SMSF pension/accumulation rules remain unmodeled.
 - A **shared completed-week loader** is now used in the USD research backtests too, and the causal BTC/AUD data builder excludes future-labelled incomplete final weeks. Recheck all headline results from new clean-week runs before any promotion.
+
+## Completed-week backtest reconciliation (verified 2026-10-15)
+- [Full research run 38808097501](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38808097501) **passed** after switching the USD research scripts to the shared completed-week history loader. The incomplete final 2026-10-12 bucket was excluded because the archived price series ended on 2026-10-07.
+- Shared-end-date original immediate execution: **+60.104% median**, **+27.642% worst**; preferred 12-week buy / 16-week sell bell: **+85.198% median**, **+21.086% worst**, 92/92 correlated starts versus hold.
+- Fixed two- and four-year integrated cash-first comparisons remained at **+7.428%** and **+66.962%** USD median versus cash-only DCA; AUD comparisons also unchanged (+5.406% and +49.200%).
+- The shared-end-date results remain unsuitable for choosing a trading strategy despite their positive numbers.
 
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
