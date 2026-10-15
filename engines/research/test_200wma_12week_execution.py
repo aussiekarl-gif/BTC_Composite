@@ -49,7 +49,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     buy_weeks=buy_weeks or weeks
     sell_weeks=sell_weeks or weeks
     ending=(len(s)-1) if end_index is None else int(end_index)
-    if ending >= len(s) or ending <= start+1:raise ValueError("Invalid end_index")
+    if ending >= len(s) or ending < start+1:raise ValueError("Invalid end_index")
     for i in range(start+2,ending+1):
         j=i-1
         if not np.isfinite(ma.iloc[j]) or ma.iloc[j]<=0:continue
