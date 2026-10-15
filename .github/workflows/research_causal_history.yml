@@ -1,7 +1,12 @@
 name: Research causal history comparison
-# Heavy historical parameter explorations: run on demand only.
+# Heavy historical parameter explorations: run only on explicit request.
 # Kept for reproducibility; never run with each Research commit.
 on:
+  # Request-triggered only; routine Research pushes cannot launch 22 historical jobs.
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - 'research_runs/REQUEST_FULL_HISTORICAL.txt'
   workflow_dispatch:
     inputs:
       start:
