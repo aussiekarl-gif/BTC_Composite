@@ -1,0 +1,46 @@
+name: Research fair-exit and adaptive BTC challengers
+on:
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - '.github/workflows/research_fair_exit_challengers.yml'
+      - 'engines/research/terminal_liquidation.py'
+      - 'engines/research/test_terminal_liquidation_checks.py'
+      - 'engines/research/test_200wma_fair_liquidation.py'
+      - 'engines/research/test_200wma_adaptive_challengers.py'
+      - 'engines/research/test_adaptive_200wma_checks.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: research-fair-liquidated-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  aud-after-tax-comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install research dependencies
+        run: python -m pip install pandas numpy
+      - name: Check matched final CGT, trading fees and no double taxation
+        run: python -m engines.research.test_terminal_liquidation_checks
+      - name: Check opt-in guards and strictly prior-week decisions
+        run: python -m engines.research.test_adaptive_200wma_checks
+      - name: Run 2/4-year AUD DCA versus 200WMA fully-liquidated comparison
+        run: python -m engines.research.test_200wma_fair_liquidation
+      - name: Archive fully-liquidated DCA-vs-trading comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: aud-btc-fully-liquidated-fair-exit
+          path: research_outputs/200wma_fair_terminal_liquidation_aud.json
+      - name: Compare pre-registered adaptive sell/reentry hypotheses
+        run: python -m engines.research.test_200wma_adaptive_challengers
+      - name: Archive after-tax adaptive challenger study
+        uses: actions/upload-artifact@v4
+        with:
+          name: aud-btc-adaptive-sell-reentry-challengers
+          path: research_outputs/200wma_adaptive_challengers_fair_exit_aud.json
