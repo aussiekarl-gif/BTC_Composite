@@ -86,6 +86,17 @@ GitHub Actions run [38808097501](https://github.com/aussiekarl-gif/BTC_Composite
 - Fixed two- and four-year integrated cash-first comparisons remained at **+7.428%** and **+66.962%** USD median versus cash-only DCA; AUD comparisons also unchanged (+5.406% and +49.200%).
 - The shared-end-date results remain unsuitable for choosing a trading strategy despite their positive numbers.
 
+## Australian BTC ETF costs and annual SMSF CGT (verified 2026-10-15)
+
+Detailed [cost and tax stress report](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_outputs/200wma_smsf_cost_tax_summary.md). [GitHub Actions 38810383990](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38810383990) **passed**, with USD ledger regression and deterministic FIFO unit tests passed in [run 38810383986](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38810383986).
+
+- Illustrative research costs: A$20 brokerage on **every fill**, 0.45% ETF annual management drag, 0.1% dealing fee plus 0.5% slippage; the DCA benchmark pays matching initial-purchase and DCA fees.
+- **2-year AUD fixed holding** (89 overlapping starts): gross **+4.567%** median vs DCA, **+2.402%** after 15% compliant SMSF accumulation CGT and July cash settlement; **48/89 wins**, **−59.482% worst**.
+- **4-year AUD fixed holding** (63 overlapping starts): gross **+48.984%**, **+33.099%** after annual CGT; **53/63 wins**, **−30.502% worst**. Terminal-only tax estimate was +38.470%, which materially overstated this tax-payment cashflow scenario.
+- Median modelled cumulative CGT liability roughly **A$39,041** (2 years) and **A$168,372** (4 years). These are **not predictions of an individual's tax bill**, and no cohort required a forced sale specifically to pay the early-July tax charge.
+- Gross (0% CGT) results represent only assets **actually eligible** for exempt retirement-phase income. Actual SMSFs may have a mixed ECPI percentage, distributions, actuarial apportionment and pension restrictions.
+- **Decision:** Stay in Research. The strategy has poor short-horizon tails and in-sample fitting concerns despite attractive historical long-horizon medians. Production V5.8.2 is untouched.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
