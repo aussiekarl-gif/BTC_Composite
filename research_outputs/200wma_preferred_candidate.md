@@ -69,6 +69,17 @@ GitHub Actions run [38738305322](https://github.com/aussiekarl-gif/BTC_Composite
 - [Sell-crossing test, run 38806511311](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38806511311). Upward sell-tier crossings with no core: 2-year median +7.43%, worst −51.03%, 4-year median +66.96%. Downward crossings: 2-year median +2.96%, worst −32.84%, 4-year median +47.53%; the four-year worst was **−27.30%** versus upward-crossing **−14.61%**. Do not claim downward selling dominates the original rule.
 - **Decision for research only:** retain upward-crossing sell tiers as the leading high-return variant; do not enable a permanent BTC core automatically. Any selection should specify a downside tolerance, and all comparisons remain in-sample.
 
+## Historical AUD currency impact (verified 2026-10-15)
+- [AUD paired-cohort backtest, run 38807188747](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38807188747), artifact `200wma-aud-currency-impact`.
+- Risk signals derive from completed weekly BTC/USD prices and USD 200WMA, while actual simulated fills use historical BTC/AUD prices from a separately sourced series (Blockchain.com USD spot × Frankfurter historical USD/AUD reference rates). The USD and AUD comparisons use exactly matched entry/exit dates and same parameters.
+- Protected core **0%**, 20% BTC / 80% cash initial holdings, risk-weighted 12-week cash funding, 12-week bell buy / 16-week bell sell, blocked same-tier overlap, 0.1% trade fee plus 0.5% slippage:
+  - **2 years:** USD median **+7.428%** vs cash-only DCA; AUD median **+5.406%**, 57/89 wins, worst AUD **−54.204%**.
+  - **3 years:** USD median **+25.814%**; AUD median **+33.117%**, 48/76 wins, worst AUD **−46.927%**. Different median ordering from median cohort-level FX change is expected: medians are not linear.
+  - **4 years:** USD median **+66.962%**; AUD median **+49.200%**, 56/63 wins, worst AUD **−21.130%**.
+- AUD 2-year cohorts by start year include **2019 median −24.662%** (1/13 wins), **2023 median −9.767%** (3/13 wins), **2024 median +48.655%** (10/10 wins). Even if aggregate positive, performance is strongly cycle dependent.
+- Historical AUD/USD rate is a **reference**, not a guaranteed exchange-traded BTC ETF price. Actual Australian ETF tracking differences, spreads, trading hours, portfolio currency, tax and SMSF pension/accumulation rules remain unmodeled.
+- A **shared completed-week loader** is now used in the USD research backtests too, and the causal BTC/AUD data builder excludes future-labelled incomplete final weeks. Recheck all headline results from new clean-week runs before any promotion.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
