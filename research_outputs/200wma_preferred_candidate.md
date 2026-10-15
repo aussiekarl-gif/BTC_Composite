@@ -27,6 +27,23 @@ GitHub Actions run [38738305322](https://github.com/aussiekarl-gif/BTC_Composite
 - Same-tier overlap **blocked**, 1.0% additional slippage: 92/92 wins, +67.187% median, worst +20.338%.
 - These estimates remain shared-endpoint overlapping cohorts and must not be used alone for promotion.
 
+## Fixed-horizon challenge (verified 2026-10-15)
+[Completed run 38803550782](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38803550782), artifact `200wma-fixed-horizon`. For the **overlap-blocked**, bell-shaped 12-week buys / 16-week sells, 0.1% fee + 0.5% slippage:
+- **2 years** (104 weeks): 61/89 winning rolling starts; median **+8.304%** vs buy-and-hold; worst **−36.651%**.
+- **3 years** (156 weeks): 50/76 wins; median **+25.512%**; worst **−42.087%**.
+- **4 years** (208 weeks): 60/63 wins; median **+67.958%**; worst **−24.478%**.
+- Earlier 92/92 performance reflected common Oct 2026 exits. It **does not generalize** to a 2–3 year holding period. Fixed horizons still have *overlapping start dates* and are not independent trials.
+- No strategy is approved for Production.
+
+## Cash-first entry benchmark (verified 2026-10-15)
+[Completed run 38803990298](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38803990298), artifact `200wma-cash-deployment`. **Illustrative** 20% BTC / 80% cash initial holdings, 0.1% fee + 0.5% slippage; all cash invested after the selected window, **no sell ladder**; compare to 100% immediate BTC purchase:
+- 12-week equal DCA: 41/89 wins, median **−3.115%**.
+- 12-week 200WMA risk-weighted DCA: 42/89 wins, median **−0.897%**.
+- 26-week risk-weighted DCA: 43/89 wins, median **−0.393%**.
+- 52-week risk-weighted DCA: 38/89 wins, median **−5.277%**.
+- These 2-year comparisons do **not** validate the sell/repurchase model for a cash-heavy investor. No model has shown a robust advantage in the cash-first test.
+- When fully invested by week 52, the buy-only strategy has unchanged relative BTC units thereafter. Differences in aggregate medians between 2- and 4-year horizons stem from **different eligible start cohorts**, not additional timing gains after deployment.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
