@@ -1,0 +1,28 @@
+name: BTC 200WMA quick regression
+on:
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - '.github/workflows/research_200wma_quick.yml'
+      - 'engines/research/test_200wma_12week_execution.py'
+      - 'engines/research/test_200wma_cash_deployment.py'
+      - 'engines/research/test_200wma_integrated_cash_and_trading.py'
+  workflow_dispatch:
+jobs:
+  quick-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install lightweight dependencies
+        run: pip install pandas numpy
+      - name: Integrated cash and trading accounting regression
+        run: python -m engines.research.test_200wma_integrated_cash_and_trading
+      - name: Archive quick validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-integrated-quick-check
+          path: research_outputs/200wma_integrated_cash_and_trading.json
