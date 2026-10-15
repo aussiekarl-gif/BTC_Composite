@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 import requests
 
-from engines.research.run_cycle_comparison import main as _comparison_main
 
 
 def build_dataset(start="2015-01-01", end=None):
@@ -47,6 +46,8 @@ def build_dataset(start="2015-01-01", end=None):
     if fx.index.min() > btc.index.min() + pd.Timedelta(days=7):
         raise ValueError("FX history does not cover BTC start")
     btc["aud_per_usd"] = fx.reindex(btc.index.union(fx.index)).sort_index().ffill().reindex(btc.index)
+    if btc["aud_per_usd"].isna().any():
+        raise ValueError("Missing early FX observations; refusing to invent exchange rates")
     btc = btc.dropna(subset=["aud_per_usd"])
     btc["btc_price_aud"] = btc["price"] * btc["aud_per_usd"]
     # Refit expanding log-price versus log-days every 91 days, with 52 weekly
