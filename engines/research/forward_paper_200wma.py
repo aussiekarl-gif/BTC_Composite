@@ -125,9 +125,12 @@ def simulate_history(events,config,config_hash):
     if len(events)<2:return {"status":"not_started","config_sha256":config_hash,"weeks":{}}
     s,signals,ma=load_price_arrays(events)
     weeks={}
+    frozen_tiers={"buy_levels":config["buy_thresholds_pct"],
+                  "sell_levels":config["sell_thresholds_pct"]}
     variants={"baseline_dca":{"sell_levels":[],"buy_levels":[],"cash_recycle_idle_weeks":0},
-              "tier_12buy_16sell":{"cash_recycle_idle_weeks":0},
-              "tier_12buy_16sell_recycle26":{"cash_recycle_idle_weeks":26}}
+              "tier_12buy_16sell":{**frozen_tiers,"cash_recycle_idle_weeks":0},
+              "tier_12buy_16sell_recycle26":{**frozen_tiers,
+                  "cash_recycle_idle_weeks":config["cash_recycle"]["idle_weeks"]}}
     for n in range(1,len(events)):
         outcomes={}
         for label,spec in variants.items():
