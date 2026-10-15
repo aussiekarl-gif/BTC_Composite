@@ -12,6 +12,7 @@ on:
       - 'engines/research/test_200wma_core_satellite.py'
       - 'engines/research/test_200wma_roundtrip.py'
       - 'engines/research/test_200wma_percentage_bands.py'
+      - 'engines/research/test_200wma_tier_ladders.py'
   workflow_dispatch:
     inputs:
       start:
@@ -75,6 +76,13 @@ jobs:
         with:
           name: 200wma-percentage-bands
           path: research_outputs/200wma_percentage_bands.json
+      - name: Test scaled 200WMA sell and rebuy ladders
+        run: python -m engines.research.test_200wma_tier_ladders
+      - name: Archive tier-ladder results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-tier-ladders
+          path: research_outputs/200wma_tier_ladders.json
       - name: Build causal weekly BTC AUD history
         run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
       - name: Compare strategies on chronological holdouts
