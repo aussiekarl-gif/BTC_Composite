@@ -44,6 +44,16 @@ GitHub Actions run [38738305322](https://github.com/aussiekarl-gif/BTC_Composite
 - These 2-year comparisons do **not** validate the sell/repurchase model for a cash-heavy investor. No model has shown a robust advantage in the cash-first test.
 - When fully invested by week 52, the buy-only strategy has unchanged relative BTC units thereafter. Differences in aggregate medians between 2- and 4-year horizons stem from **different eligible start cohorts**, not additional timing gains after deployment.
 
+## Strict below-200WMA buy-only test (verified 2026-10-15)
+[GitHub Actions run 38804595514](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38804595514), artifact `200wma-cash-deployment`:
+- 20% initial BTC / 80% cash; no selling. Two-year fixed horizons; compare with full immediate BTC purchase.
+- 12-week risk-weighted DCA (buy at all ratios, higher purchases below 200WMA): median **−0.897%**, 42/89 wins, **all cash deployed**.
+- Strict below-200WMA buys over 12 weeks: median **−12.710%**, 34/89 wins; **74/89** cohorts left cash uninvested, median **$400k** cash remaining.
+- Strict below-200WMA buys over 26 weeks: median **−8.837%**, 36/89 wins; **73/89** cohorts left cash uninvested, median **$400k** cash remaining.
+- Strict below-200WMA buys over 52 weeks: median **−18.279%**, 31/89 wins; **74/89** cohorts left cash uninvested, median **$400k** cash remaining.
+- **Do not adopt an absolute below-200WMA-only purchase gate for cash-heavy holdings** based on this evidence. Prefer a fully funded schedule that uses completed historical price/200WMA deviation to adjust purchase *size*, subject to risk and time horizon.
+- This does not prove a particular DCA rule can consistently beat immediate investment.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
