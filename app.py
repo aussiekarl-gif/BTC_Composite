@@ -133,7 +133,7 @@ button[data-testid="stSidebarCollapseButton"] {
 # the repository for offline research and CI; they are not navigable UI pages.
 section = st.sidebar.radio(
     "Model",
-    ["Production", "Research", "Bottom Signal Timeline"],
+    ["Production", "Research", "Bottom Signal Timeline", "200WMA Trading Model"],
     index=0,
     key="combined_app_section_selector",
     help="Production is the frozen V5.8.2 model; Research is the experimental V5.9 model.",
@@ -146,6 +146,7 @@ engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
+    "200WMA Trading Model": Path(__file__).parent / "engines" / "research" / "wma_tier_app.py",
 }[section]
 
 if not engine_path.exists():
