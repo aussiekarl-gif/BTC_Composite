@@ -43,6 +43,15 @@ class GoldenStreamlitModelTest(unittest.TestCase):
     def test_research_is_frozen_independently(self):
         compare(self,self.expected["research"],self.current["research"],"Research V5.9")
 
+    def test_research_active_wf_power_law_is_frozen(self):
+        # This is the default calculation path used by research_app.py.
+        expected=self.expected["research_active_power_law"]
+        actual=self.current["research_active_power_law"]
+        compare(self,expected,actual,"Research Streamlit WF Power Law")
+        self.assertIsNone(actual["2020-07-19"]["fair_value"])
+        self.assertGreater(actual["2021-04-04"]["risk_score"],0.)
+        self.assertLess(actual["2021-04-04"]["risk_score"],1.)
+
     def test_only_expected_snapshot_versions(self):
         self.assertEqual(self.expected["schema"],"streamlit-model-golden-v1")
         self.assertEqual(self.current["schema"],self.expected["schema"])
