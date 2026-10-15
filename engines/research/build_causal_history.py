@@ -1,0 +1,99 @@
+"""Build a reproducible BTC/AUD weekly research series using causal Power Law risk.
+
+Uses historical Blockchain.com BTC/USD closes and Frankfurter AUD FX.
+Research-only: do not treat FX fallback values as validated historical data.
+"""
+import argparse
+import datetime as dt
+import json
+import numpy as np
+import pandas as pd
+import requests
+
+from engines.research.run_cycle_comparison import main as _comparison_main
+
+
+def build_dataset(start="2015-01-01", end=None):
+    if end is None:
+        end = dt.date.today().isoformat()
+    raw = requests.get(
+        "https://api.blockchain.info/charts/market-price",
+        params={"timespan": "all", "format": "json", "sampled": "false"},
+        timeout=45,
+    )
+    raw.raise_for_status()
+    payload = raw.json()
+    btc = pd.DataFrame(
+        [(pd.to_datetime(p["x"], unit="s", utc=True), float(p["y"]))
+         for p in payload.get("values", []) if float(p["y"]) > 0],
+        columns=["date", "price"],
+    ).set_index("date").sort_index()
+    btc = btc.loc[~btc.index.duplicated(keep="last")]
+    btc = btc.loc[(btc.index >= pd.Timestamp(start, tz="UTC")) &
+                  (btc.index <= pd.Timestamp(end, tz="UTC"))]
+    if btc.empty:
+        raise ValueError("No BTC historical observations")
+    fx_url = f"https://api.frankfurter.app/{start}..{end}?from=USD&to=AUD"
+    response = requests.get(fx_url, timeout=45)
+    response.raise_for_status()
+    fx_payload = response.json()
+    rates = fx_payload.get("rates", {})
+    fx = pd.Series(
+        {pd.Timestamp(day, tz="UTC"): float(value["AUD"])
+         for day, value in rates.items()}, dtype=float
+    ).sort_index()
+    if fx.empty or not np.isfinite(fx).all() or not (fx > 0).all():
+        raise ValueError("No validated USD-to-AUD FX history")
+    if fx.index.min() > btc.index.min() + pd.Timedelta(days=7):
+        raise ValueError("FX history does not cover BTC start")
+    btc["aud_per_usd"] = fx.reindex(btc.index.union(fx.index)).sort_index().ffill().reindex(btc.index)
+    btc = btc.dropna(subset=["aud_per_usd"])
+    btc["btc_price_aud"] = btc["price"] * btc["aud_per_usd"]
+    # Refit expanding log-price versus log-days every 91 days, with 52 weekly
+    # observations minimum. Each regression uses strictly earlier weeks.
+    genesis = pd.Timestamp("2009-01-03", tz="UTC")
+    weekly = btc.resample("W-MON").last().dropna()
+    scores = []
+    last_fit = None
+    slope = intercept = None
+    for ts, row in weekly.iterrows():
+        if last_fit is None or (ts - last_fit).days >= 91:
+            history = weekly.loc[weekly.index < ts, "price"]
+            days = np.array((history.index - genesis).days, dtype=float)
+            values = history.to_numpy(dtype=float)
+            valid = (days > 0) & (values > 0) & np.isfinite(values)
+            if valid.sum() >= 52:
+                slope, intercept = np.polyfit(np.log10(days[valid]), np.log10(values[valid]), 1)
+                last_fit = ts
+        if slope is None:
+            scores.append(np.nan)
+        else:
+            days_now = (ts - genesis).days
+            fair_log = slope * np.log10(days_now) + intercept
+            scores.append(float(np.clip((np.log10(row["price"]) - fair_log + .10) / .30, 0, 1)))
+    weekly["risk_score"] = scores
+    weekly = weekly.dropna(subset=["risk_score"])
+    if len(weekly) < 100:
+        raise ValueError("Insufficient scored weekly observations")
+    result = weekly[["btc_price_aud", "risk_score"]].copy()
+    result.index.name = "date"
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start", default="2015-01-01")
+    parser.add_argument("--end", default=dt.date.today().isoformat())
+    parser.add_argument("--out", default="research_outputs/causal_btc_aud_weekly.csv")
+    args = parser.parse_args()
+    result = build_dataset(args.start, args.end)
+    from pathlib import Path
+    target = Path(args.out)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    result.to_csv(target)
+    print(json.dumps({"rows": len(result), "first": str(result.index.min()),
+                      "last": str(result.index.max()), "csv": str(target)}))
+
+
+if __name__ == "__main__":
+    main()
