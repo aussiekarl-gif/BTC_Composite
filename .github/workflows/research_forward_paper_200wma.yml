@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/research_forward_paper_200wma.yml'
       - 'engines/research/forward_paper_200wma.py'
+      - 'engines/research/test_paper_forward_integrity.py'
       - 'engines/research/vbtc_official_history.py'
       - 'engines/research/test_200wma_12week_execution.py'
       - 'engines/research/smsf_cgt_ledger.py'
@@ -30,6 +31,8 @@ jobs:
         run: pip install pandas numpy requests openpyxl
       - name: Verify frozen paper experiment and no future lookahead
         run: python -m engines.research.forward_paper_200wma --self-test
+      - name: Verify offline event integrity and fail-closed missing weeks
+        run: python -m engines.research.test_paper_forward_integrity
       - name: Record only timely, fully completed future weeks
         run: python -m engines.research.forward_paper_200wma --save
       - name: Append prospective paper evidence on Research branch only
