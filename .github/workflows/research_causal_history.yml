@@ -20,6 +20,7 @@ on:
       - 'engines/research/test_200wma_overlap_slippage.py'
       - 'engines/research/test_200wma_fixed_horizon.py'
       - 'engines/research/test_200wma_cash_deployment.py'
+      - 'engines/research/test_200wma_integrated_cash_and_trading.py'
   workflow_dispatch:
     inputs:
       start:
@@ -139,6 +140,13 @@ jobs:
         with:
           name: 200wma-cash-deployment
           path: research_outputs/200wma_cash_deployment.json
+      - name: Test integrated cash-first buying with staged sell and rebuy
+        run: python -m engines.research.test_200wma_integrated_cash_and_trading
+      - name: Archive integrated cash and trading evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-integrated-cash-trading
+          path: research_outputs/200wma_integrated_cash_and_trading.json
       - name: Build causal weekly BTC AUD history
         run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
       - name: Compare strategies on chronological holdouts
