@@ -30,6 +30,11 @@ jobs:
         run: pip install pandas numpy requests
       - name: Historical USD benchmark from archived provider data
         run: python -m engines.research.run_stored_usd_comparison
+      - name: Archive USD benchmark immediately
+        uses: actions/upload-artifact@v4
+        with:
+          name: stored-usd-cycle-benchmark
+          path: research_outputs/stored_usd_comparison.json
       - name: Build causal weekly BTC AUD history
         run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
       - name: Compare strategies on chronological holdouts
