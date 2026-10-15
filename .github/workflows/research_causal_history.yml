@@ -10,6 +10,7 @@ on:
       - 'engines/research/test_200wma_entry.py'
       - 'engines/research/test_200wma_weighted.py'
       - 'engines/research/test_200wma_core_satellite.py'
+      - 'engines/research/test_200wma_roundtrip.py'
   workflow_dispatch:
     inputs:
       start:
@@ -59,6 +60,13 @@ jobs:
         with:
           name: 200wma-core-satellite
           path: research_outputs/200wma_core_satellite.json
+      - name: Backtest 200WMA cycle sells and rebuys
+        run: python -m engines.research.test_200wma_roundtrip
+      - name: Archive 200WMA round-trip results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-roundtrip
+          path: research_outputs/200wma_roundtrip.json
       - name: Build causal weekly BTC AUD history
         run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
       - name: Compare strategies on chronological holdouts
