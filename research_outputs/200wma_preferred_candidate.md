@@ -1,5 +1,25 @@
 # Preferred 200WMA research candidate — 2026-10-15
 
+## 16 October 2026 update: corrected fully-liquidated tax comparison supersedes prior after-tax rankings
+
+[**Full matched-AUD exit and adaptive trading report**](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_outputs/200wma_fair_exit_adaptive_conclusions_2026-10-16.md). Numerical tests and 2/3/4-year results verified in [GitHub run 38822949971](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38822949971).
+
+**Important correction:** Older accumulation-phase tax sensitivity compared a realised-CGT trading portfolio to a **not-yet-liquidated DCA baseline**. The newly matched benchmark applies **the same disposal price, brokerage, slippage, and FIFO SMSF CGT** on each portfolio's remaining ETF units at the **same exit date**, netting already-paid annual CGT once.
+
+| Matched holding horizon | Existing tier strategy median vs after-tax DCA | Worst outcome | Distinct entry samples? |
+|:--|--:|--:|:--|
+| 2 years | **+4.257%** | **−55.288%** | No — 89 overlapping starts |
+| 3 years | **+30.070%** | **−47.953%** | No — 76 overlapping starts |
+| 4 years | **+38.414%** | **−23.718%** | No — 63 overlapping starts |
+
+A 5%-pullback weakness-gated sell challenger increased four-year median advantage to +46.372% with fewer fills, but did **not** improve the median over 2 or 3 years. Reentry and exposure-capping rules protected some bad tails by sacrificing upside; none consistently dominates existing tiers. Even under the matched-tax comparison, the strategy frequently underperformed simple DCA in 2019 and 2023 two-year starts.
+
+**Interpretation:** The original "after-tax +33.099% four-year" numbers below remain a record of the earlier *unmatched tax* experiment, **not the currently correct terminal liquidation benchmark**. Do not compare the old and new statistics as if they describe identical accounting.
+
+**Promotion decision unchanged:** Production V5.8.2 and frozen VBTC prospective paper v1 are unchanged. New features are disabled by default; no rule has earned promotion.
+
+
+
 **Research only. Production must remain unchanged.**
 
 ## Selected configuration
