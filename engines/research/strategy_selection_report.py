@@ -17,6 +17,10 @@ def optimize_and_compare(data, splits=(0.55, 0.65, 0.75, 0.85),
     if not isinstance(data, pd.DataFrame) or data.empty:
         raise ValueError("Require dated price/risk observations")
     ordered = data.sort_index()
+    if not {"btc_price_aud", "risk_score"}.issubset(ordered.columns):
+        raise ValueError("Missing BTC/AUD price or risk score")
+    if len(ordered) < 5:
+        raise ValueError("Insufficient observations for chronological evaluation")
     if not ordered.index.is_unique:
         raise ValueError("Duplicate observation dates")
     output = []
