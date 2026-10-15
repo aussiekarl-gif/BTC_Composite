@@ -21,6 +21,7 @@ on:
       - 'engines/research/test_200wma_smsf_costs.py'
       - 'engines/research/test_200wma_idle_cash_recycling.py'
       - 'engines/research/test_200wma_failure_attribution.py'
+      - 'engines/research/test_200wma_cash_exposure_ceiling.py'
       - 'engines/research/smsf_cgt_ledger.py'
       - 'engines/research/test_200wma_lower_tier_sensitivity.py'
       - 'engines/research/test_200wma_overlap_slippage.py'
@@ -183,6 +184,13 @@ jobs:
         with:
           name: 200wma-aud-failure-attribution
           path: research_outputs/200wma_failure_attribution_aud.json
+      - name: Compare 25 40 and 60 percent cash ceilings on BTC tier sells
+        run: python -m engines.research.test_200wma_cash_exposure_ceiling
+      - name: Archive AUD after-tax cash exposure ceiling test
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-aud-cash-exposure-ceilings
+          path: research_outputs/200wma_cash_exposure_ceiling_aud.json
       - name: Compare strategies on chronological holdouts
         run: python -m engines.research.run_cycle_comparison --csv research_outputs/causal_btc_aud_weekly.csv --walk-forward --out research_outputs/comparison.jsonl
       - name: Archive evidence
