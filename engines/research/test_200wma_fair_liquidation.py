@@ -5,7 +5,7 @@ Both strategies:
 - deploy the other 80% over 12 completed weeks by the same causal weight;
 - pay identical fees and slippage on buys and final liquidation;
 - use FIFO Australian SMSF accumulation CGT including all unrealised lots
-  disposed of at the same final 2y/4y weekly closing price.
+  disposed of at the same final 2y/3y/4y weekly closing price.
 
 Trading additionally settles realised SMSF CGT at the first July weekly
 close as a conservative cashflow stress, whereas buy-only DCA owes no CGT
@@ -87,7 +87,7 @@ def main():
     all_starts=[i for i in range(len(prices)-1) if
       pd.Timestamp("2018-01-01",tz="UTC")<=prices.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
     results={}
-    for horizon in (104,208):
+    for horizon in (104,156,208):
         starts=[i for i in all_starts if i+horizon<len(prices)]
         cases={}
         for label,settings in {
