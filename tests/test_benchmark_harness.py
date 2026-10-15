@@ -12,6 +12,12 @@ class BenchmarkHarnessTests(unittest.TestCase):
             index=pd.date_range("2020-01-06", periods=len(prices), freq="W-MON"),
         )
 
+    def test_duplicate_dates_are_rejected(self):
+        data = self.data([1, 2, 3], [0.1, 0.2, 0.3])
+        data.index = [data.index[0], data.index[0], data.index[2]]
+        with self.assertRaisesRegex(ValueError, "Duplicate observation dates"):
+            compare_lagged_cycle_to_benchmarks(data)
+
     def test_same_execution_date_and_fee(self):
         result = compare_lagged_cycle_to_benchmarks(
             self.data([1, 2, 4], [0.5, 0.5, 0.5]),
