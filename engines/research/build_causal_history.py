@@ -33,7 +33,8 @@ def build_dataset(start="2015-01-01", end=None):
                   (btc.index <= pd.Timestamp(end, tz="UTC"))]
     if btc.empty:
         raise ValueError("No BTC historical observations")
-    fx_url = f"https://api.frankfurter.app/{start}..{end}?from=USD&to=AUD"
+    fx_start = (pd.Timestamp(start) - pd.Timedelta(days=730)).date().isoformat()
+    fx_url = f"https://api.frankfurter.app/{fx_start}..{end}?from=USD&to=AUD"
     response = requests.get(fx_url, timeout=45)
     response.raise_for_status()
     fx_payload = response.json()
