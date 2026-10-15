@@ -36,6 +36,14 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Research development after October 2026 cleanup
+
+- **Daily app and NAS:** `main` remains the deployed Production V5.8.2 control. Research/Paper changes do not automatically promote into Production. The NAS Docker image is published only when deployed runtime inputs change.
+- **Fast checks on Research edits:** [Research BTC fast safety checks](https://github.com/aussiekarl-gif/BTC_Composite/actions/workflows/research_200wma_fast_safety.yml) — unit, paper, tax and workflow-syntax tests, not historical optimisation.
+- **Historical backtests only on request:** commit a fresh `request_utc` to `research_runs/REQUEST_FULL_HISTORICAL.txt` (all 22 modules) or `research_runs/REQUEST_EXTENDED_SENSITIVITY.txt` (extended sensitivity). Routine code commits do not relaunch those simulations.
+- **Scheduled forward paper testing:** approved main-branch Wednesday scheduler checks out Research only and updates the frozen paper portfolio dashboard. Do not rewrite past paper observations.
+- **Evidence and archive:** [cleanup implementation](research_outputs/repository_cleanup_implementation_2026-10-15.md), [full inventory](research_outputs/repository_simplification_audit_2026-10-15.md), [research archive](research_archive/README.md).
+
 ## Secrets
 
 The Streamlit/GitHub environments currently use secrets such as `BGEOMETRICS_TOKEN`, `NTFY_TOPIC`, and the audit GitHub persistence credentials. Never commit secret values to the repository.
