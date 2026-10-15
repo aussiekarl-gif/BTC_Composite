@@ -135,6 +135,7 @@ primary_sections = [
     "V5.8.2 Production",
     "V5.9 Research",
     "Bottom Signal Timeline",
+    "200WMA Trading Model",
 ]
 maintenance_sections = [
     "Public Model Audit",
@@ -175,6 +176,7 @@ engine_path = {
     "V5.8.2 Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "V5.9 Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
+    "200WMA Trading Model": Path(__file__).parent / "engines" / "research" / "wma_tier_app.py",
     "Public Model Audit": Path(__file__).parent / "engines" / "audit" / "public_model_audit.py",
     "Provider Capability Probe": Path(__file__).parent / "engines" / "audit" / "provider_probe_app.py",
     "Central Data Parity": Path(__file__).parent / "engines" / "shared" / "parity_app.py",
