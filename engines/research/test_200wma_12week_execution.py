@@ -16,7 +16,7 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None):
     buy_levels=BUYS if buy_levels is None else buy_levels
     sell_levels=SELLS if sell_levels is None else sell_levels
     btc=CAP*(1-fee)/float(s.iloc[start+1])
@@ -29,7 +29,9 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     transactions=[]
     buy_weeks=buy_weeks or weeks
     sell_weeks=sell_weeks or weeks
-    for i in range(start+2,len(s)):
+    ending=(len(s)-1) if end_index is None else int(end_index)
+    if ending >= len(s) or ending <= start+1:raise ValueError("Invalid end_index")
+    for i in range(start+2,ending+1):
         j=i-1
         if not np.isfinite(ma.iloc[j]) or ma.iloc[j]<=0:continue
         ratio=100*(float(s.iloc[j])/float(ma.iloc[j])-1)
@@ -83,7 +85,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
         if cash < -1e-6 or btc < -1e-9:raise AssertionError("Negative holdings")
     # Unspent committed buy cash is still an asset.
     cash+=sum(j["remaining"] for j in jobs if j["side"]=="BUY")
-    final=float(s.iloc[-1])
+    final=float(s.iloc[ending])
     hold=CAP*(1-fee)/float(s.iloc[start+1])*final
     value=cash+btc*final
     return {"value_usd":round(value,2),"vs_hold_pct":round(100*(value/hold-1),3),
