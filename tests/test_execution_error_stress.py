@@ -31,6 +31,12 @@ class ExecutionErrorStressTests(unittest.TestCase):
         self.assertEqual(result["execution_error_fraction"].tolist(), [0, .15, .30])
         self.assertTrue(result["ending_equity_aud"].is_monotonic_decreasing)
 
+    def test_invalid_price_rejected(self):
+        bad = self.data.copy()
+        bad.loc[bad.index[-1], "btc_price_aud"] = float("nan")
+        with self.assertRaisesRegex(ValueError, "finite positive BTC/AUD price"):
+            execution_error_sweep(bad)
+
     def test_invalid_error_rejected(self):
         with self.assertRaises(ValueError):
             execution_error_sweep(self.data, error_fractions=(1.0,))
