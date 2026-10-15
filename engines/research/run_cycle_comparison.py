@@ -12,6 +12,7 @@ import json
 import pandas as pd
 
 from engines.research.benchmark_harness import compare_lagged_cycle_to_benchmarks
+from engines.research.strategy_selection_report import optimize_and_compare
 
 
 def main():
@@ -20,6 +21,7 @@ def main():
     parser.add_argument("--date-column", default="date")
     parser.add_argument("--capital", type=float, default=500_000)
     parser.add_argument("--fee", type=float, default=0.001)
+    parser.add_argument("--walk-forward", action="store_true", help="Also compare train-selected parameters on chronological holdouts")
     parser.add_argument("--out", help="Optional JSONL output path for auditable strategy metrics")
     args = parser.parse_args()
     data = pd.read_csv(args.csv)
@@ -46,6 +48,21 @@ def main():
         }
         records.append(record)
         print(json.dumps(record, sort_keys=True))
+    if args.walk_forward:
+        folds = optimize_and_compare(data, starting_capital_aud=args.capital, fee_pct=args.fee)
+        for _, fold in folds.iterrows():
+            record = {"strategy": "walk_forward_fold", **fold.to_dict()}
+            records.append(record)
+            print(json.dumps(record, sort_keys=True, default=str))
+        if not folds.empty:
+            aggregate = {"strategy": "walk_forward_summary",
+                         "folds": int(len(folds)),
+                         "beat_hold_folds": int(folds["beat_hold"].sum()),
+                         "beat_dca_folds": int(folds["beat_dca"].sum()),
+                         "median_excess_vs_hold_aud": float(folds["cycle_minus_hold_aud"].median()),
+                         "median_excess_vs_dca_aud": float(folds["cycle_minus_dca_aud"].median())}
+            records.append(aggregate)
+            print(json.dumps(aggregate, sort_keys=True))
     if args.out:
         from pathlib import Path
         output = Path(args.out)
