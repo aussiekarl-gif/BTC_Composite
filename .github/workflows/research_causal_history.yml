@@ -6,6 +6,7 @@ on:
       - '.github/workflows/research_causal_history.yml'
       - 'engines/research/build_causal_history.py'
       - 'engines/research/run_cycle_comparison.py'
+      - 'engines/research/run_stored_usd_comparison.py'
   workflow_dispatch:
     inputs:
       start:
@@ -27,11 +28,14 @@ jobs:
           python-version: '3.11'
       - name: Install research dependencies
         run: pip install pandas numpy requests
+      - name: Historical USD benchmark from archived provider data
+        run: python -m engines.research.run_stored_usd_comparison
       - name: Build causal weekly BTC AUD history
         run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
       - name: Compare strategies on chronological holdouts
         run: python -m engines.research.run_cycle_comparison --csv research_outputs/causal_btc_aud_weekly.csv --walk-forward --out research_outputs/comparison.jsonl
       - name: Archive evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: causal-btc-cycle-research
