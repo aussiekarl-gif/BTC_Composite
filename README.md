@@ -29,6 +29,14 @@ The full research master is **not** automatically a Production input. Production
 
 Production remains the frozen control. Research and Audit changes do not automatically alter Production. Strategy changes should be tested independently before promotion.
 
+## Deployment — Streamlit only
+
+**This project runs as a Streamlit application.** The only application entry point is `app.py`. Streamlit installs dependencies from `requirements.txt`, uses `.streamlit/config.toml` for theme configuration, and imports code from `engines/`.
+
+The legacy NAS/Docker build and publish workflow was retired on 16 October 2026 because it is not used. The original container definitions are preserved on the Research branch under [`research_archive/unused_nas/`](https://github.com/aussiekarl-gif/BTC_Composite/tree/research/cycle-strategy-optimization/research_archive/unused_nas).
+
+The separate Wednesday GitHub Actions scheduler is **for simulated VBTC Research paper trading**, not for application deployment; it remains enabled and writes only to the Research branch. The portfolio storage implementation and validated BTC data sources remain unchanged.
+
 ## Run
 
 ```bash
