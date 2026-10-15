@@ -83,6 +83,9 @@ def build_dataset(start="2015-01-01", end=None):
     # observations minimum. Each regression uses strictly earlier weeks.
     genesis = pd.Timestamp("2009-01-03", tz="UTC")
     weekly = btc.resample("W-MON").last().dropna()
+    # W-MON labels a bucket with its coming Monday; a partial final bucket
+    # must never be emitted as a completed weekly signal or valuation.
+    weekly = weekly.loc[weekly.index <= btc.index.max().normalize()]
     scores = []
     last_fit = None
     slope = intercept = None
