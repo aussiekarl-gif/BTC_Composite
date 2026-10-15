@@ -10,6 +10,8 @@ on:
       - "tests/test_sell_threshold_robustness.py"
       - "engines/research/sell_threshold_walkforward.py"
       - "tests/test_sell_threshold_walkforward.py"
+      - "engines/research/fixed_sell_sensitivity.py"
+      - "tests/test_fixed_sell_sensitivity.py"
       - ".github/workflows/cycle-backtest-tests.yml"
   push:
     branches:
@@ -34,9 +36,10 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pandas numpy
       - name: Compile Research code
-        run: python -m py_compile engines/research/research_app.py engines/research/cycle_backtest.py engines/research/sell_threshold_robustness.py engines/research/sell_threshold_walkforward.py
+        run: python -m py_compile engines/research/research_app.py engines/research/cycle_backtest.py engines/research/sell_threshold_robustness.py engines/research/sell_threshold_walkforward.py engines/research/fixed_sell_sensitivity.py
       - name: Run deterministic cycle backtest tests
         run: |
           python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
           python -m unittest discover -s tests -p "test_sell_threshold_robustness.py" -v
           python -m unittest discover -s tests -p "test_sell_threshold_walkforward.py" -v
+          python -m unittest discover -s tests -p "test_fixed_sell_sensitivity.py" -v
