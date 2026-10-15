@@ -25,9 +25,12 @@ def main():
     required = {'btc_price_aud', 'risk_score'}
     if not required.issubset(data.columns):
         parser.error('Input requires btc_price_aud and risk_score in AUD. Do not use data/risk_history.csv directly: it contains USD prices and mixed audit records.')
-    if args.date_column in data:
-        data[args.date_column] = pd.to_datetime(data[args.date_column], errors="raise")
-        data = data.set_index(args.date_column)
+    if args.date_column not in data:
+        parser.error("Explicit date column required to preserve historical execution order")
+    data[args.date_column] = pd.to_datetime(data[args.date_column], errors="raise", utc=True)
+    data = data.set_index(args.date_column)
+    if data.index.has_duplicates:
+        parser.error("Duplicate historical dates; supply a verified one-observation-per-period series")
     results = compare_lagged_cycle_to_benchmarks(
         data, starting_capital_aud=args.capital, fee_pct=args.fee
     )
