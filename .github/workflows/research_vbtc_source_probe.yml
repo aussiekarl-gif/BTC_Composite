@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/research_vbtc_source_probe.yml'
       - 'engines/research/probe_vbtc_official_history.py'
+      - 'engines/research/vbtc_official_history.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,3 +22,5 @@ jobs:
         run: pip install pandas requests openpyxl
       - name: Inspect publisher-hosted VBTC history
         run: python -m engines.research.probe_vbtc_official_history
+      - name: Reconcile issuer NAV with last traded price and premiums
+        run: python -m engines.research.vbtc_official_history
