@@ -1,3 +1,4 @@
+from engines.research.btc_200wma_history import load_completed_200wma_price_history
 """Cash-first BTC accumulation diagnostic: 20% BTC / 80% uninvested at entry.
 
 Benchmarks immediate 100%-BTC and fixed 12/26/52 week DCA; all cohorts close
@@ -53,10 +54,7 @@ def summarise(rows):
             "median_pct":round(float(np.median([x["vs_immediate_pct"] for x in rows if x["start_year"]==y])),3)}
             for y in sorted(set(x["start_year"] for x in rows))}}
 def main():
- d=pd.read_csv("data/price_200_week_moving_average_200wma__2026-10-07T21-20-24.csv")
- d["date"]=pd.to_datetime(d["timestamp"],unit="ms",utc=True)
- s=pd.Series(pd.to_numeric(d["Price"],errors="coerce").to_numpy(),index=d["date"]).sort_index().resample("W-MON").last().dropna()
- ma=s.shift(1).rolling(200,min_periods=200).mean()
+ s,ma=load_completed_200wma_price_history()
  starts=[i for i in range(201,len(s)-1) if pd.Timestamp("2018-01-01",tz="UTC")<=s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
  out={}
  for horizon in (104,208):

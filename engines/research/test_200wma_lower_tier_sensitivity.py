@@ -1,3 +1,4 @@
+from engines.research.btc_200wma_history import load_completed_200wma_price_history
 """Sensitivity: lower 200WMA sell thresholds, friction, and 2022+ holdout.
 Do not use holdout results to pick parameters; diagnostic only.
 """
@@ -9,10 +10,7 @@ from engines.research.test_200wma_12week_execution import staged
 from engines.research.test_200wma_exact_10x10 import BUYS,SELLS
 
 def main():
-    d=pd.read_csv("data/price_200_week_moving_average_200wma__2026-10-07T21-20-24.csv")
-    d["date"]=pd.to_datetime(d["timestamp"],unit="ms",utc=True)
-    s=pd.Series(pd.to_numeric(d["Price"],errors="coerce").to_numpy(),index=d["date"]).sort_index().resample("W-MON").last().dropna()
-    ma=s.shift(1).rolling(200,min_periods=200).mean()
+    s,ma=load_completed_200wma_price_history()
     starts=[i for i in range(201,len(s)-1) if pd.Timestamp("2018-01-01",tz="UTC")<=s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
     ladders={"existing_100_280":SELLS,
              "lower_50_200":[50,65,80,95,110,125,145,165,185,200],

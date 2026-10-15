@@ -1,3 +1,4 @@
+from engines.research.btc_200wma_history import load_completed_200wma_price_history
 """Compare 12- and 16-week time-distributed 200WMA crossing trades with immediate execution.
 Research-only, no production writes. Completed weekly signal, next-week fill.
 """
@@ -114,10 +115,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
             "transactions":len(transactions),"pending_jobs":len(jobs)}
 
 def main():
-    d=pd.read_csv("data/price_200_week_moving_average_200wma__2026-10-07T21-20-24.csv")
-    d["date"]=pd.to_datetime(d["timestamp"],unit="ms",utc=True)
-    s=pd.Series(pd.to_numeric(d["Price"],errors="coerce").to_numpy(),index=d["date"]).sort_index().resample("W-MON").last().dropna()
-    ma=s.shift(1).rolling(200,min_periods=200).mean()
+    s,ma=load_completed_200wma_price_history()
     starts=[i for i in range(201,len(s)-1) if pd.Timestamp("2018-01-01",tz="UTC")<=s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
     variants=[("immediate",None,None,None,None,None)]+[(f"{weeks}w_{shape}_cancel_{cancel}",shape,cancel,weeks,None,None) for weeks in (12,16) for shape in ("equal","front","back","bell") for cancel in (False,True)]+[(f"buy_{bw}w_sell_{sw}w_{shape}_cancel_{cancel}",shape,cancel,12,bw,sw) for bw,sw in ((12,16),(16,12)) for shape in ("equal","front","back","bell") for cancel in (False,True)]
     results={}

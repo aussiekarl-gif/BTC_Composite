@@ -1,3 +1,4 @@
+from engines.research.btc_200wma_history import load_completed_200wma_price_history
 """Fixed-horizon, realisable BTC DCA strategy tests.
 
 All signals use the previous completed weekly close. Each cohort exits at a
@@ -18,10 +19,7 @@ def summarize(rows):
          "median_btc_equivalent":round(float(np.median([r["btc_equivalent"] for r in rows])),6),
          "median_cash_usd":round(float(np.median([r["cash_usd"] for r in rows])),2)}
 def main():
- d=pd.read_csv("data/price_200_week_moving_average_200wma__2026-10-07T21-20-24.csv")
- d["date"]=pd.to_datetime(d["timestamp"],unit="ms",utc=True)
- s=pd.Series(pd.to_numeric(d["Price"],errors="coerce").to_numpy(),index=d["date"]).sort_index().resample("W-MON").last().dropna()
- ma=s.shift(1).rolling(200,min_periods=200).mean()
+ s,ma=load_completed_200wma_price_history()
  eligible=[i for i in range(201,len(s)-1) if pd.Timestamp("2018-01-01",tz="UTC")<=s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
  out={}
  for horizon in (104,156,208):

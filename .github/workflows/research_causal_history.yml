@@ -16,6 +16,7 @@ on:
       - 'engines/research/test_200wma_start_sensitivity.py'
       - 'engines/research/test_200wma_exact_10x10.py'
       - 'engines/research/test_200wma_12week_execution.py'
+      - 'engines/research/btc_200wma_history.py'
       - 'engines/research/test_200wma_aud_currency_impact.py'
       - 'engines/research/test_200wma_lower_tier_sensitivity.py'
       - 'engines/research/test_200wma_overlap_slippage.py'

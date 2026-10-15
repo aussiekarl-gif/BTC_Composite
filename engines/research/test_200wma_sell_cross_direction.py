@@ -1,3 +1,4 @@
+from engines.research.btc_200wma_history import load_completed_200wma_price_history
 """Research-only: compare 200WMA sell activation on upward vs downward crossings.
 
 Same 20% initial BTC, 80% cash, 12-week completed-signal weighted DCA,
@@ -22,10 +23,7 @@ def summary(rows):
    "median_trades":float(np.median([r["transactions"] for r in rows])),
    "worst_start":min(rows,key=lambda r:r["vs_dca_pct"])["start"]}
 def main():
- d=pd.read_csv("data/price_200_week_moving_average_200wma__2026-10-07T21-20-24.csv")
- d["date"]=pd.to_datetime(d["timestamp"],unit="ms",utc=True)
- s=pd.Series(pd.to_numeric(d["Price"],errors="coerce").to_numpy(),index=d["date"]).sort_index().resample("W-MON").last().dropna()
- ma=s.shift(1).rolling(200,min_periods=200).mean()
+ s,ma=load_completed_200wma_price_history()
  starts=[i for i in range(201,len(s)-1) if pd.Timestamp("2018-01-01",tz="UTC")<=s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
  result={}
  for horizon in (104,156,208):
