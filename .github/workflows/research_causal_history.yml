@@ -7,6 +7,7 @@ on:
       - 'engines/research/build_causal_history.py'
       - 'engines/research/run_cycle_comparison.py'
       - 'engines/research/run_stored_usd_comparison.py'
+      - 'engines/research/test_200wma_entry.py'
   workflow_dispatch:
     inputs:
       start:
@@ -35,6 +36,13 @@ jobs:
         with:
           name: stored-usd-cycle-benchmark
           path: research_outputs/stored_usd_comparison.json
+      - name: Backtest 200WMA buy-only entries
+        run: python -m engines.research.test_200wma_entry
+      - name: Archive 200WMA results immediately
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-entry-usd-results
+          path: research_outputs/200wma_entry_usd.json
       - name: Build causal weekly BTC AUD history
         run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
       - name: Compare strategies on chronological holdouts
