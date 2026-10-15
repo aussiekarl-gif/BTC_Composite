@@ -1,0 +1,32 @@
+name: Sell Threshold Historical Research (read-only)
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/sell_threshold_robustness.py"
+      - "engines/research/sell_threshold_walkforward.py"
+      - "engines/research/run_sell_threshold_master.py"
+      - ".github/workflows/sell_threshold_historical.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  historical-audit:
+    # Never expose a private data token to untrusted forked pull requests.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install research-only dependencies
+        run: python -m pip install pandas numpy requests
+      - name: Read-only sell threshold historical diagnostics
+        env:
+          AUDIT_GITHUB_REPO: aussiekarl-gif/btc-audit-data
+          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN }}
+        run: python -m engines.research.run_sell_threshold_master
