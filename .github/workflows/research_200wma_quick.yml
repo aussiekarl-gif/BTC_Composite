@@ -8,6 +8,7 @@ on:
       - 'engines/research/test_200wma_cash_deployment.py'
       - 'engines/research/test_200wma_integrated_cash_and_trading.py'
       - 'engines/research/test_200wma_btc_core_floor.py'
+      - 'engines/research/test_200wma_sell_cross_direction.py'
   workflow_dispatch:
 jobs:
   quick-check:
@@ -29,6 +30,13 @@ jobs:
         with:
           name: 200wma-btc-core-floor
           path: research_outputs/200wma_btc_core_floor.json
+      - name: Test upward and downward sell-crossing triggers
+        run: python -m engines.research.test_200wma_sell_cross_direction
+      - name: Archive sell-crossing test
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-sell-cross-direction
+          path: research_outputs/200wma_sell_cross_direction.json
       - name: Archive quick validation
         uses: actions/upload-artifact@v4
         with:
