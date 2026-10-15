@@ -37,6 +37,7 @@ def build_dataset(start="2015-01-01", end=None):
     # Long-range Frankfurter requests can time out (HTTP 522). Fetch annual
     # windows independently; never substitute synthetic FX values.
     fx_parts = []
+    session = requests.Session()
     for year in range(pd.Timestamp(fx_start).year, pd.Timestamp(end).year + 1):
         chunk_start = max(pd.Timestamp(fx_start), pd.Timestamp(f"{year}-01-01"))
         chunk_end = min(pd.Timestamp(end), pd.Timestamp(f"{year}-12-31"))
@@ -45,9 +46,23 @@ def build_dataset(start="2015-01-01", end=None):
         fx_url = (f"https://api.frankfurter.app/"
                   f"{chunk_start.date().isoformat()}..{chunk_end.date().isoformat()}"
                   "?from=USD&to=AUD")
-        response = requests.get(fx_url, timeout=45)
-        response.raise_for_status()
-        rates = response.json().get("rates", {})
+        # Primary Frankfurter host occasionally stalls. Retry briefly and
+        # switch to the documented v1 host before failing closed.
+        rates = None
+        errors = []
+        for host in ("https://api.frankfurter.dev/v1/",
+                     "https://api.frankfurter.app/"):
+            try:
+                url = fx_url.replace("https://api.frankfurter.app/", host)
+                response = session.get(url, timeout=(8, 18))
+                response.raise_for_status()
+                rates = response.json().get("rates", {})
+                if rates:
+                    break
+            except requests.RequestException as exc:
+                errors.append(str(exc))
+        if not rates:
+            raise ValueError(f"USD/AUD provider unavailable for {year}: {errors}")
         if not rates:
             raise ValueError(f"Missing USD/AUD FX history for {year}")
         fx_parts.append(pd.Series(
