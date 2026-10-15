@@ -107,6 +107,22 @@ Detailed [AUD after-tax comparison](https://github.com/aussiekarl-gif/BTC_Compos
 - **Warning:** The guard did not fix short-horizon cohort-wide underperformance: **0/13 winning starts in 2019 and 0/13 in 2023** even with the safeguard. 2021 median fell materially.
 - **Do not promote:** The rule was invented after investigating those years. It is now contaminated as an in-sample selection and requires independent validation.
 
+## Actual Australian VBTC issuer market-price validation (verified 2026-10-15)
+
+[Issuer-market historical test](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_outputs/200wma_vbtc_market_price_findings.md), [GitHub run 38813587696](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38813587696) **passed**.
+
+- Real VanEck VBTC data covers **21 June 2024 to 14 October 2026**, with 589 positive-volume observations and 120 matched completed weekly dates against the archived BTC/USD 200WMA signals (signals end 5 October 2026).
+- Issuer-reported last trade versus NAV: **+0.272% median premium**, 90th percentile **+2.680%**, extrema **+9.979% / −7.609%**. These differences are **not** executable bid–ask spreads; issuer NAV timing may differ from the ASX trade time.
+- 52-week AUD after-tax model at **actual issuer last traded market references**: 17 overlapping entry cohorts, **11/17 beat simple DCA**, **+5.506% median**, **−9.019% worst**. The matching NAV hypothetical had +5.272% median.
+- 104-week issuer market test had only **four correlated starts**, all winners with +42.825% median; the cash-recycling candidate returned +31.540% median over those same starts. **Too few to infer superiority**, but it challenges the synthetic four-year recycling result.
+- VanEck issuer NAV and market price already reflect management fees, so historical ETF-price scenarios do not impose the 0.45% MER again. A$20 brokerage and simulated dealing/slippage remain sensitivity assumptions.
+
+## Prospective frozen ETF paper journal (first possible close 19 October 2026)
+- [Paper-trading protocol and integrity rules](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_forward/200wma_v1/README.md); [initial verification run 38813226526](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38813226526) **passed** the no-lookahead self-test and correctly recorded **zero paper actions** before the first eligible completed week.
+- Frozen independent A$500,000 hypothetical portfolios: simple 12-week DCA; 12-week buy/16-week sell; the same with the 26-week cash-recycling safeguard. Uses BTC/USD completed-week 200WMA signals and the **following completed week's** official VBTC market reference for paper fills. Keeps NAV and traded price separate.
+- Observation journal and earlier weekly scores are append-only and must reconcile exactly on reruns; data source revisions or missing prospective weeks fail closed.
+- **No unattended weekly scheduling yet:** research workflows live on the Research branch, and GitHub schedules require a default-branch launcher. Do not modify authoritative master merely to enable it without explicit approval.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
