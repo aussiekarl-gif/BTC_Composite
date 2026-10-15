@@ -1,0 +1,47 @@
+name: Research BTC benchmark CSV
+on:
+  workflow_dispatch:
+    inputs:
+      csv_path:
+        description: "Validated dated BTC/AUD price + point-in-time risk CSV path"
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - "engines/research/run_cycle_comparison.py"
+      - ".github/workflows/research_benchmark_csv.yml"
+jobs:
+  benchmark:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - name: Verify dataset path and provenance
+        env:
+          CSV_PATH: ${{ inputs.csv_path }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          path = Path(os.environ["CSV_PATH"])
+          if path.is_absolute() or ".." in path.parts or path.suffix.lower() != ".csv" or not path.is_file():
+              raise SystemExit("Expected an existing repository-local CSV path")
+          if path.as_posix() == "data/risk_history.csv":
+              raise SystemExit("Audit risk_history.csv is not a valid BTC/AUD execution dataset")
+          print(f"Input: {path}")
+          PY
+      - name: Execute comparison
+        env:
+          CSV_PATH: ${{ inputs.csv_path }}
+        run: python -m engines.research.run_cycle_comparison --csv "$CSV_PATH" --out research_results/comparison.jsonl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: btc-cycle-comparison
+          path: research_results/comparison.jsonl
+          retention-days: 30
