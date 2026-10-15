@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/research_200wma_quick.yml'
       - 'engines/research/test_200wma_12week_execution.py'
+      - 'engines/research/test_200wma_smsf_costs.py'
+      - 'engines/research/smsf_cgt_ledger.py'
       - 'engines/research/btc_200wma_history.py'
       - 'engines/research/test_200wma_cash_deployment.py'
       - 'engines/research/test_200wma_integrated_cash_and_trading.py'
@@ -38,6 +40,13 @@ jobs:
         with:
           name: 200wma-sell-cross-direction
           path: research_outputs/200wma_sell_cross_direction.json
+      - name: Check ETF costs and indicative SMSF tax in USD
+        run: python -m engines.research.test_200wma_smsf_costs --currency USD
+      - name: Archive USD SMSF cost sensitivity
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-smsf-costs-usd
+          path: research_outputs/200wma_smsf_cost_stress_usd.json
       - name: Archive quick validation
         uses: actions/upload-artifact@v4
         with:
