@@ -28,6 +28,9 @@ def execution_error_sweep(
     )
     if history.empty:
         raise ValueError("No observations")
+    if (not np.isfinite(history["btc_price_aud"]).all()
+            or not (history["btc_price_aud"] > 0).all()):
+        raise ValueError("Every observation must have a finite positive BTC/AUD price")
     results = []
     for error in error_fractions:
         if not np.isfinite(error) or not 0 <= error < 1:
