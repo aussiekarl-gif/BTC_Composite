@@ -16,6 +16,9 @@ class FifoCgtLedger:
         self.bought_units=0.
         self.sold_units=0.
         self.years=defaultdict(lambda:{"short":0.,"long":0.,"loss":0.,"sells":0})
+        self.loss_carry=0.
+        self.settled={}
+        self.paid_total=0.
 
     def __call__(self,trade):
         day=pd.Timestamp(trade["date"])
@@ -46,22 +49,34 @@ class FifoCgtLedger:
             left-=chunk
             if lot[1]<=1e-9:self.lots.popleft()
 
+    def settle_year(self,year):
+        """Calculate tax for one elapsed Australian financial year only once."""
+        if year in self.settled:return self.settled[year]["tax_15pct"]
+        if self.settled and year<=max(self.settled):raise AssertionError("Tax years not chronological")
+        acc=self.years[year]
+        losses=self.loss_carry+acc["loss"]
+        short=max(0.,acc["short"]-losses)
+        losses=max(0.,losses-acc["short"])
+        long=max(0.,acc["long"]-losses)
+        self.loss_carry=max(0.,losses-acc["long"])
+        taxable=short+long*2/3
+        row={"fy_end":year,"tax_15pct":round(taxable*0.15,2),
+             "gain_short":round(acc["short"],2),
+             "gain_long":round(acc["long"],2),
+             "capital_losses":round(acc["loss"],2),
+             "loss_carry":round(self.loss_carry,2),"sells":acc["sells"]}
+        self.settled[year]=row
+        return row["tax_15pct"]
+
     def tax_summary(self):
-        carry=0.
-        taxes=[]
-        for year,acc in sorted(self.years.items()):
-            losses=carry+acc["loss"]
-            short=max(0.,acc["short"]-losses)
-            losses=max(0.,losses-acc["short"])
-            long=max(0.,acc["long"]-losses)
-            carry=max(0.,losses-acc["long"])
-            taxable=short+long*2/3
-            taxes.append({"fy_end":year,"tax_15pct":round(taxable*0.15,2),
-                          "gain_short":round(acc["short"],2),
-                          "gain_long":round(acc["long"],2),
-                          "capital_losses":round(acc["loss"],2),
-                          "loss_carry":round(carry,2),"sells":acc["sells"]})
-        return {"estimated_total_tax":round(sum(x["tax_15pct"] for x in taxes),2),
-                "by_year":taxes,"purchases":self.purchases,
+        for year in sorted(self.years):
+            if year not in self.settled:self.settle_year(year)
+        taxes=[self.settled[year] for year in sorted(self.settled)]
+        total=round(sum(x["tax_15pct"] for x in taxes),2)
+        return {"estimated_total_tax":total,
+                "tax_cash_paid":round(self.paid_total,2),
+                "tax_outstanding":round(total-self.paid_total,2),
+                "by_year":taxes,
+                "purchases":self.purchases,
                 "sell_fills":sum(x["sells"] for x in taxes),
                 "net_units":self.bought_units-self.sold_units}
