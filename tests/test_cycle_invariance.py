@@ -21,7 +21,7 @@ class CycleInvarianceTests(unittest.TestCase):
             self.sample([0.0, 0.5, 0.5]),
             starting_capital_aud=1000, min_trade_aud=0,
         )
-        self.assertEqual(trades.iloc[0]["action"], "HOLD")
+        self.assertEqual(trades.iloc[0]["action"], "SKIP_INVALID_INPUT")
         self.assertEqual(trades.iloc[1]["action"], "BUY")
 
     def test_future_signal_change_cannot_change_earlier_trades(self):
