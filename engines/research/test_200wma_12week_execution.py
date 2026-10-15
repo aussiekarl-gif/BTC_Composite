@@ -17,7 +17,7 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None,weekly_hook=None,cash_recycle_idle_weeks=0,cash_recycle_fraction=0.25,cash_recycle_min_share=0.50,max_cash_weight_after_sell=None):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None,weekly_hook=None,cash_recycle_idle_weeks=0,cash_recycle_fraction=0.25,cash_recycle_min_share=0.50,max_cash_weight_after_sell=None,sell_guard_lookback=0,trend_reentry_lookback=0,trend_reentry_fraction=0.25,trend_reentry_cash_share=0.40,trend_reentry_cooldown=12):
     if signal_price is None:signal_price=s
     if not s.index.equals(signal_price.index):raise ValueError("Signal-price and execution-price dates differ")
     buy_levels=BUYS if buy_levels is None else buy_levels
@@ -31,6 +31,10 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     if cash_recycle_idle_weeks < 0 or not 0 < cash_recycle_fraction <= 1 or not 0 < cash_recycle_min_share < 1:
         raise ValueError("Invalid cash recycling parameters")
     if sell_cross_direction not in ("up","down"):raise ValueError("Invalid sell crossing direction")
+    if sell_guard_lookback<0 or trend_reentry_lookback<0 or trend_reentry_cooldown<1:
+        raise ValueError("Invalid adaptive strategy windows")
+    if not 0<trend_reentry_fraction<=1 or not 0<trend_reentry_cash_share<1:
+        raise ValueError("Invalid adaptive reinvestment fraction / cash threshold")
     first_cash=CAP*initial_btc_fraction
     first_units=max(0.0,first_cash-brokerage_fixed)*(1-fee)*(1-slippage if funding_weeks else 1)/float(s.iloc[start+1]) if first_cash>brokerage_fixed else 0.0
     if first_cash and first_cash<=brokerage_fixed:raise ValueError("Initial seed order below fixed brokerage")
@@ -48,6 +52,8 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     jobs=[]
     transactions=[]
     last_buy_fill_index=start+1
+    last_tier_sell_index=None
+    last_trend_reentry_index=-10000
     buy_weeks=buy_weeks or weeks
     sell_weeks=sell_weeks or weeks
     ending=(len(s)-1) if end_index is None else int(end_index)
@@ -80,6 +86,15 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
             and cash>brokerage_fixed+1e-8
             and cash/(cash+btc*previous_px)>cash_recycle_min_share
             and not any(z["side"]=="BUY" for z in jobs))
+        trend_reentry_due=(trend_reentry_lookback>=4 and j>=max(trend_reentry_lookback,4)
+            and i>start+1+funding_weeks
+            and last_tier_sell_index is not None
+            and i-last_trend_reentry_index>=trend_reentry_cooldown
+            and cash>brokerage_fixed+1e-8
+            and cash/(cash+btc*previous_px)>trend_reentry_cash_share
+            and not any(z["side"]=="BUY" for z in jobs)
+            and float(signal_price.iloc[j])>float(signal_price.iloc[j-trend_reentry_lookback:j].max())
+            and float(signal_price.iloc[j])>1.03*float(signal_price.iloc[j-4]))
         px=float(s.iloc[i])
         if funding_weeks and i <= start+1+funding_weeks:
             funding_step=i-(start+2)
@@ -108,6 +123,16 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                                    (job["side"]=="BUY" and ratio>job["threshold"])):
                 if job["side"]=="BUY":cash+=job["remaining"]
                 continue
+            if job["side"]=="SELL" and sell_guard_lookback:
+                # Signal uses only the fully completed PRIOR week j and its
+                # already known rolling peak, not execution bar i.
+                if j<sell_guard_lookback-1 or not np.isfinite(float(signal_price.iloc[j-sell_guard_lookback+1:j+1].max())):
+                    remaining_jobs.append(job)
+                    continue
+                peak=float(signal_price.iloc[j-sell_guard_lookback+1:j+1].max())
+                if float(signal_price.iloc[j])>peak*.95:
+                    remaining_jobs.append(job)
+                    continue
             # Normalize the remaining schedule to prevent stranded quantities.
             remaining_weight=sum(w[age:])
             requested=job["remaining"]*w[age]/remaining_weight
@@ -130,6 +155,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                 received=q*px*(1-fee)*(1-slippage)-brokerage_fixed
                 if q>1e-10 and received>1e-8:
                     btc-=q;cash+=received
+                    last_tier_sell_index=i
                     transactions.append({"week":str(s.index[i].date()),"side":"SELL","tier":job["tier"]+1,"btc":round(q,8)})
                     if trade_callback is not None:
                         trade_callback({"side":"SELL","kind":"TIER","date":s.index[i],
@@ -161,6 +187,18 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                 transactions.append({"week":str(s.index[i].date()),"side":"BUY","tier":0,"usd":round(spend,2)})
                 if trade_callback is not None:
                     trade_callback({"side":"BUY","kind":"RECYCLE","date":s.index[i],
+                                    "units":acquired,"cash":spend,"price":px,"brokerage":brokerage_fixed})
+        if trend_reentry_due and last_buy_fill_index!=i and not any(z["side"]=="BUY" for z in jobs):
+            spend=cash*trend_reentry_fraction
+            if spend>brokerage_fixed+1e-8:
+                acquired=(spend-brokerage_fixed)*(1-fee)*(1-slippage)/px
+                cash-=spend
+                btc+=acquired
+                last_buy_fill_index=i
+                last_trend_reentry_index=i
+                transactions.append({"week":str(s.index[i].date()),"side":"BUY","tier":0,"usd":round(spend,2)})
+                if trade_callback is not None:
+                    trade_callback({"side":"BUY","kind":"TREND_REENTRY","date":s.index[i],
                                     "units":acquired,"cash":spend,"price":px,"brokerage":brokerage_fixed})
         prev=ratio
         if weekly_hook is not None:
