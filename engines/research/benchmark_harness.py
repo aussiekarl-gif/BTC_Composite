@@ -23,7 +23,7 @@ def compare_lagged_cycle_to_benchmarks(
         raise ValueError("Require nonempty price/risk DataFrame")
     if not {"btc_price_aud", "risk_score"}.issubset(data.columns):
         raise ValueError("Require btc_price_aud and risk_score")
-    if starting_capital_aud <= 0 or not 0 <= fee_pct < 1:
+    if not np.isfinite(starting_capital_aud) or not np.isfinite(fee_pct) or starting_capital_aud <= 0 or not 0 <= fee_pct < 1:
         raise ValueError("Invalid capital or fee")
     ordered = data.sort_index().copy()
     if not ordered.index.is_unique:
@@ -32,6 +32,12 @@ def compare_lagged_cycle_to_benchmarks(
         ordered["btc_price_aud"] = pd.to_numeric(ordered["btc_price_aud"], errors="coerce")
     if not pd.api.types.is_numeric_dtype(ordered["risk_score"]):
         ordered["risk_score"] = pd.to_numeric(ordered["risk_score"], errors="coerce")
+    if (not np.isfinite(ordered["btc_price_aud"]).all()
+            or not (ordered["btc_price_aud"] > 0).all()):
+        raise ValueError("Every observation requires a finite positive BTC/AUD price")
+    if (not np.isfinite(ordered["risk_score"]).all()
+            or not ordered["risk_score"].between(0, 1).all()):
+        raise ValueError("Every observation requires a finite risk score between 0 and 1")
     if len(ordered) < 2:
         raise ValueError("At least two observations required")
     cycle_rows, cycle = simulate_next_observation_strategy(
