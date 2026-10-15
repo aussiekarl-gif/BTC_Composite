@@ -102,12 +102,30 @@ def collect_model_snapshot(model):
     }
 
 
+def collect_active_research_snapshot():
+    # Research App fixes its risk_model to "Research WF Power Law".
+    # This independent fixture protects that *actual Streamlit UI path*.
+    source=synthetic_btc_history()
+    result=research.add_risk_indicators(source,"Research WF Power Law",parameters(research))
+    cols=["price","risk_score","raw_risk_score","risk_percentile",
+          "power_law_score","fair_value","power_law_residual",
+          "power_law_slope","power_law_intercept","valuation_multiplier"]
+    snapshots={}
+    for i in (200,390,459):
+        row=result.iloc[i]
+        snapshots[str(result.index[i].date())]={
+            key:number(row[key]) for key in cols
+        }|{"risk_zone":str(row["risk_zone"])}
+    return snapshots
+
+
 def make_fixture():
     return {"schema":"streamlit-model-golden-v1",
             "production_sha_policy":"frozen Production V5.8.2",
             "research_version":"V5.9 separate strategy, not required to equal Production",
             "production":collect_model_snapshot(prod),
-            "research":collect_model_snapshot(research)}
+            "research":collect_model_snapshot(research),
+            "research_active_power_law":collect_active_research_snapshot()}
 
 
 if __name__=="__main__":
