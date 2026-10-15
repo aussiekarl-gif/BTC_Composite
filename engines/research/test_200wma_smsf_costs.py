@@ -13,7 +13,7 @@ import pandas as pd
 from engines.research.btc_200wma_history import load_completed_200wma_price_history
 from engines.research.test_200wma_12week_execution import staged
 from engines.research.test_200wma_cash_deployment import run as pure_dca
-from engines.research.smsf_cgt_ledger import FifoCgtLedger
+from engines.research.smsf_cgt_ledger import FifoCgtLedger,AnnualSmsfTaxPayment
 
 SCENARIOS={
  "control_0broker_0mer":(0.,0.),
@@ -68,6 +68,14 @@ def main():
     baseline=pure_dca(nav,ma,i,i+horizon,12,True,
                       signal_price=signal,brokerage_fixed=broker)
     liability=ledger.tax_summary()
+    tax_paid_ledger=FifoCgtLedger()
+    annual_settlement=AnnualSmsfTaxPayment(tax_paid_ledger,broker,FEE,SLIPPAGE)
+    annual_strategy=staged(nav,ma,i,trade_callback=tax_paid_ledger,
+        weekly_hook=annual_settlement,**kwargs)
+    annual_liability=tax_paid_ledger.tax_summary()
+    if abs(annual_liability["net_units"]-annual_strategy["btc_held"])>1e-5:
+     raise AssertionError("Yearly CGT-settled units differ from holdings")
+    annual_net=annual_strategy["value_usd"]-annual_liability["tax_outstanding"]
     if abs(liability["net_units"]-strategy["btc_held"])>1e-5:
      raise AssertionError("FIFO units differ from simulated holdings")
     if strategy["cash_usd"]<0:raise AssertionError("Negative cash")
@@ -75,6 +83,12 @@ def main():
     rows.append({"start":str(prices.index[i].date()),
         "gross_pct":round(100*(strategy["value_usd"]/baseline["value_usd"]-1),4),
         "after_accumulation_tax_pct":round(100*((strategy["value_usd"]-tax)/baseline["value_usd"]-1),4),
+        "after_yearly_tax_payment_pct":round(100*(annual_net/baseline["value_usd"]-1),4),
+        "annual_tax_paid":annual_liability["tax_cash_paid"],
+        "annual_unpaid_tax":annual_liability["tax_outstanding"],
+        "tax_funding_sales":annual_settlement.financing_sales,
+        "annual_net_value":round(annual_net,2),
+        "remaining_cash":strategy["cash_usd"],
         "tax_liability":tax,"sell_fills":liability["sell_fills"],
         "fund_value_before_tax":strategy["value_usd"],
         "net_value_less_liability":round(strategy["value_usd"]-tax,2),
@@ -82,6 +96,9 @@ def main():
    configs[name]={"brokerage_per_fill":broker,"annual_fee":mer,
       "pension_exempt_0pct_tax":summary(rows,"gross_pct"),
       "accumulation_15pct_tax_estimate":summary(rows,"after_accumulation_tax_pct"),
+      "accumulation_with_yearly_tax_settlement":summary(rows,"after_yearly_tax_payment_pct"),
+      "cohorts_requiring_tax_financing_sales":sum(r["tax_funding_sales"]>0 for r in rows),
+      "median_forced_tax_sales":float(np.median([r["tax_funding_sales"] for r in rows])),
       "median_total_tax_liability":round(float(np.median([r["tax_liability"] for r in rows])),2),
       "median_sell_fills":float(np.median([r["sell_fills"] for r in rows])),
       "rows":rows}
@@ -91,7 +108,7 @@ def main():
   "sell_weeks":16,"buy_weeks":12,
   "baseline":"Matching 20% BTC/80% cash initial portfolio and 12-week risk-weighted DCA, then no sales",
   "scenarios":all_results,
-  "limitations":"Hypothetical ETF management-fee NAV drag and per-fill brokerage; no actual ETF share price or tracking premium. FIFO gain matching and CGT loss carryforward by July-June year; losses applied to short gains before discounted gains. Complying SMSF 15% accumulation and fully tax-exempt qualifying retirement assets only. Annual tax is totalled at terminal date, not paid annually, so after-tax estimate omits foregone compounding, and assumes enough cash to pay tax. No ETF distributions, administrative SMSF fees, pension payments, unrealised liquidation CGT or in-sample overfitting adjustment. Cohorts overlap, this is NOT independent validation."}
+  "limitations":"Hypothetical ETF management-fee NAV drag and per-fill brokerage; no actual ETF share price or tracking premium. FIFO gain matching and CGT loss carryforward by July-June year; losses applied to short gains before discounted gains. Complying SMSF 15% accumulation and fully tax-exempt qualifying retirement assets only. Two accumulation variants are shown: terminal tax-liability deduction and conservative early yearly settlements at first July weekly close, with forced ETF disposals if cash is short. ATO actual payment dates differ; neither reflects all possible CGT parcel identification, earnings and actuarial effects. No ETF distributions, administrative SMSF fees, pension payments, unrealised liquidation CGT or in-sample overfitting adjustment. Cohorts overlap, this is NOT independent validation."}
  p=Path(f"research_outputs/200wma_smsf_cost_stress_{args.currency.lower()}.json")
  p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(out,indent=2))
  print(json.dumps({"currency":args.currency,"result":{
