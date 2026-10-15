@@ -28,8 +28,6 @@ def compare_lagged_cycle_to_benchmarks(
     ordered = data.sort_index().copy()
     if not ordered.index.is_unique:
         raise ValueError("Duplicate observation dates are not allowed; aggregate with a documented point-in-time policy")
-    if not ordered.index.is_monotonic_increasing:
-        raise ValueError("Observation dates must be sortable")
     if not pd.api.types.is_numeric_dtype(ordered["btc_price_aud"]):
         ordered["btc_price_aud"] = pd.to_numeric(ordered["btc_price_aud"], errors="coerce")
     if not pd.api.types.is_numeric_dtype(ordered["risk_score"]):
@@ -43,6 +41,8 @@ def compare_lagged_cycle_to_benchmarks(
     prices = pd.to_numeric(ordered["btc_price_aud"], errors="coerce")
     eligible = np.isfinite(prices) & (prices > 0)
     execution = ordered.iloc[1:].loc[eligible.iloc[1:]]
+    if not eligible.iloc[-1]:
+        raise ValueError("Final observation must have a valid BTC/AUD price for comparable mark-to-market")
     if execution.empty:
         raise ValueError("No valid execution prices after first observation")
     first_price = float(execution["btc_price_aud"].iloc[0])
@@ -63,6 +63,8 @@ def compare_lagged_cycle_to_benchmarks(
         btc += buy * (1 - fee_pct) / float(price)
         cash -= buy
         purchases += 1
+    if not cycle or not np.isfinite(cycle.get("ending_equity_aud", float("nan"))):
+        raise ValueError("Cycle strategy has no valid ending equity; cannot compare benchmarks")
     results = {
         "cycle_lagged": cycle,
         "buy_and_hold_next_bar": {
