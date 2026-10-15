@@ -305,5 +305,46 @@
     }
   },
   "research_version": "V5.9 separate strategy, not required to equal Production",
-  "schema": "streamlit-model-golden-v1"
+  "schema": "streamlit-model-golden-v1",
+  "research_active_power_law": {
+    "2020-07-19": {
+      "fair_value": null,
+      "power_law_intercept": null,
+      "power_law_residual": null,
+      "power_law_score": null,
+      "power_law_slope": null,
+      "price": 24590.9875914836,
+      "raw_risk_score": 0.5,
+      "risk_percentile": null,
+      "risk_score": 0.5,
+      "risk_zone": "LOW / NEUTRAL",
+      "valuation_multiplier": 1
+    },
+    "2021-01-25": {
+      "fair_value": 28377.4155800559,
+      "power_law_intercept": -15.2772256316,
+      "power_law_residual": -0.0324850627,
+      "power_law_score": 0.2250497909,
+      "power_law_slope": 5.4145146345,
+      "price": 26332.2383566771,
+      "raw_risk_score": 0.2250497909,
+      "risk_percentile": null,
+      "risk_score": 0.2250497909,
+      "risk_zone": "VALUE",
+      "valuation_multiplier": 1.0577031483
+    },
+    "2021-04-04": {
+      "fair_value": 29296.8605044726,
+      "power_law_intercept": -12.7619156866,
+      "power_law_residual": 0.0378613367,
+      "power_law_score": 0.4595377891,
+      "power_law_slope": 4.7193019811,
+      "price": 31965.5675618991,
+      "raw_risk_score": 0.4595377891,
+      "risk_percentile": null,
+      "risk_score": 0.4595377891,
+      "risk_zone": "LOW / NEUTRAL",
+      "valuation_multiplier": 0.9367074998
+    }
+  }
 }
