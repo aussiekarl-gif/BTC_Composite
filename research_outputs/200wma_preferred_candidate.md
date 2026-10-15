@@ -63,6 +63,12 @@ GitHub Actions run [38738305322](https://github.com/aussiekarl-gif/BTC_Composite
 - The strategy does **not** provide a reliable 2-year advantage: some historical outcomes substantially underperform simple buying, and the cohorts overlap.
 - **Ledger reconciliation passed** in [research quick-regression run 38805836580](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38805836580). With tier trading disabled, integrated backtest agreed with independent pure-DCA portfolio accounting to within $0.05 across representative 2- and 4-year starts, 12- and 26-week cash schedules, and equal/risk-weighted funding.
 
+## BTC core retention and signal direction checks (verified 2026-10-15)
+- [BTC core test, run 38806220836](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38806220836). Baseline: illustrative 20% BTC / 80% cash, 12-week risk-weighted cash funding, 12-week buy / 16-week sell schedule, 0.1% fee plus 0.5% slippage, matched pure-DCA comparison.
+- Keeping 0% / 25% / 50% / 75% of the *initial BTC-equivalent units* permanently unsold lowered worst two-year advantage from **−51.03%** / **−36.21%** / **−22.32%** / **−15.50%**, but reduced four-year median advantage from **+66.96%** / **+35.11%** / **+14.35%** / **+2.77%**. A core is a downside-control option, **not a free improvement**.
+- [Sell-crossing test, run 38806511311](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38806511311). Upward sell-tier crossings with no core: 2-year median +7.43%, worst −51.03%, 4-year median +66.96%. Downward crossings: 2-year median +2.96%, worst −32.84%, 4-year median +47.53%; the four-year worst was **−27.30%** versus upward-crossing **−14.61%**. Do not claim downward selling dominates the original rule.
+- **Decision for research only:** retain upward-crossing sell tiers as the leading high-return variant; do not enable a permanent BTC core automatically. Any selection should specify a downside tolerance, and all comparisons remain in-sample.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
