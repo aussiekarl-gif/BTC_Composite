@@ -17,6 +17,8 @@ on:
       - 'engines/research/test_200wma_exact_10x10.py'
       - 'engines/research/test_200wma_12week_execution.py'
       - 'engines/research/test_200wma_lower_tier_sensitivity.py'
+      - 'engines/research/test_200wma_overlap_slippage.py'
+      - 'engines/research/test_200wma_fixed_horizon.py'
   workflow_dispatch:
     inputs:
       start:
@@ -122,6 +124,13 @@ jobs:
         with:
           name: 200wma-lower-tier-sensitivity
           path: research_outputs/200wma_lower_tier_fee_sensitivity.json
+      - name: Compare fixed two-, three- and four-year holding windows
+        run: python -m engines.research.test_200wma_fixed_horizon
+      - name: Archive fixed-horizon results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-fixed-horizon
+          path: research_outputs/200wma_fixed_horizon_robustness.json
       - name: Build causal weekly BTC AUD history
         run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
       - name: Compare strategies on chronological holdouts
