@@ -69,7 +69,7 @@ def main():
                       signal_price=signal,brokerage_fixed=broker)
     liability=ledger.tax_summary()
     tax_paid_ledger=FifoCgtLedger()
-    annual_settlement=AnnualSmsfTaxPayment(tax_paid_ledger,broker,FEE,SLIPPAGE)
+    annual_settlement=AnnualSmsfTaxPayment(tax_paid_ledger,broker,0.001,0.005)
     annual_strategy=staged(nav,ma,i,trade_callback=tax_paid_ledger,
         weekly_hook=annual_settlement,**kwargs)
     annual_liability=tax_paid_ledger.tax_summary()
