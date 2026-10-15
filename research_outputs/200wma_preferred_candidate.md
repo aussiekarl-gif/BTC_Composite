@@ -54,6 +54,15 @@ GitHub Actions run [38738305322](https://github.com/aussiekarl-gif/BTC_Composite
 - **Do not adopt an absolute below-200WMA-only purchase gate for cash-heavy holdings** based on this evidence. Prefer a fully funded schedule that uses completed historical price/200WMA deviation to adjust purchase *size*, subject to risk and time horizon.
 - This does not prove a particular DCA rule can consistently beat immediate investment.
 
+## Integrated cash entry plus tier trading (verified 2026-10-15)
+[GitHub Actions run 38805159522](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38805159522), artifact `200wma-integrated-cash-trading`.
+- Same illustrative 20% BTC / 80% cash starting portfolio, 0.1% trading fee, 0.5% execution slippage; 12-week weighted cash deployment, 12-week bell-shaped rebuys, 16-week bell-shaped sells, same-tier overlap blocked, no reverse cancellations.
+- **2-year holding period:** 60/89 wins versus independently implemented risk-weighted cash-only DCA, median **+7.428%** vs DCA, worst **−51.031%** vs DCA.
+- **4-year holding period:** 59/63 wins versus the same cash-only DCA, median **+66.962%**, worst **−14.609%**.
+- Cash-only benchmark has no tier sells or rebuys; both start at identical initial cash/BTC proportions and use identical funding schedules.
+- The strategy does **not** provide a reliable 2-year advantage: some historical outcomes substantially underperform simple buying, and the cohorts overlap.
+- **Ledger reconciliation test** has been added to rerun the integrated engine with all tier trades disabled and require exact agreement with the independent pure-DCA baseline.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
