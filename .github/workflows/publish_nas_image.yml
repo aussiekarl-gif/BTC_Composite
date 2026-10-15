@@ -4,6 +4,18 @@ on:
   push:
     branches:
       - main
+    # Publish only if the deployed Streamlit app, its runtime inputs or the
+    # Docker build definition changed. Research paper-scheduler and report
+    # commits must NOT republish the NAS image.
+    paths:
+      - 'app.py'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'requirements.txt'
+      - '.streamlit/**'
+      - 'engines/**'
+      - 'data/**'
+      - '.github/workflows/publish_nas_image.yml'
   workflow_dispatch:
 
 permissions:
