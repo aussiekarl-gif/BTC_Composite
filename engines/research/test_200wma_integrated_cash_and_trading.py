@@ -26,6 +26,20 @@ def main():
  s=pd.Series(pd.to_numeric(d["Price"],errors="coerce").to_numpy(),index=d["date"]).sort_index().resample("W-MON").last().dropna()
  ma=s.shift(1).rolling(200,min_periods=200).mean()
  starts=[i for i in range(201,len(s)-1) if pd.Timestamp("2018-01-01",tz="UTC")<=s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
+ # Ledger consistency: with all tier trades disabled, the staged engine must
+ # exactly reconcile against an independent pure-DCA implementation.
+ for i in starts[::13]:
+  for horizon in (104,208):
+   if i+horizon>=len(s):continue
+   for weeks in (12,26):
+    for weighted in (False,True):
+     no_trades=staged(s,ma,i,shape="bell",buy_weeks=12,sell_weeks=16,
+        buy_levels=[],sell_levels=[],block_overlap=True,slippage=0.005,
+        fee=0.001,end_index=i+horizon,initial_btc_fraction=0.2,
+        funding_weeks=weeks,funding_weighted=weighted)
+     pure=pure_dca(s,ma,i,i+horizon,weeks,weighted)
+     if no_trades["transactions"]!=0 or abs(no_trades["value_usd"]-pure["value_usd"])>0.05:
+      raise AssertionError("Integrated cash deployment does not reconcile to pure DCA")
  output={}
  for horizon in (104,208):
   valid=[i for i in starts if i+horizon<len(s)]
