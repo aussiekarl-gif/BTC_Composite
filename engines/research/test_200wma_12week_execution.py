@@ -16,12 +16,13 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up"):
     buy_levels=BUYS if buy_levels is None else buy_levels
     sell_levels=SELLS if sell_levels is None else sell_levels
     if not 0 <= initial_btc_fraction <= 1:raise ValueError("Invalid BTC fraction")
     if funding_weeks < 0:raise ValueError("Invalid funding weeks")
     if not 0 <= btc_core_fraction <= 1:raise ValueError("Invalid BTC core fraction")
+    if sell_cross_direction not in ("up","down"):raise ValueError("Invalid sell crossing direction")
     initial_btc=CAP*(1-fee)/float(s.iloc[start+1])
     btc=initial_btc*initial_btc_fraction*(1-slippage if funding_weeks else 1)
     funding_cash=CAP*(1-initial_btc_fraction) if funding_weeks else 0.0
@@ -40,8 +41,9 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
         if not np.isfinite(ma.iloc[j]) or ma.iloc[j]<=0:continue
         ratio=100*(float(s.iloc[j])/float(ma.iloc[j])-1)
         for k,t in enumerate(sell_levels):
-            if ratio<t:sell_armed[k]=True
-            if prev is not None and sell_armed[k] and prev<t<=ratio and not (block_overlap and any(z["side"]=="SELL" and z["tier"]==k for z in jobs)):
+            if (ratio<t if sell_cross_direction=="up" else ratio>t):sell_armed[k]=True
+            crossed=(prev<t<=ratio if sell_cross_direction=="up" else prev>t>=ratio) if prev is not None else False
+            if sell_armed[k] and crossed and not (block_overlap and any(z["side"]=="SELL" and z["tier"]==k for z in jobs)):
                 jobs.append({"side":"SELL","tier":k,"threshold":t,"start":i,
                              "remaining":initial_btc/len(sell_levels),"weeks":sell_weeks,"weights":weights(shape,sell_weeks).tolist()})
                 sell_armed[k]=False
@@ -72,7 +74,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
             if age>=duration:
                 if job["side"]=="BUY":cash+=job["remaining"]
                 continue
-            if reverse_cancel and ((job["side"]=="SELL" and ratio<job["threshold"]) or
+            if reverse_cancel and ((job["side"]=="SELL" and ((ratio<job["threshold"]) if sell_cross_direction=="up" else (ratio>job["threshold"]))) or
                                    (job["side"]=="BUY" and ratio>job["threshold"])):
                 if job["side"]=="BUY":cash+=job["remaining"]
                 continue
