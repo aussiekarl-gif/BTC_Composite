@@ -7,7 +7,7 @@ import streamlit as st
 from pathlib import Path
 
 st.title("200WMA Trading Model — Research")
-st.caption("10 buying tiers + 10 selling tiers | historical weekly USD data | read-only simulator")
+st.caption("10 buying tiers + 10 selling tiers | 200WMA percentage deviations | read-only research")
 st.warning("Experimental model. Signals are illustrative, not live AUD orders. No portfolio changes are made.")
 source=Path(__file__).resolve().parents[2]/"data"/"price_200_week_moving_average_200wma__2026-10-07T21-20-24.csv"
 if not source.exists():
@@ -48,10 +48,11 @@ buy_alloc=st.slider("Cash allocation per triggered buy tier (% of initial cash r
 sell_alloc=st.slider("BTC allocation per triggered sell tier (% of cycle-start BTC)",1,10,10)
 rows=[]
 for i,x in enumerate(buys):
-    rows.append({"Action":"BUY","Tier":i+1,"Deviation":f"{x:+.0f}%","BTC/USD trigger":round(ma*(1+x/100),2),"Tranche":f"{buy_alloc}% initial cash"})
+    rows.append({"Action":"BUY","Tier":i+1,"Deviation":f"{x:+.0f}%","Distance from current deviation":f"{x-deviation:+.1f} pp","Tranche":f"{buy_alloc}% initial cash"})
 for i,x in enumerate(sells):
     rows.append({"Action":"SELL","Tier":i+1,"Deviation":f"{x:+.0f}%","BTC/USD trigger":round(ma*(1+x/100),2),"Tranche":f"{sell_alloc}% cycle-start BTC"})
 st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
 st.info("Tier execution must be crossing-based, next-week, and once per cycle. Cycle reset, cash reserve, and AUD portfolio integration require separate validation before any automated action.")
-st.subheader("Historical price / 200WMA")
-st.line_chart(data.tail(260))
+st.subheader("Historical deviation from 200WMA (%)")
+relative=(data["BTC/USD"]/data["200WMA (prior 200 weeks)"]-1)*100
+st.line_chart(relative.tail(260).rename("Deviation (%)"))
