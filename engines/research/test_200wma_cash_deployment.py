@@ -21,7 +21,9 @@ def weight(dev):
  if dev<=200:return 0.5
  return 0.25
 
-def run(s,ma,start,end,weeks,weighted,only_below=False):
+def run(s,ma,start,end,weeks,weighted,only_below=False,signal_price=None):
+ if signal_price is None:signal_price=s
+ if not s.index.equals(signal_price.index):raise ValueError("Signal and execution dates differ")
  px=float(s.iloc[start+1])
  btc=CAP*INITIAL_BTC_FRACTION*(1-FEE)*(1-SLIPPAGE)/px
  cash=CAP*(1-INITIAL_BTC_FRACTION)
@@ -29,7 +31,7 @@ def run(s,ma,start,end,weeks,weighted,only_below=False):
   i=start+2+k
   j=i-1
   remaining=weeks-k
-  dev=100*(s.iloc[j]/ma.iloc[j]-1)
+  dev=100*(signal_price.iloc[j]/ma.iloc[j]-1)
   if only_below and (not np.isfinite(dev) or dev>0):continue
   w=weight(dev) if weighted and np.isfinite(dev) else 1.
   spend=cash if remaining==1 else min(cash,cash/remaining*w)
