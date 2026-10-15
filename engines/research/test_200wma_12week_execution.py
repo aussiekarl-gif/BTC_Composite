@@ -16,11 +16,12 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0):
     buy_levels=BUYS if buy_levels is None else buy_levels
     sell_levels=SELLS if sell_levels is None else sell_levels
     if not 0 <= initial_btc_fraction <= 1:raise ValueError("Invalid BTC fraction")
     if funding_weeks < 0:raise ValueError("Invalid funding weeks")
+    if not 0 <= btc_core_fraction <= 1:raise ValueError("Invalid BTC core fraction")
     initial_btc=CAP*(1-fee)/float(s.iloc[start+1])
     btc=initial_btc*initial_btc_fraction*(1-slippage if funding_weeks else 1)
     funding_cash=CAP*(1-initial_btc_fraction) if funding_weeks else 0.0
@@ -79,7 +80,10 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
             remaining_weight=sum(w[age:])
             requested=job["remaining"]*w[age]/remaining_weight
             if job["side"]=="SELL":
-                q=min(btc,requested)
+                # Protect an irrevocable core of the original fully-funded BTC-equivalent.
+                # BTC gained through market rises does not automatically raise the core.
+                available_to_sell=max(0.0,btc-initial_btc*btc_core_fraction)
+                q=min(available_to_sell,requested)
                 if q>1e-10:
                     btc-=q;cash+=q*px*(1-fee)*(1-slippage)
                     transactions.append({"week":str(s.index[i].date()),"side":"SELL","tier":job["tier"]+1,"btc":round(q,8)})
