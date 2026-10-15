@@ -26,6 +26,14 @@ def compare_lagged_cycle_to_benchmarks(
     if starting_capital_aud <= 0 or not 0 <= fee_pct < 1:
         raise ValueError("Invalid capital or fee")
     ordered = data.sort_index().copy()
+    if not ordered.index.is_unique:
+        raise ValueError("Duplicate observation dates are not allowed; aggregate with a documented point-in-time policy")
+    if not ordered.index.is_monotonic_increasing:
+        raise ValueError("Observation dates must be sortable")
+    if not pd.api.types.is_numeric_dtype(ordered["btc_price_aud"]):
+        ordered["btc_price_aud"] = pd.to_numeric(ordered["btc_price_aud"], errors="coerce")
+    if not pd.api.types.is_numeric_dtype(ordered["risk_score"]):
+        ordered["risk_score"] = pd.to_numeric(ordered["risk_score"], errors="coerce")
     if len(ordered) < 2:
         raise ValueError("At least two observations required")
     cycle_rows, cycle = simulate_next_observation_strategy(
