@@ -28,7 +28,8 @@ def build_dataset(start="2015-01-01", end=None):
         columns=["date", "price"],
     ).set_index("date").sort_index()
     btc = btc.loc[~btc.index.duplicated(keep="last")]
-    btc = btc.loc[(btc.index >= pd.Timestamp(start, tz="UTC")) &
+    # Include pre-start history so the expanding risk regression is warmed up.
+    btc = btc.loc[(btc.index >= pd.Timestamp(start, tz="UTC") - pd.Timedelta(days=730)) &
                   (btc.index <= pd.Timestamp(end, tz="UTC"))]
     if btc.empty:
         raise ValueError("No BTC historical observations")
@@ -76,7 +77,8 @@ def build_dataset(start="2015-01-01", end=None):
     weekly = weekly.dropna(subset=["risk_score"])
     if len(weekly) < 100:
         raise ValueError("Insufficient scored weekly observations")
-    result = weekly[["btc_price_aud", "risk_score"]].copy()
+    result = weekly.loc[weekly.index >= pd.Timestamp(start, tz="UTC"),
+                        ["btc_price_aud", "risk_score"]].copy()
     result.index.name = "date"
     return result
 
