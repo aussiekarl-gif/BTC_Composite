@@ -16,7 +16,7 @@ def compare_lagged_cycle_to_benchmarks(
     """Compare cycle timing, equal-slice DCA, and next-bar buy-and-hold fairly.
 
     Price at row 0 is observable for signal formation only; execution starts
-    at row 1 for all policies. Invalid prices are excluded from execution.
+    at row 1 for all policies. Invalid prices and risk scores are rejected.
     DCA contributions come from the same initial cash pool (no external deposits).
     """
     if not isinstance(data, pd.DataFrame) or data.empty:
@@ -45,10 +45,7 @@ def compare_lagged_cycle_to_benchmarks(
         fee_pct=fee_pct, **strategy_kwargs,
     )
     prices = pd.to_numeric(ordered["btc_price_aud"], errors="coerce")
-    eligible = np.isfinite(prices) & (prices > 0)
-    execution = ordered.iloc[1:].loc[eligible.iloc[1:]]
-    if not eligible.iloc[-1]:
-        raise ValueError("Final observation must have a valid BTC/AUD price for comparable mark-to-market")
+    execution = ordered.iloc[1:]
     if execution.empty:
         raise ValueError("No valid execution prices after first observation")
     first_price = float(execution["btc_price_aud"].iloc[0])
