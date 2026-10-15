@@ -129,11 +129,11 @@ button[data-testid="stSidebarCollapseButton"] {
 </style>
 """, unsafe_allow_html=True)
 
-# The public interface has exactly two choices. Diagnostic engines remain in
+# The public interface has exactly three choices. Other diagnostic engines remain in
 # the repository for offline research and CI; they are not navigable UI pages.
 section = st.sidebar.radio(
     "Model",
-    ["Production", "Research"],
+    ["Production", "Research", "Bottom Signal Timeline"],
     index=0,
     key="combined_app_section_selector",
     help="Production is the frozen V5.8.2 model; Research is the experimental V5.9 model.",
@@ -145,6 +145,7 @@ uninstall_bgeometrics_guard()
 engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
+    "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
 }[section]
 
 if not engine_path.exists():
