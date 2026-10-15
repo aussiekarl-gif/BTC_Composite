@@ -7,6 +7,7 @@ on:
       - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
       - "tests/test_cycle_invariance.py"
+      - "tests/test_walk_forward_report.py"
       - "engines/research/walk_forward_report.py"
       - ".github/workflows/cycle-backtest-tests.yml"
   push:
@@ -18,6 +19,7 @@ on:
       - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
       - "tests/test_cycle_invariance.py"
+      - "tests/test_walk_forward_report.py"
       - "engines/research/walk_forward_report.py"
       - ".github/workflows/cycle-backtest-tests.yml"
 
@@ -39,3 +41,4 @@ jobs:
         run: |
           python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
           python -m unittest discover -s tests -p "test_cycle_invariance.py" -v
+          python -m unittest discover -s tests -p "test_walk_forward_report.py" -v
