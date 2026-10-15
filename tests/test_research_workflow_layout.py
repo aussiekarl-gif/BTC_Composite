@@ -29,12 +29,19 @@ class WorkflowLayoutTests(unittest.TestCase):
             with self.subTest(path=str(path)):
                 self.parse(path)
 
-    def test_historical_experiments_are_manual_only(self):
-        for filename in HEAVY:
+    def test_historical_experiments_are_explicitly_requested_only(self):
+        request_files={
+            "research_causal_history.yml":"research_runs/REQUEST_FULL_HISTORICAL.txt",
+            "research_200wma_quick.yml":"research_runs/REQUEST_EXTENDED_SENSITIVITY.txt",
+        }
+        for filename,request_path in request_files.items():
             wf=self.parse(WORKFLOWS/filename)
             self.assertIn("workflow_dispatch",wf["on"])
-            self.assertNotIn("push",wf["on"],filename)
             self.assertNotIn("schedule",wf["on"],filename)
+            self.assertEqual(wf["on"]["push"]["branches"],
+                             ["research/cycle-strategy-optimization"])
+            self.assertEqual(wf["on"]["push"]["paths"],[request_path])
+            self.assertTrue(Path(request_path).is_file())
 
     def test_fast_safety_runs_on_research_code_change(self):
         wf=self.parse(WORKFLOWS/FAST)
