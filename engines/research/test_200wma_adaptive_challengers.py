@@ -45,7 +45,7 @@ def main():
     starts=[i for i in range(len(px)-1) if
         pd.Timestamp("2018-01-01",tz="UTC")<=prices.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")][::4]
     results={}
-    for horizon in (104,208):
+    for horizon in (104,156,208):
         eligible=[i for i in starts if i+horizon<len(prices)]
         records={name:[] for name in VARIANTS}
         for i in eligible:
