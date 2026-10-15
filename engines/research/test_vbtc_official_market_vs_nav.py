@@ -100,6 +100,15 @@ def main():
         "min_premium_pct":round(float(premium.min()),3),
         "days_premium_over_1pct":int(sum(premium>1)),
         "days_discount_below_minus_1pct":int(sum(premium< -1)),
+        "zero_volume_days":int((frame["volume"]==0).sum()),
+        "days_premium_over_5pct_with_volume":int(((frame["premium_pct_calculated"]>5)&(frame["volume"]>0)).sum()),
+        "days_discount_below_minus_5pct_with_volume":int(((frame["premium_pct_calculated"]< -5)&(frame["volume"]>0)).sum()),
+        "top_absolute_premium_examples":[{
+            "date":str(row["date"].date()),"premium_pct":round(float(row["premium_pct_calculated"]),3),
+            "last_traded_aud":round(float(row["last_traded_aud"]),4),
+            "nav_aud":round(float(row["nav_aud"]),4),
+            "volume":int(row["volume"])}
+            for _,row in frame.iloc[np.argsort(-np.abs(premium))[:8]].iterrows()],
         "issuer_spread_data_available":False}
     p=Path("research_outputs/200wma_vbtc_official_market_vs_nav.json")
     p.parent.mkdir(parents=True,exist_ok=True)
