@@ -16,7 +16,7 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0):
     buy_levels=BUYS if buy_levels is None else buy_levels
     sell_levels=SELLS if sell_levels is None else sell_levels
     btc=CAP*(1-fee)/float(s.iloc[start+1])
@@ -35,13 +35,13 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
         ratio=100*(float(s.iloc[j])/float(ma.iloc[j])-1)
         for k,t in enumerate(sell_levels):
             if ratio<t:sell_armed[k]=True
-            if prev is not None and sell_armed[k] and prev<t<=ratio:
+            if prev is not None and sell_armed[k] and prev<t<=ratio and not (block_overlap and any(z["side"]=="SELL" and z["tier"]==k for z in jobs)):
                 jobs.append({"side":"SELL","tier":k,"threshold":t,"start":i,
                              "remaining":initial_btc/len(sell_levels),"weeks":sell_weeks,"weights":weights(shape,sell_weeks).tolist()})
                 sell_armed[k]=False
         for k,t in enumerate(buy_levels):
             if ratio>t:buy_armed[k]=True
-            if prev is not None and buy_armed[k] and prev>t>=ratio and cash>0:
+            if prev is not None and buy_armed[k] and prev>t>=ratio and cash>0 and not (block_overlap and any(z["side"]=="BUY" and z["tier"]==k for z in jobs)):
                 # Reserve cash at trigger so overlapping buy jobs cannot double spend.
                 allocation=cash/len(buy_levels)
                 cash-=allocation
@@ -67,13 +67,13 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
             if job["side"]=="SELL":
                 q=min(btc,requested)
                 if q>1e-10:
-                    btc-=q;cash+=q*px*(1-fee)
+                    btc-=q;cash+=q*px*(1-fee)*(1-slippage)
                     transactions.append({"week":str(s.index[i].date()),"side":"SELL","tier":job["tier"]+1,"btc":round(q,8)})
                 job["remaining"]-=q
             else:
                 spend=min(job["remaining"],requested)
                 if spend>1e-8:
-                    btc+=spend*(1-fee)/px
+                    btc+=spend*(1-fee)*(1-slippage)/px
                     transactions.append({"week":str(s.index[i].date()),"side":"BUY","tier":job["tier"]+1,"usd":round(spend,2)})
                 job["remaining"]-=spend
             if age<duration-1 and job["remaining"]>1e-8:remaining_jobs.append(job)
