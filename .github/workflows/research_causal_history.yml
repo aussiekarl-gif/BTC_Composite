@@ -1,0 +1,32 @@
+name: Research causal history comparison
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "First BTC observation date"
+        required: false
+        default: "2015-01-01"
+      end:
+        description: "Last BTC observation date"
+        required: false
+        default: "2026-10-14"
+jobs:
+  historical-evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install research dependencies
+        run: pip install pandas numpy requests
+      - name: Build causal weekly BTC AUD history
+        run: python -m engines.research.build_causal_history --start "${{ inputs.start }}" --end "${{ inputs.end }}" --out research_outputs/causal_btc_aud_weekly.csv
+      - name: Compare strategies on chronological holdouts
+        run: python -m engines.research.run_cycle_comparison --csv research_outputs/causal_btc_aud_weekly.csv --walk-forward --out research_outputs/comparison.jsonl
+      - name: Archive evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: causal-btc-cycle-research
+          path: research_outputs/
