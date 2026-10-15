@@ -6,6 +6,18 @@ on:
       - "engines/research/cycle_backtest.py"
       - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
+      - "tests/test_benchmark_harness.py"
+      - "tests/test_causal_benchmark_robustness.py"
+      - "tests/test_execution_error_stress.py"
+      - "tests/test_signal_delay_stress.py"
+      - "tests/test_oracle_timing_error.py"
+      - "tests/test_strategy_selection_report.py"
+      - "engines/research/strategy_selection_report.py"
+      - "engines/research/oracle_timing_error.py"
+      - "engines/research/signal_delay_stress.py"
+      - "engines/research/execution_error_stress.py"
+      - "engines/research/run_cycle_comparison.py"
+      - "engines/research/benchmark_harness.py"
       - ".github/workflows/cycle-backtest-tests.yml"
   push:
     branches:
@@ -15,6 +27,10 @@ on:
       - "engines/research/cycle_backtest.py"
       - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
+      - "tests/test_benchmark_harness.py"
+      - "tests/test_causal_benchmark_robustness.py"
+      - "engines/research/run_cycle_comparison.py"
+      - "engines/research/benchmark_harness.py"
       - ".github/workflows/cycle-backtest-tests.yml"
 
 jobs:
@@ -32,4 +48,11 @@ jobs:
       - name: Compile Research code
         run: python -m py_compile engines/research/research_app.py engines/research/cycle_backtest.py
       - name: Run deterministic cycle backtest tests
-        run: python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
+        run: |
+          python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
+          python -m unittest discover -s tests -p "test_benchmark_harness.py" -v
+          python -m unittest discover -s tests -p "test_causal_benchmark_robustness.py" -v
+          python -m unittest discover -s tests -p "test_execution_error_stress.py" -v
+          python -m unittest discover -s tests -p "test_signal_delay_stress.py" -v
+          python -m unittest discover -s tests -p "test_oracle_timing_error.py" -v
+          python -m unittest discover -s tests -p "test_strategy_selection_report.py" -v

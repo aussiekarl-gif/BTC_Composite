@@ -1,0 +1,95 @@
+name: Research causal history comparison
+on:
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - '.github/workflows/research_causal_history.yml'
+      - 'engines/research/build_causal_history.py'
+      - 'engines/research/run_cycle_comparison.py'
+      - 'engines/research/run_stored_usd_comparison.py'
+      - 'engines/research/test_200wma_entry.py'
+      - 'engines/research/test_200wma_weighted.py'
+      - 'engines/research/test_200wma_core_satellite.py'
+      - 'engines/research/test_200wma_roundtrip.py'
+      - 'engines/research/test_200wma_percentage_bands.py'
+      - 'engines/research/test_200wma_tier_ladders.py'
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "First BTC observation date"
+        required: false
+        default: "2015-01-01"
+      end:
+        description: "Last BTC observation date"
+        required: false
+        default: "2026-10-14"
+jobs:
+  historical-evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install research dependencies
+        run: pip install pandas numpy requests
+      - name: Historical USD benchmark from archived provider data
+        run: python -m engines.research.run_stored_usd_comparison
+      - name: Archive USD benchmark immediately
+        uses: actions/upload-artifact@v4
+        with:
+          name: stored-usd-cycle-benchmark
+          path: research_outputs/stored_usd_comparison.json
+      - name: Backtest 200WMA buy-only entries
+        run: python -m engines.research.test_200wma_entry
+      - name: Archive 200WMA results immediately
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-entry-usd-results
+          path: research_outputs/200wma_entry_usd.json
+      - name: Backtest weighted 200WMA across start years
+        run: python -m engines.research.test_200wma_weighted
+      - name: Archive weighted 200WMA cohort results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-weighted-cohorts
+          path: research_outputs/200wma_weighted_cohorts.json
+      - name: Test core BTC plus 200WMA reserve
+        run: python -m engines.research.test_200wma_core_satellite
+      - name: Archive core satellite results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-core-satellite
+          path: research_outputs/200wma_core_satellite.json
+      - name: Backtest 200WMA cycle sells and rebuys
+        run: python -m engines.research.test_200wma_roundtrip
+      - name: Archive 200WMA round-trip results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-roundtrip
+          path: research_outputs/200wma_roundtrip.json
+      - name: Test 200WMA percentage deviation bands
+        run: python -m engines.research.test_200wma_percentage_bands
+      - name: Archive percentage-band results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-percentage-bands
+          path: research_outputs/200wma_percentage_bands.json
+      - name: Test scaled 200WMA sell and rebuy ladders
+        run: python -m engines.research.test_200wma_tier_ladders
+      - name: Archive tier-ladder results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-tier-ladders
+          path: research_outputs/200wma_tier_ladders.json
+      - name: Build causal weekly BTC AUD history
+        run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
+      - name: Compare strategies on chronological holdouts
+        run: python -m engines.research.run_cycle_comparison --csv research_outputs/causal_btc_aud_weekly.csv --walk-forward --out research_outputs/comparison.jsonl
+      - name: Archive evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: causal-btc-cycle-research
+          path: research_outputs/
