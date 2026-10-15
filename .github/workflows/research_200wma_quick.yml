@@ -2,7 +2,6 @@ name: BTC 200WMA extended sensitivity (manual)
 # Prior fast workflow contains multiple historical simulations.
 # Keep for manual research; use research_200wma_fast_safety.yml on every code push.
 on:
-irection.py'
   workflow_dispatch:
 jobs:
   quick-check:
