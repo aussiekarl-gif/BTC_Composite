@@ -25,11 +25,18 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install research dependencies
-        run: python -m pip install pandas numpy
+        run: python -m pip install pandas numpy requests
       - name: Check matched final CGT, trading fees and no double taxation
         run: python -m engines.research.test_terminal_liquidation_checks
       - name: Check opt-in guards and strictly prior-week decisions
         run: python -m engines.research.test_adaptive_200wma_checks
+      - name: Rebuild historical AUD BTC/FX series from audited public sources
+        run: python -m engines.research.build_causal_history --start 2015-01-01 --end 2026-10-14 --out research_outputs/causal_btc_aud_weekly.csv
+      - name: Archive provider-derived matched BTC AUD benchmark input
+        uses: actions/upload-artifact@v4
+        with:
+          name: aud-btc-causal-fx-input-fair-exit
+          path: research_outputs/causal_btc_aud_weekly.csv
       - name: Run 2/4-year AUD DCA versus 200WMA fully-liquidated comparison
         run: python -m engines.research.test_200wma_fair_liquidation
       - name: Archive fully-liquidated DCA-vs-trading comparison
