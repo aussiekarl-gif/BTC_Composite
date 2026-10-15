@@ -22,6 +22,9 @@ def terminal_liquidation(ledger,cash,units,day,price,
     net of final CGT and prior cash tax settlements, with sale fee included.
     """
     date=pd.Timestamp(day)
+    # The acquisition ledger normally uses UTC dates; normalize exit dates
+    # so the >=12-month holding-period test never compares naive with aware.
+    date=date.tz_localize("UTC") if date.tzinfo is None else date.tz_convert("UTC")
     cash=float(cash)
     units=float(units)
     price=float(price)
