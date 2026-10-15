@@ -4,6 +4,8 @@ on:
     branches: [research/cycle-strategy-optimization]
     paths:
       - '.github/workflows/research_causal_history.yml'
+      - 'engines/research/build_causal_history.py'
+      - 'engines/research/run_cycle_comparison.py'
   workflow_dispatch:
     inputs:
       start:
