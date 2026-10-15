@@ -1,0 +1,40 @@
+name: Streamlit model baseline capture
+on:
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - '.github/workflows/research_streamlit_model_parity.yml'
+      - 'tests/streamlit_model_golden_input.py'
+      - 'tests/test_streamlit_model_golden.py'
+      - 'tests/fixtures/streamlit_model_golden_v1.json'
+      - 'engines/production/production_model.py'
+      - 'engines/research/research_model.py'
+      - 'engines/shared/streamlit_pure_math.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  golden-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Streamlit runtime/test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Create deterministic synthetic model snapshot
+        run: |
+          mkdir -p research_outputs
+          python tests/streamlit_model_golden_input.py > research_outputs/streamlit_model_golden_candidate.json
+          python -m json.tool research_outputs/streamlit_model_golden_candidate.json >/dev/null
+          echo "Snapshot generated; no data-source or broker calls."
+      - name: Verify frozen golden outputs
+        if: ${{ hashFiles('tests/fixtures/streamlit_model_golden_v1.json') != '' }}
+        run: python -m unittest discover -s tests -p 'test_streamlit_model_golden.py' -v
+      - name: Archive model snapshot candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamlit-model-golden-candidate
+          path: research_outputs/streamlit_model_golden_candidate.json
