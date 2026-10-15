@@ -29,6 +29,7 @@ jobs:
           mkdir -p research_outputs
           python tests/streamlit_model_golden_input.py > research_outputs/streamlit_model_golden_candidate.json
           python -m json.tool research_outputs/streamlit_model_golden_candidate.json >/dev/null
+          cat research_outputs/streamlit_model_golden_candidate.json
           echo "Snapshot generated; no data-source or broker calls."
       - name: Verify frozen golden outputs
         if: ${{ hashFiles('tests/fixtures/streamlit_model_golden_v1.json') != '' }}
