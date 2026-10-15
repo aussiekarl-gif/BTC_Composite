@@ -16,13 +16,15 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None):
-    btc=CAP*(1-FEE)/float(s.iloc[start+1])
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE):
+    buy_levels=BUYS if buy_levels is None else buy_levels
+    sell_levels=SELLS if sell_levels is None else sell_levels
+    btc=CAP*(1-fee)/float(s.iloc[start+1])
     initial_btc=btc
     cash=0.
     prev=None
-    sell_armed=[True]*10
-    buy_armed=[True]*10
+    sell_armed=[True]*len(sell_levels)
+    buy_armed=[True]*len(buy_levels)
     jobs=[]
     transactions=[]
     buy_weeks=buy_weeks or weeks
@@ -31,17 +33,17 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
         j=i-1
         if not np.isfinite(ma.iloc[j]) or ma.iloc[j]<=0:continue
         ratio=100*(float(s.iloc[j])/float(ma.iloc[j])-1)
-        for k,t in enumerate(SELLS):
+        for k,t in enumerate(sell_levels):
             if ratio<t:sell_armed[k]=True
             if prev is not None and sell_armed[k] and prev<t<=ratio:
                 jobs.append({"side":"SELL","tier":k,"threshold":t,"start":i,
-                             "remaining":initial_btc/10,"weeks":sell_weeks,"weights":weights(shape,sell_weeks).tolist()})
+                             "remaining":initial_btc/len(sell_levels),"weeks":sell_weeks,"weights":weights(shape,sell_weeks).tolist()})
                 sell_armed[k]=False
-        for k,t in enumerate(BUYS):
+        for k,t in enumerate(buy_levels):
             if ratio>t:buy_armed[k]=True
             if prev is not None and buy_armed[k] and prev>t>=ratio and cash>0:
                 # Reserve cash at trigger so overlapping buy jobs cannot double spend.
-                allocation=cash/10
+                allocation=cash/len(buy_levels)
                 cash-=allocation
                 jobs.append({"side":"BUY","tier":k,"threshold":t,"start":i,
                              "remaining":allocation,"weeks":buy_weeks,"weights":weights(shape,buy_weeks).tolist()})
@@ -65,13 +67,13 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
             if job["side"]=="SELL":
                 q=min(btc,requested)
                 if q>1e-10:
-                    btc-=q;cash+=q*px*(1-FEE)
+                    btc-=q;cash+=q*px*(1-fee)
                     transactions.append({"week":str(s.index[i].date()),"side":"SELL","tier":job["tier"]+1,"btc":round(q,8)})
                 job["remaining"]-=q
             else:
                 spend=min(job["remaining"],requested)
                 if spend>1e-8:
-                    btc+=spend*(1-FEE)/px
+                    btc+=spend*(1-fee)/px
                     transactions.append({"week":str(s.index[i].date()),"side":"BUY","tier":job["tier"]+1,"usd":round(spend,2)})
                 job["remaining"]-=spend
             if age<duration-1 and job["remaining"]>1e-8:remaining_jobs.append(job)
@@ -82,7 +84,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     # Unspent committed buy cash is still an asset.
     cash+=sum(j["remaining"] for j in jobs if j["side"]=="BUY")
     final=float(s.iloc[-1])
-    hold=CAP*(1-FEE)/float(s.iloc[start+1])*final
+    hold=CAP*(1-fee)/float(s.iloc[start+1])*final
     value=cash+btc*final
     return {"value_usd":round(value,2),"vs_hold_pct":round(100*(value/hold-1),3),
             "btc_equivalent":round(value/final,8),"cash_usd":round(cash,2),
