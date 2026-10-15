@@ -6,6 +6,7 @@ on:
       - '.github/workflows/research_vbtc_source_probe.yml'
       - 'engines/research/probe_vbtc_official_history.py'
       - 'engines/research/vbtc_official_history.py'
+      - 'engines/research/test_vbtc_official_market_vs_nav.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,8 +20,15 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install spreadsheet probe dependencies
-        run: pip install pandas requests openpyxl
+        run: pip install pandas numpy requests openpyxl
       - name: Inspect publisher-hosted VBTC history
         run: python -m engines.research.probe_vbtc_official_history
       - name: Reconcile issuer NAV with last traded price and premiums
         run: python -m engines.research.vbtc_official_history
+      - name: Compare historical 52/104-week strategy outcomes at VBTC quoted versus NAV prices
+        run: python -m engines.research.test_vbtc_official_market_vs_nav
+      - name: Archive actual VBTC issuer trade-vs-NAV sensitivity
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-vbtc-real-market-nav
+          path: research_outputs/200wma_vbtc_official_market_vs_nav.json
