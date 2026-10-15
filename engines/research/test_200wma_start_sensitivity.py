@@ -14,7 +14,7 @@ def main():
     d["date"]=pd.to_datetime(d["timestamp"],unit="ms",utc=True)
     s=pd.Series(pd.to_numeric(d["Price"],errors="coerce").to_numpy(),index=d["date"]).sort_index().resample("W-MON").last().dropna()
     ma=s.shift(1).rolling(200,min_periods=200).mean()
-    eligible=[i for i in range(201,len(s)-1) if s.index[i]>=pd.Timestamp("2016-01-01",tz="UTC") and s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")]
+    eligible=[i for i in range(201,len(s)-1) if s.index[i]>=pd.Timestamp("2010-01-01",tz="UTC") and s.index[i]<=pd.Timestamp("2024-12-31",tz="UTC")]
     starts=eligible[::4]
     rows=[]
     for start in starts:
