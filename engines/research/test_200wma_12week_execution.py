@@ -16,12 +16,15 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False):
     buy_levels=BUYS if buy_levels is None else buy_levels
     sell_levels=SELLS if sell_levels is None else sell_levels
-    btc=CAP*(1-fee)/float(s.iloc[start+1])
-    initial_btc=btc
-    cash=0.
+    if not 0 <= initial_btc_fraction <= 1:raise ValueError("Invalid BTC fraction")
+    if funding_weeks < 0:raise ValueError("Invalid funding weeks")
+    initial_btc=CAP*(1-fee)/float(s.iloc[start+1])
+    btc=initial_btc*initial_btc_fraction*(1-slippage if funding_weeks else 1)
+    funding_cash=CAP*(1-initial_btc_fraction) if funding_weeks else 0.0
+    cash=0.0 if funding_weeks else CAP*(1-initial_btc_fraction)
     prev=None
     sell_armed=[True]*len(sell_levels)
     buy_armed=[True]*len(buy_levels)
@@ -51,6 +54,15 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                              "remaining":allocation,"weeks":buy_weeks,"weights":weights(shape,buy_weeks).tolist()})
                 buy_armed[k]=False
         px=float(s.iloc[i])
+        if funding_weeks and i <= start+1+funding_weeks:
+            funding_step=i-(start+2)
+            remaining_funding_steps=funding_weeks-funding_step
+            if funding_weighted:
+                multiplier=(4.0 if ratio<=0 else 2.0 if ratio<=25 else 1.0 if ratio<=100 else 0.5 if ratio<=200 else 0.25)
+            else:multiplier=1.0
+            amount=funding_cash if remaining_funding_steps==1 else min(funding_cash,funding_cash/remaining_funding_steps*multiplier)
+            btc+=amount*(1-fee)*(1-slippage)/px
+            funding_cash-=amount
         remaining_jobs=[]
         for job in jobs:
             age=i-job["start"]
@@ -86,10 +98,11 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     # Unspent committed buy cash is still an asset.
     cash+=sum(j["remaining"] for j in jobs if j["side"]=="BUY")
     final=float(s.iloc[ending])
-    hold=CAP*(1-fee)/float(s.iloc[start+1])*final
+    hold=CAP*(1-fee)*(1-slippage if funding_weeks else 1)/float(s.iloc[start+1])*final
+    cash+=funding_cash
     value=cash+btc*final
     return {"value_usd":round(value,2),"vs_hold_pct":round(100*(value/hold-1),3),
-            "btc_equivalent":round(value/final,8),"cash_usd":round(cash,2),
+            "btc_equivalent":round(value/final,8),"cash_usd":round(cash,2),"btc_held":round(btc,8),
             "transactions":len(transactions),"pending_jobs":len(jobs)}
 
 def main():
