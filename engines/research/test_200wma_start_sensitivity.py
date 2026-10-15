@@ -37,12 +37,24 @@ def main():
                             "median_pct":round(float(np.median(values)),2),
                             "worst_pct":round(min(values),2),
                             "best_pct":round(max(values),2)}
+    # Pre-2018 entries remain available as a stress test, but are excluded
+    # from the primary market-maturity score by a fixed, explicit policy.
+    primary=[r for r in rows if r["year"]>=2018]
+    legacy=[r for r in rows if r["year"]<2018]
+    def score(items):
+        values=[r["relative_pct"] for r in items]
+        return {"starts":len(items),"wins":sum(v>0 for v in values),
+                "median_pct":round(float(np.median(values)),2) if values else None,
+                "worst_pct":round(min(values),2) if values else None,
+                "best_pct":round(max(values),2) if values else None}
     output={"method":"Four-week rolling starts; identical last-week mark-to-market; original 9 sell tiers / 5 buy tiers",
             "currency":"USD","initial_usd":CAP,"fee":FEE,"start_count":len(rows),
             "wins":sum(r["relative_pct"]>0 for r in rows),
             "median_pct":round(float(np.median([r["relative_pct"] for r in rows])),2),
             "worst_pct":min(r["relative_pct"] for r in rows),
             "best_pct":max(r["relative_pct"] for r in rows),
+            "primary_2018_onward":score(primary),"pre_2018_stress_test":score(legacy),
+            "exclusion_policy":"Primary starts >= 2018-01-01, pre-2018 preserved as stress tests; assumption not a proven structural break.",
             "by_start_year":by_year,"rows":rows,
             "limitations":"Overlapping entry cohorts, all share 2026 exit. Original model is not exact proposed 10x10. Historical thresholds not out-of-sample."}
     p=Path("research_outputs/200wma_start_sensitivity.json")
