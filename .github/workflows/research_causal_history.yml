@@ -9,6 +9,7 @@ on:
       - 'engines/research/run_stored_usd_comparison.py'
       - 'engines/research/test_200wma_entry.py'
       - 'engines/research/test_200wma_weighted.py'
+      - 'engines/research/test_200wma_core_satellite.py'
   workflow_dispatch:
     inputs:
       start:
@@ -51,6 +52,13 @@ jobs:
         with:
           name: 200wma-weighted-cohorts
           path: research_outputs/200wma_weighted_cohorts.json
+      - name: Test core BTC plus 200WMA reserve
+        run: python -m engines.research.test_200wma_core_satellite
+      - name: Archive core satellite results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-core-satellite
+          path: research_outputs/200wma_core_satellite.json
       - name: Build causal weekly BTC AUD history
         run: python -m engines.research.build_causal_history --start "${{ inputs.start || '2015-01-01' }}" --end "${{ inputs.end || '2026-10-14' }}" --out research_outputs/causal_btc_aud_weekly.csv
       - name: Compare strategies on chronological holdouts
