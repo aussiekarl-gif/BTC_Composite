@@ -123,6 +123,13 @@ Detailed [AUD after-tax comparison](https://github.com/aussiekarl-gif/BTC_Compos
 - Observation journal and earlier weekly scores are append-only and must reconcile exactly on reruns; data source revisions or missing prospective weeks fail closed.
 - **No unattended weekly scheduling yet:** research workflows live on the Research branch, and GitHub schedules require a default-branch launcher. Do not modify authoritative master merely to enable it without explicit approval.
 
+## AUD SMSF root cause and exposure-limit tests (verified 2026-10-15)
+
+- [2019/2023 root-cause analysis](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_outputs/200wma_failure_attribution_findings.md), completed [GitHub run 38815941285](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38815941285): 2019 median **180 sell fills / 84 rebuy fills**, with A$1.90m cash at exit and −32.690% median vs DCA; 2023 median **97 sell fills / 0 tier rebuy fills**, A$894k cash at exit and −12.872% vs DCA; 2021 winning control had **134 sell / 192 rebuy fills** and +96.852% median. Early selling without timely re-entry is the central failure.
+- [Sell-side total-cash ceiling study](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_outputs/200wma_cash_exposure_ceiling_findings.md), [GitHub run 38816671039](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38816671039): a 25% cash ceiling reduces worst two-year deficit from −59.482% to **−23.786%**, but cuts four-year median advantage vs cash-only DCA from +33.099% to **+8.524%**. All 2019 starts still failed to beat DCA, and 2021 upside weakened sharply.
+- **Decision:** do not choose a 25%/40%/60% cap retrospectively as a Production rule. The frozen uncapped forward-paper baseline and separate 26-week idle-cash alternative remain locked and unchanged.
+- [Weekly GitHub Research dashboard](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_forward/200wma_v1/DASHBOARD.md) is generated from only timestamped prospective observations. Wednesday's main-branch scheduler runs at 09:17 Brisbane time; errors open an issue assigned to GitHub user `aussiekarl-gif`, subject to GitHub notification preferences. No actual forward observation exists before Monday 19 October 2026.
+
 ## Validation gates before any promotion
 1. Audit cash reservations, open orders at backtest end, fee charging and simultaneous-tier signals; reconcile conservation of BTC and cash.
 2. Add realistic spread/slippage and fees, including sensitivity to missed fills.
