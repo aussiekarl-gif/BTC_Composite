@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/research_forward_paper_200wma.yml'
       - 'engines/research/forward_paper_200wma.py'
+      - 'engines/research/paper_dashboard.py'
+      - 'engines/research/test_paper_dashboard.py'
       - 'engines/research/test_paper_forward_integrity.py'
       - 'engines/research/vbtc_official_history.py'
       - 'engines/research/test_200wma_12week_execution.py'
@@ -33,8 +35,15 @@ jobs:
         run: python -m engines.research.forward_paper_200wma --self-test
       - name: Verify offline event integrity and fail-closed missing weeks
         run: python -m engines.research.test_paper_forward_integrity
+      - name: Validate deterministic dashboard and frozen scoreboard
+        run: python -m engines.research.test_paper_dashboard
       - name: Record only timely, fully completed future weeks
         run: python -m engines.research.forward_paper_200wma --save
+      - name: Refresh Research paper dashboard
+        run: python -m engines.research.paper_dashboard --write
+      - name: Publish weekly GitHub run summary
+        shell: bash
+        run: cat research_forward/200wma_v1/DASHBOARD.md >> "$GITHUB_STEP_SUMMARY"
       - name: Append prospective paper evidence on Research branch only
         shell: bash
         run: |
@@ -42,7 +51,11 @@ jobs:
             echo "Refusing to write into Production/default branch."
             exit 1
           fi
-          git add -- research_forward/200wma_v1/weekly_observations.jsonl research_forward/200wma_v1/scoreboard.json 2>/dev/null || true
+          for file in research_forward/200wma_v1/weekly_observations.jsonl research_forward/200wma_v1/scoreboard.json research_forward/200wma_v1/DASHBOARD.md; do
+            if [[ -f "$file" ]]; then
+              git add -- "$file"
+            fi
+          done
           if git diff --cached --quiet; then
             echo "No completed new weekly observation; no commit."
             exit 0
