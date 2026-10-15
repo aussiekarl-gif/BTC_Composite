@@ -1,7 +1,11 @@
-name: BTC 200WMA extended sensitivity (manual)
-# Prior fast workflow contains multiple historical simulations.
+name: BTC 200WMA extended sensitivity (on demand)
+# Prior fast workflow contains multiple historical simulations; request marker only.
 # Keep for manual research; use research_200wma_fast_safety.yml on every code push.
 on:
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - 'research_runs/REQUEST_EXTENDED_SENSITIVITY.txt'
   workflow_dispatch:
 jobs:
   quick-check:
