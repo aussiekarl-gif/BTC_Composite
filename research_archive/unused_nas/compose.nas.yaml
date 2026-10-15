@@ -1,0 +1,13 @@
+services:
+  bitcoin-dca:
+    image: ghcr.io/aussiekarl-gif/btc-composite:latest
+    pull_policy: always
+    container_name: bitcoin-dca
+    user: "0:0"
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/data
+    environment:
+      - BGEOMETRICS_TOKEN=${BGEOMETRICS_TOKEN:-}
