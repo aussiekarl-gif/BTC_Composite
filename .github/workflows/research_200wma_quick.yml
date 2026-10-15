@@ -7,6 +7,7 @@ on:
       - 'engines/research/test_200wma_12week_execution.py'
       - 'engines/research/test_200wma_cash_deployment.py'
       - 'engines/research/test_200wma_integrated_cash_and_trading.py'
+      - 'engines/research/test_200wma_btc_core_floor.py'
   workflow_dispatch:
 jobs:
   quick-check:
@@ -21,6 +22,13 @@ jobs:
         run: pip install pandas numpy
       - name: Integrated cash and trading accounting regression
         run: python -m engines.research.test_200wma_integrated_cash_and_trading
+      - name: Compare permanent BTC core floors against cash-only DCA
+        run: python -m engines.research.test_200wma_btc_core_floor
+      - name: Archive BTC core floor research
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-btc-core-floor
+          path: research_outputs/200wma_btc_core_floor.json
       - name: Archive quick validation
         uses: actions/upload-artifact@v4
         with:
