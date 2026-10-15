@@ -1,10 +1,9 @@
-name: Research BTC ETF official price source probe
+name: Research VBTC issuer market price verification
 on:
   push:
     branches: [research/cycle-strategy-optimization]
     paths:
       - '.github/workflows/research_vbtc_source_probe.yml'
-      - 'engines/research/probe_vbtc_official_history.py'
       - 'engines/research/vbtc_official_history.py'
       - 'engines/research/test_vbtc_official_market_vs_nav.py'
   workflow_dispatch:
@@ -19,10 +18,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install spreadsheet probe dependencies
+      - name: Install issuer-history verification dependencies
         run: pip install pandas numpy requests openpyxl
-      - name: Inspect publisher-hosted VBTC history
-        run: python -m engines.research.probe_vbtc_official_history
       - name: Reconcile issuer NAV with last traded price and premiums
         run: python -m engines.research.vbtc_official_history
       - name: Compare historical 52/104-week strategy outcomes at VBTC quoted versus NAV prices
