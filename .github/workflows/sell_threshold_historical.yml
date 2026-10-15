@@ -5,6 +5,7 @@ on:
     paths:
       - "engines/research/sell_threshold_robustness.py"
       - "engines/research/sell_threshold_walkforward.py"
+      - "engines/research/fixed_sell_sensitivity.py"
       - "engines/research/run_sell_threshold_master.py"
       - ".github/workflows/sell_threshold_historical.yml"
   workflow_dispatch:
