@@ -17,7 +17,7 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None,weekly_hook=None):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None,weekly_hook=None,cash_recycle_idle_weeks=0,cash_recycle_fraction=0.25,cash_recycle_min_share=0.50):
     if signal_price is None:signal_price=s
     if not s.index.equals(signal_price.index):raise ValueError("Signal-price and execution-price dates differ")
     buy_levels=BUYS if buy_levels is None else buy_levels
@@ -26,6 +26,8 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     if funding_weeks < 0:raise ValueError("Invalid funding weeks")
     if not 0 <= btc_core_fraction <= 1:raise ValueError("Invalid BTC core fraction")
     if not 0 <= brokerage_fixed < CAP:raise ValueError("Invalid fixed brokerage")
+    if cash_recycle_idle_weeks < 0 or not 0 < cash_recycle_fraction <= 1 or not 0 < cash_recycle_min_share < 1:
+        raise ValueError("Invalid cash recycling parameters")
     if sell_cross_direction not in ("up","down"):raise ValueError("Invalid sell crossing direction")
     first_cash=CAP*initial_btc_fraction
     first_units=max(0.0,first_cash-brokerage_fixed)*(1-fee)*(1-slippage if funding_weeks else 1)/float(s.iloc[start+1]) if first_cash>brokerage_fixed else 0.0
@@ -43,6 +45,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
     buy_armed=[True]*len(buy_levels)
     jobs=[]
     transactions=[]
+    last_buy_fill_index=start+1
     buy_weeks=buy_weeks or weeks
     sell_weeks=sell_weeks or weeks
     ending=(len(s)-1) if end_index is None else int(end_index)
@@ -67,6 +70,14 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                 jobs.append({"side":"BUY","tier":k,"threshold":t,"start":i,
                              "remaining":allocation,"weeks":buy_weeks,"weights":weights(shape,buy_weeks).tolist()})
                 buy_armed[k]=False
+        # The recycling decision is formed from the previous *completed*
+        # weekly holdings and market close, with a next-close execution.
+        previous_px=float(s.iloc[j])
+        recycle_due=(cash_recycle_idle_weeks>0 and i>start+1+funding_weeks
+            and i-last_buy_fill_index>=cash_recycle_idle_weeks
+            and cash>brokerage_fixed+1e-8
+            and cash/(cash+btc*previous_px)>cash_recycle_min_share
+            and not any(z["side"]=="BUY" for z in jobs))
         px=float(s.iloc[i])
         if funding_weeks and i <= start+1+funding_weeks:
             funding_step=i-(start+2)
@@ -79,6 +90,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                 acquired=(amount-brokerage_fixed)*(1-fee)*(1-slippage)/px
                 btc+=acquired
                 funding_cash-=amount
+                last_buy_fill_index=i
                 if trade_callback is not None:
                     trade_callback({"side":"BUY","kind":"FUNDING","date":s.index[i],
                                     "units":acquired,"cash":amount,"price":px,"brokerage":brokerage_fixed})
@@ -116,6 +128,7 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
                 if spend>brokerage_fixed+1e-8:
                     acquired=(spend-brokerage_fixed)*(1-fee)*(1-slippage)/px
                     btc+=acquired
+                    last_buy_fill_index=i
                     transactions.append({"week":str(s.index[i].date()),"side":"BUY","tier":job["tier"]+1,"usd":round(spend,2)})
                     if trade_callback is not None:
                         trade_callback({"side":"BUY","kind":"TIER","date":s.index[i],
@@ -125,6 +138,17 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
             if age<duration-1 and job["remaining"]>1e-8:remaining_jobs.append(job)
             elif job["side"]=="BUY":cash+=job["remaining"]
         jobs=remaining_jobs
+        if recycle_due and not any(z["side"]=="BUY" for z in jobs):
+            spend=cash*cash_recycle_fraction
+            if spend>brokerage_fixed+1e-8:
+                acquired=(spend-brokerage_fixed)*(1-fee)*(1-slippage)/px
+                cash-=spend
+                btc+=acquired
+                last_buy_fill_index=i
+                transactions.append({"week":str(s.index[i].date()),"side":"BUY","tier":0,"usd":round(spend,2)})
+                if trade_callback is not None:
+                    trade_callback({"side":"BUY","kind":"RECYCLE","date":s.index[i],
+                                    "units":acquired,"cash":spend,"price":px,"brokerage":brokerage_fixed})
         prev=ratio
         if weekly_hook is not None:
             cash,btc=weekly_hook(i,s.index[i],px,cash,btc)
