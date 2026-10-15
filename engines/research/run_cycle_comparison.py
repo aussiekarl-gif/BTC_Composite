@@ -50,7 +50,7 @@ def main():
         from pathlib import Path
         output = Path(args.out)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text("".join(json.dumps(item, sort_keys=True) + "\\n" for item in records), encoding="utf-8")
+        output.write_text("".join(json.dumps(item, sort_keys=True) + "\n" for item in records), encoding="utf-8")
 
 
 if __name__ == "__main__":
