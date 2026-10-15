@@ -1,7 +1,7 @@
 """Run reproducible point-in-time BTC cycle research from an input CSV.
 
-Example:
- python -m engines.research.run_cycle_comparison --csv data/risk_history.csv
+Example (with a validated, point-in-time dataset):
+ python -m engines.research.run_cycle_comparison --csv my_weekly_signals.csv
 
 Required columns: btc_price_aud, risk_score; optional date column.
 Never interpret backfilled risk scores as causal without provenance validation.
@@ -22,6 +22,9 @@ def main():
     parser.add_argument("--fee", type=float, default=0.001)
     args = parser.parse_args()
     data = pd.read_csv(args.csv)
+    required = {'btc_price_aud', 'risk_score'}
+    if not required.issubset(data.columns):
+        parser.error('Input requires btc_price_aud and risk_score in AUD. Do not use data/risk_history.csv directly: it contains USD prices and mixed audit records.')
     if args.date_column in data:
         data[args.date_column] = pd.to_datetime(data[args.date_column], errors="raise")
         data = data.set_index(args.date_column)
