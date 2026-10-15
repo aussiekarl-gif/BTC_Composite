@@ -1,0 +1,50 @@
+name: Research forward 200WMA VBTC paper journal
+on:
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - '.github/workflows/research_forward_paper_200wma.yml'
+      - 'engines/research/forward_paper_200wma.py'
+      - 'engines/research/vbtc_official_history.py'
+      - 'engines/research/test_200wma_12week_execution.py'
+      - 'engines/research/smsf_cgt_ledger.py'
+      - 'research_forward/200wma_v1/config_frozen.json'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: research-forward-200wma-v1
+  cancel-in-progress: false
+jobs:
+  paper-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install official ETF data and signal dependencies
+        run: pip install pandas numpy requests openpyxl
+      - name: Verify frozen paper experiment and no future lookahead
+        run: python -m engines.research.forward_paper_200wma --self-test
+      - name: Record only timely, fully completed future weeks
+        run: python -m engines.research.forward_paper_200wma --save
+      - name: Append prospective paper evidence on Research branch only
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" != "research/cycle-strategy-optimization" ]]; then
+            echo "Refusing to write into Production/default branch."
+            exit 1
+          fi
+          git add -- research_forward/200wma_v1/weekly_observations.jsonl research_forward/200wma_v1/scoreboard.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No completed new weekly observation; no commit."
+            exit 0
+          fi
+          git config user.name "btc-research-paper-bot"
+          git config user.email "btc-research-paper-bot@users.noreply.github.com"
+          git commit -m "Paper-only VBTC 200WMA prospective weekly snapshot"
+          git push origin "HEAD:research/cycle-strategy-optimization"
