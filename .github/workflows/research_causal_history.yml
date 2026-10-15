@@ -18,6 +18,8 @@ on:
       - 'engines/research/test_200wma_12week_execution.py'
       - 'engines/research/btc_200wma_history.py'
       - 'engines/research/test_200wma_aud_currency_impact.py'
+      - 'engines/research/test_200wma_smsf_costs.py'
+      - 'engines/research/smsf_cgt_ledger.py'
       - 'engines/research/test_200wma_lower_tier_sensitivity.py'
       - 'engines/research/test_200wma_overlap_slippage.py'
       - 'engines/research/test_200wma_fixed_horizon.py'
@@ -158,6 +160,13 @@ jobs:
         with:
           name: 200wma-aud-currency-impact
           path: research_outputs/200wma_aud_currency_impact.json
+      - name: Compare AUD BTC ETF brokerage expense and SMSF CGT stress
+        run: python -m engines.research.test_200wma_smsf_costs --currency AUD
+      - name: Archive AUD SMSF cost stress results
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-smsf-costs-aud
+          path: research_outputs/200wma_smsf_cost_stress_aud.json
       - name: Compare strategies on chronological holdouts
         run: python -m engines.research.run_cycle_comparison --csv research_outputs/causal_btc_aud_weekly.csv --walk-forward --out research_outputs/comparison.jsonl
       - name: Archive evidence
