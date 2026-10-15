@@ -1,5 +1,9 @@
 name: Research causal history comparison
 on:
+  push:
+    branches: [research/cycle-strategy-optimization]
+    paths:
+      - '.github/workflows/research_causal_history.yml'
   workflow_dispatch:
     inputs:
       start:
