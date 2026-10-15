@@ -34,15 +34,27 @@ def build_dataset(start="2015-01-01", end=None):
     if btc.empty:
         raise ValueError("No BTC historical observations")
     fx_start = (pd.Timestamp(start) - pd.Timedelta(days=730)).date().isoformat()
-    fx_url = f"https://api.frankfurter.app/{fx_start}..{end}?from=USD&to=AUD"
-    response = requests.get(fx_url, timeout=45)
-    response.raise_for_status()
-    fx_payload = response.json()
-    rates = fx_payload.get("rates", {})
-    fx = pd.Series(
-        {pd.Timestamp(day, tz="UTC"): float(value["AUD"])
-         for day, value in rates.items()}, dtype=float
-    ).sort_index()
+    # Long-range Frankfurter requests can time out (HTTP 522). Fetch annual
+    # windows independently; never substitute synthetic FX values.
+    fx_parts = []
+    for year in range(pd.Timestamp(fx_start).year, pd.Timestamp(end).year + 1):
+        chunk_start = max(pd.Timestamp(fx_start), pd.Timestamp(f"{year}-01-01"))
+        chunk_end = min(pd.Timestamp(end), pd.Timestamp(f"{year}-12-31"))
+        if chunk_start > chunk_end:
+            continue
+        fx_url = (f"https://api.frankfurter.app/"
+                  f"{chunk_start.date().isoformat()}..{chunk_end.date().isoformat()}"
+                  "?from=USD&to=AUD")
+        response = requests.get(fx_url, timeout=45)
+        response.raise_for_status()
+        rates = response.json().get("rates", {})
+        if not rates:
+            raise ValueError(f"Missing USD/AUD FX history for {year}")
+        fx_parts.append(pd.Series(
+            {pd.Timestamp(day, tz="UTC"): float(value["AUD"])
+             for day, value in rates.items()}, dtype=float))
+    fx = pd.concat(fx_parts).sort_index()
+    fx = fx.loc[~fx.index.duplicated(keep="last")]
     if fx.empty or not np.isfinite(fx).all() or not (fx > 0).all():
         raise ValueError("No validated USD-to-AUD FX history")
     if fx.index.min() > btc.index.min() + pd.Timedelta(days=7):
