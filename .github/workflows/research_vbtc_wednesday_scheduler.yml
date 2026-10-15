@@ -1,0 +1,89 @@
+name: Research VBTC paper Wednesday scheduler
+
+# Scheduling is deliberately restricted to the default (main) branch.
+# It runs and commits ONLY research/cycle-strategy-optimization paper data.
+# 23:17 Tuesday UTC = 09:17 Wednesday Brisbane (AEST, UTC+10).
+on:
+  schedule:
+    - cron: '17 23 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research-forward-200wma-v1
+  cancel-in-progress: false
+
+jobs:
+  run-paper-only:
+    if: github.repository == 'aussiekarl-gif/BTC_Composite'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Fail closed unless launched from main
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Scheduler must execute on the default branch only."
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" != "schedule" && "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]]; then
+            echo "Unexpected invocation event."
+            exit 1
+          fi
+
+      - name: Checkout Research only (never Production)
+        uses: actions/checkout@v4
+        with:
+          ref: research/cycle-strategy-optimization
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Verify research checkout and frozen policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git branch --show-current)" == "research/cycle-strategy-optimization" ]] || {
+            echo "Refusing to run on non-Research checkout."
+            exit 1
+          }
+          test -f research_forward/200wma_v1/config_frozen.json
+          test -f engines/research/forward_paper_200wma.py
+          git rev-parse HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install research-only dependencies
+        run: python -m pip install pandas numpy requests openpyxl
+
+      - name: Verify no-lookahead and frozen model
+        run: python -m engines.research.forward_paper_200wma --self-test
+
+      - name: Verify append-only and missed-week safeguards
+        run: python -m engines.research.test_paper_forward_integrity
+
+      - name: Capture the newly completed BTC and issuer VBTC week
+        run: python -m engines.research.forward_paper_200wma --save
+
+      - name: Commit only new Research observations, never Production
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git branch --show-current)" == "research/cycle-strategy-optimization" ]]
+          for file in research_forward/200wma_v1/weekly_observations.jsonl research_forward/200wma_v1/scoreboard.json; do
+            if [[ -f "$file" ]]; then
+              git add -- "$file"
+            fi
+          done
+          if git diff --cached --quiet; then
+            echo "No new eligible completed week; Research unchanged."
+            exit 0
+          fi
+          git config user.name "btc-research-paper-bot"
+          git config user.email "btc-research-paper-bot@users.noreply.github.com"
+          git commit -m "Research-only forward VBTC paper weekly observation"
+          git push origin HEAD:refs/heads/research/cycle-strategy-optimization
