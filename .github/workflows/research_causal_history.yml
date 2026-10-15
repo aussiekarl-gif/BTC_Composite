@@ -108,6 +108,13 @@ jobs:
         with:
           name: 200wma-12week-execution
           path: research_outputs/200wma_12week_execution.json
+      - name: Audit staged execution overlap and slippage
+        run: python -m engines.research.test_200wma_overlap_slippage
+      - name: Archive overlap and slippage audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: 200wma-overlap-slippage
+          path: research_outputs/200wma_overlap_slippage.json
       - name: Compare lower selling tiers and trading fee sensitivity
         run: python -m engines.research.test_200wma_lower_tier_sensitivity
       - name: Archive lower-tier sensitivity results
