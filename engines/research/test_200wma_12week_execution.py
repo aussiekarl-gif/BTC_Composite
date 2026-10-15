@@ -17,7 +17,7 @@ def weights(shape,weeks):
         v=np.maximum(0.05,1-np.abs(x))
     return v/v.sum()
 
-def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None):
+def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None,sell_weeks=None,buy_levels=None,sell_levels=None,fee=FEE,block_overlap=False,slippage=0.0,end_index=None,initial_btc_fraction=1.0,funding_weeks=0,funding_weighted=False,btc_core_fraction=0.0,sell_cross_direction="up",signal_price=None,brokerage_fixed=0.0,trade_callback=None,weekly_hook=None):
     if signal_price is None:signal_price=s
     if not s.index.equals(signal_price.index):raise ValueError("Signal-price and execution-price dates differ")
     buy_levels=BUYS if buy_levels is None else buy_levels
@@ -126,6 +126,8 @@ def staged(s,ma,start,shape="equal",reverse_cancel=False,weeks=12,buy_weeks=None
             elif job["side"]=="BUY":cash+=job["remaining"]
         jobs=remaining_jobs
         prev=ratio
+        if weekly_hook is not None:
+            cash,btc=weekly_hook(i,s.index[i],px,cash,btc)
         if cash < -1e-6 or btc < -1e-9:raise AssertionError("Negative holdings")
     # Unspent committed buy cash is still an asset.
     cash+=sum(j["remaining"] for j in jobs if j["side"]=="BUY")
