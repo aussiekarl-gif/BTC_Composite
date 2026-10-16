@@ -191,14 +191,10 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
         entry_mode=entry_mode)
     bought=[]
     if plan and actual.cash>100.:
-        # Weighted DCA over 24 weeks; never adapt using future entry prices.
-        # Predictably invest the reserved NET sale proceeds each eligible
-        # weekly day. Initial cash (if any) is included; no new funding.
-        # Critically, all weights are computed from prior observations.
-        # Budgeting with future weights before the first order would
-        # create LOOKAHEAD. Instead use a causal fractional target:
-        # reserve 24 weekly tranches (not truncated to current data
-        # horizon), and scale tranche from observed discount.
+        # Use NET proceeds for either a fixed 24/52-week comparison
+        # or an open-ended 200WMA-sized purchase rule. Every fraction
+        # is chosen using strictly completed prior observations, never
+        # a future bear-market low. No new outside cash is introduced.
         initial_budget=actual.cash
         target=initial_budget/buyback_weeks
         prices=price.to_numpy(float)
@@ -418,7 +414,7 @@ def evaluate(historical,*, fx_for_cycle=fetch_fx_for_cycle):
         "2013_excluded_from_primary":True,
         "historical_source_last_day":str(price.index[-1].date()),
         "initial_per_shadow_account_aud":INITIAL_AUD,
-        "method":"Self-financing shadow BTC purchased at the historical halving date, sold after day500 and repurchased via lagged 365-day drawdown; matched hold buys at same date.",
+        "method":"Self-financing shadow BTC purchased at historical halving, sold after day500, then repurchased after a past-data-only 365-day drawdown OR strict-prior 200-week SMA; same-start matched hold.",
         "strategies":out,
         "complete_cycle_summary":summary,
         "warnings":[
