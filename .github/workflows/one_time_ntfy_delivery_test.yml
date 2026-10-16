@@ -1,0 +1,44 @@
+name: One-time user-requested ntfy delivery test
+on:
+  push:
+    branches:
+      - test/one-shot-cycle-ntfy-20261017-0949
+
+permissions:
+  contents: read
+
+jobs:
+  send-test-once:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Send one clearly labeled test through the existing ntfy topic
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          python - <<'PY'
+          import os
+          from cycle_trading_daily_ntfy import send_ntfy
+          topic=os.environ.get("NTFY_TOPIC","")
+          if not topic.strip():
+              raise RuntimeError("No configured NTFY_TOPIC secret: cannot send a test.")
+          body=(
+              "TEST MESSAGE — Cycle Trading notification connection\n"
+              "One-time, user requested; not today's scheduled 10 AM message.\n\n"
+              "Cycle signal: TEST ONLY — no market recommendation\n"
+              "BUY allocation: not calculated\n"
+              "SELL allocation: not calculated\n"
+              "Production: no data\n"
+              "Research: no data\n\n"
+              "The labels and delivery are being tested; the normal daily "
+              "message will use fresh market data where available. "
+              "Research only — no broker orders."
+          )
+          send_ntfy(body,topic=topic)
+          print("NTFY_TEST_SEND_SUCCESS")
+          PY
