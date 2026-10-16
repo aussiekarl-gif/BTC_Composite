@@ -18,6 +18,7 @@ from engines.research.cycle_market_feed import merge_verified_cycle_prices
 from engines.shared.portfolio_store import load_portfolio
 from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
+from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.ibit_quote import fetch_ibit_quote
 from engines.research.cycle_aud_price_levels import observed_aud_cycle_levels
 
@@ -302,6 +303,21 @@ with tabs[0]:
             "HOLD means these experimental price/cycle rules did not support a trade "
             "or data/portfolio safeguards prevented reliable sizing. "
             "Model confidence has NOT been calibrated from prospective market-top tests."
+        )
+    full_research_cycle=cycle_exit_stage_status(
+        market["halving_date"],market["asof_date"])
+    if full_research_cycle["exit_window_expired"]:
+        st.caption(
+            "Full historical day-500/730 SELL policy: the 2024-halving "
+            "distribution window has passed. It cannot trigger a "
+            "retroactive sale of your 2026 purchases."
+        )
+    elif full_research_cycle["next_exit_review_date"]:
+        st.caption(
+            f"Full historical SELL policy next review: "
+            f"{full_research_cycle['next_exit_review_date']} "
+            "(not an instruction to sell; original-BTC holdings and "
+            "prior executions must be reconciled)."
         )
     st.caption(
         "MODEL VALIDATION: The live SELL percentages are applied to REMAINING units "
