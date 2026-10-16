@@ -373,7 +373,9 @@ with tabs[0]:
     st.caption(
         "A BUY percentage is measured against AVAILABLE AUD CASH; a SELL percentage "
         "is measured against CURRENT HOLDINGS, not the original A$500k. "
-        "Both percentages are the same research market rules reported by the daily ntfy message."
+        "Both percentages are the same research market rules reported by the daily ntfy message. "
+        "These are per eligible DCA tranche, not instructions to repeat a trade every day. "
+        "Check your executed trade ledger and broker before acting."
     )
     st.caption(
         "Late-cycle SELL rollover is an experimental price-only safeguard, not the "
