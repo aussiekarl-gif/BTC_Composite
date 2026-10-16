@@ -79,7 +79,7 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
                                        "Units / BTC Received":120,
                                        "BTC AUD Price":0}]})
         self.assertEqual(r["unpriced_or_unknown_rows"],1)
-        self.assertEqual(r["btc_equivalent"],0)
+        self.assertIsNone(r["btc_equivalent"])
         self.assertIsNone(r["approx_average_cost_aud_per_btc"])
 
     def test_invalid_or_missing_saved_portfolio_fails_closed(self):
