@@ -36,12 +36,30 @@ st.warning(
 )
 
 
+# Rerun the complete Streamlit view every 15 minutes while it is open.
+# This refreshes dated calculations and caches; it never places broker orders.
+if hasattr(st, "fragment"):
+    @st.fragment(run_every="1m")
+    def cycle_refresh_heartbeat():
+        now_utc=dt.datetime.now(dt.timezone.utc)
+        key="cycle_last_full_refresh_utc"
+        previous=st.session_state.get(key)
+        if previous is None:
+            st.session_state[key]=now_utc
+        elif (now_utc-previous).total_seconds()>=15*60:
+            st.session_state[key]=now_utc
+            st.rerun()
+    cycle_refresh_heartbeat()
+else:
+    st.caption("Automatic refresh requires an updated Streamlit version; use Refresh manually.")
+
+
 @st.cache_data(ttl=60*60*12,show_spinner=False)
 def historical_source():
     return read_exported_history()
 
 
-@st.cache_data(ttl=60*60*6,show_spinner=False)
+@st.cache_data(ttl=60*60,show_spinner=False)
 def public_source(asof):
     return fetch_public_series(asof=asof)
 
@@ -96,8 +114,17 @@ with st.spinner("Checking public BTC and AUD exchange-rate updates..."):
     except Exception as exc:
         provider_error=f"{type(exc).__name__}: {exc}"
 
+# Use verified Bitcoin epoch dates; never silently assume 2024 after 2028.
+halving_countdown=cached_halving_countdown()
+verified_halving_date=(halving_countdown.get("last_halving_date")
+                       if halving_countdown.get("halving_date_verified") else None)
+anchor_matches_close=bool(verified_halving_date and
+    dt.date.fromisoformat(verified_halving_date)<=pd.Timestamp(daily.index[-1]).date())
+cycle_feed_verified=bool(anchor_matches_close)
 try:
-    market=build_dashboard_market(daily,fx,asof=asof)
+    market=build_dashboard_market(
+        daily,fx,asof=asof,
+        confirmed_halving_date=verified_halving_date if anchor_matches_close else None)
 except Exception as exc:
     st.error(f"Cannot calculate strictly prior BTC 200WMA: {type(exc).__name__}: {exc}")
     fallback,fallback_error=stored_portfolio()
@@ -110,6 +137,10 @@ last_day=pd.Timestamp(market["asof_date"]).date()
 staleness=(today-last_day).days
 if provider_error:
     st.error("Current public BTC/FX refresh not verified: "+provider_error)
+if not cycle_feed_verified:
+    st.error("Last halving date not verified from the Bitcoin chain, or newer than "
+             "the completed BTC price observation. Cycle-timed trade recommendations "
+             "are disabled until automatic verification recovers.")
 if staleness>3:
     st.error(f"Prices are {staleness} days old ({last_day}). Current trade suggestions are disabled. Historical research remains accessible.")
 else:
@@ -153,38 +184,40 @@ except Exception as exc:
 
 cycle_historic_fx=None
 
-# This is a block-height projection, not a fixed four-year calendar promise.
-# It is independent from portfolio signals and cannot initiate a trade.
-halving_countdown=cached_halving_countdown()
-halving_timeline=build_halving_timeline(
-    last_halving_date=market["halving_date"],
+# The displayed halving date comes from confirmed blockchain history.
+# At any future halving, suppress the chart until the epoch date is verified.
+halving_timeline=(build_halving_timeline(
+    last_halving_date=verified_halving_date,
     today=trade_today,
     countdown=halving_countdown,
-)
+) if verified_halving_date else None)
 elapsed_col,chart_col,remaining_col=st.columns([1.25,2.5,1.5],gap="medium")
 with elapsed_col:
     st.metric("Days from last BTC halving",
-              f"{halving_timeline['elapsed_days']:,} days")
-    st.caption(f"Confirmed: {halving_timeline['last_halving_date']}")
+              f"{halving_timeline['elapsed_days']:,} days"
+              if halving_timeline else "Unverified")
+    st.caption(f"Confirmed: {verified_halving_date}" if verified_halving_date
+               else "Waiting for verified block event")
 with chart_col:
-    st.caption(f"Halving cycle progress · {halving_timeline['progress_pct']:.1f}% elapsed")
-    st.plotly_chart(
-        build_halving_progress_bar(halving_timeline),
-        use_container_width=True,
-        config={"displayModeBar": False},
-        key="cycle_halving_timeline_bar",
-    )
+    if halving_timeline:
+        st.caption(f"Halving cycle progress · {halving_timeline['progress_pct']:.1f}% elapsed")
+        st.plotly_chart(
+            build_halving_progress_bar(halving_timeline),
+            use_container_width=True,
+            config={"displayModeBar": False},
+            key="cycle_halving_timeline_bar",
+        )
+    else:
+        st.warning("Cycle timeline unavailable until blockchain verification.")
 with remaining_col:
     st.metric("Approx. days until next BTC halving",
-              f"~{halving_timeline['remaining_days']:,} days")
-    st.caption(f"Estimated: {halving_timeline['estimated_next_halving_date']}")
+              f"~{halving_countdown['days_remaining']:,} days")
+    st.caption(f"Estimated: {halving_countdown['estimated_date_utc']}")
 st.caption(
     "Cycle bar: teal = elapsed, dark = projected remaining, orange = TODAY. "
-    "Yellow markers: D500 = first distribution review, D560 = staged sell checkpoint, "
-    "D730 = extended exit review. These are research timing markers, NOT predictions "
-    "of a BTC peak or instructions to trade. Next halving is a block-height estimate • "
-    + halving_countdown["source"] + " • "
-    + halving_countdown["estimate_basis"] + "."
+    "Yellow D500, D560 and D730 markers are research review dates, not price forecasts. "
+    "Halving date and price feeds automatically refresh while the page is open • "
+    + halving_countdown["source"] + " • " + halving_countdown["estimate_basis"] + "."
 )
 
 tabs=st.tabs(["Trading decision", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
@@ -271,7 +304,7 @@ with tabs[0]:
         verified_current_ibit_units=current_units,
         already_traded_today=already_traded,
         feed_verified=(provider_error is None and verification is not None
-                       and staleness<=3),
+                       and staleness<=3 and cycle_feed_verified),
     )
     # Percentage is the primary allocation signal; show BOTH cash-buy
     # and holdings-sell bases so the user never mistakes dollars for BTC.
@@ -357,9 +390,9 @@ with tabs[0]:
         market["halving_date"],market["asof_date"])
     if full_research_cycle["exit_window_expired"]:
         st.caption(
-            "Full historical day-500/730 SELL policy: the 2024-halving "
+            "Full historical day-500/730 SELL policy: the last confirmed cycle's "
             "distribution window has passed. It cannot trigger a "
-            "retroactive sale of your 2026 purchases."
+            "retroactive sale of holdings bought afterward."
         )
         if saved_cash.get("valid") and isinstance(saved_live_portfolio,dict):
             try:
@@ -402,8 +435,8 @@ with tabs[0]:
     )
     st.caption(
         "Late-cycle SELL rollover is an experimental price-only safeguard, not the "
-        "validated day-500 sell-backtest. The previous 2024 halving's day-500 window "
-        "passed in 2025 before your actual purchases. No order is ever submitted."
+        "validated day-500 sell-backtest. Historical review windows "
+        "cannot retroactively apply to newer purchases. No order is ever submitted."
     )
     st.divider()
     st.subheader("Underlying market signals")
@@ -418,7 +451,7 @@ with tabs[0]:
         # Historic 2025 peak MUST be converted with FX from 2025,
         # not today's AUD/USD. The standard public fetch only
         # includes FX from December 2025 onwards.
-        cycle_historic_fx=cycle_fx_source("2024-04-20",market["asof_date"])
+        cycle_historic_fx=cycle_fx_source(market["halving_date"],market["asof_date"])
         cycle_aud=observed_aud_cycle_levels(
             market["price_history"],cycle_historic_fx,
             asof=market["asof_date"])
@@ -450,7 +483,7 @@ with tabs[0]:
             f"({cycle_aud['cycle_top_date']}). "
             f"Latest BTC/AUD daily close A${cycle_aud['last_price_aud']:,.0f} "
             f"({cycle_aud['asof_date']}). "
-            "Range is since the 20 Apr 2024 halving, with the bottom "
+            f"Range is since the last confirmed halving ({market['halving_date']}), with the bottom "
             "defined AFTER the observed top. Same-date historical FX; "
             "daily closes, not intraday extremes or a prediction."
         )
@@ -464,9 +497,9 @@ with tabs[0]:
         c4.metric("Days from last confirmed halving",f"{market['halving_day']:,}")
 
         st.caption(
-            f"Confirmed halving 20 Apr 2024 • day 500: {market['day500_date']} "
-            f"• day 560: {market['day560_date']}. Both are **in the past**. "
-            "No rule should retroactively sell your BTC/ETF bought in 2026."
+            f"Confirmed halving {market['halving_date']} • day 500: {market['day500_date']} "
+            f"• day 560: {market['day560_date']}. "
+            "Timeline milestones are not retroactive broker instructions."
         )
         st.subheader("Market history")
         hist=market["price_history"]
