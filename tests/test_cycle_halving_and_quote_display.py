@@ -159,6 +159,71 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertEqual(timeline["elapsed_days"], 1)
         self.assertEqual(timeline["milestones"], [])
 
+    def test_future_halving_block_does_not_guess_event_date(self):
+        # Crossing the epoch is different from independently verifying
+        # the calendar date when block 1,050,000 was actually mined.
+        future=estimate_halving_from_height(1_050_001, now=NOW)
+        self.assertEqual(future["next_halving_height"], 1_260_000)
+        self.assertEqual(future["last_halving_height"], 1_050_000)
+        self.assertIsNone(future["last_halving_date"])
+        self.assertFalse(future["halving_date_verified"])
+
+    @patch("engines.research.cycle_halving_countdown.requests.get")
+    def test_future_epoch_resolves_real_halving_block_time(self, get):
+        # Run the scenario in 2028, not in the present 2026.
+        future_now=dt.datetime(2028, 4, 26, tzinfo=dt.timezone.utc)
+        block_hash="ab"*32
+        height = Mock(text="1050020")
+        hash_response = Mock(text=block_hash)
+        block_response = Mock()
+        block_response.json.return_value={
+            "height": 1_050_000,
+            "timestamp": int(dt.datetime(2028, 4, 25, 12,
+                                          tzinfo=dt.timezone.utc).timestamp()),
+        }
+        get.side_effect=[height, hash_response, block_response]
+        value=fetch_halving_countdown(now=future_now)
+        self.assertTrue(value["halving_date_verified"])
+        self.assertEqual(value["last_halving_date"],"2028-04-25")
+        self.assertEqual(value["next_halving_height"],1_260_000)
+
+    @patch("engines.research.cycle_halving_countdown.requests.get")
+    def test_future_epoch_missing_block_event_fails_closed(self, get):
+        future_now=dt.datetime(2028, 4, 26, tzinfo=dt.timezone.utc)
+        height=Mock(text="1050020")
+        bogus_hash=Mock(text="not a block hash")
+        get.side_effect=[height,bogus_hash]
+        value=fetch_halving_countdown(now=future_now)
+        self.assertFalse(value["halving_date_verified"])
+        self.assertIsNone(value["last_halving_date"])
+        self.assertIn("No cycle-timed trade",value["cycle_safety_note"])
+
+    def test_future_market_recalculates_age_and_review_dates(self):
+        import pandas as pd
+        from engines.research.cycle_trading_dashboard_model import build_dashboard_market
+        idx=pd.date_range("2022-01-01","2028-04-28",freq="D",tz="UTC")
+        price=pd.Series(100_000.,index=idx)
+        fx=pd.DataFrame({"aud_per_usd":[1.5]},index=[idx[-2]])
+        future=build_dashboard_market(price,fx,
+            asof="2028-04-28", confirmed_halving_date="2028-04-25")
+        self.assertEqual(future["halving_day"],3)
+        self.assertEqual(future["halving_date"],"2028-04-25")
+        self.assertEqual(future["day500_date"],"2029-09-07")
+        with self.assertRaises(ValueError):
+            build_dashboard_market(price,fx,
+                asof="2028-04-28", confirmed_halving_date="2028-05-01")
+
+    def test_dashboard_refreshes_session_without_autotrading(self):
+        from pathlib import Path
+        app=(Path(__file__).resolve().parents[1] /
+             "engines/research/cycle_trading_app.py").read_text()
+        self.assertIn('st.fragment(run_every="1m")',app)
+        self.assertIn('cycle_refresh_heartbeat()',app)
+        self.assertIn('st.rerun()',app)
+        self.assertIn('and staleness<=3 and cycle_feed_verified',app)
+        self.assertIn('start=market["halving_date"]',app)
+        self.assertNotIn('cycle_fx_source("2024-04-20"',app)
+
     def test_dashboard_shows_countdown_and_optional_manual_quote(self):
         from pathlib import Path
         app = (Path(__file__).resolve().parents[1] /
