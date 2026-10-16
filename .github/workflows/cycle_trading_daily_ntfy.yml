@@ -1,0 +1,62 @@
+name: Cycle Trading single daily ntfy
+
+# 22:00 UTC = 08:00 Brisbane (UTC+10), every calendar day.
+# Only scheduled runner may POST ntfy; NO workflow_dispatch.
+on:
+  schedule:
+    - cron: '0 22 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: btc-cycle-daily-notify-global
+  cancel-in-progress: false
+
+jobs:
+  single-cycle-message:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Prepare ONE daily Cycle Trading summary
+        run: python cycle_trading_daily_ntfy.py --prepare
+      - name: Reserve Brisbane delivery date BEFORE sending
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          today="$(cat /tmp/btc_cycle_ntfy_date.txt)"
+          marker=".github/notification_state/last_cycle_ntfy_date.txt"
+          # GitHub Actions serialized by concurrency. Read main again,
+          # so reruns/delayed jobs see any previously reserved date.
+          git fetch origin main
+          git reset --hard origin/main
+          previous="$(cat "$marker" 2>/dev/null || true)"
+          if [[ "$previous" == "$today" ]]; then
+            echo "Already reserved/sent this Brisbane date: $today"
+            echo "SEND_NTFY=no" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          mkdir -p "$(dirname "$marker")"
+          printf '%s\n' "$today" > "$marker"
+          git config user.name "cycle-ntfy-bot"
+          git config user.email "cycle-ntfy-bot@users.noreply.github.com"
+          git add "$marker"
+          git commit -m "Cycle ntfy daily delivery reserve $today [skip ci]"
+          git push origin HEAD:main
+          echo "SEND_NTFY=yes" >> "$GITHUB_ENV"
+      - name: Send only one ntfy Cycle Trading message
+        if: env.SEND_NTFY == 'yes'
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python cycle_trading_daily_ntfy.py --send

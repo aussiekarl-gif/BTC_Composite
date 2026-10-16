@@ -1,0 +1,30 @@
+name: IBIT Quote and Daily Cycle Notification Safety
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/ibit_quote.py"
+      - "engines/research/cycle_trading_app.py"
+      - "cycle_trading_daily_ntfy.py"
+      - "tests/test_cycle_daily_ntfy_quote.py"
+      - ".github/workflows/cycle_trading_daily_ntfy.yml"
+      - ".github/workflows/dca_model_compare_notify.yml"
+      - ".github/workflows/validation_research_tuning.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quote-and-notification-invariants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile engines/research/ibit_quote.py engines/research/cycle_trading_app.py cycle_trading_daily_ntfy.py
+      - run: python -m unittest discover -s tests -p 'test_cycle_daily_ntfy_quote.py' -v
+      - run: python -m unittest discover -s tests -p 'test_cycle_trade_decision.py' -v

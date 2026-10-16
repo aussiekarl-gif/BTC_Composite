@@ -26,7 +26,6 @@ jobs:
       - name: Run V5.9 validation framework
         env:
           BGEOMETRICS_TOKEN: ${{ secrets.BGEOMETRICS_TOKEN }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           AUDIT_GITHUB_REPO: ${{ secrets.AUDIT_GITHUB_REPO }}
           AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN }}
         run: python validation_research_tuning.py
