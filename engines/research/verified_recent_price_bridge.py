@@ -30,7 +30,9 @@ MIN_OVERLAP = 4
 MAX_MEDIAN_DEVIATION_PCT = 5.0
 MAX_SINGLE_DEVIATION_PCT = 12.0
 GENESIS = pd.Timestamp("2009-01-03", tz="UTC")
-SOURCE_DATE = "2026-05-01"
+SOURCE_DATE = "2025-12-01"
+USER_REPORTED_LOW_USD = 57_717.0
+USER_REPORTED_LOW_DATE = "2026-06-30"
 
 
 def normalise_utc_index(points, *, name, numeric_field):
@@ -205,6 +207,56 @@ def expanding_aud_powerlaw_risk(weekly_prices, *, min_history_weeks=104,
     return out
 
 
+def nearest_historical_fx(fx, purchase_date, *, max_lag_days=7):
+    """Return AUD per USD observed on/before the purchase date."""
+    when=pd.Timestamp(purchase_date)
+    when=when.tz_localize("UTC") if when.tzinfo is None else when.tz_convert("UTC")
+    eligible=fx.loc[fx.index<=when]
+    if eligible.empty or (when-eligible.index[-1]).days>max_lag_days:
+        raise ValueError(f"Historical AUD/USD unavailable at {when}")
+    return float(eligible.iloc[-1]["aud_per_usd"])
+
+
+def weighted_entry_from_synthetic_orders(orders, historical_fx, *,
+                                         low_usd=USER_REPORTED_LOW_USD,
+                                         starting_capital=500_000.):
+    """Cumulative BTC-quantity-weighted BUY cost; never average unit prices.
+
+    Reference bottom is USER-REPORTED, not silently treated as verified by
+    Blockchain.com's daily-average chart. Ignore SELL orders only for this
+    entry-quality diagnostic; the 2026 cohort has no sales so far.
+    """
+    buy=[o for o in orders if o["side"]=="BUY"]
+    if not buy:
+        return {
+            "buy_order_count":0,
+            "aud_capital_deployed_pct":0.0,
+            "average_entry_usd_per_btc":None,
+            "error_from_observed_low_pct":None,
+            "within_25pct":None,
+        }
+    usd_spent=0.;aud_spent=0.;acquired=0.
+    for o in buy:
+        amount=float(o["gross_aud"])
+        qty=float(o["btc"])
+        if not np.isfinite(amount) or amount<=0 or not np.isfinite(qty) or qty<=0:
+            raise ValueError("Cannot calculate BTC-weighted entry from invalid order")
+        aud_spent+=amount
+        usd_spent+=amount/nearest_historical_fx(historical_fx,o["date"])
+        acquired+=qty
+    entry=usd_spent/acquired
+    error=100*(entry/low_usd-1)
+    return {
+        "buy_order_count":len(buy),
+        "aud_capital_deployed_pct":round(100*aud_spent/starting_capital,3),
+        "average_entry_usd_per_btc":round(entry,2),
+        "error_from_observed_low_pct":round(error,3),
+        "within_25pct":bool(error<=25),
+        "benchmark_low_usd":low_usd,
+        "benchmark_low_date":USER_REPORTED_LOW_DATE,
+    }
+
+
 def audit(master, *, asof):
     historical=validate_history(master)
     if historical.index.tz is None:
@@ -228,7 +280,12 @@ def audit(master, *, asof):
         "weeks_disagree_by_over_0_20":int(diffs.gt(.20).sum()),
         "signals_are_not_equivalent":True,
     }
-    cohorts=evaluate_cohorts(candidate)
+    cohorts=evaluate_cohorts(candidate,include_research_orders=True)
+    for cohort in cohorts["cohorts"]:
+        for outcome in cohort["results"]:
+            synthetic_orders=outcome.pop("_research_orders",[])
+            outcome["weighted_entry_vs_reported_low"]=weighted_entry_from_synthetic_orders(
+                synthetic_orders, fx)
     return {
         "research_only":True,
         "asof_requested":str(pd.Timestamp(asof).date()),
@@ -246,6 +303,8 @@ def audit(master, *, asof):
             "No modification to portfolio, Production trading, or source master.",
             "Cash and positions are hypothetical fresh 2026 starts, not user's actual buys.",
             "No claims of complete cycle top/low 25% prediction accuracy.",
+            "USD 57,717 low is user-supplied, not independently validated at high-frequency intraday resolution.",
+            "Buying error excludes unused cash; deployment percentage is separately disclosed.",
         ],
     }
 
