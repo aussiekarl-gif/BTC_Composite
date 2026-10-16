@@ -36,6 +36,10 @@ jobs:
         run: python -m compileall -q engines/research engines/shared
       - name: Check both strategies pay exit dealing costs and FIFO accumulation CGT
         run: python -m engines.research.test_terminal_liquidation_checks
+      - name: Validate adaptive sell expiry, next-week signal and opt-in parity
+        run: python -m engines.research.test_adaptive_200wma_checks
+      - name: Confirm staged and no-tier DCA execution cost symmetry
+        run: python -m engines.research.test_symmetric_dca_execution_checks
       - name: Check FIFO SMSF capital gains and annual tax settlements
         run: python -m engines.research.test_smsf_cgt_ledger_checks
       - name: Verify frozen paper strategy and next-week execution
