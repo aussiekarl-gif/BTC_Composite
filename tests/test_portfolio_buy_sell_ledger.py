@@ -151,7 +151,7 @@ class PortfolioBuySellLedgerTests(unittest.TestCase):
             self.assertAlmostEqual(portfolio_snapshot(stored)["cash_remaining_aud"],496879.)
 
     def test_invalid_sell_fee_and_future_date_are_rejected(self):
-        with self.assertRaisesRegex(ValueError,"exceed brokerage"):
+        with self.assertRaisesRegex(ValueError,"exceed fees"):
             append_executed_trade(initial(),side="SELL",asset="ASX:IBIT",
                 trade_date="16/10/26",quantity=1,trade_price_aud=2.,fee_aud=3.)
         future=(dt.datetime.now(dt.timezone.utc).date()+dt.timedelta(days=3))
