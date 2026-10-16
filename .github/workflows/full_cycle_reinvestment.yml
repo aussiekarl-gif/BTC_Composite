@@ -5,6 +5,8 @@ on:
     paths:
       - "engines/research/full_cycle_reinvestment.py"
       - "tests/test_full_cycle_reinvestment.py"
+      - "engines/research/exit_confirmation_audit.py"
+      - "tests/test_exit_confirmation_audit.py"
       - ".github/workflows/full_cycle_reinvestment.yml"
   workflow_dispatch:
 
@@ -24,7 +26,9 @@ jobs:
       - name: Compile module
         run: python -m py_compile engines/research/full_cycle_reinvestment.py
       - name: Validate deterministic accounting
-        run: python -m unittest discover -s tests -p "test_full_cycle_reinvestment.py" -v
+        run: |
+          python -m unittest discover -s tests -p "test_full_cycle_reinvestment.py" -v
+          python -m unittest discover -s tests -p "test_exit_confirmation_audit.py" -v
 
   historical-read-only:
     needs: unit-tests
@@ -42,8 +46,15 @@ jobs:
           AUDIT_GITHUB_REPO: aussiekarl-gif/btc-audit-data
           AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN }}
         run: python -m engines.research.full_cycle_reinvestment --output full_cycle_reinvestment_results.json
+      - name: Run read-only arm-and-confirm exit analysis
+        env:
+          AUDIT_GITHUB_REPO: aussiekarl-gif/btc-audit-data
+          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN }}
+        run: python -m engines.research.exit_confirmation_audit --output exit_confirmation_results.json
       - name: Upload read-only aggregate results
         uses: actions/upload-artifact@v4
         with:
           name: full-cycle-reinvestment-report
-          path: full_cycle_reinvestment_results.json
+          path: |
+            full_cycle_reinvestment_results.json
+            exit_confirmation_results.json
