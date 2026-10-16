@@ -47,5 +47,22 @@ def main():
     for ev in trend_events:
         if ev["kind"]=="TREND_REENTRY":
             assert ev["date"].weekday()==0
-    print("PASS: opt-in sell weakness guard, 8-week trend breakout reentry, default parity and no future data")
+    # IMPORTANT: a sell signal opens a 16-week time-limited job. The
+    # weakness guard must NOT execute that job after expiry, even when a
+    # later correction finally occurs. This prevents retroactive selling.
+    expire=np.array([190.,190.,210.]+[220.+.1*k for k in range(17)]+[170.]*52)
+    rising=pd.Series(expire[:len(idx)],index=idx)
+    normal,normal_fills=go(rising,rising)
+    delayed,delayed_fills=go(rising,rising,sell_guard_lookback=8)
+    assert n(normal_fills,"TIER")>0,"Fixture did not schedule the initial sell"
+    assert n(delayed_fills,"TIER")==0,(
+        "Guard executed a stale sell after its 16-week scheduled window")
+    # A 5% retreat *inside* the open job must allow a sell using only
+    # the previous completed weekly close.
+    dip=rising.copy()
+    dip.iloc[5]=192.
+    within,within_fills=go(dip,dip,sell_guard_lookback=8)
+    assert n(within_fills,"TIER")>0,(
+        "A real prior-week weakness inside the scheduled sell window was ignored")
+    print("PASS: opt-in sell weakness guard, 8-week trend breakout reentry, expiry, default parity and no future data")
 if __name__=="__main__":main()
