@@ -88,7 +88,7 @@ class AdaptiveDcaExecutionTests(unittest.TestCase):
         self.assertEqual(baseline,revised)
 
     def test_sell_requires_trailing_evidence_and_does_not_sell_early(self):
-        prices=[100.+i for i in range(110)]+[210-10*(i-110) for i in range(110,140)]+[100.]*60
+        prices=[100.+i for i in range(110)]+[max(40.,210-10*(i-110)) for i in range(110,140)]+[100.]*60
         risks=[.1]*32+[.5]*30+[.7]*70+[.5]*68
         data=fixture(prices,risks)
         r=simulate_adaptive(data,confirm_drawdown=.15)
