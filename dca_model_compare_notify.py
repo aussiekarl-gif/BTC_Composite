@@ -204,71 +204,13 @@ def fetch_live_prices(e, latest):
     return aud, usd
 
 
-def send_ntfy(prod, research, btc_aud, btc_usd):
-    topic = os.getenv("NTFY_TOPIC", "").strip()
-    if not topic:
-        raise RuntimeError("GitHub secret NTFY_TOPIC is missing or empty.")
-
-    url = topic.rstrip("/") if topic.startswith(("http://", "https://")) else "https://ntfy.sh/" + topic.strip("/")
-
-    import requests
-
-    now_local = dt.datetime.now(dt.timezone.utc).astimezone(BRISBANE)
-    weekday = now_local.weekday() < 5
-    market_line = (
-        "ASX:IBIT: weekday trading day (check ASX holiday status)"
-        if weekday
-        else "ASX:IBIT: market closed (weekend)"
-    )
-
-    rel = research["multiplier"] / prod["multiplier"] if prod["multiplier"] > 0 else float("nan")
-    rel_text = f"{(rel - 1) * 100:+.0f}% vs Production multiplier" if rel == rel else "n/a"
-
-    lines = [
-        "TEMPORARY DUAL-MODEL COMPARISON",
-        "",
-        f"V5.8.2 Production: Risk {prod['risk']:.3f} ({prod['label']}) | DCA {prod['multiplier']:.2f}x",
-        f"V5.9 Research:    Risk {research['risk']:.3f} ({research['label']}) | DCA {research['multiplier']:.2f}x",
-        f"Research sizing difference: {rel_text}",
-        "",
-        f"Risk data through: Prod {prod['risk_data_date']} | Research {research['risk_data_date']}",
-        f"BTC Price AUD: A${btc_aud:,.0f} (live)",
-        f"BTC Price USD: US${btc_usd:,.0f} (live)",
-        market_line,
-        "",
-        "Research is comparison-only; V5.8.2 remains the production control.",
-    ]
-
-    any_alert = prod["alert"] or research["alert"]
-    if any_alert:
-        lines.insert(1, "Risk-drop condition detected in at least one model")
-
-    response = requests.post(
-        url,
-        data="\n".join(lines).encode("utf-8"),
-        headers={
-            "Title": f"BTC DCA Compare - {now_local.strftime('%d/%m/%y')}",
-            "Priority": "high" if any_alert else "default",
-            "Tags": "bitcoin,warning" if any_alert else "bitcoin,chart_with_upwards_trend",
-            "Cache": "no",
-        },
-        timeout=20,
-    )
-    response.raise_for_status()
-
-
+# The calculation helpers above are retained for historical validation imports.
+# This former notification program is retired: never publish to ntfy.
 def main():
-    prod, prod_engine, prod_latest = calculate_model_summary(PROD_MODEL, "Composite V3.6")
-    research, research_engine, research_latest = calculate_model_summary(RESEARCH_MODEL, "Research WF Power Law")
-    btc_aud, btc_usd = fetch_live_prices(prod_engine, prod_latest)
-
     print(
-        f"Production: risk={prod['risk']:.3f}, mult={prod['multiplier']:.3f}; "
-        f"Research: risk={research['risk']:.3f}, mult={research['multiplier']:.3f}; "
-        f"BTC AUD={btc_aud:.0f}, USD={btc_usd:.0f}"
+        "Retired: dual-model ntfy notifications are disabled. "
+        "Only the scheduled Cycle Trading daily summary may send ntfy."
     )
-    send_ntfy(prod, research, btc_aud, btc_usd)
-    print("Dual-model ntfy notification sent.")
 
 
 if __name__ == "__main__":
