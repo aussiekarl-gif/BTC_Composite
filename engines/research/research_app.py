@@ -9,7 +9,9 @@ if str(_REPO_ROOT) not in _sys.path:
 
 from engines.research import research_model as _model
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
-from engines.shared.portfolio_execution_accuracy import calculate_portfolio_entry_error
+from engines.shared.portfolio_execution_accuracy import (
+    calculate_portfolio_entry_error, DEFAULT_REFERENCE_USD, DEFAULT_REFERENCE_DATE,
+)
 from engines.research.cycle_backtest import (
     simulate_buy_and_hold_benchmark,
     simulate_cycle_strategy,
@@ -2181,6 +2183,12 @@ elif mode == "My Portfolio":
         "uses the purchase-date FX rate for USD comparisons. Your 2026 orders "
         "are loaded from My Portfolio; research-model trades are excluded."
     )
+    st.caption(
+        f"Working low supplied by you: **US${DEFAULT_REFERENCE_USD:,.0f} on "
+        f"{DEFAULT_REFERENCE_DATE.strftime('%d %B %Y')}**. This is the "
+        "lowest observed cycle price used for tracking so far, not proof "
+        "that a future lower bottom cannot occur."
+    )
     ref_left, ref_right = st.columns(2)
     with ref_left:
         portfolio_ref_currency = st.selectbox(
@@ -2188,19 +2196,31 @@ elif mode == "My Portfolio":
             options=["USD", "AUD"],
             index=0,
             key="portfolio_cycle_bottom_currency",
-            help="BTC is commonly quoted in USD but your portfolio is in AUD. "
-                 "Choose the actual currency of your 58,000 reference.",
+            help="The 30 June 2026 reference was quoted in USD; "
+                 "portfolio purchases are recorded in AUD.",
         )
     with ref_right:
         portfolio_ref_price = st.number_input(
             f"Provisional 2026 BTC cycle bottom ({portfolio_ref_currency}/BTC)",
             min_value=1.0,
-            value=58000.0,
+            value=(DEFAULT_REFERENCE_USD
+                   if portfolio_ref_currency == "USD" else 58000.0),
             step=1000.0,
             format="%.2f",
-            key=f"portfolio_cycle_bottom_{portfolio_ref_currency.lower()}",
-            help="58,000 is your working reference, NOT an independently "
-                 "verified cycle low. Edit it if your reference changes.",
+            # New USD session key prevents an earlier unedited 58,000
+            # widget state from overriding the corrected default.
+            key=("portfolio_cycle_bottom_usd_20260630_57717"
+                 if portfolio_ref_currency == "USD"
+                 else "portfolio_cycle_bottom_aud"),
+            help=("US$57,717 on 30 June 2026 is your provisional reference. "
+                  "If AUD is selected, enter an independently determined "
+                  "AUD/BTC bottom; USD and AUD prices are not interchangeable."),
+        )
+    if portfolio_ref_currency == "AUD":
+        st.info(
+            "The A$ reference is an editable placeholder. Enter the "
+            "BTC/AUD price at the June 30 low (or another AUD low) "
+            "rather than using the US$57,717 figure directly."
         )
 
     portfolio_entry_fx = None
