@@ -1,0 +1,32 @@
+name: Research Cycle Trading Streamlit Dashboard
+
+on:
+  pull_request:
+    paths:
+      - "app.py"
+      - "engines/research/cycle_trading_app.py"
+      - "engines/research/cycle_trading_dashboard_model.py"
+      - "tests/test_cycle_trading_dashboard_model.py"
+      - ".github/workflows/research_cycle_trading_dashboard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adapter-navigation-invariants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact app dependencies
+        run: pip install -r requirements.txt
+      - name: Compile new Streamlit route and pure calculations
+        run: python -m py_compile app.py engines/research/cycle_trading_app.py engines/research/cycle_trading_dashboard_model.py
+      - name: Regression of read-only Google portfolio, 200WMA and navigation
+        run: python -m unittest discover -s tests -p "test_cycle_trading_dashboard_model.py" -v
+      - name: Existing historical FIFO rebuy regression
+        run: python -m unittest discover -s tests -p "test_day500_aftertax_reinvestment.py" -v
