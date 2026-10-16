@@ -100,7 +100,7 @@ def calculate_allocation_signal(market,*,buy_style=DEFAULT_BUY_STYLE):
             "signal":"SELL WATCH",
             "sell_pct_held":round(100*fraction,2),
             "reason":(
-                f"Halving day {cycle_day} research maturity review; prior BTC close "
+                f"Halving day {cycle_day} scheduled distribution review; prior BTC close "
                 "within 5% of observed 90-day high and >=1.25×200WMA."
             ),
         })
