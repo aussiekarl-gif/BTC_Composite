@@ -69,7 +69,7 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
 
     def test_fails_closed_on_missing_weekly_samples(self):
         p,fx=fake_prices()
-        p=p.drop(p.index[-8])
+        p=p.drop(p.index[-9])  # last minus 8 days is a required prior-week sample
         with self.assertRaisesRegex(ValueError,"Missing dates"):
             build_dashboard_market(p,fx)
 
