@@ -147,6 +147,11 @@ def adaptive_weekly_exit(price, halving, *, policy="balanced",
 STAGED_POLICIES={
     "maturity_80pct": {"initial":.05,"core_fraction":.80},
     "maturity_90pct": {"initial":.05,"core_fraction":.90},
+    "maturity_90pct_holdback20pct": {
+        "initial":.05,"core_fraction":.90,
+        "pre560_sold_cap":.80,
+        "tail_confirm_only":True,
+    },
 }
 
 
@@ -170,6 +175,10 @@ def staged_day500_dynamic_exit(price, halving, *, policy="maturity_80pct",
     p=STAGED_POLICIES[policy]
     initial=float(p["initial"])
     core=float(p["core_fraction"])
+    early_cap=float(p.get("pre560_sold_cap",1.))
+    tail_confirm=bool(p.get("tail_confirm_only",False))
+    if not initial<=early_cap<=1.:
+        raise ValueError("Early sold fraction cap invalid")
     if initial+core>1 or core<0:
         raise ValueError("Invalid core allocation")
     # Six planned maturity dates known in advance, not chosen after
@@ -207,12 +216,20 @@ def staged_day500_dynamic_exit(price, halving, *, policy="maturity_80pct",
             portion=min(left,.025) if regime=="breakdown" else 0.
         elif d>560:
             regime,metrics=_prior_state(price,day)
-            portion=min(left,{"high":.045,"neutral":.012,
-                              "breakdown":.070}[regime])
+            if tail_confirm:
+                # Maintain a material trailing BTC reserve through a later
+                # bullish extension, and reduce only after two prior-close
+                # bearish confirmations. Never depend on future highs.
+                portion=min(left,.070) if regime=="breakdown" else 0.
+            else:
+                portion=min(left,{"high":.045,"neutral":.012,
+                                  "breakdown":.070}[regime])
         else:
             # Day 500+7*n falls between explicit anchor days;
             # don't double-order. Make decisions only on anchor dates.
             continue
+        if d<=560:
+            portion=min(portion,max(0.,early_cap-(1-left)))
         if portion<=1e-12:
             continue
         left-=portion
@@ -355,6 +372,7 @@ def evaluate_all(history):
             "Average price of sold BTC alone is not a success unless meaningful BTC proportion is sold; threshold 75% is reported separately.",
             "Staged-core dynamic exits sell 5% on day500, schedule most BTC on six calendar dates 525-560 with PREVIOUS-price 0.75/1.20/1.30 multipliers, then continue weekly while holdings remain.",
             "The day730 mark is only evaluation; the staged dynamic rule does NOT force-liquidate residual positions.",
+            "Holdback sensitivity caps sales through day560 at 80% of original BTC and only releases residual on later prior-week breakdown; return must be assessed on sold plus retained BTC.",
             "USD gross; AUD3 order fees displayed but NOT deducted from USD wealth, no FX/ETF costs or SMSF CGT.",
             "Historical source CSVs created in 2026; past vintage risk indicators are NOT used.",
             "User actual A$500k was deployed in 2026, so 2024 halving day500 in Sep 2025 has ALREADY PASSED.",
