@@ -140,3 +140,28 @@ A model that never buys does not qualify as a success; its score is null.
    research workflow does **not** read private user purchases.
 5. Keep [PR #90](https://github.com/aussiekarl-gif/BTC_Composite/pull/90)
    **draft**. Production, portfolio and audited master untouched.
+
+
+## NEW: Causal January-funded drawdown activation stress test
+
+Successful historical+unit test run:
+[Research Verified Sep-Oct 2026 BTC Price Bridge #38889155427](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38889155427).
+
+The user wants fewer than 25% *average acquisition-price errors* with Dynamic DCA, but starting a hypothetical June cohort because the market is already known to have bottomed in June is retrospective and cannot establish a tradeable entry signal.
+
+Here the starting capital **really is available in cash on 1 Jan 2026** for every model. The model **waits** until the prior completed Monday shows Bitcoin already **30%, 40% or 50% below the preceding 52-week BTC/AUD high**, then switches on the exact same variable-duration adaptive sizing thereafter. Prices/risk are warmed with the prior archive. Each gate observation is t−1 relative to the earliest trading date t, and cannot peek ahead to June 30 or October close. All trade orders remain sequential and the account is self-financing with A$3 fees and the same approximate SMSF CGT accounting.
+
+| Entry gate; same Jan 2026 cash | First executable gate Monday | Price decline known at trigger | BTC accumulated | Avg entry USD/BTC, after A$3 fees | Error relative to *user reported* $57,717 | Oct 12 marked A$ |
+|---|---|---:|---:|---:|---:|---:|
+| January adaptive with **no gate** | January | n/a | 4.141813 | $82,414 | +42.79% | $497,335 |
+| ≥30% decline from preceding 52wk high | **2 Feb 2026** | 33.058% | 4.970803 | $70,636 | **+22.38%** | $596,807 |
+| ≥40% decline | **9 Feb 2026** | 40.884% | **5.115268** | **$68,889** | **+19.36%** | **$614,147** |
+| ≥50% decline | **9 Mar 2026** | 50.209% | 5.044130 | $69,527 | **+20.46%** | $606,000 |
+
+The 30/40/50% triggers are **previous-week-causal**, but their *testing and selection* occurred after seeing the 2026 price history. This is NOT untouched out-of-sample proof. Critically: only buying legs occurred to Oct 12, so nothing establishes the quality of top timing or selling CGT.
+
+All three gates invested more than **99.8%** of initial capital by Oct 12. Selling has not occurred, so **realised CGT so far is zero**, and terminal A$ marked account valuations above **exclude hypothetical final liquidation CGT**. The 40%-gate hypothetical after-liquidation figure was A$597,023.
+
+### Transfer-risk warning
+
+A gate requiring Bitcoin to fall 30–50% can miss an entire bull market if no such correction occurs. The next research step is to run fixed 52-week **same-start-date** negative-control periods from 2018/2020/2022/2024, not to tune the 2026 gate retrospectively and immediately promote it. A 40% gate is a *candidate*, not a recommendation to leave all remaining personal capital in cash indefinitely. The customer's actual purchase dates and amount are NOT incorporated; the A$500k fresh cash model is hypothetical.
