@@ -21,7 +21,9 @@ from engines.research.cycle_trade_decision import make_current_decision
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_position_anchor import original_cycle_inventory
 from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
-from engines.research.cycle_halving_countdown import fetch_halving_countdown
+from engines.research.cycle_halving_countdown import (
+    fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
+)
 from engines.research.cycle_aud_price_levels import observed_aud_cycle_levels
 
 
@@ -154,17 +156,35 @@ cycle_historic_fx=None
 # This is a block-height projection, not a fixed four-year calendar promise.
 # It is independent from portfolio signals and cannot initiate a trade.
 halving_countdown=cached_halving_countdown()
-st.metric("Approx. days until next BTC halving",
-          f"~{halving_countdown['days_remaining']:,} days")
+halving_timeline=build_halving_timeline(
+    last_halving_date=market["halving_date"],
+    today=trade_today,
+    countdown=halving_countdown,
+)
+elapsed_col,chart_col,remaining_col=st.columns([1.25,2.5,1.5],gap="medium")
+with elapsed_col:
+    st.metric("Days from last BTC halving",
+              f"{halving_timeline['elapsed_days']:,} days")
+    st.caption(f"Confirmed: {halving_timeline['last_halving_date']}")
+with chart_col:
+    st.caption(f"Halving cycle progress · {halving_timeline['progress_pct']:.1f}% elapsed")
+    st.plotly_chart(
+        build_halving_progress_bar(halving_timeline),
+        use_container_width=True,
+        config={"displayModeBar": False},
+        key="cycle_halving_timeline_bar",
+    )
+with remaining_col:
+    st.metric("Approx. days until next BTC halving",
+              f"~{halving_timeline['remaining_days']:,} days")
+    st.caption(f"Estimated: {halving_timeline['estimated_next_halving_date']}")
 st.caption(
-    f"Estimated {halving_countdown['estimated_date_utc']} UTC • "
-    + (f"block {halving_countdown['current_height']:,} → "
-       f"{halving_countdown['next_halving_height']:,} • "
-       f"{halving_countdown['blocks_remaining']:,} blocks left • "
-       if halving_countdown['height_verified'] else "")
-    + f"{halving_countdown['source']} • "
-    + halving_countdown['estimate_basis']
-    + ". Actual halving occurs at a block height, so the date will change."
+    "Cycle bar: teal = elapsed, dark = projected remaining, orange = TODAY. "
+    "Yellow markers: D500 = first distribution review, D560 = staged sell checkpoint, "
+    "D730 = extended exit review. These are research timing markers, NOT predictions "
+    "of a BTC peak or instructions to trade. Next halving is a block-height estimate • "
+    + halving_countdown["source"] + " • "
+    + halving_countdown["estimate_basis"] + "."
 )
 
 tabs=st.tabs(["Trading decision", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
