@@ -14,6 +14,7 @@ import copy
 import datetime as dt
 import math
 import uuid
+from zoneinfo import ZoneInfo
 
 ASSETS=("ASX:IBIT","Direct BTC")
 SALES_KEY="sales"
@@ -167,7 +168,7 @@ def append_executed_trade(saved,*,side,asset,trade_date,quantity,
     if asset not in ASSETS:
         raise ValueError("Choose ASX:IBIT or Direct BTC")
     day=parse_date(trade_date)
-    if day>dt.datetime.now(dt.timezone.utc).date():
+    if day>dt.datetime.now(ZoneInfo('Australia/Brisbane')).date():
         raise ValueError("Cannot record future executed trades")
     qty=_position_quantity(asset,quantity)
     price=numeric(trade_price_aud,label="Executed AUD price per unit")
