@@ -14,10 +14,13 @@ from engines.shared.portfolio_store import load_portfolio,save_portfolio
 from engines.shared.portfolio_transactions import (
     portfolio_positions,append_with_stale_guard,
 )
+from engines.research.cycle_trade_execution_safety import (
+    historical_btc_aud_reference,
+)
 
 
 def show_portfolio_editor(portfolio,*,today,ibit_quote=None,btc_aud_quote=None,
-                          store_error=None):
+                          price_history=None,historical_fx=None,store_error=None):
     st.subheader("Record executed BUY or SELL")
     st.caption(
         "Only record a transaction after it actually fills. "
@@ -43,36 +46,71 @@ def show_portfolio_editor(portfolio,*,today,ibit_quote=None,btc_aud_quote=None,
         "These balances come from recorded executions; verify with your broker."
     )
 
+    # Outside the form so a past-date selection refreshes the historical
+    # BTC/AUD reference immediately, without copying today's FX backwards.
+    a,b,c=st.columns(3)
+    with a:
+        side=st.selectbox("Executed",["BUY","SELL"],key="cycle_editor_side")
+    with b:
+        asset=st.selectbox("Asset",["ASX:IBIT","Direct BTC"],key="cycle_editor_asset")
+    with c:
+        day=st.date_input("Trade date",value=today,max_value=today,
+                          key="cycle_editor_day")
+    historical_ref=historical_btc_aud_reference(
+        price_history,historical_fx,trade_date=day)
+    reference_default=(
+        historical_ref["btc_aud_reference"] if historical_ref else 0.
+    )
+    if historical_ref:
+        st.caption(
+            f"BTC/AUD reference A${reference_default:,.0f} "
+            f"(BTC close {historical_ref['price_date']}, "
+            f"historical AUD FX {historical_ref['fx_date']}). "
+            "Indicative only; not an IBIT fill."
+        )
+    else:
+        st.warning("Historical BTC/AUD reference unavailable for this trade date. "
+                   "Enter the observed BTC/AUD manually for any ASX:IBIT BUY.")
+    quote_default=(
+        float(ibit_quote or 0.) if asset=="ASX:IBIT" and day==today else
+        reference_default if asset=="Direct BTC" else 0.
+    )
+    # Reset suggested values on trading-context change, but not
+    # while typing a price/fee for the SAME execution.
+    marker=(side,asset,str(day))
+    if st.session_state.get("cycle_editor_context")!=marker:
+        st.session_state["cycle_editor_context"]=marker
+        st.session_state["cycle_editor_fill_price"]=float(quote_default)
+        st.session_state["cycle_editor_btc_aud"]=float(reference_default)
+        st.session_state["cycle_editor_confirm"]=False
+
     with st.form("cycle_portfolio_executed_trade_form",clear_on_submit=False):
         left,right=st.columns(2)
         with left:
-            side=st.selectbox("Transaction",["BUY","SELL"],key="cycle_editor_side")
-            asset=st.selectbox("Asset",["ASX:IBIT","Direct BTC"],key="cycle_editor_asset")
-            day=st.date_input("Executed on",value=today,max_value=today,
-                              key="cycle_editor_day")
             qty=st.number_input(
-                "Quantity — whole ASX:IBIT units or direct BTC",
-                min_value=0.0,value=0.0,step=(1.0 if asset=="ASX:IBIT" else .00000001),format="%.8f",
-                key="cycle_editor_qty")
-        with right:
-            suggest=(ibit_quote if asset=="ASX:IBIT" else btc_aud_quote) or 0.
-            price=st.number_input(
-                "Actual executed AUD price PER unit / BTC",
-                min_value=0.0,value=float(suggest),
-                step=0.01,format="%.4f",key="cycle_editor_fill_price",
-                help="Use your broker's actual execution price, not the suggested delayed quote."
+                "Executed quantity — whole ETF units or BTC",
+                min_value=0.0,value=0.0,
+                step=(1.0 if asset=="ASX:IBIT" else .00000001),
+                format="%.8f",key="cycle_editor_qty"
             )
+            price=st.number_input(
+                "Actual AUD fill price per unit / BTC",
+                min_value=0.0,value=float(quote_default),
+                step=0.01,format="%.4f",key="cycle_editor_fill_price",
+                help="Broker's actual executed price. Today only: an indicative quote is prefilled."
+            )
+        with right:
             fee=st.number_input("Actual transaction fees (AUD)",
                 min_value=0.,value=3.,step=1.,format="%.2f",
                 key="cycle_editor_fee")
             btc_aud=st.number_input(
-                "BTC/AUD reference on the BUY date (ASX:IBIT only)",
-                min_value=0.,value=float(btc_aud_quote or 0.),
+                "BTC/AUD at purchase date (IBIT BUY only)",
+                min_value=0.,value=float(reference_default),
                 step=100.,format="%.2f",key="cycle_editor_btc_aud",
-                help="For historical buys enter the historical BTC/AUD price, "
-                     "NOT the current price. Used for estimated ETF BTC exposure only."
+                help="Automatically dated BTC and FX close when available; "
+                     "verify historical price, rather than using today's price."
             )
-            notes=st.text_input("Order reference / notes (optional)",
+            notes=st.text_input("Broker execution reference / notes",
                                  key="cycle_editor_notes")
         confirm=st.checkbox(
             "I confirm this transaction has actually executed at my broker",
