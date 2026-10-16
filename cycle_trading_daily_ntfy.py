@@ -74,6 +74,7 @@ def daily_message(*,now=None,quote=None,market=None):
         "Streamlit shows actual AUD / ETF units after holdings confirmation."
     )
     lines.append("DCA % is per eligible research tranche, NOT a new daily order. Check executed trades.")
+    lines.append("Model parity: live % rules are NOT the fully backtested original-BTC exit/recovery strategy.")
     lines.append("Research only; not a broker order. Review SMSF CGT before selling.")
     return today,"\n".join(lines)
 
