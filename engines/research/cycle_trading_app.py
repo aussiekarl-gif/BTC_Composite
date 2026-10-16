@@ -184,13 +184,23 @@ with tabs[0]:
                                   else "Value weighted below 200WMA"),
             key="cycle_decision_buy_style",
         )
-        cash_input=st.number_input(
-            "AUD cash available for research buying",
-            min_value=0.0,value=float(starting_cash_default),
-            step=1000.0,format="%.2f",key="cycle_decision_cash",
-            help="Prefilled from saved 2026 portfolio, never from hypothetical historic cycle accounts. "
-                 "Do not enter more than cash actually available in My Portfolio."
-        )
+        st.metric("Recorded AUD cash (including sale proceeds)",
+                  f"A${starting_cash_default:,.2f}")
+        auto_cash=st.checkbox(
+            "Use recorded available cash automatically",
+            value=True,key="cycle_decision_auto_cash",
+            help="DCA % uses remaining AUD cash in the saved buy/sell ledger. "
+                 "This balance is before any SMSF tax reserve; reconcile with broker.")
+        if auto_cash:
+            cash_input=starting_cash_default
+        else:
+            cash_input=st.number_input(
+                "Available broker cash (no more than recorded balance)",
+                min_value=0.0,max_value=float(starting_cash_default),
+                value=0.0,step=1000.0,format="%.2f",
+                key="cycle_decision_cash",
+                help="Manual reduction if some cash is reserved for SMSF tax or other purposes."
+            )
         if automatic_ibit is not None:
             st.metric("ASX:IBIT automatic indicative quote",
                       f"A${automatic_ibit['price_aud']:,.2f}")
@@ -317,6 +327,10 @@ with tabs[0]:
             "or data/portfolio safeguards prevented reliable sizing. "
             "Model confidence has NOT been calibrated from prospective market-top tests."
         )
+    st.caption(
+        "The recovered-cash calculation uses recorded sale proceeds but does not "
+        "automatically escrow real SMSF taxes. Consider tax reserves before trading."
+    )
     st.caption(
         "A BUY percentage is measured against AVAILABLE AUD CASH; a SELL percentage "
         "is measured against CURRENT HOLDINGS, not the original A$500k. "
