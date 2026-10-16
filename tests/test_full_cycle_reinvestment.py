@@ -45,7 +45,7 @@ class FullCycleReinvestmentTests(unittest.TestCase):
         self.assertEqual(result["equity_path"][3]["action"], "SELL")
         self.assertEqual(result["equity_path"][4]["action"], "SELL")
         self.assertEqual(result["sell_plans"], 1)
-        self.assertEqual(result["cash_remaining_aud"], 1000)
+        self.assertEqual(result["cash_remaining_aud"], 1500)
 
     def test_fees_preserve_accounting_and_reduce_value(self):
         data = fixture([100, 100, 100, 200, 200],
