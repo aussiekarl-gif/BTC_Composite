@@ -23,6 +23,8 @@ import requests
 
 from engines.research.full_cycle_reinvestment import validate_history
 from engines.research.real_2026_deployment_audit import evaluate_cohorts
+from engines.research.adaptive_dca_execution import simulate_adaptive
+from engines.research.smsf_self_financing_replay import replay
 
 PRICE_ENDPOINT = "https://api.blockchain.info/charts/market-price"
 FX_ENDPOINT = "https://api.frankfurter.app/"
@@ -257,6 +259,71 @@ def weighted_entry_from_synthetic_orders(orders, historical_fx, *,
     }
 
 
+GATE_DRAWDOWNS = (.30,.40,.50)
+
+
+def first_causal_gate_week(history, *, drawdown, start_date="2026-01-01",
+                           lookback=52):
+    """At execution t inspect ONLY prior week's past-52-week close drawdown."""
+    h=validate_history(history)
+    start=pd.Timestamp(start_date)
+    if h.index.tz is not None:
+        start=start.tz_localize(h.index.tz) if start.tzinfo is None else start.tz_convert(h.index.tz)
+    prices=h["btc_price_aud"].to_numpy(float)
+    for i in range(lookback,len(h)):
+        if h.index[i]<start:
+            continue
+        before=prices[i-lookback:i]
+        prev=prices[i-1]
+        dd=1-prev/float(np.max(before))
+        if dd>=drawdown:
+            return h.index[i],dd
+    return None,None
+
+
+def evaluate_causal_drawdown_entry_gates(history, historical_fx, *,
+                                         starting_cash=500_000.):
+    """Cash starts Jan 2026. Gate activation is *decided* with t-1 only.
+
+    Gate does not secretly start a new account in June; user starts in
+    January in CASH, waiting for a causally observable, predeclared signal.
+    Dynamic purchase/sale duration remains unrestricted after trigger.
+    """
+    h=validate_history(history)
+    out=[]
+    for dd in GATE_DRAWDOWNS:
+        gate,observed=first_causal_gate_week(h,drawdown=dd)
+        if gate is None:
+            out.append({"gate_drawdown_pct":100*dd,"triggered":False,
+                        "terminal_cash_only_aud":starting_cash,
+                        "average_entry_error_pct":None})
+            continue
+        simulated=simulate_adaptive(h,deployment_start=gate,
+                                    confirm_drawdown=.10,
+                                    initial_cash=starting_cash)
+        model=replay(h,simulated["trades"],policy="adaptive",tax=True,
+                     starting_cash=starting_cash)
+        entry=weighted_entry_from_synthetic_orders(model["orders"],historical_fx,
+                                                    starting_capital=starting_cash)
+        out.append({
+            "gate_drawdown_pct":round(dd*100,1),
+            "triggered":True,
+            "gate_execution_date":str(gate),
+            "prior_week_observed_peak_drawdown_pct":round(observed*100,3),
+            "filled_orders":model["actual_orders"],
+            "buys":model["buy_orders"],
+            "sells":model["sell_orders"],
+            "btc_held":model["btc"],
+            "cash_remaining_aud":model["cash_aud"],
+            "ending_marked_equity_aud":model["ending_marked_equity_aud"],
+            "hypothetical_after_liquidation_cgt_aud":
+                model["hypothetical_final_liquidation_after_cgt_aud"],
+            "max_equity_drawdown_pct":model["max_account_drawdown_pct"],
+            "entry_vs_reported_low":entry,
+        })
+    return out
+
+
 def audit(master, *, asof):
     historical=validate_history(master)
     if historical.index.tz is None:
@@ -286,6 +353,7 @@ def audit(master, *, asof):
             synthetic_orders=outcome.pop("_research_orders",[])
             outcome["weighted_entry_vs_reported_low"]=weighted_entry_from_synthetic_orders(
                 synthetic_orders, fx)
+    gated=evaluate_causal_drawdown_entry_gates(candidate,fx)
     return {
         "research_only":True,
         "asof_requested":str(pd.Timestamp(asof).date()),
@@ -295,6 +363,7 @@ def audit(master, *, asof):
         "data_quality":quality,
         "price_only_causal_risk":risk_diagnostics,
         "cohort_replay":cohorts,
+        "causal_january_cash_drawdown_gates":gated,
         "warnings":[
             "AUD strict-prior Power Law candidate is NOT the existing proprietary/archived risk_score.",
             "All historical models are in-sample hypotheses; no untouched holdout.",
@@ -305,6 +374,8 @@ def audit(master, *, asof):
             "No claims of complete cycle top/low 25% prediction accuracy.",
             "USD 57,717 low is user-supplied, not independently validated at high-frequency intraday resolution.",
             "Buying error excludes unused cash; deployment percentage is separately disclosed.",
+            "The gate thresholds are explored in sample after prior cycle inspection; no prospective validation.",
+            "A January cash-held until drawdown strategy is different from pretending June was selected perfectly in advance.",
         ],
     }
 
