@@ -1,8 +1,8 @@
 import datetime as dt
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch,Mock
 from engines.research.ibit_quote import parse_ibit_quote,fetch_ibit_quote
-from cycle_trading_daily_ntfy import daily_message
+from cycle_trading_daily_ntfy import daily_message,send_ntfy
 
 NOW=dt.datetime(2026,10,17,2,0,tzinfo=dt.timezone.utc)
 
@@ -38,6 +38,20 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         self.assertIn("Research: no data",message)
         self.assertNotIn("A$500,000",message)
         self.assertNotIn("V5.9",message)
+    def test_ntfy_http_headers_are_latin1_safe(self):
+        # Requests encodes HTTP header values as Latin-1. A Unicode em dash
+        # in Title previously prevented *every* daily notification.
+        response=Mock()
+        with patch("cycle_trading_daily_ntfy.requests.post",return_value=response) as send:
+            send_ntfy("One requested test",topic="unit-test-channel")
+        response.raise_for_status.assert_called_once()
+        args=send.call_args
+        self.assertEqual(args.args[0],"https://ntfy.sh/unit-test-channel")
+        self.assertEqual(args.kwargs["data"],b"One requested test")
+        for value in args.kwargs["headers"].values():
+            value.encode("latin-1")
+        self.assertEqual(args.kwargs["headers"]["Title"],"BTC Cycle Trading - Daily")
+
     def test_quote_network_fail_closed(self):
         with patch("engines.research.ibit_quote.requests.get",side_effect=RuntimeError("unavailable")):
             with self.assertRaises(RuntimeError):
