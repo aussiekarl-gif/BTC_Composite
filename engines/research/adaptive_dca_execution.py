@@ -35,6 +35,7 @@ def simulate_adaptive(
     fee_aud=FLAT_FEE_AUD,
     risk_arm=BULL_ARM_RISK,
     buy_risk=BUY_RISK,
+    deployment_start=None,
 ):
     history = validate_history(data)
     if not isinstance(history.index, pd.DatetimeIndex):
@@ -47,6 +48,19 @@ def simulate_adaptive(
         raise ValueError("Invalid capital")
     if not (math.isfinite(fee_aud) and fee_aud >= 0):
         raise ValueError("Invalid brokerage")
+
+    if deployment_start is not None:
+        first_trade = pd.Timestamp(deployment_start)
+        if history.index.tz is not None:
+            first_trade = (first_trade.tz_localize(history.index.tz)
+                           if first_trade.tzinfo is None
+                           else first_trade.tz_convert(history.index.tz))
+        elif first_trade.tzinfo is not None:
+            first_trade = first_trade.tz_localize(None)
+        if first_trade > history.index[-1]:
+            raise ValueError("Deployment starts after available history")
+    else:
+        first_trade = None
 
     price = history["btc_price_aud"].to_numpy(dtype=float)
     risk = history["risk_score"].to_numpy(dtype=float)
@@ -111,6 +125,12 @@ def simulate_adaptive(
             pct = min(.24, max(.015, pct))
             trade_side, reason = "BUY", "low_risk_cash_weighted"
 
+        # Signals and moving averages receive the full prior history.
+        # Account execution remains flat cash until the chosen REAL 2026
+        # investment date; no historical 2016 simulation fills leak in.
+        if first_trade is not None and history.index[i] < first_trade:
+            trade_side = None
+
         cur = float(price[i])
         qty = gross = charge = 0.
         if trade_side == "BUY":
@@ -165,6 +185,7 @@ def simulate_adaptive(
         "cash_aud": cash,
         "btc": btc,
         "fee_total_aud": paid_fees,
+        "deployment_start": str(first_trade) if first_trade is not None else None,
         "trade_count": len(trades),
         "buy_orders": sum(x["side"]=="BUY" for x in trades),
         "sell_orders": sum(x["side"]=="SELL" for x in trades),
