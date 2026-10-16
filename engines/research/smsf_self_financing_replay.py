@@ -183,25 +183,26 @@ def replay(history, events, *, policy="adaptive", tax=True, starting_cash=CAPITA
     risk=d["risk_score"].to_numpy(float)
     index_map={str(timestamp):i for i,timestamp in enumerate(d.index)}
     acc=AuditSmsfAccount(starting_cash,tax=tax)
-    used_dates=set()
+    events_by_date={}
     for event in events:
         stamp=event["date"]
-        if stamp in used_dates:
+        if stamp in events_by_date:
             raise ValueError("Duplicate execution date")
-        used_dates.add(stamp)
-        j=index_map[stamp]
-        if j<1:
+        if stamp not in index_map or index_map[stamp]<1:
             raise ValueError("Future/past execution mismatch")
-        pct=sizing(policy,event,prices,risk,j)
+        events_by_date[stamp]=event
+    for j in range(1,len(d)):
         cur=float(prices[j])
-        if event["side"]=="BUY":
-            acc.buy(d.index[j],cur,pct)
-        elif event["side"]=="SELL":
-            acc.sell(d.index[j],cur,pct)
-        else:
-            raise ValueError("Invalid event side")
-    for i in range(1,len(d)):
-        acc.mark(float(prices[i]))
+        event=events_by_date.get(str(d.index[j]))
+        if event is not None:
+            pct=sizing(policy,event,prices,risk,j)
+            if event["side"]=="BUY":
+                acc.buy(d.index[j],cur,pct)
+            elif event["side"]=="SELL":
+                acc.sell(d.index[j],cur,pct)
+            else:
+                raise ValueError("Invalid event side")
+        acc.mark(cur)
     terminal_price=float(prices[-1])
     return {
         "policy":policy,
