@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from zoneinfo import ZoneInfo
 import math
 import pandas as pd
 import streamlit as st
@@ -83,11 +84,12 @@ with st.spinner("Loading historical BTC observations..."):
         st.error(f"Cannot load historical Research data: {type(exc).__name__}: {exc}")
         fallback,fallback_error=stored_portfolio()
         show_portfolio_editor(fallback if not fallback_error else None,
-            today=dt.datetime.now(dt.timezone.utc).date(),
+            today=dt.datetime.now(ZoneInfo('Australia/Brisbane')).date(),
             store_error=fallback_error)
         st.stop()
 
 today=dt.datetime.now(dt.timezone.utc).date()
+trade_today=dt.datetime.now(ZoneInfo('Australia/Brisbane')).date()
 asof=today.isoformat()
 daily=research_history["price_usd"].copy()
 fx=pd.DataFrame()
@@ -366,7 +368,7 @@ with tabs[1]:
     st.divider()
     show_portfolio_editor(
         portfolio if not store_error else None,
-        today=today,
+        today=trade_today,
         ibit_quote=(automatic_ibit["price_aud"] if automatic_ibit else None),
         btc_aud_quote=market.get("btc_price_aud_estimate"),
         store_error=store_error
