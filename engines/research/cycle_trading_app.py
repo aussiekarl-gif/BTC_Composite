@@ -164,12 +164,14 @@ except Exception as exc:
     automatic_ibit=None
     automatic_ibit_error=f"{type(exc).__name__}: {exc}"
 
+cycle_historic_fx=None
+
 tabs=st.tabs(["Trading decision", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
 
 with tabs[0]:
     st.subheader("Current trading decision — Research")
     st.caption(
-        Uses verified previous BTC close, strictly prior 200WMA and your recorded executed buys/sells. "
+        "Uses verified previous BTC close, strictly prior 200WMA and your recorded executed buys/sells. "
         "Action is a rules-based research illustration, not a live broker order. "
         "Reconcile recorded holdings with your broker before any transaction."
     )
@@ -408,7 +410,7 @@ with tabs[1]:
         if not snap["valid"]:
             st.warning(snap["reason"])
         elif snap["rows"]==0:
-            st.info("No saved purchases found. Enter them under Research → My Portfolio.")
+            st.info("No saved purchases found. Record an executed BUY using the form below.")
         else:
             a,b,c,d=st.columns(4)
             a.metric("Original deployment capital",f"A${snap['capital_aud']:,.0f}")
