@@ -30,7 +30,7 @@ MIN_OVERLAP = 4
 MAX_MEDIAN_DEVIATION_PCT = 5.0
 MAX_SINGLE_DEVIATION_PCT = 12.0
 GENESIS = pd.Timestamp("2009-01-03", tz="UTC")
-SOURCE_DATE = "2026-08-01"
+SOURCE_DATE = "2026-05-01"
 
 
 def normalise_utc_index(points, *, name, numeric_field):
