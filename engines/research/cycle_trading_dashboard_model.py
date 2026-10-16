@@ -11,6 +11,8 @@ import math
 import pandas as pd
 import numpy as np
 
+from engines.shared.portfolio_transactions import portfolio_positions
+
 from engines.research.day500_aftertax_reinvestment import (
     WMA_DYNAMIC_STYLES, simulate_roundtrip,
 )
@@ -31,51 +33,33 @@ def _cash(x,default=0.):
 
 
 def portfolio_snapshot(saved):
-    """Read existing My Portfolio schema without persistence or migration."""
-    if not isinstance(saved,dict):
-        return {"valid":False,"reason":"No saved portfolio loaded"}
-    rows=saved.get("rows",[])
-    if not isinstance(rows,list):
-        return {"valid":False,"reason":"Portfolio rows missing"}
-    capital=_cash(saved.get("starting_capital_aud"),500000.)
-    spent=fees=btc_eq=ibit_units=0.
-    skipped=0
-    for row in rows:
-        if not isinstance(row,dict):
-            skipped+=1;continue
-        asset=str(row.get("Asset","")).strip()
-        consideration=_cash(row.get("AUD Spent"))
-        fee=_cash(row.get("Brokerage / Fee AUD"))
-        units=_cash(row.get("Units / BTC Received"))
-        aud_btc=_cash(row.get("BTC AUD Price"))
-        spent+=consideration
-        fees+=fee
-        if asset=="ASX:IBIT":
-            ibit_units+=units
-            if aud_btc>0:
-                btc_eq+=consideration/aud_btc
-            else:
-                skipped+=1
-        elif asset=="Direct BTC":
-            btc_eq+=units
-        else:
-            skipped+=1
-    remaining=max(0.,capital-spent-fees)
-    return {
-        "valid":True,
-        "rows":len(rows),
-        "unpriced_or_unknown_rows":skipped,
-        "capital_aud":capital,
-        "spent_aud":spent,
-        "fees_aud":fees,
-        "cash_remaining_aud":remaining,
-        "btc_equivalent":btc_eq,
-        "ibit_units":ibit_units,
-        "approx_average_cost_aud_per_btc":(
-            (spent+fees)/btc_eq if btc_eq>0 and skipped==0 else None
-        ),
-    }
+    """Net recorded actual holdings, including executed sale ledger.
 
+    Return status rather than fake positions if purchase / sale rows are
+    missing or inconsistent. Keep dashboard's stable view fields.
+    """
+    try:
+        balance=portfolio_positions(saved)
+    except (ValueError,TypeError,KeyError) as exc:
+        return {"valid":False,"reason":str(exc)}
+    rows=saved.get("rows",[])
+    sold=saved.get("sales",[])
+    avg=(balance["spent_aud"]+balance["fees_aud"])/balance["btc_equivalent_estimate"] if (
+        balance["btc_equivalent_estimate"] and not sold) else None
+    return {
+        "valid":True,"rows":len(rows),"sales":len(sold),
+        "unpriced_or_unknown_rows":balance["missing_exposure_lots"],
+        "capital_aud":balance["starting_capital_aud"],
+        "spent_aud":balance["spent_aud"],
+        "sell_proceeds_aud":balance["sell_proceeds_aud"],
+        "fees_aud":balance["fees_aud"],
+        "cash_remaining_aud":balance["cash_remaining_aud"],
+        "btc_equivalent":balance["btc_equivalent_estimate"],
+        "ibit_units":balance["ibit_units"],
+        "direct_btc":balance["direct_btc"],
+        "approx_average_cost_aud_per_btc":avg,
+        "has_sales":balance["has_sales"],
+    }
 
 
 def portfolio_buy_error_from_reported_low(saved,fx,*,low_usd=USER_REPORTED_2026_LOW_USD):
