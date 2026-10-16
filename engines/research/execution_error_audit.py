@@ -223,7 +223,8 @@ def main():
     report = run_audit(columns.loc[valid])
     report["source_rows"] = len(columns)
     report["valid_rows"] = int(valid.sum())
-    text = json.dumps(report, indent=2, allow_nan=False)
+    text = json.dumps(report, indent=2, allow_nan=False,
+                      default=lambda value: value.item() if isinstance(value, np.generic) else str(value))
     if args.output:
         from pathlib import Path
         Path(args.output).write_text(text + "\n", encoding="utf-8")
