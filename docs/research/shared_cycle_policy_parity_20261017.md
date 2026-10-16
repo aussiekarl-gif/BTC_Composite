@@ -66,6 +66,31 @@ The calendar and the Streamlit research page now explicitly note this.
 It is not appropriate to size those historical day500 exit stages
 against the user's current 2026 position.
 
+## Read-only live-account parity bridge
+
+[`cycle_account_shadow.py`](../../engines/research/cycle_account_shadow.py)
+uses that same staged original-position policy against a real saved
+buy/sell transaction ledger. It derives how many units existed before
+day500, tracks already sold ORIGINAL holdings under FIFO, enforces
+one scheduled sale per review date and rounds ASX:IBIT down to whole
+units and direct BTC down to one satoshi. It returns *SELL REVIEW* as
+a RESEARCH shadow status, **never a broker order**.
+
+Golden tests replay this account-level shadow across 2017, 2021 and
+2025 against the theoretical historical 1-BTC model. They compare
+BTC quantities with an explicit 5-satoshi tolerance (5×10⁻⁸ BTC)
+because historical theoretical sales retain ten decimal places while
+direct BTC execution supports eight. The first independent run caught
+a maximum observed discrepancy of **2.43 satoshis**; the account test
+now documents/guards expected rounding rather than pretending exact
+sub-satoshi execution. Those comparisons do not certify a tax-accurate
+real SMSF account or live investment strategy.
+
+The current official Research BUY/HOLD/SELL suggestion is deliberately
+**unchanged** while the end-to-end wallet state (post-exit initial
+after-tax buying budget, unspent cash, tax parcel reserve and active
+buyback weekly phase) remains unverified.
+
 ## Shared in Streamlit and one daily ntfy
 
 Both use `cycle_exit_stage_status` to display correct future/past
