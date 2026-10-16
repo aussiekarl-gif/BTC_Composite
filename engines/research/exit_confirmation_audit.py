@@ -72,10 +72,11 @@ def evaluate_confirmations(data, *, initial_cash=CAPITAL, fee_rate=COST_PER_SIDE
     history = validate_history(data)
     if not isinstance(history.index, pd.DatetimeIndex):
         raise ValueError("Historical index must be datetime for era diagnostics")
+    boundary = pd.Timestamp("2022-01-01", tz=history.index.tz)
     cohorts = (
         ("all_available", history),
-        ("2016_to_2021", history[history.index < pd.Timestamp("2022-01-01")]),
-        ("2022_onward", history[history.index >= pd.Timestamp("2022-01-01")]),
+        ("2016_to_2021", history[history.index < boundary]),
+        ("2022_onward", history[history.index >= boundary]),
     )
     report = []
     for era, subset in cohorts:
