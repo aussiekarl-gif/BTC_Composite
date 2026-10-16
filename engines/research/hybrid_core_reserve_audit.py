@@ -47,7 +47,8 @@ TRANSFER_YEARS = (2019, 2020, 2021, 2022, 2023, 2024, 2025)
 def hybrid_account(history, start_date, *, core_fraction=.25,
                    gate_drawdown=FIXED_GATE_DRAWDOWN, base_weeks=BASELINE_CORE_WEEKS,
                    starting_cash=CAPITAL, historical_fx=None,
-                   fallback_after_weeks=None, fallback_spread_weeks=26):
+                   fallback_after_weeks=None, fallback_spread_weeks=26,
+                   fallback_requires_trend=False):
     """Simulate two segregated sleeves without borrowing or any future-look trades."""
     h = validate_history(history)
     if not 0 < core_fraction < 1:
@@ -109,11 +110,19 @@ def hybrid_account(history, start_date, *, core_fraction=.25,
               and j-first>=fallback_after_weeks
               and (gate is None or now<gate)
               and reserve.cash>0):
-            # This is a fixed, prior-planned TIME FALLBACK, not a post-hoc
-            # perfect bottom. Releases cash slowly to limit missed bull rallies.
-            elapsed=j-first-fallback_after_weeks
-            if elapsed<fallback_spread_weeks:
-                amount=(reserve.cash if elapsed==fallback_spread_weeks-1
+            # Optional momentum gate is STRICTLY prior-week observed.
+            # Positive SMA slope and price above SMA are required, rather
+            # than blindly buying because a 26-week deadline has arrived.
+            eligible=(j-first-fallback_after_weeks<fallback_spread_weeks)
+            if fallback_requires_trend:
+                eligible=False
+                if j>=24 and fallback_buy_orders<fallback_spread_weeks:
+                    sma20=float(np.mean(prices[j-20:j]))
+                    old_sma20=float(np.mean(prices[j-24:j-4]))
+                    eligible=(prices[j-1]>sma20 and sma20>old_sma20)
+            if eligible:
+                done=fallback_buy_orders
+                amount=(reserve.cash if done==fallback_spread_weeks-1
                         else min(fallback_tranche,reserve.cash))
                 if reserve.buy(now,price,amount/reserve.cash):
                     fallback_buy_orders+=1
@@ -140,7 +149,8 @@ def hybrid_account(history, start_date, *, core_fraction=.25,
     result={
         "model":(f"core_{int(core_fraction*100)}pct_reserve_{int((1-core_fraction)*100)}pct"
                   +(f"_fallback_after_{fallback_after_weeks}w"
-                    if fallback_after_weeks is not None else "")),
+                    if fallback_after_weeks is not None else "")
+                  +("_trend" if fallback_requires_trend else "")),
         "requested_deployment_date":str(pd.Timestamp(start_date).date()),
         "initial_AUD_cash":float(starting_cash),
         "baseline_core_pct":round(100*core_fraction,2),
@@ -150,6 +160,7 @@ def hybrid_account(history, start_date, *, core_fraction=.25,
         "fallback_after_weeks":fallback_after_weeks,
         "fallback_spread_weeks":fallback_spread_weeks if fallback_after_weeks is not None else None,
         "fallback_buy_orders":fallback_buy_orders,
+        "fallback_requires_trend":fallback_requires_trend,
         "deep_drawdown_gate_pct":round(100*gate_drawdown,2),
         "gate_triggered":gate is not None,
         "gate_date":str(gate) if gate is not None else None,
@@ -207,6 +218,14 @@ def historical_transfer(history, *, start_years=TRANSFER_YEARS,
                                fallback_spread_weeks=26)
                 for f in BASE_CORE_FRACTIONS
             )
+            candidates.extend(
+                hybrid_account(truncated,start,core_fraction=f,
+                               starting_cash=starting_cash,
+                               fallback_after_weeks=26,
+                               fallback_spread_weeks=26,
+                               fallback_requires_trend=True)
+                for f in BASE_CORE_FRACTIONS
+            )
         for p in candidates:
             p["relative_to_immediate_hold_pct"]=round(
                 100*(p["marked_value_aud"]/matched["account_marked_value_aud"]-1),3)
@@ -221,14 +240,17 @@ def historical_transfer(history, *, start_years=TRANSFER_YEARS,
         })
     summary=[]
     for fraction in BASE_CORE_FRACTIONS:
-      for fallback in ((None,26) if include_fallback else (None,)):
+      for fallback,trend in (((None,False),(26,False),(26,True))
+                              if include_fallback else ((None,False),)):
         sample=[next(p for p in r["hybrid_candidates"]
                      if p["baseline_core_pct"]==fraction*100
-                     and p["fallback_after_weeks"]==fallback)
+                     and p["fallback_after_weeks"]==fallback
+                     and p["fallback_requires_trend"]==trend)
                 for r in rows]
         summary.append({
             "core_pct":100*fraction,
             "fallback_after_weeks":fallback,
+            "fallback_requires_trend":trend,
             "reserve_pct":100*(1-fraction),
             "cohorts":len(sample),
             "gate_triggered":sum(x["gate_triggered"] for x in sample),
@@ -264,6 +286,13 @@ def evaluate_from_verified_providers(master, *, asof="2026-10-16"):
                        fallback_after_weeks=26,fallback_spread_weeks=26)
         for f in BASE_CORE_FRACTIONS
     )
+    cohorts.extend(
+        hybrid_account(causal_price_only,start,core_fraction=f,
+                       historical_fx=aud_fx,
+                       fallback_after_weeks=26,fallback_spread_weeks=26,
+                       fallback_requires_trend=True)
+        for f in BASE_CORE_FRACTIONS
+    )
     hold=benchmark_account(causal_price_only,start,"immediate_buy")
     equal=benchmark_account(causal_price_only,start,"equal_12week_buy")
     for c in cohorts:
@@ -290,6 +319,8 @@ def evaluate_from_verified_providers(master, *, asof="2026-10-16"):
             "Core 12-week schedule is fixed; reserve's adaptive execution window is not fixed.",
             "The optional reserve fallback begins after 26 weeks and uses 26 fixed equal AUD tranches if no 40% drawdown gate has triggered.",
             "The fallback is a predeclared calendar safeguard against missing a rally, NOT a prediction or validated optimum.",
+            "Trend-only fallback requires prior completed weekly close above rising trailing 20-week SMA; release continues without a strict window end, up to 26 eligible buys.",
+            "SMA trend filter is also inspected in sample after viewing 2024/2025; DO NOT infer prospective predictive skill.",
             "Previous-week gate is causal, but parameters and periods were proposed after historical inspection; NOT untouched out-of-sample.",
             "Two independent sleeves are self-financing but CGT losses are NOT offset across their tax ledgers; combined SMSF annual liability may differ.",
             "Same-week baseline and reserve buy orders incur two AUD 3 fees, a conservative separate-order assumption.",
