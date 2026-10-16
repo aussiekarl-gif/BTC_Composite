@@ -12,6 +12,33 @@ class HalvingClockSaleTests(unittest.TestCase):
         self.days=pd.date_range("2020-05-11",periods=900,freq="D",tz="UTC")
         self.prices=pd.Series(np.linspace(100.,1000.,900),index=self.days)
 
+    def test_exact_day500_sells_one_btc_without_future_information(self):
+        sell_date=self.halving+pd.Timedelta(days=500)
+        expected=float(self.prices.loc[sell_date])
+        result=make_sale_schedule(self.prices,self.halving,
+                                  day_start=500,day_end=500,method="equal")
+        self.assertEqual(result["first_sale_day"],"2021-09-23")
+        self.assertEqual(result["last_sale_day"],"2021-09-23")
+        self.assertEqual(result["sales"],1)
+        self.assertAlmostEqual(result["total_fraction_sold"],1.0)
+        self.assertAlmostEqual(result["gross_vwap_usd_per_btc"],expected,places=2)
+        changed=self.prices.copy()
+        changed.loc[sell_date+pd.Timedelta(days=1):]*=100
+        self.assertEqual(result,make_sale_schedule(changed,self.halving,
+                                 day_start=500,day_end=500,method="equal"))
+
+    def test_day500_frontloaded_on_falling_prices_beats_equal(self):
+        falling=pd.Series(1000.-np.arange(900),index=self.days)
+        equal=make_sale_schedule(falling,self.halving,
+                                 day_start=500,day_end=525,method="equal")
+        front=make_sale_schedule(falling,self.halving,
+                                 day_start=500,day_end=525,method="frontloaded")
+        self.assertEqual(equal["first_sale_day"],"2021-09-23")
+        self.assertEqual(equal["sales"],26)
+        self.assertEqual(front["sales"],26)
+        self.assertGreater(front["gross_vwap_usd_per_btc"],
+                           equal["gross_vwap_usd_per_btc"])
+
     def test_fractions_equal_or_front_loaded_and_never_depend_on_future(self):
         for method in ("equal","frontloaded"):
             s=make_sale_schedule(self.prices,self.halving,
