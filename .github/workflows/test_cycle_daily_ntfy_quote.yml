@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "engines/research/ibit_quote.py"
+      - "engines/research/cycle_halving_countdown.py"
+      - "tests/test_cycle_halving_and_quote_display.py"
       - "engines/research/cycle_trading_app.py"
       - "cycle_trading_daily_ntfy.py"
       - "engines/research/cycle_trade_allocation.py"
@@ -32,8 +34,9 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - run: python -m py_compile engines/research/ibit_quote.py engines/research/cycle_trading_app.py cycle_trading_daily_ntfy.py
+      - run: python -m py_compile engines/research/ibit_quote.py engines/research/cycle_trading_app.py cycle_trading_daily_ntfy.py engines/research/cycle_halving_countdown.py
       - run: python -m unittest discover -s tests -p 'test_cycle_daily_ntfy_quote.py' -v
+      - run: python -m unittest discover -s tests -p 'test_cycle_halving_and_quote_display.py' -v
       - run: python -m unittest discover -s tests -p 'test_cycle_trade_decision.py' -v
       - name: Verify Streamlit and ntfy percentages match
         run: python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
