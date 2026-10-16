@@ -16,6 +16,9 @@ from engines.research.ibit_quote import fetch_ibit_quote
 from engines.research.top_signal_horse_race import read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.research.cycle_trading_dashboard_model import build_dashboard_market
+from engines.research.cycle_trade_allocation import (
+    calculate_allocation_signal,DEFAULT_BUY_STYLE,
+)
 
 BRISBANE=ZoneInfo("Australia/Brisbane")
 
@@ -30,13 +33,23 @@ def daily_message(*,now=None,quote=None,market=None):
         try:
             history=read_exported_history()["price_usd"]
             remote,fx=fetch_public_series(asof=now.date().isoformat())
-            # No uncompleted UTC day and don't overwrite archived closes
-            fresh=remote.loc[(remote.index>history.index[-1])&
-                              (remote.index<pd.Timestamp(now.date(),tz="UTC")),"btc_usd"]
+            # Match the Streamlit verified-price bridge, with no current
+            # unfinished UTC close, and no revision of archived price rows.
+            remote=remote.loc[remote.index<pd.Timestamp(now.date(),tz="UTC")]
+            overlap=history.index.intersection(remote.index)
+            overlap=overlap[overlap>=history.index[-1]-pd.Timedelta(days=30)]
+            if len(overlap)<3:
+                raise ValueError("Public BTC overlap insufficient to trust daily signal")
+            divergence=(remote.loc[overlap,"btc_usd"]/
+                        history.loc[overlap]-1).abs()
+            if float(divergence.median())>.06 or float(divergence.max())>.15:
+                raise ValueError("Unverified BTC prices; no allocation signal")
+            fresh=remote.loc[remote.index>history.index[-1],"btc_usd"]
             series=pd.concat([history,fresh]).sort_index()
             market=build_dashboard_market(series,fx,asof=now.date().isoformat())
             age=(now.date()-pd.Timestamp(market["asof_date"]).date()).days
-            if age<0 or age>3:market=None
+            if age<0 or age>3 or market["usd_aud_prior"] is None:
+                market=None
         except Exception:market=None
     lines=[f"Cycle Trading daily | {today} Brisbane"]
     if quote:
@@ -47,14 +60,29 @@ def daily_message(*,now=None,quote=None,market=None):
     if market:
         lines.append(f"BTC close US${market['btc_price_usd']:,.0f} ({market['asof_date']})")
         lines.append(f"Prior 200WMA US${market['prior_200wma_usd']:,.0f}")
-        signal=("BUY WATCH — prior close below 200WMA"
-                if market["previous_close_below_200wma"] else
-                "HOLD / REVIEW — no 200WMA buy gate")
-        lines.append(f"Cycle signal: {signal}")
+        try:
+            allocation=calculate_allocation_signal(
+                market,buy_style=DEFAULT_BUY_STYLE)
+        except (TypeError,ValueError,KeyError):
+            allocation=None
+        if allocation is not None:
+            lines.append(f"Cycle signal: {allocation['signal']}")
+            lines.append(f"BUY allocation: {allocation['buy_pct_cash']:.2f}% of available AUD cash")
+            lines.append(f"SELL allocation: {allocation['sell_pct_held']:.2f}% of current BTC/IBIT holdings")
+            lines.append(f"Reason: {allocation['reason']}")
+            lines.append("Rule: recovery-confirmation dynamic DCA-in; research-only DCA-out")
+        else:
+            lines.append("Cycle signal: DATA UNAVAILABLE — no trade recommendation")
+            lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
         lines.append(f"Halving day: {market['halving_day']} (2024 day500 passed)")
     else:
         lines.append("Cycle signal: DATA UNAVAILABLE — no trade recommendation")
-    lines.append("Research only; not a broker order. Check personal holdings and SMSF tax in Streamlit.")
+        lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
+    lines.append(
+        "Allocation is market-only: no Google Sheets/broker access in ntfy job. "
+        "Streamlit shows actual AUD / ETF units after holdings confirmation."
+    )
+    lines.append("Research only; not a broker order. Review SMSF CGT before selling.")
     return today,"\n".join(lines)
 
 def send_ntfy(body,*,topic):
