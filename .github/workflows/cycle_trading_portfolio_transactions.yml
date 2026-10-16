@@ -1,0 +1,37 @@
+name: Cycle Trading Buy/Sell Portfolio Integrity
+
+on:
+  pull_request:
+    paths:
+      - "engines/shared/portfolio_transactions.py"
+      - "engines/research/cycle_portfolio_editor.py"
+      - "engines/research/cycle_trading_app.py"
+      - "engines/research/cycle_trading_dashboard_model.py"
+      - "engines/production/production_app.py"
+      - "engines/research/research_app.py"
+      - "tests/test_portfolio_buy_sell_ledger.py"
+      - ".github/workflows/cycle_trading_portfolio_transactions.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transaction-and-production-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Compile both old My Portfolio editors plus Cycle Trading
+        run: |
+          python -m py_compile engines/shared/portfolio_transactions.py engines/research/cycle_portfolio_editor.py engines/research/cycle_trading_dashboard_model.py engines/research/cycle_trading_app.py engines/production/production_app.py engines/research/research_app.py
+      - name: Test buy/sell ledger and persistent JSON/SQLite roundtrip
+        run: python -m unittest discover -s tests -p 'test_portfolio_buy_sell_ledger.py' -v
+      - name: Existing dashboard and decision regression
+        run: |
+          python -m unittest discover -s tests -p 'test_cycle_trading_dashboard_model.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trade_decision.py' -v
