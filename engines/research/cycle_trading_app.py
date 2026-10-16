@@ -587,7 +587,8 @@ with tabs[2]:
     st.info(
         "Historical research accounts each hypothetically invest A$500,000 at the selected *historical halving*, "
         "not your real 2026 starting portfolio. 2013 is excluded from primary selection. "
-        "2025/26 remains incomplete."
+        "Each cycle's completeness is calculated from available observed data, "
+        "not a fixed 2026 calendar assumption."
     )
     l,r=st.columns(2)
     with l:
