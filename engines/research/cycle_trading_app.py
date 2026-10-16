@@ -26,6 +26,9 @@ from engines.research.cycle_halving_countdown import (
     normalise_halving_epoch_metadata,
 )
 from engines.research.cycle_aud_price_levels import observed_aud_cycle_levels
+from engines.research.cycle_model_redflags import (
+    evaluate_major_red_flags, fetch_reference_model_risks,
+)
 
 
 st.title("Cycle Trading — Research")
@@ -79,6 +82,13 @@ def stored_portfolio():
 @st.cache_data(ttl=60*15,show_spinner=False)
 def cached_ibit_quote():
     return fetch_ibit_quote()
+
+
+@st.cache_data(ttl=3*60*60,show_spinner=False)
+def cached_cross_model_risks():
+    # Expensive live 5.82/5.9 baselines only checked for nonzero DCA %.
+    # Never recompute at every 15-minute Streamlit rerun.
+    return fetch_reference_model_risks()
 
 
 @st.cache_data(ttl=60*60,show_spinner=False)
@@ -331,6 +341,22 @@ with tabs[0]:
     d3.metric("ASX:IBIT whole units",
               format_ibit_units_for_display(
                   decision,quote_available=ibit_quote>0))
+
+    # QUIET reference check: compare actual 5.82/5.9 risk scores, NOT
+    # their budget multipliers to Cycle's % of cash or remaining holdings.
+    # Only an exceptional contradiction is surfaced. A failed reference
+    # lookup is unknown, NEVER falsely reported as 'all clear'.
+    if (signal_valid and (buy_percent>0 or sell_percent>0)
+            and provider_error is None and verification is not None
+            and staleness<=3 and cycle_feed_verified):
+        reference_risks=cached_cross_model_risks()
+        major_flags=evaluate_major_red_flags(
+            buy_pct_cash=buy_percent,sell_pct_held=sell_percent,
+            snapshots=reference_risks,market_asof=market["asof_date"],
+            today=trade_today,confirmed_halving_date=market["halving_date"],
+        )
+        for major in major_flags["warnings"]:
+            st.error(major)
     if decision["action"]=="BUY":
         st.caption(
             f"{buy_percent:.2f}% × your selected available A$ cash "

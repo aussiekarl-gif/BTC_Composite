@@ -19,13 +19,17 @@ from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.research.cycle_market_feed import merge_verified_cycle_prices
 from engines.research.cycle_trading_dashboard_model import build_dashboard_market
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
+from engines.research.cycle_model_redflags import (
+    evaluate_major_red_flags,fetch_reference_model_risks,
+)
 from engines.research.cycle_trade_allocation import (
     calculate_allocation_signal,DEFAULT_BUY_STYLE,
 )
 
 BRISBANE=ZoneInfo("Australia/Brisbane")
 
-def daily_message(*,now=None,quote=None,market=None):
+def daily_message(*,now=None,quote=None,market=None,
+                  reference_snapshot_fetcher=None):
     now=now or dt.datetime.now(dt.timezone.utc)
     local=now.astimezone(BRISBANE)
     today=local.date().isoformat()
@@ -69,6 +73,26 @@ def daily_message(*,now=None,quote=None,market=None):
             lines.append(f"SELL allocation: {allocation['sell_pct_held']:.2f}% of current BTC/IBIT holdings")
             lines.append(f"Reason: {allocation['reason']}")
             lines.append("Rule: recovery-confirmation dynamic DCA-in; research-only DCA-out")
+            # No added notifications, ordinary disagreements or 'all clear'
+            # text. Check V5.8.2 and V5.9 only for actionable market
+            # percentages, and warn solely when extreme conflict is verified.
+            if (reference_snapshot_fetcher is not None
+                    and (allocation["buy_pct_cash"]>0 or allocation["sell_pct_held"]>0)):
+                try:
+                    baselines=reference_snapshot_fetcher()
+                    crosscheck=evaluate_major_red_flags(
+                        buy_pct_cash=allocation["buy_pct_cash"],
+                        sell_pct_held=allocation["sell_pct_held"],
+                        snapshots=baselines,market_asof=market["asof_date"],
+                        today=now.date(),
+                        confirmed_halving_date=market["halving_date"],
+                    )
+                    for warning in crosscheck["warnings"]:
+                        lines.append("⚠ "+warning)
+                except Exception:
+                    # Unknown != passing comparison. The main Cycle
+                    # notification still sends; no duplicate warning.
+                    pass
         else:
             lines.append("Cycle signal: DATA UNAVAILABLE — no trade recommendation")
             lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
@@ -117,7 +141,7 @@ def main():
     ap.add_argument("--body-file",default="/tmp/btc_cycle_ntfy_body.txt")
     args=ap.parse_args()
     if args.prepare:
-        day,body=daily_message()
+        day,body=daily_message(reference_snapshot_fetcher=fetch_reference_model_risks)
         from pathlib import Path
         Path(args.date_file).write_text(day+"\n")
         Path(args.body_file).write_text(body+"\n")
