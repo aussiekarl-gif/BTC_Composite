@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 
 from engines.research.day500_dynamic_dca_out import (
-    adaptive_weekly_exit, baseline_exit, _prior_state, POLICIES,
+    adaptive_weekly_exit, baseline_exit, staged_day500_dynamic_exit,
+    _prior_state, POLICIES, STAGED_POLICIES,
 )
 
 
@@ -85,6 +86,56 @@ class Day500DynamicDcaOutTests(unittest.TestCase):
         self.assertEqual(one["orders"],1)
         self.assertEqual(six["orders"],6)
         self.assertGreater(hold["ending_mark_usd"],one["ending_mark_usd"])
+
+    def test_staged_dca_sells_five_percent_day500_then_maturity_anchor(self):
+        for policy in STAGED_POLICIES:
+            q=staged_day500_dynamic_exit(self.up,self.halving,policy=policy)
+            self.assertEqual(q["sale_detail"][0]["halving_day"],500)
+            self.assertAlmostEqual(q["sale_detail"][0]["btc_sold"],.05)
+            anchor={525,532,539,546,553,560}
+            self.assertTrue(anchor.issubset({x["halving_day"] for x in q["sale_detail"]}))
+            self.assertTrue(all(x["halving_day"] in anchor
+                                or x["halving_day"]==500
+                                or x["halving_day"]>=560
+                                for x in q["sale_detail"]))
+            self.assertAlmostEqual(q["btc_sold"]+q["btc_left"],1.,delta=1e-8)
+            self.assertEqual(q["brokerage_aud_3_per_order"],3*q["orders"])
+
+    def test_staged_anchor_sizing_uses_prior_close_not_execution_close(self):
+        day=self.halving+pd.Timedelta(days=525)
+        mutated=self.up.copy()
+        mutated.loc[day]=1e7
+        a=staged_day500_dynamic_exit(self.up,self.halving,policy="maturity_80pct")
+        b=staged_day500_dynamic_exit(mutated,self.halving,policy="maturity_80pct")
+        x=next(t for t in a["sale_detail"] if t["halving_day"]==525)
+        y=next(t for t in b["sale_detail"] if t["halving_day"]==525)
+        self.assertEqual(x["btc_sold"],y["btc_sold"])
+        self.assertNotEqual(x["cash_proceeds_usd"],y["cash_proceeds_usd"])
+
+    def test_staged_no_future_price_dependence_for_earlier_trades(self):
+        modified=self.up.copy()
+        cutoff=self.halving+pd.Timedelta(days=580)
+        modified.loc[cutoff:]=1e6
+        a=staged_day500_dynamic_exit(self.up,self.halving,policy="maturity_90pct")
+        b=staged_day500_dynamic_exit(modified,self.halving,policy="maturity_90pct")
+        before=lambda records:[
+            (r["date"],r["btc_sold"],r["signal_regime"])
+            for r in records if r["date"]<str(cutoff.date())]
+        self.assertEqual(before(a["sale_detail"]),before(b["sale_detail"]))
+
+    def test_staged_full_equity_includes_unsold_btc_at_day730(self):
+        x=staged_day500_dynamic_exit(self.up,self.halving,policy="maturity_80pct")
+        self.assertAlmostEqual(
+            x["ending_mark_usd"],
+            x["gross_proceeds_usd"]+x["btc_left"]*float(self.up.iloc[730]),
+            delta=.002)
+        self.assertGreater(x["btc_sold"],0)
+        self.assertGreaterEqual(x["btc_left"],0)
+        self.assertLessEqual(x["btc_sold"],1)
+        with self.assertRaisesRegex(ValueError,"Unknown"):
+            staged_day500_dynamic_exit(self.up,self.halving,policy="future")
+        with self.assertRaisesRegex(ValueError,"Insufficient"):
+            staged_day500_dynamic_exit(self.up,self.halving,review_day=550)
 
     def test_fail_closed_when_missing_price_or_invalid_parameters(self):
         with self.assertRaises(ValueError):
