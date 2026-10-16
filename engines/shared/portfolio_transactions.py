@@ -193,6 +193,30 @@ def append_executed_trade(saved,*,side,asset,trade_date,quantity,
         raise ValueError("BUY exceeds recorded remaining AUD cash")
     if side=="SELL" and qty>positions["ibit_units" if asset=="ASX:IBIT" else "direct_btc"]+BTC_QUANTITY_EPS:
         raise ValueError("SELL exceeds net recorded holdings")
+    # Guard against a double-click or browser retry adding the identical
+    # execution twice. Distinct same-day fills require a distinct order
+    # reference in Notes; do not silently alter historical records.
+    records=portfolio["rows"] if side=="BUY" else portfolio[SALES_KEY]
+    for previous in records:
+        if not isinstance(previous,dict):
+            continue
+        prior_qty=previous.get("Units / BTC Received" if side=="BUY" else "Units Sold")
+        prior_value=previous.get("AUD Spent" if side=="BUY" else "AUD Proceeds")
+        try:
+            same_numbers=(
+                abs(float(prior_qty)-qty)<BTC_QUANTITY_EPS
+                and abs(float(prior_value)-consideration)<.005
+                and abs(float(previous.get("Brokerage / Fee AUD",0))-fee)<.005
+            )
+        except (ValueError,TypeError):
+            same_numbers=False
+        if (same_numbers and previous.get("Date")==day.strftime("%d/%m/%y")
+                and previous.get("Asset")==asset
+                and str(previous.get("Notes","")).strip()==str(note).strip()[:300]):
+            raise ValueError(
+                "Matching execution already recorded. For two real identical "
+                "fills enter different broker order references in Notes."
+            )
     trade_id=uuid.uuid4().hex
     if side=="BUY":
         portfolio["rows"].append({
@@ -240,7 +264,22 @@ def merge_legacy_purchase_editor(original,fresh,*,edited_buys,starting_capital_a
     if not isinstance(edited_buys,list):
         raise ValueError("Edited purchases must be a list")
     result=copy.deepcopy(fresh)
-    result["rows"]=copy.deepcopy(edited_buys)
+    retained=copy.deepcopy(edited_buys)
+    # Old six-column Streamlit editor omits execution IDs/Notes.
+    # Preserve those metadata fields when this is demonstrably the
+    # same existing row (not after a row deletion/reordering).
+    for i,row in enumerate(retained):
+        if i>=len(current_buys) or not isinstance(row,dict):
+            continue
+        prev=current_buys[i]
+        if not isinstance(prev,dict):continue
+        if (prev.get("Date")==row.get("Date")
+                and prev.get("Asset")==row.get("Asset")
+                and prev.get("Units / BTC Received")==row.get("Units / BTC Received")):
+            for key in ("Transaction ID","Notes"):
+                if key in prev and key not in row:
+                    row[key]=prev[key]
+    result["rows"]=retained
     result["starting_capital_aud"]=numeric(
         starting_capital_aud,label="Starting capital",allow_zero=True)
     status=portfolio_positions(result)
