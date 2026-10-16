@@ -141,7 +141,7 @@ def send_ntfy(body,*,topic):
         url=topic.rstrip("/")
     else:url="https://ntfy.sh/"+topic.strip("/")
     result=requests.post(url,data=body.encode("utf-8"),
-        headers={"Title":"BTC Cycle Trading — Daily","Priority":"default",
+        headers={"Title":"BTC Cycle Trading - Daily","Priority":"default",
                  "Tags":"chart_with_upwards_trend","Cache":"no"},
         timeout=20)
     result.raise_for_status()
