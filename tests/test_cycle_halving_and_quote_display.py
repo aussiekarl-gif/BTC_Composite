@@ -188,11 +188,30 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertEqual(value["next_halving_height"],1_260_000)
 
     @patch("engines.research.cycle_halving_countdown.requests.get")
+    def test_future_epoch_date_uses_alternate_block_provider(self, get):
+        future_now=dt.datetime(2028, 4, 26, tzinfo=dt.timezone.utc)
+        alternate=Mock()
+        alternate.json.return_value={"blocks":[{
+            "height":1_050_000,"main_chain":True,
+            "time":int(dt.datetime(2028, 4, 24,
+                                   tzinfo=dt.timezone.utc).timestamp()),
+        }]}
+        get.side_effect=[
+            Mock(text="1050020"),Mock(text="bad hash"),alternate,
+        ]
+        result=fetch_halving_countdown(now=future_now)
+        self.assertTrue(result["halving_date_verified"])
+        self.assertEqual(result["last_halving_date"],"2028-04-24")
+        self.assertEqual(get.call_count,3)
+
+    @patch("engines.research.cycle_halving_countdown.requests.get")
     def test_future_epoch_missing_block_event_fails_closed(self, get):
         future_now=dt.datetime(2028, 4, 26, tzinfo=dt.timezone.utc)
         height=Mock(text="1050020")
         bogus_hash=Mock(text="not a block hash")
-        get.side_effect=[height,bogus_hash]
+        alternate=Mock()
+        alternate.json.return_value={"blocks":[]}
+        get.side_effect=[height,bogus_hash,alternate]
         value=fetch_halving_countdown(now=future_now)
         self.assertFalse(value["halving_date_verified"])
         self.assertIsNone(value["last_halving_date"])
