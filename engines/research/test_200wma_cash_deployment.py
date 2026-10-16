@@ -22,13 +22,14 @@ def weight(dev):
  if dev<=200:return 0.5
  return 0.25
 
-def run(s,ma,start,end,weeks,weighted,only_below=False,signal_price=None,brokerage_fixed=0.0,trade_callback=None):
+def run(s,ma,start,end,weeks,weighted,only_below=False,signal_price=None,brokerage_fixed=0.0,trade_callback=None,fee=FEE,slippage=SLIPPAGE):
  if not 0<=brokerage_fixed<CAP:raise ValueError("Invalid brokerage")
+ if not (0<=fee<1 and 0<=slippage<1):raise ValueError("Invalid execution friction")
  if signal_price is None:signal_price=s
  if not s.index.equals(signal_price.index):raise ValueError("Signal and execution dates differ")
  px=float(s.iloc[start+1])
  initial_spend=CAP*INITIAL_BTC_FRACTION
- btc=(initial_spend-brokerage_fixed)*(1-FEE)*(1-SLIPPAGE)/px
+ btc=(initial_spend-brokerage_fixed)*(1-fee)*(1-slippage)/px
  if trade_callback is not None:
   trade_callback({"side":"BUY","kind":"INITIAL","date":s.index[start+1],"units":btc,
                   "cash":initial_spend,"price":px,"brokerage":brokerage_fixed})
@@ -42,7 +43,7 @@ def run(s,ma,start,end,weeks,weighted,only_below=False,signal_price=None,brokera
   w=weight(dev) if weighted and np.isfinite(dev) else 1.
   spend=cash if remaining==1 else min(cash,cash/remaining*w)
   if spend>brokerage_fixed+1e-8:
-   acquired=(spend-brokerage_fixed)*(1-FEE)*(1-SLIPPAGE)/float(s.iloc[i])
+   acquired=(spend-brokerage_fixed)*(1-fee)*(1-slippage)/float(s.iloc[i])
    btc+=acquired
    cash-=spend
    if trade_callback is not None:
@@ -50,7 +51,7 @@ def run(s,ma,start,end,weeks,weighted,only_below=False,signal_price=None,brokera
                     "cash":spend,"price":float(s.iloc[i]),"brokerage":brokerage_fixed})
  terminal=float(s.iloc[end])
  value=cash+btc*terminal
- immediate=CAP*(1-FEE)*(1-SLIPPAGE)/float(s.iloc[start+1])*terminal
+ immediate=CAP*(1-fee)*(1-slippage)/float(s.iloc[start+1])*terminal
  return {"vs_immediate_pct":round((value/immediate-1)*100,3),
          "btc":round(btc,8),"value_usd":round(value,2),"cash_usd":round(cash,2)}
 def summarise(rows):
