@@ -82,6 +82,7 @@ def daily_message(*,now=None,quote=None,market=None):
         "Allocation is market-only: no Google Sheets/broker access in ntfy job. "
         "Streamlit shows actual AUD / ETF units after holdings confirmation."
     )
+    lines.append("DCA % is per eligible research tranche, NOT a new daily order. Check executed trades.")
     lines.append("Research only; not a broker order. Review SMSF CGT before selling.")
     return today,"\n".join(lines)
 
