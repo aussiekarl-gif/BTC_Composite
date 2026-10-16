@@ -1729,6 +1729,17 @@ elif mode == "My Portfolio":
         reference_currency=portfolio_ref_currency,
         usd_per_aud=portfolio_entry_fx,
     )
+    # The app populates five sample/starter purchases when there is no
+    # actual saved ledger. Never advertise their execution error as REAL.
+    portfolio_source_is_actual = bool(saved_rows) or bool(portfolio_submit) or bool(
+        st.session_state.get("portfolio_last_upload_token")
+        or st.session_state.get("portfolio_recovery_loaded")
+    )
+    if not portfolio_source_is_actual:
+        portfolio_accuracy["weighted_average_in_reference_currency"] = None
+        portfolio_accuracy["error_pct"] = None
+        portfolio_accuracy["per_transaction_error_pct"] = [None] * len(clean)
+        portfolio_accuracy["purchase_rows"] = 0
     avg_entry_ref = portfolio_accuracy["weighted_average_in_reference_currency"]
     entry_error_pct = portfolio_accuracy["error_pct"]
     acc1, acc2, acc3 = st.columns(3)
@@ -1756,7 +1767,13 @@ elif mode == "My Portfolio":
              else "Above the 25% average-buy target.")
             + " This is a hindsight benchmark, not a guaranteed future bottom."
         )
-    if portfolio_accuracy["issues"]:
+    if not portfolio_source_is_actual:
+        st.warning(
+            "No saved or imported actual portfolio transactions were found. "
+            "The built-in starter rows are examples and are NOT counted. "
+            "Restore your saved portfolio or import your transaction CSV first."
+        )
+    elif portfolio_accuracy["issues"]:
         st.warning(
             "Execution error unavailable until all 2026 transactions have "
             "valid BTC-equivalent amounts and (for USD) purchase-date FX. "
