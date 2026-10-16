@@ -23,8 +23,15 @@ from engines.research.top_signal_horse_race import (
     HALVINGS, PEAK_WINDOWS, read_exported_history,
 )
 
-# Distinct research controls; all parameter choices are in-sample
+# Day 500 requested by user. All historical comparisons are in-sample.
+# One-shot 500 is actually executable without any hindsight peak selection;
+# staged dates are fixed in advance, though all were selected post-history.
 WINDOWS=(
+    ("exact_day_500",500,500,"equal"),
+    ("day500_to_525_equal",500,525,"equal"),
+    ("day500_to_525_frontloaded",500,525,"frontloaded"),
+    ("day500_to_560_equal",500,560,"equal"),
+    ("day500_to_560_frontloaded",500,560,"frontloaded"),
     ("narrow_equal",525,560,"equal"),
     ("narrow_frontloaded",525,560,"frontloaded"),
     ("narrow_trend_weighted",525,560,"trend_weighted"),
@@ -143,6 +150,8 @@ def compare_windows(history,*,peak_windows=PEAK_WINDOWS):
         "hindsight_scored_cycles":scores,
         "summary":summary,
         "warnings":[
+            "The exact day-500 all-BTC sale uses a date known from the halving; no historical peak price enters the trade date.",
+            "Day-500 vs day-525 windows are compared in-sample after viewing history, not prospective optimization.",
             "This is in-sample time-window curve fitting after known 2017/2021/2025 peak clustering, not proven generalization.",
             "2013 top occurred much earlier after halving: test exposes structural break.",
             "Pre-set calendar sell fractions are actually tradeable; top dates are hindsight ONLY for score.",
