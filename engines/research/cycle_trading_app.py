@@ -81,6 +81,10 @@ with st.spinner("Loading historical BTC observations..."):
         research_history=historical_source()
     except Exception as exc:
         st.error(f"Cannot load historical Research data: {type(exc).__name__}: {exc}")
+        fallback,fallback_error=stored_portfolio()
+        show_portfolio_editor(fallback if not fallback_error else None,
+            today=dt.datetime.now(dt.timezone.utc).date(),
+            store_error=fallback_error)
         st.stop()
 
 today=dt.datetime.now(dt.timezone.utc).date()
@@ -107,6 +111,10 @@ try:
     market=build_dashboard_market(daily,fx,asof=asof)
 except Exception as exc:
     st.error(f"Cannot calculate strictly prior BTC 200WMA: {type(exc).__name__}: {exc}")
+    fallback,fallback_error=stored_portfolio()
+    show_portfolio_editor(fallback if not fallback_error else None,
+        today=dt.datetime.now(dt.timezone.utc).date(),
+        store_error=fallback_error)
     st.stop()
 
 last_day=pd.Timestamp(market["asof_date"]).date()
