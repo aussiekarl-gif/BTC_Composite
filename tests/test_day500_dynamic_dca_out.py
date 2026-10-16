@@ -6,7 +6,7 @@ import pandas as pd
 
 from engines.research.day500_dynamic_dca_out import (
     adaptive_weekly_exit, baseline_exit, staged_day500_dynamic_exit,
-    _prior_state, POLICIES, STAGED_POLICIES,
+    _prior_state, POLICIES, STAGED_POLICIES, synthetic_peak_timing_stress,
 )
 
 
@@ -141,6 +141,26 @@ class Day500DynamicDcaOutTests(unittest.TestCase):
             staged_day500_dynamic_exit(self.up,self.halving,policy="future")
         with self.assertRaisesRegex(ValueError,"Insufficient"):
             staged_day500_dynamic_exit(self.up,self.halving,review_day=550)
+
+    def test_staged_exit_stress_reveals_non_universal_timing(self):
+        results=synthetic_peak_timing_stress()
+        self.assertEqual(len(results),3)
+        self.assertEqual({r["scenario"] for r in results},
+                         {"early_peak_then_crash_day510",
+                          "late_peak_day680","uninterrupted_bull_market"})
+        for r in results:
+            outcomes=r["outcomes"]
+            self.assertEqual(len(outcomes),3)
+            self.assertEqual(outcomes[0]["model"],"hold")
+            self.assertAlmostEqual(outcomes[0]["relative_to_hold_pct"],0.)
+            for x in outcomes:
+                self.assertLessEqual(x["btc_sold"],1.)
+                self.assertAlmostEqual(x["btc_sold"]+x["remaining_btc"],1.,delta=1e-9)
+        # In a runaway bull, selling early should lose to uninterrupted
+        # holding: an explicit negative-control against hindsight claims.
+        bull=next(r for r in results if r["scenario"]=="uninterrupted_bull_market")
+        for x in bull["outcomes"][1:]:
+            self.assertLess(x["relative_to_hold_pct"],0)
 
     def test_fail_closed_when_missing_price_or_invalid_parameters(self):
         with self.assertRaises(ValueError):
