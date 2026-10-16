@@ -5,10 +5,12 @@ on:
     paths:
       - "engines/research/shared_cycle_policy.py"
       - "engines/research/cycle_position_anchor.py"
+      - "engines/research/cycle_account_shadow.py"
       - "engines/research/day500_dynamic_dca_out.py"
       - "engines/research/day500_aftertax_reinvestment.py"
       - "tests/test_shared_cycle_policy.py"
       - "tests/test_cycle_position_anchor.py"
+      - "tests/test_cycle_account_shadow.py"
       - ".github/workflows/research_shared_cycle_policy.yml"
   workflow_dispatch:
 
@@ -31,5 +33,7 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_shared_cycle_policy.py' -v
       - name: Verify original position anchor from recorded buys and sells
         run: python -m unittest discover -s tests -p 'test_cycle_position_anchor.py' -v
+      - name: Validate account-specific original-position sale proposals match historical replay
+        run: python -m unittest discover -s tests -p 'test_cycle_account_shadow.py' -v
       - name: Retain existing self-financing SMSF tests
         run: python -m unittest discover -s tests -p 'test_day500_aftertax_reinvestment.py' -v
