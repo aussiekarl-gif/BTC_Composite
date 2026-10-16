@@ -1,0 +1,31 @@
+name: Cycle Trading BUY HOLD SELL Research Panel
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/cycle_trade_decision.py"
+      - "engines/research/cycle_trading_app.py"
+      - "tests/test_cycle_trade_decision.py"
+      - ".github/workflows/research_cycle_trade_decision.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decision-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install app dependencies
+        run: pip install -r requirements.txt
+      - name: Compile dashboard and decision module
+        run: python -m py_compile app.py engines/research/cycle_trading_app.py engines/research/cycle_trade_decision.py
+      - name: Verify decision safety
+        run: python -m unittest discover -s tests -p "test_cycle_trade_decision.py" -v
+      - name: Preserve existing portfolio and dashboard invariants
+        run: python -m unittest discover -s tests -p "test_cycle_trading_dashboard_model.py" -v
