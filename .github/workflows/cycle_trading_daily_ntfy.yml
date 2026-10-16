@@ -1,10 +1,11 @@
 name: Cycle Trading single daily ntfy
 
-# 22:00 UTC = 08:00 Brisbane (UTC+10), every calendar day.
+# 00:00 UTC = 10:00 Brisbane (UTC+10, no daylight-saving), daily.
+# GitHub Actions schedules are best-effort; actual delivery may be delayed.
 # Only scheduled runner may POST ntfy; NO workflow_dispatch.
 on:
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 0 * * *'
 
 permissions:
   contents: write
