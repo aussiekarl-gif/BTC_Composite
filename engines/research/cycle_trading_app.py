@@ -14,6 +14,7 @@ from engines.research.day500_aftertax_reinvestment import fetch_fx_for_cycle
 from engines.research.top_signal_horse_race import HALVINGS,read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.shared.portfolio_store import load_portfolio
+from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
 from engines.research.ibit_quote import fetch_ibit_quote
 
@@ -163,14 +164,14 @@ except Exception as exc:
     automatic_ibit=None
     automatic_ibit_error=f"{type(exc).__name__}: {exc}"
 
-tabs=st.tabs(["Current signals", "My Portfolio (read-only)", "Historical sell & buyback"])
+tabs=st.tabs(["Current signals", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
 
 with tabs[0]:
     st.subheader("Current trading decision — Research")
     st.caption(
         "Uses verified previous BTC close, strictly prior 200WMA and your saved purchases. "
         "Action is a rules-based research illustration, not a live broker order. "
-        "The purchase-only portfolio does not prove current holdings after any sales."
+        "Reconcile recorded holdings with your broker before any transaction."
     )
     left,right=st.columns(2)
     with left:
@@ -215,13 +216,10 @@ with tabs[0]:
             "I have verified my currently held ASX:IBIT units in my broker",
             value=False,key="cycle_decision_confirm_units"
         )
-        current_units=st.number_input(
-            "Current unsold ASX:IBIT units (from broker)",
-            min_value=0.0,
-            value=0.0,step=1.0,format="%.0f",
-            disabled=not confirm_units,key="cycle_decision_current_ibit_units",
-            help="Your saved portfolio is purchase-only. Confirm this number afresh after every sale."
-        )
+        recorded_units=float(saved_cash.get("ibit_units",0.) or 0.) if saved_cash.get("valid") else 0.
+        st.metric("Recorded net ASX:IBIT units",f"{recorded_units:,.0f}")
+        st.caption("Verify that recorded unsold quantity matches the broker before confirming.")
+        current_units=(recorded_units if confirm_units else None)
         already_traded=st.checkbox(
             "Already executed a BTC/IBIT transaction for this signal today",
             value=False,key="cycle_decision_already_traded",
@@ -232,7 +230,7 @@ with tabs[0]:
         market,saved_live_portfolio if not saved_live_error else None,
         today=today,usable_cash_aud=cash_input,buy_style=chosen_style,
         ibit_price_aud=ibit_quote if ibit_quote>0 else None,
-        verified_current_ibit_units=(current_units if confirm_units else None),
+        verified_current_ibit_units=current_units,
         already_traded_today=already_traded,
         feed_verified=(provider_error is None and verification is not None
                        and staleness<=3),
@@ -254,7 +252,7 @@ with tabs[0]:
         st.warning(
             "Before selling, check FIFO tax lots, 12-month CGT discount eligibility, "
             "actual broker holdings, your SMSF phase and potential CGT. "
-            "The dashboard does not know whether you already sold a prior tranche."
+            "Check your recorded sales ledger and actual SMSF tax lots before trading."
         )
         if "estimated_net_sale_aud_before_cgt" in decision:
             st.caption(
@@ -270,10 +268,9 @@ with tabs[0]:
     with st.expander("How to use the action safely"):
         st.write(
             "BUY: check your broker's ASX:IBIT live quote, manually place a suitable "
-            "limit order and record only executed purchases under Research → My Portfolio. "
+            "limit order and record only executed purchases in Cycle Trading → My Portfolio. "
             "SELL: confirm unsold units in your broker and assess actual SMSF capital gains "
-            "before placing any manual order. My Portfolio currently only records purchases "
-            "so it cannot track or prevent repeat SELL transactions. "
+            "before placing any manual order. Now record completed SELL transactions within Cycle Trading → My Portfolio. "
             "HOLD means these experimental price/cycle rules did not support a trade "
             "or data/portfolio safeguards prevented reliable sizing. "
             "Model confidence has NOT been calibrated from prospective market-top tests."
@@ -297,7 +294,7 @@ with tabs[0]:
     st.caption("Chart is price only; all buy/sell decisions remain manual.")
 
 with tabs[1]:
-    st.subheader("Your saved My Portfolio")
+    st.subheader("Your saved My Portfolio — net holdings")
     portfolio,store_error=saved_live_portfolio,saved_live_error
     if store_error:
         st.error("Could not load the persistent Portfolio: "+store_error)
@@ -311,9 +308,11 @@ with tabs[1]:
         else:
             a,b,c,d=st.columns(4)
             a.metric("Original deployment capital",f"A${snap['capital_aud']:,.0f}")
-            b.metric("Cash remaining (recorded buys)",f"A${snap['cash_remaining_aud']:,.0f}")
-            c.metric("Estimated BTC exposure",f"{snap['btc_equivalent']:.6f} BTC-eq")
-            d.metric("ASX:IBIT units",f"{snap['ibit_units']:,.2f}")
+            b.metric("Available cash incl. sales",f"A${snap['cash_remaining_aud']:,.0f}")
+            c.metric("Estimated BTC exposure",f"{snap['btc_equivalent']:.6f} BTC-eq" if snap["btc_equivalent"] is not None else "Unknown")
+            d.metric("ASX:IBIT net units",f"{snap['ibit_units']:,.0f}")
+            st.metric("Direct BTC net held",f"{snap['direct_btc']:.8f} BTC")
+            st.caption(f"{snap['rows']} recorded BUYs, {snap['sales']} recorded SELLs.")
             if snap["unpriced_or_unknown_rows"]:
                 st.warning(
                     f"{snap['unpriced_or_unknown_rows']} purchase rows lack reliable historical "
@@ -349,14 +348,21 @@ with tabs[1]:
             st.caption(
                 "ASX:IBIT BTC-equivalent is estimated from recorded AUD paid / historic BTC/AUD. "
                 "It is NOT direct BTC, the ETF's exact redemption entitlement, or a tax-lot ledger. "
-                "If some purchases were sold, update My Portfolio; this read-only view does not reconstruct sales."
+                "Recorded sales now reduce net holdings. Actual broker custody must be reconciled separately."
             )
             rows=portfolio.get("rows",[])
             cols=["Date","Asset","AUD Spent","Brokerage / Fee AUD",
                   "Units / BTC Received","BTC AUD Price"]
             st.dataframe(pd.DataFrame(rows).reindex(columns=cols),
                          hide_index=True,use_container_width=True)
-    st.caption("The Research dashboard never calls save_portfolio(). Change transactions only in the existing My Portfolio page.")
+    st.divider()
+    show_portfolio_editor(
+        portfolio if not store_error else None,
+        today=today,
+        ibit_quote=(automatic_ibit["price_aud"] if automatic_ibit else None),
+        btc_aud_quote=market.get("btc_price_aud_estimate"),
+        store_error=store_error
+    )
 
 with tabs[2]:
     st.subheader("Historical whole-cycle comparison")
