@@ -1,4 +1,4 @@
-"""User-facing read-only cycle trading Research page for the existing app.py."""
+"""Cycle Trading Research: read-only trade guidance + manually executed portfolio ledger."""
 from __future__ import annotations
 
 import datetime as dt
@@ -24,9 +24,9 @@ from engines.research.cycle_aud_price_levels import observed_aud_cycle_levels
 st.title("Cycle Trading — Research")
 st.caption("Day-500 Dynamic DCA-out + 200WMA Dynamic DCA-in • Personal portfolio reference • Historical comparisons")
 st.warning(
-    "Research only — no broker integration, no automatic orders and no changes to Production "
-    "or your saved My Portfolio. Backtests use hypothetical BTC positions at historical halvings, "
-    "not your real A$500,000 that began deployment in 2026."
+    "Research only — no automatic broker orders or Production strategy changes. "
+    "You can record actual executed buys/sells in My Portfolio below. "
+    "Historical backtest accounts are hypothetical, not your 2026 holdings."
 )
 
 
@@ -141,61 +141,6 @@ with st.expander("Data safety and model assumptions"):
         "A new buyback entry assumes proceeds from an earlier exit; your real portfolio may still be accumulating."
     )
 
-c1,c2,c3,c4=st.columns(4)
-c1.metric("BTC/USD historical close",f"US${market['btc_price_usd']:,.0f}")
-c2.metric("Prior-observation 200WMA",f"US${market['prior_200wma_usd']:,.0f}")
-c3.metric("Prior close / 200WMA",f"{market['prior_close_vs_200wma_pct']:+.1f}%")
-c4.metric("Days from last confirmed halving",f"{market['halving_day']:,}")
-
-st.subheader("Current cycle top and bottom (A$ BTC)")
-st.caption("Observed Bitcoin prices in Australian dollars; percentages compare the latest available close with each level.")
-try:
-    # Historic 2025 peak MUST be converted with FX from 2025,
-    # not today's AUD/USD. The standard public fetch only
-    # includes FX from December 2025 onwards.
-    cycle_historic_fx=cycle_fx_source("2024-04-20",market["asof_date"])
-    cycle_aud=observed_aud_cycle_levels(
-        market["price_history"],cycle_historic_fx,
-        asof=market["asof_date"])
-except Exception as exc:
-    cycle_aud=None
-    st.warning("Historical cycle BTC/AUD extremes unavailable: "
-               f"{type(exc).__name__}: {exc}. "
-               "No unverified AUD prices are substituted.")
-if cycle_aud is not None:
-    high_col,low_col,range_col=st.columns(3)
-    high_col.metric(
-        "Cycle TOP (BTC/AUD)",
-        f"A${cycle_aud['cycle_top_aud']:,.0f}",
-        delta=f"{cycle_aud['pct_change_from_top']:+.1f}% from top",
-        help=f"Observed high daily BTC/AUD close on {cycle_aud['cycle_top_date']}")
-    low_col.metric(
-        "Post-top BOTTOM (BTC/AUD)",
-        f"A${cycle_aud['cycle_bottom_aud']:,.0f}",
-        delta=f"{cycle_aud['pct_change_from_bottom']:+.1f}% from bottom",
-        help=f"Observed lowest daily BTC/AUD close after top on {cycle_aud['cycle_bottom_date']}")
-    range_col.metric(
-        "Position between bottom and top",
-        f"{cycle_aud['position_between_low_high_pct']:.1f}%",
-        help="0% = observed post-top bottom; 100% = observed cycle top.")
-    st.caption(
-        f"Bottom A${cycle_aud['cycle_bottom_aud']:,.0f} "
-        f"({cycle_aud['cycle_bottom_date']}) → "
-        f"Top A${cycle_aud['cycle_top_aud']:,.0f} "
-        f"({cycle_aud['cycle_top_date']}). "
-        f"Latest BTC/AUD daily close A${cycle_aud['last_price_aud']:,.0f} "
-        f"({cycle_aud['asof_date']}). "
-        "Range is since the 20 Apr 2024 halving, with the bottom "
-        "defined AFTER the observed top. Same-date historical FX; "
-        "daily closes, not intraday extremes or a prediction."
-    )
-
-st.caption(
-    f"Confirmed halving 20 Apr 2024 • day 500: {market['day500_date']} "
-    f"• day 560: {market['day560_date']}. Both are **in the past**. "
-    "No rule should retroactively sell your BTC/ETF bought in 2026."
-)
-
 if st.button("Refresh market feed and My Portfolio",key="cycle_research_refresh"):
     public_source.clear()
     cycle_fx_source.clear()
@@ -209,7 +154,7 @@ saved_cash=portfolio_snapshot(saved_live_portfolio) if not saved_live_error else
 starting_cash_default=(
     float(saved_cash["cash_remaining_aud"])
     if saved_cash.get("valid") and saved_cash.get("rows",0)>0
-    else 50000.
+    else 0.
 )
 
 try:
@@ -219,12 +164,12 @@ except Exception as exc:
     automatic_ibit=None
     automatic_ibit_error=f"{type(exc).__name__}: {exc}"
 
-tabs=st.tabs(["Current signals", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
+tabs=st.tabs(["Trading decision", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
 
 with tabs[0]:
     st.subheader("Current trading decision — Research")
     st.caption(
-        "Uses verified previous BTC close, strictly prior 200WMA and your saved purchases. "
+        Uses verified previous BTC close, strictly prior 200WMA and your recorded executed buys/sells. "
         "Action is a rules-based research illustration, not a live broker order. "
         "Reconcile recorded holdings with your broker before any transaction."
     )
@@ -233,7 +178,7 @@ with tabs[0]:
         chosen_style=st.selectbox(
             "Dynamic DCA-in sizing",
             ["adaptive_recovery","adaptive_value"],
-            format_func=lambda x:("Recovery confirmation" if x=="adaptive_recovery"
+            format_func=lambda x:("200WMA staged accumulation (2.5%)" if x=="adaptive_recovery"
                                   else "Value weighted below 200WMA"),
             key="cycle_decision_buy_style",
         )
@@ -283,7 +228,7 @@ with tabs[0]:
 
     decision=make_current_decision(
         market,saved_live_portfolio if not saved_live_error else None,
-        today=today,usable_cash_aud=cash_input,buy_style=chosen_style,
+        today=trade_today,usable_cash_aud=cash_input,buy_style=chosen_style,
         ibit_price_aud=ibit_quote if ibit_quote>0 else None,
         verified_current_ibit_units=current_units,
         already_traded_today=already_traded,
@@ -356,7 +301,7 @@ with tabs[0]:
             )
     if decision["action"]=="BUY" and decision["estimated_ibit_units"] is not None:
         st.caption(
-            f"At your manual broker quote, {decision['estimated_ibit_units']} whole units "
+            f"At the indicative/entered IBIT quote, {decision['estimated_ibit_units']} whole units "
             f"cost approximately A${decision.get('estimated_gross_ibit_aud',0):,.2f} "
             "including an assumed A$3 fee; reconfirm bid/ask and available cash."
         )
@@ -389,11 +334,68 @@ with tabs[0]:
                     "Prior close above the 200WMA — initial buyback gate not observed")
     st.info(current_signal)
     st.caption("This is an entry-gate observation, not an assertion that the bear-market low is in.")
+    with st.expander("Market detail — BTC cycle top/bottom (A$), 200WMA and price chart",
+                     expanded=False):
+        c1,c2,c3,c4=st.columns(4)
+        c1.metric("BTC/USD historical close",f"US${market['btc_price_usd']:,.0f}")
+        c2.metric("Prior-observation 200WMA",f"US${market['prior_200wma_usd']:,.0f}")
+        c3.metric("Prior close / 200WMA",f"{market['prior_close_vs_200wma_pct']:+.1f}%")
+        c4.metric("Days from last confirmed halving",f"{market['halving_day']:,}")
 
-    st.subheader("Market history")
-    hist=market["price_history"]
-    st.line_chart(hist.tail(420).rename("BTC/USD daily price"))
-    st.caption("Chart is price only; all buy/sell decisions remain manual.")
+        st.subheader("Current cycle top and bottom (A$ BTC)")
+        st.caption("Observed Bitcoin prices in Australian dollars; percentages compare the latest available close with each level.")
+        try:
+            # Historic 2025 peak MUST be converted with FX from 2025,
+            # not today's AUD/USD. The standard public fetch only
+            # includes FX from December 2025 onwards.
+            cycle_historic_fx=cycle_fx_source("2024-04-20",market["asof_date"])
+            cycle_aud=observed_aud_cycle_levels(
+                market["price_history"],cycle_historic_fx,
+                asof=market["asof_date"])
+        except Exception as exc:
+            cycle_aud=None
+            st.warning("Historical cycle BTC/AUD extremes unavailable: "
+                       f"{type(exc).__name__}: {exc}. "
+                       "No unverified AUD prices are substituted.")
+        if cycle_aud is not None:
+            high_col,low_col,range_col=st.columns(3)
+            high_col.metric(
+                "Cycle TOP (BTC/AUD)",
+                f"A${cycle_aud['cycle_top_aud']:,.0f}",
+                delta=f"{cycle_aud['pct_change_from_top']:+.1f}% from top",
+                help=f"Observed high daily BTC/AUD close on {cycle_aud['cycle_top_date']}")
+            low_col.metric(
+                "Post-top BOTTOM (BTC/AUD)",
+                f"A${cycle_aud['cycle_bottom_aud']:,.0f}",
+                delta=f"{cycle_aud['pct_change_from_bottom']:+.1f}% from bottom",
+                help=f"Observed lowest daily BTC/AUD close after top on {cycle_aud['cycle_bottom_date']}")
+            range_col.metric(
+                "Position between bottom and top",
+                f"{cycle_aud['position_between_low_high_pct']:.1f}%",
+                help="0% = observed post-top bottom; 100% = observed cycle top.")
+            st.caption(
+                f"Bottom A${cycle_aud['cycle_bottom_aud']:,.0f} "
+                f"({cycle_aud['cycle_bottom_date']}) → "
+                f"Top A${cycle_aud['cycle_top_aud']:,.0f} "
+                f"({cycle_aud['cycle_top_date']}). "
+                f"Latest BTC/AUD daily close A${cycle_aud['last_price_aud']:,.0f} "
+                f"({cycle_aud['asof_date']}). "
+                "Range is since the 20 Apr 2024 halving, with the bottom "
+                "defined AFTER the observed top. Same-date historical FX; "
+                "daily closes, not intraday extremes or a prediction."
+            )
+
+        st.caption(
+            f"Confirmed halving 20 Apr 2024 • day 500: {market['day500_date']} "
+            f"• day 560: {market['day560_date']}. Both are **in the past**. "
+            "No rule should retroactively sell your BTC/ETF bought in 2026."
+        )
+        st.subheader("Market history")
+        hist=market["price_history"]
+        st.line_chart(hist.tail(420).rename("BTC/USD daily price"))
+        st.caption("Chart is price only; all buy/sell decisions remain manual.")
+
+
 
 with tabs[1]:
     st.subheader("Your saved My Portfolio — net holdings")
@@ -463,6 +465,8 @@ with tabs[1]:
         today=trade_today,
         ibit_quote=(automatic_ibit["price_aud"] if automatic_ibit else None),
         btc_aud_quote=market.get("btc_price_aud_estimate"),
+        price_history=market["price_history"],
+        historical_fx=cycle_historic_fx,
         store_error=store_error
     )
 
