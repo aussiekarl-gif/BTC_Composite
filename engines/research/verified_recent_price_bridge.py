@@ -343,7 +343,7 @@ def historical_entry_gate_transfer(history, *,
         start=f"{year}-01-01"
         end=pd.Timestamp(start,tz="UTC")+pd.Timedelta(weeks=52)
         prefix=h.loc[h.index<end]
-        if len(prefix)<110 or prefix.index[-1]<end-pd.Timedelta(weeks=2):
+        if len(prefix)<104 or prefix.index[-1]<end-pd.Timedelta(weeks=2):
             continue
         matched=benchmark_account(prefix,start,"immediate_buy",initial_cash=capital)
         buy_hold=matched["account_marked_value_aud"]
