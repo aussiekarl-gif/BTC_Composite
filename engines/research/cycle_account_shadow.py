@@ -78,6 +78,15 @@ def shadow_original_btc_exit(price,halving,saved,*,asof,asset="ASX:IBIT",
     if date not in price.index:
         base["reason"]="Completed BTC reference close unavailable for review date."
         return base
+    # A scheduled review is a single research tranche, not an invitation
+    # to repeat it after the user has already logged an executed same-day SELL.
+    if isinstance(saved,dict) and any(
+        record.get("Asset")==asset
+        and parse_date(record.get("Date"))==date.date()
+        for record in saved.get("sales",[])
+    ):
+        base["reason"]="A SELL is already recorded on this cycle review date."
+        return base
 
     historical=_dated_portfolio(saved,date.date(),exclusive=True)
     try:
