@@ -20,7 +20,8 @@ from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_position_anchor import original_cycle_inventory
-from engines.research.ibit_quote import fetch_ibit_quote
+from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
+from engines.research.cycle_halving_countdown import fetch_halving_countdown
 from engines.research.cycle_aud_price_levels import observed_aud_cycle_levels
 
 
@@ -57,6 +58,11 @@ def stored_portfolio():
 @st.cache_data(ttl=60*15,show_spinner=False)
 def cached_ibit_quote():
     return fetch_ibit_quote()
+
+
+@st.cache_data(ttl=60*60,show_spinner=False)
+def cached_halving_countdown():
+    return fetch_halving_countdown()
 
 
 with st.spinner("Loading historical BTC observations..."):
@@ -124,6 +130,7 @@ if st.button("Refresh market feed and My Portfolio",key="cycle_research_refresh"
     cycle_fx_source.clear()
     stored_portfolio.clear()
     cached_ibit_quote.clear()
+    cached_halving_countdown.clear()
     st.rerun()
 
 with st.spinner("Reading saved Portfolio for optional cash default..."):
@@ -143,6 +150,22 @@ except Exception as exc:
     automatic_ibit_error=f"{type(exc).__name__}: {exc}"
 
 cycle_historic_fx=None
+
+# This is a block-height projection, not a fixed four-year calendar promise.
+# It is independent from portfolio signals and cannot initiate a trade.
+halving_countdown=cached_halving_countdown()
+st.metric("Approx. days until next BTC halving",
+          f"~{halving_countdown['days_remaining']:,} days")
+st.caption(
+    f"Estimated {halving_countdown['estimated_date_utc']} UTC • "
+    + (f"block {halving_countdown['current_height']:,} → "
+       f"{halving_countdown['next_halving_height']:,} • "
+       f"{halving_countdown['blocks_remaining']:,} blocks left • "
+       if halving_countdown['height_verified'] else "")
+    + f"{halving_countdown['source']} • "
+    + halving_countdown['estimate_basis']
+    + ". Actual halving occurs at a block height, so the date will change."
+)
 
 tabs=st.tabs(["Trading decision", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
 
@@ -188,19 +211,24 @@ with tabs[0]:
                 f"{automatic_ibit['age_hours']:.1f} hours old • delayed/not executable"
             )
         else:
-            st.warning("ASX:IBIT quote unavailable: "+str(automatic_ibit_error))
+            st.warning(
+                "Automatic ASX:IBIT price feed is currently unavailable. "
+                "Press Refresh to retry; if it still fails, use a current broker quote. "
+                + str(automatic_ibit_error or "No dated Australian ETF quote returned.")
+            )
         manual_quote=st.checkbox(
-            "Override automatically sourced quote with broker price",
-            value=False,key="cycle_ibit_manual_override")
+            "Use my broker's ASX:IBIT price instead (optional)",
+            value=False,key="cycle_ibit_manual_override",
+            help="The AUD quote is automatic when available. Only enter a manual quote if you wish to override it.")
         quote_default=(automatic_ibit["price_aud"] if automatic_ibit else 0.)
-        ibit_quote=st.number_input(
-            "ASX:IBIT unit price for illustrative sizing, A$",
-            min_value=0.0,value=float(quote_default),step=0.10,format="%.2f",
-            disabled=not manual_quote,key="cycle_decision_ibit_quote",
-            help="Normally the recent ASX:IBIT indicative quote is used automatically. "
-                 "Tick override and enter a live broker quote when needed."
-        )
-        ibit_quote=(ibit_quote if manual_quote else quote_default)
+        if manual_quote:
+            ibit_quote=st.number_input(
+                "Broker's ASX:IBIT price in AUD per ETF unit",
+                min_value=0.0,value=float(quote_default),step=0.10,format="%.2f",
+                key="cycle_decision_ibit_quote",
+                help="Manually verify this AUD per-unit price in your broker before trading.")
+        else:
+            ibit_quote=quote_default
     with right:
         confirm_units=st.checkbox(
             "I have verified my currently held ASX:IBIT units in my broker",
@@ -246,8 +274,8 @@ with tabs[0]:
     d2.metric("Illustrative transaction",
               f"A${decision['action_aud']:,.2f}" if decision["action"]!="HOLD" else "A$0")
     d3.metric("ASX:IBIT whole units",
-              f"{decision['estimated_ibit_units']:,}"
-              if decision['estimated_ibit_units'] is not None else "Quote needed")
+              format_ibit_units_for_display(
+                  decision,quote_available=ibit_quote>0))
     if decision["action"]=="BUY":
         st.caption(
             f"{buy_percent:.2f}% × your selected available A$ cash "
