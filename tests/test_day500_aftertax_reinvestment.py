@@ -164,6 +164,36 @@ class AfterTaxBuybackTests(unittest.TestCase):
         self.assertIsNone(gate)
         self.assertEqual(orders,[])
 
+    def test_unbounded_wma_dca_uses_only_past_price_and_keeps_cash(self):
+        h,p,fx=market()
+        pre=pd.date_range(h-pd.Timedelta(days=1500),periods=1500,
+                          freq="D",tz="UTC")
+        warm=pd.Series(np.full(len(pre),100.),index=pre)
+        history=pd.concat([warm,p])
+        terminal=h+pd.Timedelta(days=950)
+        for style in ("adaptive_value","adaptive_recovery"):
+            a=simulate_roundtrip(
+                history,fx,h,terminal,seller="dynamic_90pct",
+                gate=.4,buyback_weeks=52,entry_mode="below_200wma",
+                buyback_style=style)
+            self.assertEqual(a["buyback_style"],style)
+            self.assertIsNone(a["planned_buyback_weeks"])
+            self.assertGreaterEqual(a["cash_remaining_aud"],0)
+            self.assertGreaterEqual(a["btc_held_after_buyback"],0)
+            # Later prices, after the accounting cutoff, MUST NOT
+            # modify earlier executable orders.
+            changed=history.copy()
+            changed.loc[terminal+pd.Timedelta(days=1):]=1e7
+            b=simulate_roundtrip(
+                changed,fx,h,terminal,seller="dynamic_90pct",
+                gate=.4,buyback_weeks=52,entry_mode="below_200wma",
+                buyback_style=style)
+            self.assertEqual(a,b)
+        with self.assertRaisesRegex(ValueError,"Adaptive style requires"):
+            simulate_roundtrip(
+                history,fx,h,terminal,seller="dynamic_90pct",gate=.4,
+                buyback_style="adaptive_value",entry_mode="drawdown")
+
     def test_invalid_fx_fails_closed(self):
         h,p,fx=market()
         fx=fx.loc[:h+pd.Timedelta(days=3)]
