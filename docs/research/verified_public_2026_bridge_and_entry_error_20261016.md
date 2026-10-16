@@ -165,3 +165,27 @@ All three gates invested more than **99.8%** of initial capital by Oct 12. Selli
 ### Transfer-risk warning
 
 A gate requiring Bitcoin to fall 30–50% can miss an entire bull market if no such correction occurs. The next research step is to run fixed 52-week **same-start-date** negative-control periods from 2018/2020/2022/2024, not to tune the 2026 gate retrospectively and immediately promote it. A 40% gate is a *candidate*, not a recommendation to leave all remaining personal capital in cash indefinitely. The customer's actual purchase dates and amount are NOT incorporated; the A$500k fresh cash model is hypothetical.
+
+
+## Causal drawdown gate transfer stress: seven fixed 52-week historical windows
+
+[Successfully validated CI run #38889569364](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38889569364). To check for 2026-specific overfitting, repeat 30/40/50% prior-week drawdown entry-activation rules across **2019, 2020, 2021, 2022, 2023, 2024 and 2025**, each starting with fresh hypothetical A$500k cash on January 1 and evaluating only prices over the next ~52 weeks. Every cohort's immediate-buy baseline begins on the identical executable Monday. Past prices can warm the indicators but not pre-fund historic portfolios.
+
+| Gate | Historical yearly windows | Gate triggered | Years gated strategy beat matched immediate-hold | Years underperformed | Median annual advantage |
+|---|---:|---:|---:|---:|---:|
+| 30% decline | 7 | 5 | **3 / 7** | 4 / 7 | **−8.922%** |
+| 40% decline | 7 | 5 | **3 / 7** | 4 / 7 | **−4.838%** |
+| 50% decline | 7 | 3 | **3 / 7** | 4 / 7 | **−17.091%** |
+
+Important historical examples, using 40%-decline activation:
+
+- **2020:** gate activated March 23, underperformed buy-and-hold by **4.84%**.
+- **2021:** gate activated May 31, underperformed by **37.25%**.
+- **2022:** gate activated Jan 31, outperformed buy-and-hold by **20.41%** during the bear decline.
+- **2023:** gate already met at Jan 2, underperformed buy-and-hold by **17.09%** because gradual buying lost upside during the rebound.
+- **2024:** gate *never* triggered: A$500k stayed cash versus hold ending A$1,226,238, missing **59.23% relative to hold**.
+- **2025:** gate never triggered, retained A$500k versus hold A$420,379, an **18.94% relative advantage** due to capital preservation.
+
+**Conclusion: a permanent hard 40% drawdown entry gate is NOT validated.** Its attractive Jan-2026 average buy error (19.36%) is not sufficient to justify ignoring 2024-type rising markets. Consider a predeclared *staged deployment/fallback* rather than all-or-nothing waiting, and validate across uptrends and bear markets, with taxes and incomplete buy exposure reported.
+
+The transfer analysis is a historical **regime robustness check**, not untouched out-of-sample proof; some rules were proposed after viewing the 2026 period, and a handful of overlapping BTC cycles does not establish predictive win rates. Production remains unchanged.
