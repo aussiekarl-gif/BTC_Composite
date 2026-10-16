@@ -15,6 +15,7 @@ from engines.research.top_signal_horse_race import HALVINGS,read_exported_histor
 from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.shared.portfolio_store import load_portfolio
 from engines.research.cycle_trade_decision import make_current_decision
+from engines.research.ibit_quote import fetch_ibit_quote
 
 
 st.title("Cycle Trading — Research")
@@ -45,6 +46,11 @@ def cycle_fx_source(halving,terminal):
 @st.cache_data(ttl=60*10,show_spinner=False)
 def stored_portfolio():
     return load_portfolio()
+
+
+@st.cache_data(ttl=60*15,show_spinner=False)
+def cached_ibit_quote():
+    return fetch_ibit_quote()
 
 
 def merge_verified_daily(archive,remote):
@@ -138,6 +144,7 @@ st.caption(
 if st.button("Refresh market feed and My Portfolio",key="cycle_research_refresh"):
     public_source.clear()
     stored_portfolio.clear()
+    cached_ibit_quote.clear()
     st.rerun()
 
 with st.spinner("Reading saved Portfolio for optional cash default..."):
@@ -148,6 +155,13 @@ starting_cash_default=(
     if saved_cash.get("valid") and saved_cash.get("rows",0)>0
     else 50000.
 )
+
+try:
+    automatic_ibit=cached_ibit_quote()
+    automatic_ibit_error=None
+except Exception as exc:
+    automatic_ibit=None
+    automatic_ibit_error=f"{type(exc).__name__}: {exc}"
 
 tabs=st.tabs(["Current signals", "My Portfolio (read-only)", "Historical sell & buyback"])
 
@@ -174,12 +188,28 @@ with tabs[0]:
             help="Prefilled from saved 2026 portfolio, never from hypothetical historic cycle accounts. "
                  "Do not enter more than cash actually available in My Portfolio."
         )
+        if automatic_ibit is not None:
+            st.metric("ASX:IBIT automatic indicative quote",
+                      f"A${automatic_ibit['price_aud']:,.2f}")
+            st.caption(
+                f"{automatic_ibit['provider']} • observed "
+                f"{automatic_ibit['timestamp_utc']} UTC • "
+                f"{automatic_ibit['age_hours']:.1f} hours old • delayed/not executable"
+            )
+        else:
+            st.warning("ASX:IBIT quote unavailable: "+str(automatic_ibit_error))
+        manual_quote=st.checkbox(
+            "Override automatically sourced quote with broker price",
+            value=False,key="cycle_ibit_manual_override")
+        quote_default=(automatic_ibit["price_aud"] if automatic_ibit else 0.)
         ibit_quote=st.number_input(
-            "Current broker ASX:IBIT unit price, A$",
-            min_value=0.0,value=0.0,step=0.10,format="%.2f",
-            key="cycle_decision_ibit_quote",
-            help="Enter the current executable ETF price manually. BTC/USD is not an ETF quote."
+            "ASX:IBIT unit price for illustrative sizing, A$",
+            min_value=0.0,value=float(quote_default),step=0.10,format="%.2f",
+            disabled=not manual_quote,key="cycle_decision_ibit_quote",
+            help="Normally the recent ASX:IBIT indicative quote is used automatically. "
+                 "Tick override and enter a live broker quote when needed."
         )
+        ibit_quote=(ibit_quote if manual_quote else quote_default)
     with right:
         confirm_units=st.checkbox(
             "I have verified my currently held ASX:IBIT units in my broker",
@@ -219,7 +249,7 @@ with tabs[0]:
     if decision.get("sell_signal") and decision["action"]=="HOLD":
         st.warning("Potential SELL watch, but no sell sizing until valid broker holdings and quote are confirmed.")
     if decision["action"]=="BUY" and decision.get("quote_aud") is None:
-        st.warning("Research BUY signal only. Enter the broker's ASX:IBIT quote to calculate actual ETF units.")
+        st.warning("Research BUY signal only. Automatic quote is missing; tick override and enter the broker's ASX:IBIT unit price.")
     if decision["action"]=="SELL":
         st.warning(
             "Before selling, check FIFO tax lots, 12-month CGT discount eligibility, "
