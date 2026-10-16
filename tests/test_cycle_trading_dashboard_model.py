@@ -74,7 +74,7 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
 
     def test_missing_ibit_btc_price_does_not_fabricate_exposure(self):
         r=portfolio_snapshot({"starting_capital_aud":500000,
-                              "rows":[{"Asset":"ASX:IBIT","AUD Spent":2500,
+                              "rows":[{"Date":"19/06/26","Asset":"ASX:IBIT","AUD Spent":2500,
                                        "Brokerage / Fee AUD":3,
                                        "Units / BTC Received":120,
                                        "BTC AUD Price":0}]})
