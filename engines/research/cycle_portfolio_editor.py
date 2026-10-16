@@ -52,7 +52,7 @@ def show_portfolio_editor(portfolio,*,today,ibit_quote=None,btc_aud_quote=None,
                               key="cycle_editor_day")
             qty=st.number_input(
                 "Quantity — whole ASX:IBIT units or direct BTC",
-                min_value=0.0,value=0.0,step=1.0,format="%.8f",
+                min_value=0.0,value=0.0,step=(1.0 if asset=="ASX:IBIT" else .00000001),format="%.8f",
                 key="cycle_editor_qty")
         with right:
             suggest=(ibit_quote if asset=="ASX:IBIT" else btc_aud_quote) or 0.
