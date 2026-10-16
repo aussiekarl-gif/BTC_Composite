@@ -27,7 +27,7 @@ class WMAWindowTests(unittest.TestCase):
         for weeks in (12, 16):
             only_buys = self.frame.iloc[:6].copy()
             extra = pd.DataFrame(
-                {"btc_price_aud": [90] * 20, "wma_200": [100] * 20},
+                {"btc_price_aud": [100] * 20, "wma_200": [100] * 20},
                 index=pd.date_range(only_buys.index[-1] + pd.Timedelta(weeks=1),
                                     periods=20, freq="W-MON"))
             d = pd.concat([only_buys, extra])
