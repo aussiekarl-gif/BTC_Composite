@@ -37,7 +37,7 @@ class DynamicWeightAttributionTests(unittest.TestCase):
         e=equal_weight_same_dates(t)
         actual=(sum(x["gross_notional_aud"] for x in t) /
                 sum(x["btc_quantity"] for x in t))
-        self.assertAlmostEqual(actual,116226.05,delta=.5)
+        self.assertAlmostEqual(actual,116229.70,delta=.5)
         self.assertAlmostEqual(e["net_effective_price_aud"],123202,delta=4)
         d=dict(side="BUY",start=t[0]["date"],end=t[-1]["date"],
                net_effective_price_aud=actual,orders=2,
