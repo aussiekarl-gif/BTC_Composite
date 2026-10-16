@@ -106,6 +106,10 @@ def chronological_holdout(frame, *, split_fraction=0.70, capital=500_000.,
         "test_buy_hold_ending_equity_aud": float(hold_value),
         "test_excess_equity_aud": float(test_history.equity_aud.iloc[-1] - hold_value),
         "test_fees_aud": float(test_history.fee_aud.sum()),
+        "test_buy_count": int((test_history.action == "BUY").sum()),
+        "test_sell_count": int((test_history.action == "SELL").sum()),
+        "test_btc_exposure_weeks": int((test_history.btc_held > 1e-10).sum()),
+        "test_btc_exposure_pct": float(100*(test_history.btc_held > 1e-10).mean()),
         "test_max_drawdown_pct": float(100*(test_history.equity_aud /
                                       test_history.equity_aud.cummax()-1).min()),
     }
