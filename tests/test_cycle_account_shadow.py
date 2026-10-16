@@ -85,6 +85,15 @@ class AccountShadowParityTests(unittest.TestCase):
         self.assertEqual(result["pct_original"],5.)
         self.assertEqual(result["action"],"SELL REVIEW")
 
+    def test_duplicate_same_day_sold_position_not_recommended_again(self):
+        saved={"starting_capital_aud":500000.,
+               "rows":[bought("2024-05-01",300,asset="ASX:IBIT")],
+               "sales":[sold("2025-09-02",15,asset="ASX:IBIT")]}
+        result=shadow_original_btc_exit(
+            self.history,"2024-04-20",saved,asof="2025-09-02")
+        self.assertEqual(result["action"],"HOLD")
+        self.assertIn("already recorded",result["reason"])
+
     def test_only_review_dates_and_no_executable_orders(self):
         saved={"starting_capital_aud":500000.,
                "rows":[bought("2024-05-01",300,asset="ASX:IBIT")]}
