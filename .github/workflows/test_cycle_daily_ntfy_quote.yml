@@ -6,7 +6,9 @@ on:
       - "engines/research/ibit_quote.py"
       - "engines/research/cycle_trading_app.py"
       - "cycle_trading_daily_ntfy.py"
+      - "engines/research/cycle_trade_allocation.py"
       - "tests/test_cycle_daily_ntfy_quote.py"
+      - "tests/test_cycle_trading_pct_allocation.py"
       - ".github/workflows/cycle_trading_daily_ntfy.yml"
       - ".github/workflows/dca_model_compare_notify.yml"
       - ".github/workflows/validation_research_tuning.yml"
@@ -28,3 +30,6 @@ jobs:
       - run: python -m py_compile engines/research/ibit_quote.py engines/research/cycle_trading_app.py cycle_trading_daily_ntfy.py
       - run: python -m unittest discover -s tests -p 'test_cycle_daily_ntfy_quote.py' -v
       - run: python -m unittest discover -s tests -p 'test_cycle_trade_decision.py' -v
+      - name: Verify Streamlit and ntfy percentages match
+        run: python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+
