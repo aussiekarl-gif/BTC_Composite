@@ -139,6 +139,111 @@ def adaptive_weekly_exit(price, halving, *, policy="balanced",
     }
 
 
+
+# New structured exit: early 5% hedge + flexible maturity-window bulk,
+# followed by a genuinely UNBOUNDED-by-schedule tail (tracked to day730).
+# Both candidate core shares are deliberately registered BEFORE running
+# this feature's historical tests, but prior models inspired the proposal.
+STAGED_POLICIES={
+    "maturity_80pct": {"initial":.05,"core_fraction":.80},
+    "maturity_90pct": {"initial":.05,"core_fraction":.90},
+}
+
+
+def staged_day500_dynamic_exit(price, halving, *, policy="maturity_80pct",
+                               review_day=REVIEW_DAY):
+    """Small first sale day500, heavy core around 525–560, variable tail.
+
+    "core_fraction" is total ORIGINAL BTC allocated for sale on the
+    six known maturity review dates. Each tranche is scaled using ONLY
+    the previous day's price regime. No compelled 100% liquidation on
+    day560; remaining BTC sold weekly if observed strengthening/weakness
+    warrants it. Day730 is an EVALUATION point, not forced exit.
+    """
+    if policy not in STAGED_POLICIES:
+        raise ValueError("Unknown stage parameters")
+    if review_day<=START_DAY+60:
+        raise ValueError("Insufficient post-day500 observations")
+    start=halving+pd.Timedelta(days=START_DAY)
+    end=halving+pd.Timedelta(days=review_day)
+    _validate_price(price,start,end)
+    p=STAGED_POLICIES[policy]
+    initial=float(p["initial"])
+    core=float(p["core_fraction"])
+    if initial+core>1 or core<0:
+        raise ValueError("Invalid core allocation")
+    # Six planned maturity dates known in advance, not chosen after
+    # observing prices inside the original simulation.
+    anchor_days=(525,532,539,546,553,560)
+    anchor_weights=(6.,5.,4.,3.,2.,1.)
+    anchor_values={j:(core*w/sum(anchor_weights))
+                   for j,w in zip(anchor_days,anchor_weights)}
+    left=1.
+    proceeds=0.
+    trades=[]
+    for d in [START_DAY]+list(range(START_DAY+7,review_day+1,7)):
+        # Critical: anchor days 525+7*n do NOT coincide with
+        # day500+7*n (525 mod7 differs). Include BOTH streams.
+        pass
+    calendar=sorted(set([START_DAY]+list(range(START_DAY+7,review_day+1,7))
+                        +list(anchor_days)))
+    for d in calendar:
+        if d>review_day or left<=1e-10:
+            break
+        day=halving+pd.Timedelta(days=d)
+        px=float(price.loc[day])
+        if d==500:
+            regime="maturity-start"
+            portion=min(left,initial)
+        elif d in anchor_values:
+            regime,metrics=_prior_state(price,day)
+            # Strength sells more near the high, confirmed deterioration
+            # also accelerates risk reduction; only past closes used.
+            factor={"high":1.20,"neutral":.75,"breakdown":1.30}[regime]
+            portion=min(left,anchor_values[d]*factor)
+        elif d<525:
+            # No assumption that strength persists between day500 and
+            # the anchor. Sell tiny additional amount only on a
+            # clearly observable price breakdown.
+            regime,metrics=_prior_state(price,day)
+            portion=min(left,.025) if regime=="breakdown" else 0.
+        elif d>560:
+            regime,metrics=_prior_state(price,day)
+            portion=min(left,{"high":.045,"neutral":.012,
+                              "breakdown":.070}[regime])
+        else:
+            # Day 500+7*n falls between explicit anchor days;
+            # don't double-order. Make decisions only on anchor dates.
+            continue
+        if portion<=1e-12:
+            continue
+        left-=portion
+        proceeds+=portion*px
+        trades.append({
+            "date":str(day.date()),"halving_day":d,
+            "signal_regime":regime,
+            "btc_sold":round(portion,10),
+            "execution_price_usd_per_btc":round(px,2),
+            "cash_proceeds_usd":round(portion*px,4)})
+    if left<1e-10:left=0.
+    sold=1-left
+    return {
+        "model":"day500_staged_dynamic_"+policy,
+        "first_order_date":trades[0]["date"] if trades else None,
+        "last_order_date":trades[-1]["date"] if trades else None,
+        "btc_sold":round(sold,9),"btc_left":round(left,9),
+        "gross_proceeds_usd":round(proceeds,4),
+        "executed_btc_weighted_sale_price_usd":(
+            round(proceeds/sold,2) if sold>0 else None),
+        "orders":len(trades),
+        "brokerage_aud_3_per_order":3*len(trades),
+        "ending_mark_usd":round(proceeds+left*float(price.loc[end]),4),
+        "end_observation_date":str(end.date()),
+        "sale_detail":trades,
+    }
+
+
+
 def baseline_exit(price,halving,*,policy="weekly_525"):
     date=halving+pd.Timedelta(days=REVIEW_DAY)
     _validate_price(price,halving+pd.Timedelta(days=START_DAY),date)
@@ -188,6 +293,8 @@ def evaluate_all(history):
         ]
         scenarios.extend(adaptive_weekly_exit(price,halving,policy=p)
                          for p in POLICIES)
+        scenarios.extend(staged_day500_dynamic_exit(price,halving,policy=p)
+                         for p in STAGED_POLICIES)
         for row in scenarios:
             soldprice=row["executed_btc_weighted_sale_price_usd"]
             row["sale_vwap_error_below_hindsight_top_pct"]=(
@@ -238,6 +345,7 @@ def evaluate_all(history):
         "data_start":str(price.index[0]),
         "data_end":str(price.index[-1]),
         "rule_parameters":POLICIES,
+        "staged_rule_parameters":STAGED_POLICIES,
         "cycle_results":results,
         "summary":summary,
         "warnings":[
@@ -247,6 +355,8 @@ def evaluate_all(history):
             "No policy is guaranteed to find every future peak or increase after-tax repurchase BTC.",
             "Terminal marked wealth on day730 equals sale cash + unsold BTC valued at day730 BTC/USD.",
             "Average price of sold BTC alone is not a success unless meaningful BTC proportion is sold; threshold 75% is reported separately.",
+            "Staged-core dynamic exits sell 5% on day500, schedule most BTC on six calendar dates 525-560 with PREVIOUS-price 0.75/1.20/1.30 multipliers, then continue weekly while holdings remain.",
+            "The day730 mark is only evaluation; the staged dynamic rule does NOT force-liquidate residual positions.",
             "USD gross; AUD3 order fees displayed but NOT deducted from USD wealth, no FX/ETF costs or SMSF CGT.",
             "Historical source CSVs created in 2026; past vintage risk indicators are NOT used.",
             "User actual A$500k was deployed in 2026, so 2024 halving day500 in Sep 2025 has ALREADY PASSED.",
