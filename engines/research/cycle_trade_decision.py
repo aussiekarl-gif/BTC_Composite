@@ -27,14 +27,11 @@ from engines.research.cycle_trading_dashboard_model import (
     FEE_AUD, planned_buy_order,
     portfolio_snapshot,
 )
+from engines.research.cycle_trade_allocation import (
+    SELL_REVIEW_DAY_WEIGHTS,calculate_allocation_signal,_prior_top_state,
+)
 
 
-SELL_REVIEW_DAY_WEIGHTS = {
-    500: 0.05, 525: 0.24, 532: 0.20, 539: 0.16,
-    546: 0.12, 553: 0.08, 560: 0.05,
-}
-# 5% on day500 + 85% in 525..560, remainder outside fixed
-# schedule retained for independently confirmed conditions.
 MAX_STALE_DAYS = 3
 MIN_ORDER_AUD = 100.
 
@@ -48,31 +45,8 @@ def _nonnegative_number(value):
 
 
 def _top_state(market):
-    """Strictly completed previous closes for all momentum inputs."""
-    history=market["price_history"]
-    if not isinstance(history,pd.Series) or len(history)<120:
-        raise ValueError("Insufficient completed trend history")
-    # Current market asof close is NEVER used to determine today's action.
-    completed=history.iloc[:-1]
-    if len(completed)<104:
-        raise ValueError("Insufficient prior price history")
-    prev=float(completed.iloc[-1])
-    high90=float(completed.iloc[-90:].max())
-    recent50=float(completed.iloc[-50:].mean())
-    old50=float(completed.iloc[-64:-14].mean())
-    ma200=float(market["prior_200wma_usd"])
-    if min(prev,high90,recent50,old50,ma200)<=0:
-        raise ValueError("Invalid market price history")
-    drawdown=max(0.,1-prev/high90)
-    near_high=(prev>=.95*high90)
-    breakdown=(drawdown>=.15 and prev<recent50 and recent50<old50)
-    return {
-        "near_prior_90day_high":near_high,
-        "bearish_rollover_confirmed":breakdown,
-        "prior_90day_drawdown_pct":round(drawdown*100,2),
-        "prior_price_over_200wma":round(prev/ma200,4),
-        "prior_sma50_declining":bool(recent50<old50),
-    }
+    """Backward-compatible alias; same causal signal used by ntfy."""
+    return _prior_top_state(market)
 
 
 def make_current_decision(
@@ -100,12 +74,18 @@ def make_current_decision(
         "data_ok":False,"why":[],"warnings":[
             "Research illustration only; not an executable broker order.",
             "Actual SMSF CGT depends on fund phase, parcel purchase dates and cost bases.",
-            "This dashboard does not save or reconcile completed SALE orders."
+            "Recorded sells must match broker holdings; the dashboard cannot place orders."
         ],
         "sell_signal":None,
         "buy_signal":None,
         "brokerage_aud":FEE_AUD,
         "quote_required_for_units":True,
+        "market_signal":"UNAVAILABLE",
+        "buy_pct_total_cash":0.,
+        "sell_pct_total_holdings":0.,
+        "trade_pct_of_portfolio_balance":0.,
+        "trade_percentage_denominator":None,
+        "effective_ibit_pct_held_after_rounding":None,
     }
     try:
         day=pd.Timestamp(today)
@@ -136,12 +116,12 @@ def make_current_decision(
     if portfolio["unpriced_or_unknown_rows"]:
         base["why"].append("Some portfolio rows lack valid BTC prices or asset types; reconcile before sizing.")
         return base
-    if portfolio["spent_aud"]+portfolio["fees_aud"]>portfolio["capital_aud"]+0.01:
-        base["why"].append("Recorded purchases exceed starting capital; cash needs reconciliation.")
-        return base
+    # Saved cash already nets all purchases, fees AND executed SELL proceeds.
+    # Do not wrongly reject a valid reinvestment after selling BTC or IBIT.
     base["data_ok"]=True
     base["portfolio_cash_remaining_aud"]=portfolio["cash_remaining_aud"]
-    base["recorded_ibit_units_purchases_only"]=portfolio["ibit_units"]
+    base["recorded_ibit_units_net"]=portfolio["ibit_units"]
+    base["recorded_direct_btc_net"]=portfolio["direct_btc"]
     quote=_nonnegative_number(ibit_price_aud)
     if quote is not None and quote>0:
         base["quote_aud"]=quote
@@ -151,11 +131,26 @@ def make_current_decision(
         base["why"].append("You marked this signal date as already traded; no duplicate transaction.")
         return base
     try:
-        top=_top_state(market)
-    except (ValueError,KeyError):
-        base["why"].append("Insufficient prior completed prices for sell-top confirmation.")
+        model_signal=calculate_allocation_signal(market,buy_style=buy_style)
+    except (ValueError,KeyError,TypeError):
+        base["why"].append("Insufficient or inconsistent completed prices for cycle allocation.")
         return base
-    base.update(top)
+    base.update({
+        "market_signal":model_signal["signal"],
+        "buy_pct_total_cash":model_signal["buy_pct_cash"],
+        "sell_pct_total_holdings":model_signal["sell_pct_held"],
+        "signal_reason":model_signal["reason"],
+        "trade_percentage_denominator":(
+            model_signal["denominator_buy"] if model_signal["signal"]=="BUY WATCH"
+            else model_signal["denominator_sell"] if model_signal["signal"]=="SELL WATCH"
+            else None
+        ),
+    })
+    base.update({name: model_signal[name] for name in (
+        "near_prior_90day_high","bearish_rollover_confirmed",
+        "prior_90day_drawdown_pct","prior_price_over_200wma",
+        "prior_sma50_declining"
+    )})
 
     # An observed undervaluation overrides any potential post-top exit.
     # A below-200WMA environment is explicitly for ACCUMULATION research.
@@ -178,7 +173,12 @@ def make_current_decision(
         base["action"]="BUY"
         base["action_aud"]=round(amount,2)
         base["btc_equivalent_estimate"]=proposal["btc_equivalent_estimate"]
-        base["allocation_pct_of_available_cash"]=proposal["pct_available_cash"]
+        if abs(proposal["pct_available_cash"]-model_signal["buy_pct_cash"])>1e-6:
+            base["action"]="HOLD"
+            base["why"].append("DCA percentage disagreement between shared signal and execution sizing.")
+            return base
+        base["allocation_pct_of_available_cash"]=model_signal["buy_pct_cash"]
+        base["trade_pct_of_portfolio_balance"]=model_signal["buy_pct_cash"]
         base["why"] += [
             base["buy_signal"],
             f"{buy_style}: allocate {proposal['pct_available_cash']}% of available AUD cash.",
@@ -195,43 +195,28 @@ def make_current_decision(
                 base["why"].append("The amount is insufficient for one whole ETF unit at the entered price.")
         return base
 
-    # After 200WMA recovery there is no trustworthy persisted active-
-    # buyback trade state; do NOT pretend today's session knows whether
-    # previous rebuy orders were already executed.
-    elapsed=int(market["halving_day"])
-    near=top["near_prior_90day_high"]
-    ratio=top["prior_price_over_200wma"]
-    rollover=top["bearish_rollover_confirmed"]
-    if elapsed in SELL_REVIEW_DAY_WEIGHTS and near and ratio>=1.25:
-        pct=SELL_REVIEW_DAY_WEIGHTS[elapsed]
-        base["sell_signal"]=(
-            f"Halving day {elapsed} scheduled distribution review; "
-            "prior BTC close near its 90-day high and above 1.25×200WMA."
-        )
-    elif elapsed>560 and ratio>=1.40 and rollover:
-        pct=.05
-        base["sell_signal"]=(
-            "EXPERIMENTAL late-cycle price rollover: previous close >1.4×200WMA, "
-            "15% below prior 90-day high and below a declining 50-day average."
-        )
-        base["warnings"].append(
-            "Late-cycle rollover rule is unvalidated as a prospective SELL trigger."
-        )
-    else:
+    # Use EXACT same price-only research signal as the daily notification.
+    # A seller must still confirm current broker ETF units, and tax lots.
+    if model_signal["signal"]!="SELL WATCH":
         base["why"].append(
             "No eligible mature-cycle distribution day or confirmed late-top rollover; HOLD."
         )
-        if elapsed>560:
+        if int(market["halving_day"])>560:
             base["why"].append(
                 "The 2024-halving day-500 sell date passed before your actual 2026 deployment."
             )
         return base
-
+    pct=model_signal["sell_pct_held"]/100.
+    base["sell_signal"]=model_signal["reason"]
+    if model_signal.get("experimental"):
+        base["warnings"].append(
+            "Late-cycle rollover rule is unvalidated as a prospective SELL trigger."
+        )
     units=_nonnegative_number(verified_current_ibit_units)
     if units is None or units<=0:
         base["why"].append(
             "SELL signal is informational until you confirm ACTUAL current ETF units "
-            "at your broker; purchase-only portfolio cannot prove unsold inventory."
+            "at your broker; recorded transactions must still be confirmed against broker inventory."
         )
         return base
     if base["quote_aud"] is None:
@@ -239,7 +224,7 @@ def make_current_decision(
         return base
     if units>portfolio["ibit_units"]+0.000001:
         base["why"].append(
-            "Verified units exceed saved purchased units. Reconcile portfolio before sell sizing."
+            "Broker-confirmed units exceed net recorded IBIT units. Reconcile BUY and SELL ledger."
         )
         return base
     qty=int(math.floor(units*pct+1e-9))
@@ -251,13 +236,20 @@ def make_current_decision(
         base["why"].append("Sell consideration too small relative to minimum transaction.")
         return base
     base["action"]="SELL"
+    base["trade_pct_of_portfolio_balance"]=model_signal["sell_pct_held"]
+    base["effective_ibit_pct_held_after_rounding"]=round(100*qty/units,3)
+    # Informational BTC quantity if holdings include DIRECT BTC as well.
+    base["direct_btc_sale_pct"]=model_signal["sell_pct_held"]
+    base["direct_btc_sale_quantity_estimate"]=round(
+        float(portfolio.get("direct_btc") or 0)*pct,8
+    )
     base["action_aud"]=round(gross,2)
     base["suggested_ibit_units"]=qty
     base["estimated_ibit_units"]=qty
     base["estimated_net_sale_aud_before_cgt"]=round(gross-FEE_AUD,2)
     base["why"] += [
         base["sell_signal"],
-        f"Research tranche is {pct:.0%} of broker-confirmed holdings, rounded down to whole ETF units.",
+        f"Research tranche is {pct:.0%} of current broker-confirmed holdings, rounded down to whole ETF units.",
         "CGT is not estimated without verified SMSF tax lots; review your actual tax basis before selling."
     ]
     return base
