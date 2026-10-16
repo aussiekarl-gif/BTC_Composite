@@ -363,12 +363,65 @@ def evaluate_all(history):
     }
 
 
+
+def synthetic_peak_timing_stress():
+    """Known *fictional* alternative future price paths, not forecasts.
+
+    Exact deterministic scenarios clarify which timing risks the historical
+    2017/21/25 fit cannot reveal: a day510 crash, a day680 extended bull
+    and a trend that continues rising throughout the window.
+    """
+    halving=pd.Timestamp("2020-05-11",tz="UTC")
+    ix=pd.date_range(halving,periods=790,freq="D",tz="UTC")
+    days=np.arange(len(ix))
+    cases={
+        "early_peak_then_crash_day510":(
+            [0,450,500,510,525,560,730,789],
+            [100,300,400,460,240,210,170,155]),
+        "late_peak_day680":(
+            [0,450,500,560,600,680,730,789],
+            [100,220,300,390,520,1200,900,800]),
+        "uninterrupted_bull_market":(
+            [0,500,560,650,730,789],
+            [100,300,450,680,980,1150]),
+    }
+    results=[]
+    for label,(anchors,values) in cases.items():
+        closes=pd.Series(np.interp(days,anchors,values),index=ix)
+        trio=[
+            baseline_exit(closes,halving,policy="hold"),
+            baseline_exit(closes,halving,policy="weekly_525"),
+            staged_day500_dynamic_exit(closes,halving,
+                                       policy="maturity_90pct"),
+        ]
+        hold=trio[0]["ending_mark_usd"]
+        result={
+            "scenario":label,
+            "review_day730_price_usd":round(hold,2),
+            "outcomes":[{
+                "model":x["model"],
+                "terminal_mark_usd":x["ending_mark_usd"],
+                "relative_to_hold_pct":round(100*(x["ending_mark_usd"]/hold-1),3),
+                "btc_sold":x["btc_sold"],
+                "remaining_btc":x["btc_left"],
+                "orders":x["orders"],
+            } for x in trio],
+        }
+        results.append(result)
+    return results
+
+
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--output",default="")
     args=p.parse_args()
     raw=read_exported_history()
-    out=json.dumps(evaluate_all(raw),indent=2,allow_nan=False)
+    report=evaluate_all(raw)
+    report["fictional_shifted_peak_stress"]=synthetic_peak_timing_stress()
+    report["warnings"].append(
+        "Fictional synthetic price paths are designed to illustrate earlier/later top risk, not independently sampled historical observations.")
+    out=json.dumps(report,indent=2,allow_nan=False)
     if args.output:
         Path(args.output).write_text(out+"\n",encoding="utf-8")
     print(out)
