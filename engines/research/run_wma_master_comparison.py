@@ -27,6 +27,26 @@ def main():
         raise ValueError("Discontinuous AUD weekly observations; refusing backtest")
     result = compare(weekly)
     holdout = chronological_holdout(weekly)
+    # Equal-start capital benchmark, including the same initial 0.10% fee.
+    first_price = float(weekly["btc_price_aud"].iloc[0])
+    hold_btc = 500_000.0 * (1.0 - 0.001) / first_price
+    hold_equity = hold_btc * weekly["btc_price_aud"].astype(float)
+    hold_drawdown = (hold_equity / hold_equity.cummax() - 1.0).min()
+    benchmark = {
+        "ending_equity_aud": float(hold_equity.iloc[-1]),
+        "btc_held": float(hold_btc),
+        "max_drawdown_pct": float(100.0 * hold_drawdown),
+        "fees_aud": 500.0,
+    }
+    # Reject a promotion recommendation if performance has not beaten the
+    # no-trading benchmark, or if the out-of-sample simulation made no trades.
+    holdout_trade_count = int(holdout.get("test_buy_count", 0)) + int(holdout.get("test_sell_count", 0))
+    research_gates = {
+        "out_of_sample_outperformance": bool(holdout["test_excess_equity_aud"] > 0),
+        "holdout_has_trades": bool(holdout_trade_count > 0),
+        "automatically_promotable": False,
+        "reason": "Further independent tests and explicit approval required.",
+    }
     report = {
         "source": "read-only central BTC research master, btc_price_aud",
         "currency": "AUD",
@@ -34,6 +54,8 @@ def main():
         "date_end": weekly.index.max().isoformat(),
         "observations": len(weekly),
         "all_variants": result.to_dict(orient="records"),
+        "full_period_buy_and_hold": benchmark,
+        "research_gates": research_gates,
         "holdout": holdout,
         "limitations": [
             "Closing-price fills are hypothetical; add spreads/slippage before promotion.",
