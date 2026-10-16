@@ -411,6 +411,8 @@ def synthetic_peak_timing_stress():
             baseline_exit(closes,halving,policy="weekly_525"),
             staged_day500_dynamic_exit(closes,halving,
                                        policy="maturity_90pct"),
+            staged_day500_dynamic_exit(closes,halving,
+                                       policy="maturity_90pct_holdback20pct"),
         ]
         hold=trio[0]["ending_mark_usd"]
         result={
