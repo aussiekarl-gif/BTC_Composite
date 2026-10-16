@@ -1,0 +1,67 @@
+name: One-time live Cycle Trading ntfy test
+on:
+  push:
+    branches:
+      - test/live-cycle-ntfy-20261017-0955
+permissions:
+  contents: read
+jobs:
+  real-market-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Prepare and send ONLY IF fresh real prices and real Cycle signal exist
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: |
+          python - <<'PY'
+          import os,datetime as dt
+          from cycle_trading_daily_ntfy import daily_message,send_ntfy
+          from engines.research.cycle_model_redflags import (
+              fetch_reference_model_risks,MODELS,
+          )
+          if not os.getenv("NTFY_TOPIC","").strip():
+              raise RuntimeError("No destination configured; test not sent.")
+          snapshots=fetch_reference_model_risks()
+          day,body=daily_message(reference_snapshot_fetcher=lambda:snapshots)
+          # Refuse an empty, made-up or unavailable-data test.
+          checks={
+              "dated Bitcoin close":"BTC close US$" in body,
+              "prior 200WMA":"Prior 200WMA US$" in body,
+              "real Cycle signal":"Cycle signal: DATA UNAVAILABLE" not in body
+                  and "Cycle signal: " in body,
+              "real ASX AUD IBIT quote":"ASX:IBIT A$" in body,
+          }
+          print("Real market-data preflight:",checks)
+          for name in MODELS:
+              snap=snapshots.get(name)
+              print(name,"reference status:",
+                    "fetched dated risk "+str(snap.get("risk_data_date")) if snap else "unavailable")
+          if not all(checks.values()):
+              raise RuntimeError("Test NOT SENT: required dated live price/signal data unavailable.")
+          # The text below never substitutes fabricated indicators or scores.
+          # It leaves legitimate 'no data' statuses untouched.
+          extra=[]
+          for model in MODELS:
+              snap=snapshots.get(model)
+              if snap:
+                  extra.append(
+                      f"{model} latest risk score: {float(snap['risk']):.2f} "
+                      f"(observed {snap['risk_data_date']}; informational)"
+                  )
+          text=(
+              "LIVE-DATA TEST - Cycle Trading (requested by user)\n"
+              "One-time actual-market test; separate from the scheduled 10 AM summary.\n\n"
+              + body +
+              ("\n\nActual cross-model reference readings:\n"
+               + "\n".join(extra) if extra else
+               "\n\nReference risk scores could not be refreshed; no values invented.")
+          )
+          send_ntfy(text,topic=os.environ["NTFY_TOPIC"])
+          print("LIVE_DATA_NTFY_SEND_SUCCESS")
+          PY
