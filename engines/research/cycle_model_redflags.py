@@ -108,6 +108,74 @@ def evaluate_major_red_flags(*, buy_pct_cash, sell_pct_held, snapshots,
 
 
 
+def validated_reference_risk_scores(*, snapshots, market_asof, today,
+                                     confirmed_halving_date="2024-04-20"):
+    """Validate model scores independently with the same dated cutoff as Cycle.
+
+    Returns only fresh scores, with no imaginary agreement on HOLD.
+    """
+    scores={}
+    try:
+        asof=_date(market_asof)
+        current=_date(today)
+        if not 0<=(current-asof).days<=MAX_MODEL_AGE_DAYS:
+            return scores
+        if _date(confirmed_halving_date)>dt.date(2024,4,20):
+            return scores
+        if not isinstance(snapshots,dict):
+            return scores
+    except (TypeError,ValueError,OverflowError):
+        return scores
+    for name in MODELS:
+        try:
+            item=snapshots[name]
+            score=float(item["risk"])
+            observed=_date(item["risk_data_date"])
+            if (math.isfinite(score) and 0<=score<=1
+                and 0<=(current-observed).days<=MAX_MODEL_AGE_DAYS
+                and 0<=(asof-observed).days<=MAX_SOURCE_ASOF_GAP_DAYS):
+                scores[name]=score
+        except (TypeError,KeyError,ValueError,OverflowError):
+            pass
+    return scores
+
+
+def daily_reference_labels(*, buy_pct_cash, sell_pct_held, snapshots,
+                           market_asof, today,
+                           confirmed_halving_date="2024-04-20"):
+    """Explain HOLD without mistaking *no trade to compare* for missing data.
+
+    Agreement on BUY/SELL only means no extreme opposing risk regime,
+    never identical recommendations, and non-actionable HOLD is not agreement.
+    """
+    output={name:"no data" for name in MODELS}
+    scores=validated_reference_risk_scores(
+        snapshots=snapshots,market_asof=market_asof,today=today,
+        confirmed_halving_date=confirmed_halving_date)
+    try:
+        buy=float(buy_pct_cash)
+        sell=float(sell_pct_held)
+        valid=math.isfinite(buy) and math.isfinite(sell) and buy>=0 and sell>=0
+        directional=(buy>0)!=(sell>0) if valid else False
+        hold=(buy==0 and sell==0) if valid else False
+    except (ValueError,TypeError):
+        directional=hold=False
+    comparisons=(model_agreement_statuses(
+        buy_pct_cash=buy_pct_cash,sell_pct_held=sell_pct_held,
+        snapshots=snapshots,market_asof=market_asof,today=today,
+        confirmed_halving_date=confirmed_halving_date)
+        if directional else {})
+    for name,score in scores.items():
+        risk_str=f"risk {score:.2f}"
+        if name==MODELS[1] and score<.005:
+            risk_str+=" (near Power Law model floor, not zero investment risk)"
+        if directional:
+            output[name]=f"{comparisons[name]} ({risk_str})"
+        elif hold:
+            output[name]=f"no trade to compare ({risk_str})"
+    return output
+
+
 def model_agreement_statuses(*, buy_pct_cash, sell_pct_held, snapshots,
                              market_asof, today,
                              confirmed_halving_date="2024-04-20"):
