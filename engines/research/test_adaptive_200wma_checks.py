@@ -60,7 +60,7 @@ def main():
     # A 5% retreat *inside* the open job must allow a sell using only
     # the previous completed weekly close.
     dip=rising.copy()
-    dip.iloc[5]=192.
+    dip.iloc[9]=192.  # After 8 completed weeks, within 16-week job
     within,within_fills=go(dip,dip,sell_guard_lookback=8)
     assert n(within_fills,"TIER")>0,(
         "A real prior-week weakness inside the scheduled sell window was ignored")
