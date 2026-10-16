@@ -29,7 +29,9 @@ import math
 import numpy as np
 import pandas as pd
 
-from engines.research.adaptive_dca_execution import simulate_adaptive
+from engines.research.adaptive_dca_execution import (
+    audit_error_rates, group_trade_legs, simulate_adaptive,
+)
 from engines.research.full_cycle_reinvestment import CAPITAL, validate_history
 
 FEE_AUD=3.0
@@ -256,7 +258,33 @@ def evaluate(data):
     for tax in (False,True):
         for policy in VARIANTS:
             x=replay(history,events,policy=policy,tax=tax)
-            x.pop("orders")  # historical raw orders remain internal / no PII
+            trades=[
+                {"date":t["date"],"side":t["side"],
+                 "btc_quantity":t["btc"],
+                 "gross_notional_aud":t["gross_aud"],
+                 "fee_aud":FEE_AUD}
+                for t in x["orders"]
+            ]
+            legs=group_trade_legs(trades)
+            audit=audit_error_rates(history,legs)
+            valid_pairs=[p for p in audit["pairs"] if p["eligible"]]
+            x["execution_average_error"]={
+                "eligible_pairs":len(valid_pairs),
+                "targets":{
+                    str(target)+"pct":sum(
+                        p["buy_error_pct"]<=target and
+                        p["sell_error_pct"]<=target
+                        for p in valid_pairs
+                    ) for target in (15,20,25,35)
+                },
+                "pairs":[{
+                    "sell_start":p["sell_start"],"buy_start":p["buy_start"],
+                    "eligible":p["eligible"],
+                    "sell_error_pct":p["sell_error_pct"],
+                    "buy_error_pct":p["buy_error_pct"],
+                } for p in audit["pairs"]],
+            }
+            x.pop("orders")  # never publish raw order-level ledger
             models.append(x)
     return {
         "research_only":True,
