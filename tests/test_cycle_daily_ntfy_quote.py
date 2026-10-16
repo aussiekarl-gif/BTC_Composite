@@ -55,5 +55,31 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         self.assertNotIn("  workflow_dispatch:",daily.split("jobs:")[0])
 
 
+    def test_repository_has_only_one_ntfy_sender_and_daily_schedule(self):
+        from pathlib import Path
+        root=Path(__file__).resolve().parents[1]
+        workflows=root/".github"/"workflows"
+        candidates=[]
+        for path in workflows.glob("*.yml"):
+            content=path.read_text(encoding="utf-8")
+            if "secrets.NTFY_TOPIC" in content:
+                candidates.append(path.name)
+        self.assertEqual(candidates,["cycle_trading_daily_ntfy.yml"])
+        retired=(root/"dca_model_compare_notify.py").read_text(encoding="utf-8")
+        self.assertNotIn("requests.post(",retired)
+        self.assertNotIn("def send_ntfy(",retired)
+        self.assertIn("Retired: dual-model ntfy",retired)
+
+    def test_cycle_trading_is_first_and_fresh_session_default(self):
+        from pathlib import Path
+        app=(Path(__file__).resolve().parents[1]/"app.py").read_text(encoding="utf-8")
+        self.assertIn(
+            '["Cycle Trading — Research", "Production", "Research", '
+            '"Bottom Signal Timeline", "200WMA Trading Model"]',app)
+        self.assertIn('index=0,',app)
+        self.assertIn('"Production": Path(__file__).parent',app)
+        self.assertIn('"Research": Path(__file__).parent',app)
+
+
 if __name__=="__main__":
     unittest.main()
