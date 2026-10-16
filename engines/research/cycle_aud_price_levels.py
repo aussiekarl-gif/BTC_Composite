@@ -6,7 +6,7 @@ top using today's exchange rate. Non-forward-looking description
 only: maxima/minima are identified in hindsight as of the most recent
 completed BTC close, not actionable trade signals.
 
-Current cycle = period starting on confirmed 20 April 2024 halving.
+Current cycle starts at the supplied verified halving date (2024 default for historical tests).
 'Current cycle bottom' = lowest observed BTC/AUD daily close AFTER
 the highest observed BTC/AUD daily close in that cycle, not necessarily
 the absolute low since the halving or user-reported intraday USD low.
@@ -84,7 +84,7 @@ def observed_aud_cycle_levels(btc_price_usd, dated_fx, *,
     pct_from_bottom=(current/bottom-1)*100
     position=(current-bottom)/(top-bottom)*100
     return {
-        "scope":"Since 2024-04-20 halving; lowest observed daily close AFTER the peak",
+        "scope":f"Since {start.date()} halving; lowest observed daily close AFTER the peak",
         "source":"Daily BTC/USD closes × same-date-or-prior Frankfurter USD→AUD rate",
         "start_date":str(start.date()),
         "asof_date":str(last_date.date()),
