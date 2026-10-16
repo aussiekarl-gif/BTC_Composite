@@ -225,7 +225,7 @@ def make_current_decision(
         )
         if int(market["halving_day"])>560:
             base["why"].append(
-                "The 2024-halving day-500 sell date passed before your actual 2026 deployment."
+                "The last confirmed cycle day-500 sell date passed before this signal. No retroactive order."
             )
         return base
     pct=model_signal["sell_pct_held"]/100.

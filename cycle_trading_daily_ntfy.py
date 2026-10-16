@@ -13,6 +13,7 @@ import pandas as pd
 from zoneinfo import ZoneInfo
 
 from engines.research.ibit_quote import fetch_ibit_quote
+from engines.research.cycle_halving_countdown import fetch_halving_countdown
 from engines.research.top_signal_horse_race import read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.research.cycle_market_feed import merge_verified_cycle_prices
@@ -38,7 +39,12 @@ def daily_message(*,now=None,quote=None,market=None):
             series,verified=merge_verified_cycle_prices(
                 pd.DataFrame({"price_usd":history}),remote,
                 utc_today=now.date())
-            market=build_dashboard_market(series,fx,asof=now.date().isoformat())
+            halving=fetch_halving_countdown(now=now)
+            confirmed=(halving.get("last_halving_date") if halving.get("halving_date_verified") else None)
+            if not confirmed or dt.date.fromisoformat(confirmed)>series.index[-1].date():
+                raise ValueError("Halving epoch unverified or newer than last BTC close")
+            market=build_dashboard_market(series,fx,asof=now.date().isoformat(),
+                                          confirmed_halving_date=confirmed)
             age=(now.date()-pd.Timestamp(market["asof_date"]).date()).days
             if age<0 or age>3 or market["usd_aud_prior"] is None:
                 market=None
@@ -66,13 +72,13 @@ def daily_message(*,now=None,quote=None,market=None):
         else:
             lines.append("Cycle signal: DATA UNAVAILABLE — no trade recommendation")
             lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
-        lines.append(f"Halving day: {market['halving_day']} (2024 day500 passed)")
+        lines.append(f"Halving day: {market['halving_day']} (since {market['halving_date']})")
         full_status=cycle_exit_stage_status(
             market["halving_date"],market["asof_date"])
         if full_status["exit_window_expired"]:
             lines.append(
-                "Historical day500–730 exit window expired; no retroactive 2025 SELL "
-                "for holdings bought in 2026."
+                "Historical day500–730 exit window expired; no retroactive SELL "
+                "of later-acquired holdings."
             )
         elif full_status["next_exit_review_date"]:
             lines.append(

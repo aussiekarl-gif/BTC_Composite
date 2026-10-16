@@ -12,6 +12,7 @@ import requests
 
 BLOCKS_PER_HALVING = 210_000
 FIRST_CURRENT_ERA_HEIGHT = 840_000
+LAST_KNOWN_HALVING_DATE = dt.date(2024, 4, 20)
 EXPECTED_BLOCK_MINUTES = 10
 TIP_SOURCES = (
     ("mempool.space", "https://mempool.space/api/blocks/tip/height"),
@@ -39,7 +40,14 @@ def estimate_halving_from_height(height, *, now=None):
     target = ((height // BLOCKS_PER_HALVING) + 1) * BLOCKS_PER_HALVING
     remaining = target - height
     projected = now + dt.timedelta(minutes=EXPECTED_BLOCK_MINUTES * remaining)
+    # 2024 is verified history; later halving timestamps need independent
+    # block evidence before they may reset trading cycle-day calculations.
+    latest_epoch_height = (height // BLOCKS_PER_HALVING) * BLOCKS_PER_HALVING
+    verified_history = latest_epoch_height == FIRST_CURRENT_ERA_HEIGHT
     return {
+        "last_halving_height": latest_epoch_height,
+        "last_halving_date": LAST_KNOWN_HALVING_DATE.isoformat() if verified_history else None,
+        "halving_date_verified": verified_history,
         "days_remaining": math.ceil(remaining * EXPECTED_BLOCK_MINUTES / 1_440),
         "blocks_remaining": remaining,
         "current_height": height,
@@ -64,8 +72,55 @@ def _calendar_fallback(now):
         "height_verified": False,
         "estimate_basis": "4-year calendar approximation (block height unavailable)",
         "source": "Calendar estimate, not a live blockchain reading",
+        "last_halving_date": LAST_KNOWN_HALVING_DATE.isoformat() if now.date() < dt.date(2028,1,1) else None,
+        "halving_date_verified": False,
+        "last_halving_height": None,
     }
 
+
+def fetch_verified_halving_date(height, *, now=None, timeout=8):
+    """Confirm future halving event date from one of two public block APIs."""
+    now=_utc_now(now)
+    if height < FIRST_CURRENT_ERA_HEIGHT + BLOCKS_PER_HALVING or (
+            height % BLOCKS_PER_HALVING != 0):
+        raise ValueError("Not a future halving boundary")
+
+    def valid_date(timestamp):
+        stamp=dt.datetime.fromtimestamp(int(timestamp), dt.timezone.utc)
+        if stamp.date()<=LAST_KNOWN_HALVING_DATE or stamp>now:
+            raise ValueError("Invalid future halving block timestamp")
+        return stamp.date().isoformat()
+
+    try:
+        hash_url=f"https://mempool.space/api/block-height/{height}"
+        hash_response=requests.get(hash_url,timeout=timeout)
+        hash_response.raise_for_status()
+        block_hash=hash_response.text.strip().lower()
+        if len(block_hash)!=64 or any(ch not in "0123456789abcdef" for ch in block_hash):
+            raise ValueError("Invalid halving block hash")
+        response=requests.get(f"https://mempool.space/api/block/{block_hash}",
+                              timeout=timeout)
+        response.raise_for_status()
+        payload=response.json()
+        if not isinstance(payload,dict) or int(payload.get("height",-1))!=height:
+            raise ValueError("Halving block height did not match")
+        return valid_date(payload["timestamp"])
+    except (requests.RequestException, ValueError, KeyError,
+            OverflowError, OSError, TypeError):
+        # Distinct public source so a temporary mempool.space outage is not
+        # a single point of failure for a new confirmed halving date.
+        response=requests.get(
+            f"https://blockchain.info/block-height/{height}?format=json",
+            timeout=timeout)
+        response.raise_for_status()
+        blocks=response.json().get("blocks",[])
+        if not isinstance(blocks,list):
+            raise ValueError("Invalid alternate halving block response")
+        for block in blocks:
+            if (isinstance(block,dict) and block.get("main_chain") is True
+                    and int(block.get("height",-1))==height):
+                return valid_date(block["time"])
+        raise ValueError("Alternate provider did not confirm canonical block")
 
 def fetch_halving_countdown(*, now=None, timeout=8):
     """Fetch recent block height, fail to a labelled calendar approximation."""
@@ -80,6 +135,17 @@ def fetch_halving_countdown(*, now=None, timeout=8):
                 continue
             result = estimate_halving_from_height(int(raw), now=now)
             result["source"] = name
+            if not result["halving_date_verified"]:
+                try:
+                    confirmed = fetch_verified_halving_date(
+                        result["last_halving_height"], now=now, timeout=timeout)
+                    result["last_halving_date"] = confirmed
+                    result["halving_date_verified"] = True
+                except (requests.RequestException, ValueError, TypeError, OverflowError):
+                    result["cycle_safety_note"] = (
+                        "New halving epoch detected but event date could not be verified. "
+                        "No cycle-timed trade recommendations until confirmed."
+                    )
             return result
         except (requests.RequestException, ValueError, OverflowError):
             continue
