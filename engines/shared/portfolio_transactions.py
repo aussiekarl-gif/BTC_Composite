@@ -17,6 +17,7 @@ import uuid
 
 ASSETS=("ASX:IBIT","Direct BTC")
 SALES_KEY="sales"
+BTC_QUANTITY_EPS=1e-10  # below the precision of one 1e-8 BTC satoshi
 
 
 def numeric(value, *, label="value", allow_zero=False):
@@ -114,8 +115,8 @@ def portfolio_positions(saved):
                 consume=min(lot[0],remaining)
                 lot[0]-=consume
                 remaining-=consume
-                if remaining<=1e-8:break
-            if remaining>1e-8:
+                if remaining<=BTC_QUANTITY_EPS:break
+            if remaining>BTC_QUANTITY_EPS:
                 raise ValueError(
                     f"Sale {ix+1} exceeds {asset} bought units available by {day.isoformat()}"
                 )
@@ -190,7 +191,7 @@ def append_executed_trade(saved,*,side,asset,trade_date,quantity,
     positions=portfolio_positions(portfolio)
     if side=="BUY" and consideration+fee>positions["cash_remaining_aud"]+.005:
         raise ValueError("BUY exceeds recorded remaining AUD cash")
-    if side=="SELL" and qty>positions["ibit_units" if asset=="ASX:IBIT" else "direct_btc"]+1e-8:
+    if side=="SELL" and qty>positions["ibit_units" if asset=="ASX:IBIT" else "direct_btc"]+BTC_QUANTITY_EPS:
         raise ValueError("SELL exceeds net recorded holdings")
     trade_id=uuid.uuid4().hex
     if side=="BUY":
