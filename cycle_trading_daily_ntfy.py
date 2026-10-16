@@ -17,6 +17,7 @@ from engines.research.top_signal_horse_race import read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.research.cycle_market_feed import merge_verified_cycle_prices
 from engines.research.cycle_trading_dashboard_model import build_dashboard_market
+from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_trade_allocation import (
     calculate_allocation_signal,DEFAULT_BUY_STYLE,
 )
@@ -66,6 +67,19 @@ def daily_message(*,now=None,quote=None,market=None):
             lines.append("Cycle signal: DATA UNAVAILABLE — no trade recommendation")
             lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
         lines.append(f"Halving day: {market['halving_day']} (2024 day500 passed)")
+        full_status=cycle_exit_stage_status(
+            market["halving_date"],market["asof_date"])
+        if full_status["exit_window_expired"]:
+            lines.append(
+                "Historical day500–730 exit window expired; no retroactive 2025 SELL "
+                "for holdings bought in 2026."
+            )
+        elif full_status["next_exit_review_date"]:
+            lines.append(
+                f"Historical original-BTC EXIT research review: "
+                f"{full_status['next_exit_review_date']} "
+                "(not a confirmed portfolio sale)"
+            )
     else:
         lines.append("Cycle signal: DATA UNAVAILABLE — no trade recommendation")
         lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
