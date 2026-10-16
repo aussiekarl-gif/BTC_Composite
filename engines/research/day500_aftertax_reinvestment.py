@@ -148,7 +148,7 @@ def causal_buyback_dates(price,*,start,gate,terminal,weekly_limit=BUY_WEEKS,
 
 def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
                        initial_aud=INITIAL_AUD,buyback_weeks=BUY_WEEKS,
-                       entry_mode="drawdown"):
+                       entry_mode="drawdown",buyback_style="fixed"):
     """Replay FIFO SMSF with actual AUD spot conversion and bounded BTC."""
     if initial_aud<=3:raise ValueError("Cash must cover entry brokerage")
     if not isinstance(buyback_weeks,int) or buyback_weeks<1:
