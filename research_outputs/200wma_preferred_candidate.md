@@ -1,5 +1,16 @@
 # Preferred 200WMA research candidate — 2026-10-15
 
+## 16 October 2026 update: matched execution-cost robustness and selection gate
+
+The [completed Research cost-stress workflow](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38829353001) (**passed**) applies identical 0.1% dealing fees, A$20-per-fill brokerage, and **0.5%, 1%, or 2% execution slippage** to trading, DCA entry, and both terminal disposals. See [the detailed fair-exit and execution-cost sensitivity report](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_outputs/200wma_adaptive_fair_exit_and_stress_findings_2026-10-16.md).
+
+For **32 overlapping four-year** starting dates (every eight weeks), median fully-liquidated excess return over identically-taxed DCA at **2% slippage** was +34.966% original tier strategy, **+42.059% weakness-gated sells**, +26.296% breakout reentry, and +31.920% 26-week idle recycling. At that cost assumption, the respective worst four-year outcomes were −24.747%, −21.187%, −21.778%, and **−16.000%**. But **45 overlapping two-year** starts still produced worst-case underperformance of −56.648%, −49.426%, −47.692% and −43.092%.
+
+- The weakness gate offers the strongest longer-horizon median in this stress subset and reduces sell fills; idle recycling offers stronger four-year lower-tail protection. These are competing risk-return trade-offs, not proof of dominance.
+- The alternative 8-week breakout reentry loses more median advantage at higher trading friction, and none of the rules fixes every bad short-horizon cohort.
+- **Not independent validation:** the variants and sample years were already studied; moving from 4-week to 8-week-spaced starts reduces sample size but **does not create independent cycles**.
+- **Decision remains unchanged:** no automatic Research or Production promotion; frozen VBTC forward paper v1 continues unchanged. No portfolio actions or live trading integrations.
+
 ## 16 October 2026 update: corrected fully-liquidated tax comparison supersedes prior after-tax rankings
 
 [**Full matched-AUD exit and adaptive trading report**](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_outputs/200wma_fair_exit_adaptive_conclusions_2026-10-16.md). Numerical tests and 2/3/4-year results verified in [GitHub run 38822949971](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38822949971).
@@ -141,7 +152,7 @@ Detailed [AUD after-tax comparison](https://github.com/aussiekarl-gif/BTC_Compos
 - [Paper-trading protocol and integrity rules](https://github.com/aussiekarl-gif/BTC_Composite/blob/research/cycle-strategy-optimization/research_forward/200wma_v1/README.md); [initial verification run 38813226526](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/38813226526) **passed** the no-lookahead self-test and correctly recorded **zero paper actions** before the first eligible completed week.
 - Frozen independent A$500,000 hypothetical portfolios: simple 12-week DCA; 12-week buy/16-week sell; the same with the 26-week cash-recycling safeguard. Uses BTC/USD completed-week 200WMA signals and the **following completed week's** official VBTC market reference for paper fills. Keeps NAV and traded price separate.
 - Observation journal and earlier weekly scores are append-only and must reconcile exactly on reruns; data source revisions or missing prospective weeks fail closed.
-- **No unattended weekly scheduling yet:** research workflows live on the Research branch, and GitHub schedules require a default-branch launcher. Do not modify authoritative master merely to enable it without explicit approval.
+- **Unattended weekly Research scheduling is enabled by explicit approval:** the Wednesday 09:17 Brisbane `main` launcher checks out and writes only to Research. Production trading calculations remain separate.
 
 ## AUD SMSF root cause and exposure-limit tests (verified 2026-10-15)
 
