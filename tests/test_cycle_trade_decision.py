@@ -26,12 +26,15 @@ def saved_fixture():
     }
 
 
+_NOT_SUPPLIED=object()
+
+
 class CurrentResearchDecisionTests(unittest.TestCase):
     def setUp(self):
         self.market,self.today=market_fixture()
         self.portfolio=saved_fixture()
 
-    def evaluate(self,market=None,portfolio=None,**overrides):
+    def evaluate(self,market=None,portfolio=_NOT_SUPPLIED,**overrides):
         kws=dict(
             today=self.today,usable_cash_aud=10_000.,
             ibit_price_aud=30.,verified_current_ibit_units=None,
@@ -40,7 +43,7 @@ class CurrentResearchDecisionTests(unittest.TestCase):
         kws.update(overrides)
         return make_current_decision(
             market if market is not None else self.market,
-            portfolio if portfolio is not None else self.portfolio,**kws)
+            self.portfolio if portfolio is _NOT_SUPPLIED else portfolio,**kws)
 
     def undervalued(self):
         m=self.market.copy()
