@@ -1,0 +1,46 @@
+name: Research SMSF Self-Financing DCA Replay
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/smsf_self_financing_replay.py"
+      - "tests/test_smsf_self_financing_replay.py"
+      - ".github/workflows/research_smsf_dca_replay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tax-ledger-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pandas numpy requests
+      - run: python -m py_compile engines/research/smsf_self_financing_replay.py
+      - run: python -m unittest discover -s tests -p "test_smsf_self_financing_replay.py" -v
+
+  historical-readonly:
+    needs: tax-ledger-tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pandas numpy requests
+      - name: Reinvest capital using tax-accounted FIFO positions
+        env:
+          AUDIT_GITHUB_REPO: aussiekarl-gif/btc-audit-data
+          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN }}
+        run: python -m engines.research.smsf_self_financing_replay --output smsf_self_financing_results.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-smsf-self-financing
+          path: smsf_self_financing_results.json
