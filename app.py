@@ -129,14 +129,14 @@ button[data-testid="stSidebarCollapseButton"] {
 </style>
 """, unsafe_allow_html=True)
 
-# The public interface has exactly three choices. Other diagnostic engines remain in
-# the repository for offline research and CI; they are not navigable UI pages.
+# Cycle Trading is the first/default dashboard. Production remains its own frozen model.
+# Sidebar priority does not promote or validate the research trading rules.
 section = st.sidebar.radio(
     "Model",
-    ["Production", "Research", "Cycle Trading — Research", "Bottom Signal Timeline", "200WMA Trading Model"],
+    ["Cycle Trading — Research", "Production", "Research", "Bottom Signal Timeline", "200WMA Trading Model"],
     index=0,
     key="combined_app_section_selector",
-    help="Production is the frozen V5.8.2 model; Research is the experimental V5.9 model.",
+    help="Cycle Trading opens by default as the primary dashboard (still research-only). Production V5.8.2 and Research V5.9 remain independently available.",
 )
 
 # Ensure audit quota guards never leak into either user-facing model.
