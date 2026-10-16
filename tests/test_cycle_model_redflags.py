@@ -172,8 +172,9 @@ class MajorOnlyCrossCheckTests(unittest.TestCase):
             **base,snapshots=models(.85,.9),
             confirmed_halving_date="2028-04-25")
         self.assertEqual(list(future.values()),["no data","no data"])
-        stale=model_agreement_statuses(**base,snapshots=models(.85,.9),
-            today=dt.date(2026,10,21))
+        stale=model_agreement_statuses(
+            **{**base,"today":dt.date(2026,10,21)},
+            snapshots=models(.85,.9))
         self.assertEqual(list(stale.values()),["no data","no data"])
 
     def test_daily_message_individual_labels_and_one_warning(self):
