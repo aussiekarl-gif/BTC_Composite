@@ -97,6 +97,49 @@ def make_sale_schedule(price, halving, *, day_start, day_end,
     }
 
 
+
+# Fixed 6-week / 7-order controls avoid assuming 36 inexpensive daily ETF
+# fills. They remain in-sample examples, chosen after observing all cycles.
+WEEKLY_SPLITS=(
+    ("weekly_525_to_560_frontloaded",0.0),
+    ("day500_10pct_then_weekly",0.10),
+    ("day500_15pct_then_weekly",0.15),
+    ("day500_25pct_then_weekly",0.25),
+)
+
+
+def make_day500_then_weekly_schedule(price, halving, *, day500_fraction=0.10):
+    """Trade first optional tranche day 500, then six preset weekly tranches.
+
+    The remaining stake is sold at halving days 525,532,539,546,553,560,
+    progressively declining weights 6,5,4,3,2,1. Dates and sizes are
+    independent of future BTC prices. No unsold BTC remains.
+    """
+    if not 0<=day500_fraction<1:
+        raise ValueError("day500_fraction outside [0,1)")
+    later_days=(525,532,539,546,553,560)
+    dates=([halving+pd.Timedelta(days=500)] if day500_fraction>0 else [])
+    dates += [halving+pd.Timedelta(days=i) for i in later_days]
+    observations=price.reindex(dates)
+    if observations.isna().any():
+        raise ValueError("Missing one or more pre-scheduled weekly execution closes")
+    later=np.array([6,5,4,3,2,1],dtype=float)
+    later=later/later.sum()*(1-day500_fraction)
+    fractions=np.r_[day500_fraction,later] if day500_fraction>0 else later
+    if not np.isclose(fractions.sum(),1):
+        raise AssertionError("Fractions do not liquidate exactly one BTC")
+    return {
+        "first_sale_day":str(dates[0].date()),
+        "last_sale_day":str(dates[-1].date()),
+        "sales":len(dates),
+        "gross_vwap_usd_per_btc":round(float(np.dot(observations.to_numpy(dtype=float),fractions)),2),
+        "total_fraction_sold":round(float(fractions.sum()),8),
+        "day500_fraction_pct":100*day500_fraction,
+        "execution_day_indices":([500] if day500_fraction>0 else [])+list(later_days),
+        "brokerage_aud_at_3_per_order":3*len(dates),
+    }
+
+
 def compare_windows(history,*,peak_windows=PEAK_WINDOWS):
     data=history.loc[:"2026-10-07","price_usd"]
     if data.empty:raise ValueError("Empty date-price source")
@@ -119,6 +162,15 @@ def compare_windows(history,*,peak_windows=PEAK_WINDOWS):
             outcome["met_25pct_average_selling_error"]=bool(
                 outcome["gross_vwap_usd_per_btc"]>=.75*top_price)
             scenario.append(outcome)
+        for name,fraction in WEEKLY_SPLITS:
+            outcome=make_day500_then_weekly_schedule(
+                data,halving,day500_fraction=fraction)
+            outcome["name"]=name
+            outcome["error_below_hindsight_peak_pct"]=round(
+                100*(1-outcome["gross_vwap_usd_per_btc"]/top_price),3)
+            outcome["met_25pct_average_selling_error"]=bool(
+                outcome["gross_vwap_usd_per_btc"]>=.75*top_price)
+            scenario.append(outcome)
         scores.append({
             "cycle":label,
             "halving":str(halving.date()),
@@ -128,7 +180,7 @@ def compare_windows(history,*,peak_windows=PEAK_WINDOWS):
             "sell_windows":scenario,
         })
     summary=[]
-    for name,_,_,_ in WINDOWS:
+    for name in [x[0] for x in WINDOWS]+[x[0] for x in WEEKLY_SPLITS]:
         scores_for=[next(x for x in r["sell_windows"] if x["name"]==name)
                     for r in scores]
         summary.append({
@@ -147,11 +199,14 @@ def compare_windows(history,*,peak_windows=PEAK_WINDOWS):
         "price_observations":len(data),
         "last_price_date":str(data.index[-1].date()),
         "schedules":list(WINDOWS),
+        "weekly_fixed_schedules":list(WEEKLY_SPLITS),
         "hindsight_scored_cycles":scores,
         "summary":summary,
         "warnings":[
             "The exact day-500 all-BTC sale uses a date known from the halving; no historical peak price enters the trade date.",
             "Day-500 vs day-525 windows are compared in-sample after viewing history, not prospective optimization.",
+            "Weekly hybrid day-500 fractions of 0%, 10%, 15%, 25% are all curve-inspected historical sensitivity cases, not a live recommendation.",
+            "Six weekly tranches on days 525,532,539,546,553,560 have A$18 brokerage, plus A$3 for an optional day-500 sale. Gross USD BTC prices do NOT subtract Australian brokerage or SMSF CGT.",
             "This is in-sample time-window curve fitting after known 2017/2021/2025 peak clustering, not proven generalization.",
             "2013 top occurred much earlier after halving: test exposes structural break.",
             "Pre-set calendar sell fractions are actually tradeable; top dates are hindsight ONLY for score.",
