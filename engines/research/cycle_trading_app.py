@@ -135,6 +135,11 @@ st.caption(
     "No rule should retroactively sell your BTC/ETF bought in 2026."
 )
 
+if st.button("Refresh market feed and My Portfolio",key="cycle_research_refresh"):
+    public_source.clear()
+    stored_portfolio.clear()
+    st.rerun()
+
 with st.spinner("Reading saved Portfolio for optional cash default..."):
     saved_live_portfolio, saved_live_error=stored_portfolio()
 saved_cash=portfolio_snapshot(saved_live_portfolio) if not saved_live_error else {"valid":False}
