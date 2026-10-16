@@ -42,6 +42,7 @@ from engines.research.verified_recent_price_bridge import parse_frankfurter_fx
 INITIAL_AUD=500_000.
 SCORE_DAYS=1150
 BUY_WEEKS=24
+BUY_DURATION_TESTS=(24,52)
 DELAY_DAYS_AFTER_LAST_SELL=14
 GATES=(.40,.55,.65)
 SELLERS=("fixed_525_to_560","dynamic_90pct","dynamic_90pct_holdback20pct")
@@ -129,9 +130,11 @@ def causal_buyback_dates(price,*,start,gate,terminal,weekly_limit=BUY_WEEKS):
 
 
 def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
-                       initial_aud=INITIAL_AUD):
+                       initial_aud=INITIAL_AUD,buyback_weeks=BUY_WEEKS):
     """Replay FIFO SMSF with actual AUD spot conversion and bounded BTC."""
     if initial_aud<=3:raise ValueError("Cash must cover entry brokerage")
+    if not isinstance(buyback_weeks,int) or buyback_weeks<1:
+        raise ValueError("Invalid buyback duration")
     start=halving
     if start not in price.index:raise ValueError("Missing dated halving price")
     if terminal not in price.index:raise ValueError("Missing dated terminal price")
@@ -160,7 +163,9 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
                                    min(1.,target/pre_qty))
             prev=when
     waiting=(prev or halving+pd.Timedelta(days=500))+pd.Timedelta(days=DELAY_DAYS_AFTER_LAST_SELL)
-    trigger,plan=causal_buyback_dates(price,start=waiting,gate=gate,terminal=terminal)
+    trigger,plan=causal_buyback_dates(
+        price,start=waiting,gate=gate,terminal=terminal,
+        weekly_limit=buyback_weeks)
     bought=[]
     if plan and actual.cash>100.:
         # Weighted DCA over 24 weeks; never adapt using future entry prices.
@@ -172,13 +177,13 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
         # reserve 24 weekly tranches (not truncated to current data
         # horizon), and scale tranche from observed discount.
         initial_budget=actual.cash
-        target=initial_budget/BUY_WEEKS
+        target=initial_budget/buyback_weeks
         for j,e in enumerate(plan):
             day=e["day"]
             gross=min(actual.cash,target*e["weight"])
             # On the final of all 24 pre-scheduled windows, deploy
             # residual cash. Not forced when data cutoff is earlier.
-            if j==BUY_WEEKS-1:gross=actual.cash
+            if j==buyback_weeks-1:gross=actual.cash
             if gross>100.:
                 if actual.buy(day,float(price.loc[day])*fx_before(fx,day),
                               min(1.,gross/actual.cash)):
@@ -187,9 +192,36 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
     terminal_mark=actual.mark(terminal_px_aud)
     held_mark=held.mark(terminal_px_aud)
     total_original=original_btc
+    rebuy_orders=[
+        x for x in actual.orders if x["side"]=="BUY"
+        and pd.Timestamp(x["date"])>start
+    ]
+    total_new_btc=sum(float(x["btc"]) for x in rebuy_orders)
+    total_new_usd=sum(float(x["gross_aud"])/fx_before(fx,x["date"])
+                      for x in rebuy_orders)
+    effective_buy_usd=(
+        total_new_usd/total_new_btc if total_new_btc>1e-9 else None)
+    # This is a HINDSIGHT-only scoring window, NOT a trade signal.
+    # Bottom counted since final sale until available terminal observation.
+    if prev is not None and prev<=terminal:
+        observed_post_sale=price.loc[prev:terminal]
+        hindsight_low=float(observed_post_sale.min())
+        hindsight_low_date=str(observed_post_sale.idxmin().date())
+    else:
+        hindsight_low=hindsight_low_date=None
     return {
         "seller":seller,
         "buyback_prior_drawdown_gate_pct":round(100*gate,1),
+        "planned_buyback_weeks":buyback_weeks,
+        "average_repurchase_usd_per_btc":(
+            round(effective_buy_usd,2) if effective_buy_usd is not None else None),
+        "post_sale_hindsight_low_close_usd":(
+            round(hindsight_low,2) if hindsight_low is not None else None),
+        "post_sale_hindsight_low_date":hindsight_low_date,
+        "buyback_error_above_post_sale_low_pct":(
+            round(100*(effective_buy_usd/hindsight_low-1),3)
+            if effective_buy_usd is not None and hindsight_low is not None
+            else None),
         "initial_btc_before_selling":round(total_original,8),
         "sell_count":sum(x["side"]=="SELL" for x in actual.orders),
         "buyback_buy_count":len(bought),
@@ -229,8 +261,10 @@ def evaluate(historical,*, fx_for_cycle=fetch_fx_for_cycle):
         fx=fx_for_cycle(halving,terminal)
         strategies=[
             simulate_roundtrip(price,fx,halving,terminal,
-                               seller=seller,gate=gate)
+                               seller=seller,gate=gate,
+                               buyback_weeks=duration)
             for seller in SELLERS for gate in GATES
+            for duration in BUY_DURATION_TESTS
         ]
         out.append({
             "cycle":cycle,
@@ -246,12 +280,15 @@ def evaluate(historical,*, fx_for_cycle=fetch_fx_for_cycle):
     summary=[]
     for seller in SELLERS:
       for gate in GATES:
+       for duration in BUY_DURATION_TESTS:
         cohort=[next(m for m in row["models"]
                      if m["seller"]==seller and
-                        m["buyback_prior_drawdown_gate_pct"]==round(100*gate,1))
+                        m["buyback_prior_drawdown_gate_pct"]==round(100*gate,1)
+                     and m["planned_buyback_weeks"]==duration)
                 for row in out if row["complete_day1150_observation"]]
         summary.append({
             "seller":seller,"buyback_gate_pct":round(100*gate,1),
+            "buyback_weeks":duration,
             "complete_cycles":len(cohort),
             "better_btc_equivalent_than_hold":sum(
                 m["btc_equivalent_relative_to_hold_pct"]>0 for m in cohort),
@@ -278,6 +315,9 @@ def evaluate(historical,*, fx_for_cycle=fetch_fx_for_cycle):
             "2025 cycle has not reached post-halving day1150: mark RIGHT CENSORED. Scores observed to last available 2026 BTC daily record only.",
             "All thresholds already historically inspected; no untouched prospective holdout. Two complete modern sell/buyback periods are statistically inadequate.",
             "AUD500k shadow portfolio initial BTC acquired at halving; embedded starting tax basis is a hypothetical cost assumption.",
+            "24- and 52-week buyback windows are fixed duration comparison controls. Buyers invest on 24/52 eligible weekly dates, with a previous-day-drawdown multiplier and no hindsight prices.",
+            "The post-sale low is computed using FUTURE observed closes for EVALUATION only, never entry; 2025 remains provisional/right-censored.",
+            "A low buyback VWAP error does not imply it will reproduce next cycle; variation in purchase dates, FX and 52-week periods matters.",
             "Frankfurter USD/AUD FX strictly BEFORE transaction day, no future same-day FX leakage; priced BTC/USD daily historical archive may not be executable.",
             "Fees AUD3 each buy/sell, simplified FIFO eligible 10% long-held and 15% short-held SMSF accrual held in cash immediately; not actual fund annual taxation.",
             "ETF tracking, fee, spreads, SMSF expenses, FX conversion spreads, and cash yields excluded.",
