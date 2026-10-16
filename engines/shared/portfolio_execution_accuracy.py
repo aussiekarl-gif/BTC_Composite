@@ -20,7 +20,8 @@ import numpy as np
 import pandas as pd
 
 START_2026 = pd.Timestamp("2026-01-01")
-DEFAULT_REFERENCE_USD = 58_000.0
+DEFAULT_REFERENCE_USD = 57_717.0
+DEFAULT_REFERENCE_DATE = pd.Timestamp("2026-06-30")
 
 
 def _positive_finite(value):

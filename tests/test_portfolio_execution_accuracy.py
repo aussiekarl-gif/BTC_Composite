@@ -5,6 +5,7 @@ import pandas as pd
 
 from engines.shared.portfolio_execution_accuracy import (
     calculate_portfolio_entry_error, fx_rate_asof,
+    DEFAULT_REFERENCE_USD, DEFAULT_REFERENCE_DATE,
 )
 
 
@@ -18,6 +19,19 @@ def example_rows():
 
 
 class PortfolioExecutionErrorTests(unittest.TestCase):
+    def test_user_supplied_observed_june_2026_low_reference(self):
+        self.assertEqual(DEFAULT_REFERENCE_USD, 57717.0)
+        self.assertEqual(DEFAULT_REFERENCE_DATE, pd.Timestamp("2026-06-30"))
+        fx=pd.Series([.68,.68],index=["2026-06-01","2026-06-08"])
+        result=calculate_portfolio_entry_error(
+            example_rows(), reference_price=DEFAULT_REFERENCE_USD,
+            reference_currency="USD",usd_per_aud=fx)
+        expected_average=(250006*.68)/2
+        self.assertAlmostEqual(result["weighted_average_in_reference_currency"],
+                               expected_average)
+        self.assertAlmostEqual(result["error_pct"],
+                               (expected_average/57717-1)*100)
+
     def test_aud_avg_is_sum_paid_including_fees_divided_by_btc(self):
         x=calculate_portfolio_entry_error(example_rows(),
             reference_price=100000,reference_currency="AUD")
