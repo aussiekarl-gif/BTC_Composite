@@ -46,7 +46,8 @@ TRANSFER_YEARS = (2019, 2020, 2021, 2022, 2023, 2024, 2025)
 
 def hybrid_account(history, start_date, *, core_fraction=.25,
                    gate_drawdown=FIXED_GATE_DRAWDOWN, base_weeks=BASELINE_CORE_WEEKS,
-                   starting_cash=CAPITAL, historical_fx=None):
+                   starting_cash=CAPITAL, historical_fx=None,
+                   fallback_after_weeks=None, fallback_spread_weeks=26):
     """Simulate two segregated sleeves without borrowing or any future-look trades."""
     h = validate_history(history)
     if not 0 < core_fraction < 1:
@@ -57,6 +58,12 @@ def hybrid_account(history, start_date, *, core_fraction=.25,
         raise ValueError("Invalid fixed baseline schedule")
     if not math.isfinite(starting_cash) or starting_cash <= 0:
         raise ValueError("Invalid initial AUD capital")
+    if fallback_after_weeks is not None and (
+        not isinstance(fallback_after_weeks, int) or fallback_after_weeks < 1
+    ):
+        raise ValueError("Fallback wait must be a positive whole number of weeks")
+    if not isinstance(fallback_spread_weeks, int) or fallback_spread_weeks < 1:
+        raise ValueError("Fallback release duration must be positive")
     first=_start_index(h,start_date)
     gate,prior_drop=first_causal_gate_week(
         h,drawdown=gate_drawdown,start_date=start_date)
@@ -80,6 +87,8 @@ def hybrid_account(history, start_date, *, core_fraction=.25,
     highest=float(starting_cash)
     worst_dd=0.
     core_tranche=core_budget/base_weeks
+    fallback_tranche=reserve_budget/fallback_spread_weeks
+    fallback_buy_orders=0
     combined_curve=[]
     for j in range(first,len(h)):
         now=h.index[j]
@@ -96,6 +105,18 @@ def hybrid_account(history, start_date, *, core_fraction=.25,
                 reserve.sell(now,price,frac)
             else:
                 raise ValueError("Unsupported reserved allocation direction")
+        elif (fallback_after_weeks is not None
+              and j-first>=fallback_after_weeks
+              and (gate is None or now<gate)
+              and reserve.cash>0):
+            # This is a fixed, prior-planned TIME FALLBACK, not a post-hoc
+            # perfect bottom. Releases cash slowly to limit missed bull rallies.
+            elapsed=j-first-fallback_after_weeks
+            if elapsed<fallback_spread_weeks:
+                amount=(reserve.cash if elapsed==fallback_spread_weeks-1
+                        else min(fallback_tranche,reserve.cash))
+                if reserve.buy(now,price,amount/reserve.cash):
+                    fallback_buy_orders+=1
         # Each ledger independently remains self-financing, and total
         # account drawdown is measured from the COMBINED weekly equity.
         a=core.mark(price)
@@ -117,13 +138,18 @@ def hybrid_account(history, start_date, *, core_fraction=.25,
         core.liquidation_value(h.index[-1],terminal_price)
         +reserve.liquidation_value(h.index[-1],terminal_price))
     result={
-        "model":f"core_{int(core_fraction*100)}pct_reserve_{int((1-core_fraction)*100)}pct",
+        "model":(f"core_{int(core_fraction*100)}pct_reserve_{int((1-core_fraction)*100)}pct"
+                  +(f"_fallback_after_{fallback_after_weeks}w"
+                    if fallback_after_weeks is not None else "")),
         "requested_deployment_date":str(pd.Timestamp(start_date).date()),
         "initial_AUD_cash":float(starting_cash),
         "baseline_core_pct":round(100*core_fraction,2),
         "core_aud_at_start":round(core_budget,2),
         "reserve_aud_at_start":round(reserve_budget,2),
         "baseline_core_weeks":base_weeks,
+        "fallback_after_weeks":fallback_after_weeks,
+        "fallback_spread_weeks":fallback_spread_weeks if fallback_after_weeks is not None else None,
+        "fallback_buy_orders":fallback_buy_orders,
         "deep_drawdown_gate_pct":round(100*gate_drawdown,2),
         "gate_triggered":gate is not None,
         "gate_date":str(gate) if gate is not None else None,
@@ -154,7 +180,7 @@ def hybrid_account(history, start_date, *, core_fraction=.25,
 
 
 def historical_transfer(history, *, start_years=TRANSFER_YEARS,
-                        starting_cash=CAPITAL):
+                        starting_cash=CAPITAL, include_fallback=False):
     """Same Jan-start date and ~52-week horizon for every tested era."""
     h=validate_history(history)
     rows=[]
@@ -173,6 +199,14 @@ def historical_transfer(history, *, start_years=TRANSFER_YEARS,
                            starting_cash=starting_cash)
             for f in BASE_CORE_FRACTIONS
         ]
+        if include_fallback:
+            candidates.extend(
+                hybrid_account(truncated,start,core_fraction=f,
+                               starting_cash=starting_cash,
+                               fallback_after_weeks=26,
+                               fallback_spread_weeks=26)
+                for f in BASE_CORE_FRACTIONS
+            )
         for p in candidates:
             p["relative_to_immediate_hold_pct"]=round(
                 100*(p["marked_value_aud"]/matched["account_marked_value_aud"]-1),3)
@@ -187,11 +221,14 @@ def historical_transfer(history, *, start_years=TRANSFER_YEARS,
         })
     summary=[]
     for fraction in BASE_CORE_FRACTIONS:
+      for fallback in ((None,26) if include_fallback else (None,)):
         sample=[next(p for p in r["hybrid_candidates"]
-                     if p["baseline_core_pct"]==fraction*100)
+                     if p["baseline_core_pct"]==fraction*100
+                     and p["fallback_after_weeks"]==fallback)
                 for r in rows]
         summary.append({
             "core_pct":100*fraction,
+            "fallback_after_weeks":fallback,
             "reserve_pct":100*(1-fraction),
             "cohorts":len(sample),
             "gate_triggered":sum(x["gate_triggered"] for x in sample),
@@ -221,6 +258,12 @@ def evaluate_from_verified_providers(master, *, asof="2026-10-16"):
                        historical_fx=aud_fx)
         for f in BASE_CORE_FRACTIONS
     ]
+    cohorts.extend(
+        hybrid_account(causal_price_only,start,core_fraction=f,
+                       historical_fx=aud_fx,
+                       fallback_after_weeks=26,fallback_spread_weeks=26)
+        for f in BASE_CORE_FRACTIONS
+    )
     hold=benchmark_account(causal_price_only,start,"immediate_buy")
     equal=benchmark_account(causal_price_only,start,"equal_12week_buy")
     for c in cohorts:
@@ -228,7 +271,7 @@ def evaluate_from_verified_providers(master, *, asof="2026-10-16"):
             100*(c["marked_value_aud"]/hold["account_marked_value_aud"]-1),3)
         c["relative_to_equal_12week_pct"]=round(
             100*(c["marked_value_aud"]/equal["account_marked_value_aud"]-1),3)
-    transfer=historical_transfer(causal_price_only)
+    transfer=historical_transfer(causal_price_only,include_fallback=True)
     return {
         "research_only":True,
         "asof":asof,
@@ -245,6 +288,8 @@ def evaluate_from_verified_providers(master, *, asof="2026-10-16"):
         "fixed_one_year_historical_robustness":transfer,
         "warnings":[
             "Core 12-week schedule is fixed; reserve's adaptive execution window is not fixed.",
+            "The optional reserve fallback begins after 26 weeks and uses 26 fixed equal AUD tranches if no 40% drawdown gate has triggered.",
+            "The fallback is a predeclared calendar safeguard against missing a rally, NOT a prediction or validated optimum.",
             "Previous-week gate is causal, but parameters and periods were proposed after historical inspection; NOT untouched out-of-sample.",
             "Two independent sleeves are self-financing but CGT losses are NOT offset across their tax ledgers; combined SMSF annual liability may differ.",
             "Same-week baseline and reserve buy orders incur two AUD 3 fees, a conservative separate-order assumption.",
