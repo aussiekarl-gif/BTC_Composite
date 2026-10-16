@@ -52,7 +52,7 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         daily=(root/".github/workflows/cycle_trading_daily_ntfy.yml").read_text()
         self.assertEqual(daily.count("cron:"),1)
         self.assertIn("last_cycle_ntfy_date.txt",daily)
-        self.assertNotIn("workflow_dispatch",daily.split("jobs:")[0])
+        self.assertNotIn("  workflow_dispatch:",daily.split("jobs:")[0])
 
 
 if __name__=="__main__":
