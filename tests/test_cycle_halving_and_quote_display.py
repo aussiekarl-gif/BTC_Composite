@@ -8,6 +8,7 @@ from engines.research.ibit_quote import (
 )
 from engines.research.cycle_halving_countdown import (
     estimate_halving_from_height, fetch_halving_countdown,
+    build_halving_timeline, build_halving_progress_bar,
 )
 
 NOW = dt.datetime(2026, 10, 17, 0, 0, tzinfo=dt.timezone.utc)
@@ -106,11 +107,66 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertIsNone(result["current_height"])
         self.assertIn("calendar approximation", result["estimate_basis"])
 
+    def test_cycle_header_dates_and_bar_use_same_countdown(self):
+        countdown = {
+            "days_remaining": 544,
+            "estimated_date_utc": "2028-04-13",
+        }
+        timeline = build_halving_timeline(
+            last_halving_date="2024-04-20",
+            today=dt.date(2026, 10, 17),
+            countdown=countdown,
+        )
+        self.assertEqual(timeline["elapsed_days"], 910)
+        self.assertEqual(timeline["remaining_days"], 544)
+        self.assertEqual(timeline["total_projected_days"], 1454)
+        self.assertAlmostEqual(timeline["progress_pct"], 100 * 910 / 1454)
+        self.assertEqual(
+            [item["day"] for item in timeline["milestones"]],
+            [500, 560, 730],
+        )
+        figure = build_halving_progress_bar(timeline)
+        self.assertEqual(len(figure.data), 2)
+        self.assertEqual(figure.data[0].x[0], 910)
+        self.assertEqual(figure.data[1].x[0], 544)
+        # Three historic review milestones + today's orange marker.
+        self.assertEqual(len(figure.layout.shapes), 4)
+        self.assertEqual(figure.layout.shapes[-1].x0, 910)
+        labels = [item.text for item in figure.layout.annotations]
+        for label in ("D500", "D560", "D730", "TODAY"):
+            self.assertIn(label, labels)
+
+    def test_cycle_timeline_rejects_invalid_calendar_inputs(self):
+        with self.assertRaises(ValueError):
+            build_halving_timeline(
+                last_halving_date="2024-04-20",
+                today=dt.date(2023, 10, 17),
+                countdown={"days_remaining": 500, "estimated_date_utc": "2028-04-20"},
+            )
+        with self.assertRaises(ValueError):
+            build_halving_timeline(
+                last_halving_date="2024-04-20",
+                today=dt.date(2026, 10, 17),
+                countdown={"days_remaining": -1, "estimated_date_utc": "2028-04-20"},
+            )
+
+    def test_cycle_milestones_do_not_extend_beyond_projected_next_halving(self):
+        timeline = build_halving_timeline(
+            last_halving_date="2024-04-20",
+            today=dt.date(2024, 4, 21),
+            countdown={"days_remaining": 100, "estimated_date_utc": "2024-07-30"},
+        )
+        self.assertEqual(timeline["elapsed_days"], 1)
+        self.assertEqual(timeline["milestones"], [])
+
     def test_dashboard_shows_countdown_and_optional_manual_quote(self):
         from pathlib import Path
         app = (Path(__file__).resolve().parents[1] /
                "engines/research/cycle_trading_app.py").read_text()
+        self.assertIn('st.metric("Days from last BTC halving"', app)
         self.assertIn('st.metric("Approx. days until next BTC halving"', app)
+        self.assertIn('elapsed_col,chart_col,remaining_col=st.columns', app)
+        self.assertIn('build_halving_progress_bar(halving_timeline)', app)
         self.assertIn('if manual_quote:', app)
         self.assertNotIn('else "Quote needed"', app)
 
