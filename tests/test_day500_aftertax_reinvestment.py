@@ -1,0 +1,206 @@
+"""Independent synthetic tests: no fake early user portfolio and no lookahead."""
+import unittest
+
+import numpy as np
+import pandas as pd
+
+from engines.research.day500_aftertax_reinvestment import (
+    PRIMARY, SELLERS, GATES, causal_buyback_dates, simulate_roundtrip,
+    fx_before, sell_orders,
+)
+
+
+def market(*,n=1260):
+    halving=pd.Timestamp("2020-05-11",tz="UTC")
+    days=pd.date_range(halving,periods=n,freq="D",tz="UTC")
+    i=np.arange(n)
+    x=np.interp(i,[0,400,500,560,650,800,1000,1259],
+                [100.,300.,550.,800.,450.,220.,300.,350.])
+    price=pd.Series(x,index=days)
+    fx_days=pd.date_range(halving-pd.Timedelta(days=10),
+                          periods=n+10,freq="D",tz="UTC")
+    fx=pd.DataFrame({"aud_per_usd":np.full(len(fx_days),1.5)},
+                    index=fx_days)
+    return halving,price,fx
+
+
+class AfterTaxBuybackTests(unittest.TestCase):
+    def test_only_modern_cycles_primary(self):
+        self.assertEqual(set(PRIMARY),{"2017","2021","2025"})
+        self.assertNotIn("2013",PRIMARY)
+
+    def test_fx_must_come_from_previous_date(self):
+        halving,p,fx=market()
+        d=halving+pd.Timedelta(days=501)
+        fx.loc[d,"aud_per_usd"]=20
+        self.assertEqual(fx_before(fx,d),1.5)
+        fx.loc[d-pd.Timedelta(days=1),"aud_per_usd"]=2.
+        self.assertEqual(fx_before(fx,d),2.)
+
+    def test_causal_buyback_does_not_use_future_low(self):
+        h,p,fx=market()
+        start=h+pd.Timedelta(days=600)
+        terminal=h+pd.Timedelta(days=1150)
+        date,buys=causal_buyback_dates(p,start=start,gate=.4,terminal=terminal)
+        self.assertIsNotNone(date)
+        self.assertGreaterEqual(date,start)
+        altered=p.copy()
+        altered.loc[date+pd.Timedelta(days=1):]*=.1
+        other,_=causal_buyback_dates(altered,start=start,gate=.4,
+                                    terminal=terminal)
+        self.assertEqual(date,other)
+        self.assertEqual(buys[0]["day"],date)
+        self.assertTrue(all(x["day"]<=terminal for x in buys))
+
+    def test_selling_schedule_only_after_day500_and_never_overdrawn(self):
+        h,p,fx=market()
+        for name in SELLERS:
+            events=sell_orders(p,h,name)
+            self.assertTrue(events)
+            self.assertGreaterEqual(events[0]["day"],h+pd.Timedelta(days=500))
+            self.assertLessEqual(sum(e["fraction"] for e in events),1.0000001)
+            self.assertTrue(all(0<e["fraction"]<=1 for e in events))
+
+    def test_smsf_tax_and_self_financing_btc_cash(self):
+        h,p,fx=market()
+        terminal=h+pd.Timedelta(days=1150)
+        for seller in SELLERS:
+            for gate in GATES:
+                result=simulate_roundtrip(p,fx,h,terminal,
+                                           seller=seller,gate=gate)
+                self.assertGreaterEqual(result["btc_held_after_buyback"],0)
+                self.assertGreaterEqual(result["cash_remaining_aud"],0)
+                self.assertGreaterEqual(result["sell_count"],1)
+                self.assertGreaterEqual(result["brokerage_aud"],3)
+                self.assertAlmostEqual(result["brokerage_aud"],
+                                       3*result["orders_total"])
+                self.assertGreaterEqual(result["realised_smsf_cgt_paid_est_aud"],0)
+                self.assertGreaterEqual(result["initial_btc_before_selling"],0)
+                self.assertGreaterEqual(
+                    result["btc_equivalent_at_terminal_including_cash"],0)
+                self.assertEqual(
+                    result["marked_account_value_aud"]>0,True)
+
+    def test_no_signal_does_not_fake_buys_or_25pct_target(self):
+        h,p,fx=market()
+        changed=pd.Series(1000.+np.arange(len(p)),index=p.index)
+        t=h+pd.Timedelta(days=1150)
+        res=simulate_roundtrip(changed,fx,h,t,
+                               seller="fixed_525_to_560",gate=.65)
+        self.assertEqual(res["buyback_buy_count"],0)
+        self.assertIsNone(res["buyback_trigger_date"])
+        self.assertGreater(res["cash_remaining_aud"],0)
+        self.assertLess(res["btc_held_after_buyback"],res["initial_btc_before_selling"])
+
+    def test_short_censored_observation_not_labelled_complete(self):
+        h,p,fx=market(n=840)
+        t=p.index[-1]
+        res=simulate_roundtrip(p,fx,h,t,
+                               seller="dynamic_90pct_holdback20pct",gate=.55)
+        self.assertGreaterEqual(res["orders_total"],2)
+        self.assertGreaterEqual(res["cash_remaining_aud"],0)
+
+    def test_52week_dca_keeps_cash_during_short_incomplete_observation(self):
+        h,p,fx=market(n=840)
+        result=simulate_roundtrip(
+            p,fx,h,p.index[-1],seller="fixed_525_to_560",
+            gate=.40,buyback_weeks=52)
+        self.assertEqual(result["planned_buyback_weeks"],52)
+        self.assertGreater(result["cash_remaining_aud"],0)
+        self.assertLess(result["buyback_buy_count"],52)
+        self.assertIsNotNone(result["average_repurchase_usd_per_btc"])
+        self.assertIsNotNone(result["post_sale_hindsight_low_close_usd"])
+
+    def test_hindsight_bottom_is_scoring_only_not_order_signal(self):
+        h,p,fx=market()
+        cutoff=h+pd.Timedelta(days=960)
+        baseline=simulate_roundtrip(
+            p,fx,h,cutoff,seller="fixed_525_to_560",
+            gate=.55,buyback_weeks=52)
+        changed=p.copy()
+        changed.loc[cutoff+pd.Timedelta(days=1):]*=.01
+        altered=simulate_roundtrip(
+            changed,fx,h,cutoff,seller="fixed_525_to_560",
+            gate=.55,buyback_weeks=52)
+        self.assertEqual(baseline,altered)
+
+    def test_no_rebuy_has_null_error_instead_of_false_success(self):
+        h,p,fx=market()
+        never=pd.Series(1000.+np.arange(len(p)),index=p.index)
+        result=simulate_roundtrip(
+            never,fx,h,h+pd.Timedelta(days=1150),
+            seller="fixed_525_to_560",gate=.65,buyback_weeks=52)
+        self.assertIsNone(result["average_repurchase_usd_per_btc"])
+        self.assertIsNone(result["buyback_error_above_post_sale_low_pct"])
+        self.assertEqual(result["buyback_buy_count"],0)
+
+    def test_200week_wma_trigger_uses_only_past_weekly_price_observations(self):
+        idx=pd.date_range("2015-01-01",periods=2400,freq="D",tz="UTC")
+        price=pd.Series(np.full(len(idx),100.),index=idx)
+        trigger_day=idx[2050]
+        price.loc[trigger_day:]=70.
+        start=idx[2000]
+        first,orders=causal_buyback_dates(
+            price,start=start,gate=.40,terminal=idx[-1],
+            weekly_limit=24,entry_mode="below_200wma")
+        self.assertEqual(first,trigger_day+pd.Timedelta(days=1))
+        self.assertTrue(orders)
+        changed=price.copy()
+        changed.loc[first+pd.Timedelta(days=3):]=10000.
+        again,_=causal_buyback_dates(
+            changed,start=start,gate=.40,terminal=idx[-1],
+            weekly_limit=24,entry_mode="below_200wma")
+        self.assertEqual(again,first)
+        with self.assertRaisesRegex(ValueError,"Invalid buyback entry"):
+            causal_buyback_dates(price,start=start,gate=.40,
+                                 terminal=idx[-1],entry_mode="oracle")
+
+    def test_200week_wma_with_unwarmed_history_never_fakes_signal(self):
+        h,p,fx=market(n=1250)
+        gate,orders=causal_buyback_dates(
+            p,start=h+pd.Timedelta(days=550),gate=.40,
+            terminal=h+pd.Timedelta(days=1150),
+            entry_mode="below_200wma")
+        self.assertIsNone(gate)
+        self.assertEqual(orders,[])
+
+    def test_unbounded_wma_dca_uses_only_past_price_and_keeps_cash(self):
+        h,p,fx=market()
+        pre=pd.date_range(h-pd.Timedelta(days=1500),periods=1500,
+                          freq="D",tz="UTC")
+        warm=pd.Series(np.full(len(pre),100.),index=pre)
+        history=pd.concat([warm,p])
+        terminal=h+pd.Timedelta(days=950)
+        for style in ("adaptive_value","adaptive_recovery"):
+            a=simulate_roundtrip(
+                history,fx,h,terminal,seller="dynamic_90pct",
+                gate=.4,buyback_weeks=52,entry_mode="below_200wma",
+                buyback_style=style)
+            self.assertEqual(a["buyback_style"],style)
+            self.assertIsNone(a["planned_buyback_weeks"])
+            self.assertGreaterEqual(a["cash_remaining_aud"],0)
+            self.assertGreaterEqual(a["btc_held_after_buyback"],0)
+            # Later prices, after the accounting cutoff, MUST NOT
+            # modify earlier executable orders.
+            changed=history.copy()
+            changed.loc[terminal+pd.Timedelta(days=1):]=1e7
+            b=simulate_roundtrip(
+                changed,fx,h,terminal,seller="dynamic_90pct",
+                gate=.4,buyback_weeks=52,entry_mode="below_200wma",
+                buyback_style=style)
+            self.assertEqual(a,b)
+        with self.assertRaisesRegex(ValueError,"Adaptive style requires"):
+            simulate_roundtrip(
+                history,fx,h,terminal,seller="dynamic_90pct",gate=.4,
+                buyback_style="adaptive_value",entry_mode="drawdown")
+
+    def test_invalid_fx_fails_closed(self):
+        h,p,fx=market()
+        fx=fx.loc[:h+pd.Timedelta(days=3)]
+        with self.assertRaisesRegex(ValueError,"No safely prior"):
+            simulate_roundtrip(p,fx,h,h+pd.Timedelta(days=1150),
+                               seller="dynamic_90pct",gate=.4)
+
+
+if __name__=="__main__":
+    unittest.main()
