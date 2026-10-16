@@ -14,6 +14,7 @@ on:
       - ".github/workflows/validation_research_tuning.yml"
       - "engines/research/cycle_trade_execution_safety.py"
       - "engines/research/cycle_market_feed.py"
+      - "engines/research/cycle_live_feed_check.py"
       - "tests/test_cycle_trading_sensecheck.py"
       - "tests/test_cycle_market_feed.py"
   workflow_dispatch:
@@ -41,3 +42,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_cycle_trading_sensecheck.py' -v
           python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
+
+      - name: Read-only public BTC/AUD and IBIT quote health smoke test (nonblocking)
+        continue-on-error: true
+        run: python -m engines.research.cycle_live_feed_check
