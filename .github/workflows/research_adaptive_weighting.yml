@@ -1,0 +1,46 @@
+name: Research Dynamic DCA Weighting Attribution
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/adaptive_weighting_attribution.py"
+      - "tests/test_adaptive_weighting_attribution.py"
+      - ".github/workflows/research_adaptive_weighting.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pandas numpy requests
+      - run: python -m py_compile engines/research/adaptive_weighting_attribution.py
+      - run: python -m unittest discover -s tests -p "test_adaptive_weighting_attribution.py" -v
+
+  historical-readonly:
+    needs: unit-tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pandas numpy requests
+      - name: Compare matched-weight execution VWAPs in BTC/AUD history
+        env:
+          AUDIT_GITHUB_REPO: aussiekarl-gif/btc-audit-data
+          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN }}
+        run: python -m engines.research.adaptive_weighting_attribution --output dca_weighting_attribution.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-dca-weighting-attribution
+          path: dca_weighting_attribution.json
