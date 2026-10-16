@@ -19,6 +19,7 @@ from engines.shared.portfolio_store import load_portfolio
 from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
+from engines.research.cycle_position_anchor import original_cycle_inventory
 from engines.research.ibit_quote import fetch_ibit_quote
 from engines.research.cycle_aud_price_levels import observed_aud_cycle_levels
 
@@ -312,6 +313,19 @@ with tabs[0]:
             "distribution window has passed. It cannot trigger a "
             "retroactive sale of your 2026 purchases."
         )
+        if saved_cash.get("valid") and isinstance(saved_live_portfolio,dict):
+            try:
+                anchored=original_cycle_inventory(
+                    saved_live_portfolio,market["halving_date"],
+                    asof=market["asof_date"])
+                if not anchored["eligible"]:
+                    st.caption(
+                        "Portfolio reconciliation: no recorded BTC/IBIT "
+                        "held before 2 September 2025. Do NOT treat your "
+                        "later 2026 purchases as historical day-500 holdings."
+                    )
+            except (ValueError,KeyError,TypeError):
+                st.caption("Historical position anchor unavailable: check recorded transactions.")
     elif full_research_cycle["next_exit_review_date"]:
         st.caption(
             f"Full historical SELL policy next review: "
