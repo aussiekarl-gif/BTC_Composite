@@ -134,6 +134,36 @@ class AfterTaxBuybackTests(unittest.TestCase):
         self.assertIsNone(result["buyback_error_above_post_sale_low_pct"])
         self.assertEqual(result["buyback_buy_count"],0)
 
+    def test_200week_wma_trigger_uses_only_past_weekly_price_observations(self):
+        idx=pd.date_range("2015-01-01",periods=2400,freq="D",tz="UTC")
+        price=pd.Series(np.full(len(idx),100.),index=idx)
+        trigger_day=idx[2050]
+        price.loc[trigger_day:]=70.
+        start=idx[2000]
+        first,orders=causal_buyback_dates(
+            price,start=start,gate=.40,terminal=idx[-1],
+            weekly_limit=24,entry_mode="below_200wma")
+        self.assertEqual(first,trigger_day+pd.Timedelta(days=1))
+        self.assertTrue(orders)
+        changed=price.copy()
+        changed.loc[first+pd.Timedelta(days=3):]=10000.
+        again,_=causal_buyback_dates(
+            changed,start=start,gate=.40,terminal=idx[-1],
+            weekly_limit=24,entry_mode="below_200wma")
+        self.assertEqual(again,first)
+        with self.assertRaisesRegex(ValueError,"Invalid buyback entry"):
+            causal_buyback_dates(price,start=start,gate=.40,
+                                 terminal=idx[-1],entry_mode="oracle")
+
+    def test_200week_wma_with_unwarmed_history_never_fakes_signal(self):
+        h,p,fx=market(n=1250)
+        gate,orders=causal_buyback_dates(
+            p,start=h+pd.Timedelta(days=550),gate=.40,
+            terminal=h+pd.Timedelta(days=1150),
+            entry_mode="below_200wma")
+        self.assertIsNone(gate)
+        self.assertEqual(orders,[])
+
     def test_invalid_fx_fails_closed(self):
         h,p,fx=market()
         fx=fx.loc[:h+pd.Timedelta(days=3)]
