@@ -203,8 +203,10 @@ def group_trade_legs(trades):
                                   leg["btc_quantity"])
         # Effective buy includes fixed brokerage; effective sell deducts it.
         # Gross VWAP retained separately for comparison with older audits.
+        # BUY gross already includes brokerage cash outflow; bought BTC is
+        # net of the fee. Do NOT add the fee a second time.
         leg["net_effective_price_aud"] = (
-            (leg["gross_notional_aud"] + leg["fees_aud"]) / leg["btc_quantity"]
+            leg["gross_notional_aud"] / leg["btc_quantity"]
             if leg["side"]=="BUY" else
             (leg["gross_notional_aud"] - leg["fees_aud"]) / leg["btc_quantity"]
         )
