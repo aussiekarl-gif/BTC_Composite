@@ -35,6 +35,7 @@ import pandas as pd
 import requests
 
 from engines.research.day500_dynamic_dca_out import staged_day500_dynamic_exit
+from engines.research.shared_cycle_policy import recovery_buy_budget_fraction
 from engines.research.smsf_self_financing_replay import AuditSmsfAccount
 from engines.research.top_signal_horse_race import HALVINGS,read_exported_history
 from engines.research.verified_recent_price_bridge import parse_frankfurter_fx
@@ -205,30 +206,13 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
                 # Only the final fixed-schedule week forces deployment.
                 if j==buyback_weeks-1:gross=actual.cash
             else:
-                pos=int(price.index.searchsorted(day))
-                indexes=pos-1-7*np.arange(200)
-                if np.min(indexes)<0:
-                    raise AssertionError("Historical 200WMA not warmed")
-                ma200=float(np.mean(prices[indexes]))
-                prior=float(prices[pos-1])
-                ratio=prior/ma200
-                if buyback_style=="adaptive_value":
-                    # Buy deepest BTC/USD discounts the most; accelerate
-                    # near a modest WMA reclaim, taper into strength.
-                    frac=(.10 if ratio<=.85 else
-                          .035 if ratio<=1.0 else
-                          .12 if ratio<=1.25 else
-                          .04 if ratio<=1.5 else .01)
-                else:
-                    # Alternative independent momentum confirmation:
-                    # reserve more in capitulation and increase pace
-                    # after observable 50-day average recovery.
-                    recent=float(np.mean(prices[pos-50:pos]))
-                    earlier=float(np.mean(prices[pos-64:pos-14]))
-                    strengthening=(prior>recent and recent>earlier)
-                    frac=(.025 if ratio<=1.0 else
-                          .15 if ratio<=1.25 and strengthening else
-                          .045 if ratio<=1.5 else .01)
+                # Same strictly prior completed-price dynamic fraction
+                # exposed by the shared Research preview. Denominator is
+                # ORIGINAL post-sale available buyback cash, NOT
+                # remaining cash in the existing simplified Streamlit UI.
+                step=recovery_buy_budget_fraction(
+                    price,day,style=buyback_style)
+                frac=step["fraction_of_initial_buyback_cash"]
                 gross=min(actual.cash,initial_budget*frac)
             if gross>100.:
                 if actual.buy(day,float(price.loc[day])*fx_before(fx,day),
