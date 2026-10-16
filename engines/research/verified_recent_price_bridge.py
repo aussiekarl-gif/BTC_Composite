@@ -22,7 +22,7 @@ import pandas as pd
 import requests
 
 from engines.research.full_cycle_reinvestment import validate_history
-from engines.research.real_2026_deployment_audit import evaluate_cohorts
+from engines.research.real_2026_deployment_audit import evaluate_cohorts, benchmark_account
 from engines.research.adaptive_dca_execution import simulate_adaptive
 from engines.research.smsf_self_financing_replay import replay
 
@@ -324,6 +324,96 @@ def evaluate_causal_drawdown_entry_gates(history, historical_fx, *,
     return out
 
 
+HISTORICAL_TRANSFER_START_YEARS = (2019,2020,2021,2022,2023,2024,2025)
+
+
+def historical_entry_gate_transfer(history, *,
+                                   years=HISTORICAL_TRANSFER_START_YEARS,
+                                   capital=500_000.):
+    """Fixed cash inception, fixed 52-week horizon on several older eras.
+
+    Scores ACTUAL implementable prior-price-only activation conditions.
+    Each cohort is independent hypothetical fresh capital, does not use
+    future-optimised starting day, and does not pretend to be a live account.
+    Because models have already been examined on 2019–2025, still in-sample.
+    """
+    h=validate_history(history)
+    rows=[]
+    for year in years:
+        start=f"{year}-01-01"
+        end=pd.Timestamp(start,tz="UTC")+pd.Timedelta(weeks=52)
+        prefix=h.loc[h.index<end]
+        if len(prefix)<110 or prefix.index[-1]<end-pd.Timedelta(weeks=2):
+            continue
+        matched=benchmark_account(prefix,start,"immediate_buy",initial_cash=capital)
+        buy_hold=matched["account_marked_value_aud"]
+        policies=[{
+            "activation_gate_pct":0,
+            "gate_execution_date":matched["first_weekly_execution"],
+            "ending_equity_aud":buy_hold,
+            "BTC_held":matched["btc_equivalent_held"],
+            "filled_orders":matched["actual_orders"],
+            "triggered":True,
+            "policy":"immediate_buy",
+        }]
+        for gate in GATE_DRAWDOWNS:
+            trigger,_=first_causal_gate_week(prefix,drawdown=gate,
+                                              start_date=start)
+            if trigger is None:
+                policies.append({
+                    "policy":f"drawdown_{int(100*gate)}pct_adaptive",
+                    "activation_gate_pct":100*gate,
+                    "triggered":False,
+                    "ending_equity_aud":capital,
+                    "BTC_held":0.,
+                    "filled_orders":0,
+                    "gate_execution_date":None,
+                })
+                continue
+            origin=simulate_adaptive(prefix,confirm_drawdown=.10,
+                                      deployment_start=trigger,
+                                      initial_cash=capital)
+            replayed=replay(prefix,origin["trades"],policy="adaptive",tax=True,
+                              starting_cash=capital)
+            policies.append({
+                "policy":f"drawdown_{int(100*gate)}pct_adaptive",
+                "activation_gate_pct":100*gate,
+                "triggered":True,
+                "gate_execution_date":str(trigger),
+                "ending_equity_aud":replayed["ending_marked_equity_aud"],
+                "BTC_held":replayed["btc"],
+                "filled_orders":replayed["actual_orders"],
+            })
+        for p in policies:
+            p["relative_to_matched_hold_pct"]=round(
+                100*(p["ending_equity_aud"]/buy_hold-1),3)
+        rows.append({
+            "start":start,
+            "end":str(prefix.index[-1]),
+            "scenarios":policies,
+        })
+    summaries=[]
+    for gate in GATE_DRAWDOWNS:
+        candidates=[next(p for p in r["scenarios"]
+                         if p["activation_gate_pct"]==100*gate)
+                    for r in rows]
+        summaries.append({
+            "gate_drawdown_pct":100*gate,
+            "cohorts":len(candidates),
+            "triggered":sum(x["triggered"] for x in candidates),
+            "beat_immediate_hold":sum(x["relative_to_matched_hold_pct"]>0
+                                      for x in candidates),
+            "underperformed_hold":sum(x["relative_to_matched_hold_pct"]<0
+                                       for x in candidates),
+            "median_relative_to_hold_pct":round(
+                float(np.median([x["relative_to_matched_hold_pct"]
+                                 for x in candidates])),3)
+                if candidates else None,
+        })
+    return {"fixed_one_year_eras":rows,"summary":summaries,
+            "not_out_of_sample":True}
+
+
 def audit(master, *, asof):
     historical=validate_history(master)
     if historical.index.tz is None:
@@ -354,6 +444,7 @@ def audit(master, *, asof):
             outcome["weighted_entry_vs_reported_low"]=weighted_entry_from_synthetic_orders(
                 synthetic_orders, fx)
     gated=evaluate_causal_drawdown_entry_gates(candidate,fx)
+    historical_transfer=historical_entry_gate_transfer(candidate)
     return {
         "research_only":True,
         "asof_requested":str(pd.Timestamp(asof).date()),
@@ -364,6 +455,7 @@ def audit(master, *, asof):
         "price_only_causal_risk":risk_diagnostics,
         "cohort_replay":cohorts,
         "causal_january_cash_drawdown_gates":gated,
+        "historical_one_year_gate_transfer":historical_transfer,
         "warnings":[
             "AUD strict-prior Power Law candidate is NOT the existing proprietary/archived risk_score.",
             "All historical models are in-sample hypotheses; no untouched holdout.",
@@ -376,6 +468,8 @@ def audit(master, *, asof):
             "Buying error excludes unused cash; deployment percentage is separately disclosed.",
             "The gate thresholds are explored in sample after prior cycle inspection; no prospective validation.",
             "A January cash-held until drawdown strategy is different from pretending June was selected perfectly in advance.",
+            "One-year prior-cycle transfer tests are historically inspected and not untouched out-of-sample.",
+            "Drawdown gates can stay inactive through a bull market; count missed opportunities.",
         ],
     }
 
