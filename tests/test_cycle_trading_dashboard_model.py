@@ -7,6 +7,7 @@ import pandas as pd
 from engines.research.cycle_trading_dashboard_model import (
     LAST_CONFIRMED_HALVING,portfolio_snapshot,
     build_dashboard_market,planned_buy_order,historical_one_scenario,
+    portfolio_buy_error_from_reported_low,
 )
 
 
@@ -37,6 +38,39 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
         self.assertEqual(r["ibit_units"],100)
         self.assertEqual(r["unpriced_or_unknown_rows"],0)
         self.assertAlmostEqual(r["approx_average_cost_aud_per_btc"],2706/.015)
+
+    def test_portfolio_buy_error_is_usd_fx_and_quantity_weighted(self):
+        dates=pd.date_range("2026-06-15",periods=10,freq="D",tz="UTC")
+        fx=pd.DataFrame({"aud_per_usd":[1.5]*len(dates)},index=dates)
+        saved={"rows":[
+            {"Date":"19/06/26","Asset":"ASX:IBIT","AUD Spent":1500.,
+             "Brokerage / Fee AUD":3.,
+             "BTC AUD Price":150000.},
+            {"Date":"20/06/26","Asset":"Direct BTC","AUD Spent":3000.,
+             "Brokerage / Fee AUD":3.,"Units / BTC Received":.02},
+        ]}
+        before=str(saved)
+        audit=portfolio_buy_error_from_reported_low(saved,fx,low_usd=57717)
+        self.assertEqual(before,str(saved))
+        self.assertTrue(audit["available"])
+        self.assertEqual(audit["purchases_count"],2)
+        self.assertAlmostEqual(audit["btc_equivalent_purchased"],.03)
+        self.assertAlmostEqual(audit["effective_avg_usd_per_btc"],100133.33,places=2)
+        self.assertAlmostEqual(
+            audit["error_above_user_reported_low_pct"],
+            100*(100133.3333/57717.-1),places=2)
+
+    def test_missing_fx_or_purchase_price_does_not_show_partial_error(self):
+        fx=pd.DataFrame({"aud_per_usd":[1.5]},
+                        index=pd.DatetimeIndex(["2026-06-18"],tz="UTC"))
+        rows={"rows":[{"Date":"19/06/26","Asset":"ASX:IBIT",
+                       "AUD Spent":2500., "BTC AUD Price":0.}]}
+        self.assertFalse(
+            portfolio_buy_error_from_reported_low(rows,fx)["available"])
+        self.assertFalse(
+            portfolio_buy_error_from_reported_low(rows,pd.DataFrame())["available"])
+        with self.assertRaises(ValueError):
+            portfolio_buy_error_from_reported_low(rows,fx,low_usd=0)
 
     def test_missing_ibit_btc_price_does_not_fabricate_exposure(self):
         r=portfolio_snapshot({"starting_capital_aud":500000,
