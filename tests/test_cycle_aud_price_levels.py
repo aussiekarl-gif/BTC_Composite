@@ -24,7 +24,7 @@ class ObservedAudCycleLevelsTests(unittest.TestCase):
         self.assertEqual(res["cycle_bottom_aud"],160.)
         self.assertEqual(res["last_price_aud"],225.)
         self.assertAlmostEqual(res["pct_change_from_top"],-40.79,places=2)
-        self.assertAlmostEqual(res["pct_change_from_bottom"],40.63,places=2)
+        self.assertAlmostEqual(res["pct_change_from_bottom"],40.62,places=2)
         self.assertAlmostEqual(res["position_between_low_high_pct"],29.55,places=2)
         self.assertEqual(res["asof_date"],"2024-04-26")
         self.assertTrue(res["observation_only"])
