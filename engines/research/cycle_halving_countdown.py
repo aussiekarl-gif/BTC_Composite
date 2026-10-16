@@ -79,32 +79,48 @@ def _calendar_fallback(now):
 
 
 def fetch_verified_halving_date(height, *, now=None, timeout=8):
-    """Verify actual epoch-start block timestamp before advancing the cycle.
-
-    Only used AFTER a new 210,000-block boundary. Never infer a confirmed
-    event from an approximate 4-year calendar date.
-    """
-    now = _utc_now(now)
+    """Confirm future halving event date from one of two public block APIs."""
+    now=_utc_now(now)
     if height < FIRST_CURRENT_ERA_HEIGHT + BLOCKS_PER_HALVING or (
             height % BLOCKS_PER_HALVING != 0):
         raise ValueError("Not a future halving boundary")
-    hash_url = f"https://mempool.space/api/block-height/{height}"
-    hash_response = requests.get(hash_url, timeout=timeout)
-    hash_response.raise_for_status()
-    block_hash = hash_response.text.strip().lower()
-    if len(block_hash) != 64 or any(char not in "0123456789abcdef" for char in block_hash):
-        raise ValueError("Invalid halving block hash")
-    response = requests.get(f"https://mempool.space/api/block/{block_hash}",
-                            timeout=timeout)
-    response.raise_for_status()
-    payload = response.json()
-    if not isinstance(payload, dict) or int(payload.get("height", -1)) != height:
-        raise ValueError("Halving block height did not match")
-    stamp = dt.datetime.fromtimestamp(int(payload["timestamp"]), dt.timezone.utc)
-    if stamp.date() <= LAST_KNOWN_HALVING_DATE or stamp > now:
-        raise ValueError("Invalid future halving block timestamp")
-    return stamp.date().isoformat()
 
+    def valid_date(timestamp):
+        stamp=dt.datetime.fromtimestamp(int(timestamp), dt.timezone.utc)
+        if stamp.date()<=LAST_KNOWN_HALVING_DATE or stamp>now:
+            raise ValueError("Invalid future halving block timestamp")
+        return stamp.date().isoformat()
+
+    try:
+        hash_url=f"https://mempool.space/api/block-height/{height}"
+        hash_response=requests.get(hash_url,timeout=timeout)
+        hash_response.raise_for_status()
+        block_hash=hash_response.text.strip().lower()
+        if len(block_hash)!=64 or any(ch not in "0123456789abcdef" for ch in block_hash):
+            raise ValueError("Invalid halving block hash")
+        response=requests.get(f"https://mempool.space/api/block/{block_hash}",
+                              timeout=timeout)
+        response.raise_for_status()
+        payload=response.json()
+        if not isinstance(payload,dict) or int(payload.get("height",-1))!=height:
+            raise ValueError("Halving block height did not match")
+        return valid_date(payload["timestamp"])
+    except (requests.RequestException, ValueError, KeyError,
+            OverflowError, OSError, TypeError):
+        # Distinct public source so a temporary mempool.space outage is not
+        # a single point of failure for a new confirmed halving date.
+        response=requests.get(
+            f"https://blockchain.info/block-height/{height}?format=json",
+            timeout=timeout)
+        response.raise_for_status()
+        blocks=response.json().get("blocks",[])
+        if not isinstance(blocks,list):
+            raise ValueError("Invalid alternate halving block response")
+        for block in blocks:
+            if (isinstance(block,dict) and block.get("main_chain") is True
+                    and int(block.get("height",-1))==height):
+                return valid_date(block["time"])
+        raise ValueError("Alternate provider did not confirm canonical block")
 
 def fetch_halving_countdown(*, now=None, timeout=8):
     """Fetch recent block height, fail to a labelled calendar approximation."""
