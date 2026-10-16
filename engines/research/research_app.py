@@ -9,6 +9,7 @@ if str(_REPO_ROOT) not in _sys.path:
 
 from engines.research import research_model as _model
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
+from engines.shared.portfolio_execution_accuracy import calculate_portfolio_entry_error
 from engines.research.cycle_backtest import (
     simulate_buy_and_hold_benchmark,
     simulate_cycle_strategy,
@@ -2169,6 +2170,105 @@ elif mode == "My Portfolio":
     q3.metric("Trade Value", f"A${total_trade_value:,.0f}")
     q4.metric("Brokerage / Fees", f"A${total_fees:,.2f}")
 
+    # Read-only measurement of ACTUAL 2026 purchases; distinct from
+    # historical 2016-start research strategy simulations. The cycle low is
+    # provisional and editable, never inferred as a real-time perfect low.
+    # References/metrics are session-only, NOT part of shared portfolio writes.
+    st.subheader("2026 Cycle Entry Accuracy")
+    st.caption(
+        "Compare your BTC-equivalent weighted average purchase price with a "
+        "provisional cycle bottom. This includes each purchase's brokerage and "
+        "uses the purchase-date FX rate for USD comparisons. Your 2026 orders "
+        "are loaded from My Portfolio; research-model trades are excluded."
+    )
+    ref_left, ref_right = st.columns(2)
+    with ref_left:
+        portfolio_ref_currency = st.selectbox(
+            "Cycle-bottom reference currency",
+            options=["USD", "AUD"],
+            index=0,
+            key="portfolio_cycle_bottom_currency",
+            help="BTC is commonly quoted in USD but your portfolio is in AUD. "
+                 "Choose the actual currency of your 58,000 reference.",
+        )
+    with ref_right:
+        portfolio_ref_price = st.number_input(
+            f"Provisional 2026 BTC cycle bottom ({portfolio_ref_currency}/BTC)",
+            min_value=1.0,
+            value=58000.0,
+            step=1000.0,
+            format="%.2f",
+            key=f"portfolio_cycle_bottom_{portfolio_ref_currency.lower()}",
+            help="58,000 is your working reference, NOT an independently "
+                 "verified cycle low. Edit it if your reference changes.",
+        )
+
+    portfolio_entry_fx = None
+    if portfolio_ref_currency == "USD":
+        dated_2026 = clean.loc[
+            clean["_purchase_date"].notna() &
+            clean["_purchase_date"].ge(pd.Timestamp("2026-01-01")),
+            "_purchase_date",
+        ]
+        if not dated_2026.empty:
+            try:
+                portfolio_entry_fx = fetch_aud_usd_rates(
+                    dated_2026.min().date() - dt.timedelta(days=10),
+                    max(dated_2026.max().date(), dt.date.today()),
+                )
+            except Exception as exc:
+                st.warning(f"Could not look up historical AUD/USD rates: {exc}")
+
+    portfolio_accuracy = calculate_portfolio_entry_error(
+        clean,
+        reference_price=portfolio_ref_price,
+        reference_currency=portfolio_ref_currency,
+        usd_per_aud=portfolio_entry_fx,
+    )
+    avg_entry_ref = portfolio_accuracy["weighted_average_in_reference_currency"]
+    entry_error_pct = portfolio_accuracy["error_pct"]
+    acc1, acc2, acc3 = st.columns(3)
+    acc1.metric(
+        f"2026 weighted BTC entry ({portfolio_ref_currency})",
+        "n/a" if avg_entry_ref is None
+        else f"{portfolio_ref_currency} {avg_entry_ref:,.0f}/BTC-eq",
+        help="Total amount invested including trade fees, converted using the "
+             "FX rate on each purchase date if USD, divided by BTC-equivalent exposure.",
+    )
+    acc2.metric(
+        "Average buy error vs cycle bottom",
+        "n/a" if entry_error_pct is None else f"{entry_error_pct:+.2f}%",
+        help="100 × (BTC-equivalent weighted average entry price / "
+             "provisional reference bottom − 1). Negative means the "
+             "reference is above your average entry; it is not clamped to zero.",
+    )
+    acc3.metric(
+        "2026 purchases counted",
+        f"{portfolio_accuracy['purchase_rows']}",
+    )
+    if entry_error_pct is not None:
+        st.caption(
+            ("Inside the 25% average-buy target." if entry_error_pct <= 25
+             else "Above the 25% average-buy target.")
+            + " This is a hindsight benchmark, not a guaranteed future bottom."
+        )
+    if portfolio_accuracy["issues"]:
+        st.warning(
+            "Execution error unavailable until all 2026 transactions have "
+            "valid BTC-equivalent amounts and (for USD) purchase-date FX. "
+            + " ".join(portfolio_accuracy["issues"][:3])
+        )
+    if portfolio_accuracy["excluded_pre2026_rows"]:
+        st.caption(
+            f"{portfolio_accuracy['excluded_pre2026_rows']} pre-2026 row(s) "
+            "were excluded from the real-deployment accuracy calculation."
+        )
+    st.caption(
+        "ASX:IBIT is measured as estimated BTC-equivalent exposure, not exact "
+        "ETF custody. Selling accuracy will be shown when actual sale "
+        "transactions are tracked; this portfolio editor currently records purchases."
+    )
+
     # Current portfolio valuation. For ASX:IBIT this is a BTC-equivalent estimate
     # based on live BTC/AUD, not the exact traded ASX market price of the ETF.
     portfolio_live_btc_aud = fetch_live_btc_aud()
@@ -2234,8 +2334,9 @@ elif mode == "My Portfolio":
     display_cols = [
         "Date", "Asset", "AUD Spent", "Brokerage / Fee AUD",
         "Units / BTC Received", "ETF Unit Price AUD", "BTC AUD Price",
-        "BTC Eq / ETF Unit", "BTC Equivalent"
+        "BTC Eq / ETF Unit", "BTC Equivalent", "Entry Error vs Bottom %"
     ]
+    clean["Entry Error vs Bottom %"] = portfolio_accuracy["per_transaction_error_pct"]
     transaction_column_config = {
         "AUD Spent": st.column_config.NumberColumn(format="dollar"),
         "Brokerage / Fee AUD": st.column_config.NumberColumn(format="dollar"),
@@ -2244,6 +2345,11 @@ elif mode == "My Portfolio":
         "BTC AUD Price": st.column_config.NumberColumn(format="dollar"),
         "BTC Eq / ETF Unit": st.column_config.NumberColumn(format="%.4f"),
         "BTC Equivalent": st.column_config.NumberColumn(format="%.4f"),
+        "Entry Error vs Bottom %": st.column_config.NumberColumn(
+            "Entry Error vs Bottom (%)", format="%.2f%%",
+            help="Fee-inclusive purchase price error relative to the "
+                 "editable provisional bottom, in the selected currency.",
+        ),
     }
     st.dataframe(
         clean[display_cols],
