@@ -4,7 +4,7 @@ import unittest
 import pandas as pd
 
 from engines.research.exit_confirmation_audit import (
-    evaluate_confirmations, make_confirmed_signals,
+    evaluate_confirmations, make_confirmed_signals, stress_test_latency_and_costs,
 )
 from engines.research.full_cycle_reinvestment import simulate
 
@@ -48,6 +48,15 @@ class ExitConfirmationAuditTests(unittest.TestCase):
                        [0.1, 0.7, 0.8, 0.7, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5])
         sig = make_confirmed_signals(data, drawdown_trigger=.25, trend_weeks=3)
         self.assertEqual((sig["risk_score"] == 1.0).sum(), 1)
+
+    def test_latency_cost_grid_has_fixed_predeclared_cases(self):
+        data = fixture([100, 120, 130, 110, 140, 160, 180],
+                       [.1, .3, .7, .8, .2, .4, .9])
+        rows = stress_test_latency_and_costs(data)
+        self.assertEqual(len(rows), 12)
+        self.assertEqual({r["total_signal_delay_weeks"] for r in rows}, {1, 3, 5})
+        self.assertEqual({r["fee_per_side"] for r in rows}, {0.003, 0.01})
+        self.assertTrue(all(r["ending_equity_aud"] > 0 for r in rows))
 
     def test_validation_and_cohorts(self):
         data = fixture([100, 120, 130, 110, 140, 160, 180],
