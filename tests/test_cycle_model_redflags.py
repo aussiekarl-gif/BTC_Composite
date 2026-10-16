@@ -30,8 +30,18 @@ def check(buy=0.,sell=0.,snapshots=None,market_asof=MARKET_DATE,
 
 def fake_market(*,buy=True):
     # Use actual existing calculation engine; never fake the allocation.
-    from tests.test_cycle_trading_pct_allocation import fixture,set_buy,set_sell
-    market=(set_buy(fixture()) if buy else set_sell(fixture(),525))
+    import numpy as np
+    import pandas as pd
+    from engines.research.cycle_trading_dashboard_model import build_dashboard_market
+    idx=pd.date_range("2022-06-01",periods=1600,freq="D",tz="UTC")
+    series=pd.Series(np.linspace(40000.,100000.,len(idx)),index=idx)
+    fx=pd.DataFrame({"aud_per_usd":np.full(len(idx),1.5)},index=idx)
+    market=build_dashboard_market(series,fx)
+    ratio=.8 if buy else 1.6
+    market["prior_200wma_usd"]=market["previous_close_usd"]/ratio
+    market["previous_close_below_200wma"]=buy
+    if not buy:
+        market["halving_day"]=525
     market["asof_date"]=MARKET_DATE
     return market
 
