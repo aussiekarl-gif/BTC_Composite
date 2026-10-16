@@ -14,6 +14,7 @@ from engines.research.day500_aftertax_reinvestment import fetch_fx_for_cycle
 from engines.research.top_signal_horse_race import HALVINGS,read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.shared.portfolio_store import load_portfolio
+from engines.research.cycle_trade_decision import make_current_decision
 
 
 st.title("Cycle Trading — Research")
@@ -146,43 +147,115 @@ starting_cash_default=(
 tabs=st.tabs(["Current signals", "My Portfolio (read-only)", "Historical sell & buyback"])
 
 with tabs[0]:
-    st.subheader("Signal readiness")
+    st.subheader("Current trading decision — Research")
+    st.caption(
+        "Uses verified previous BTC close, strictly prior 200WMA and your saved purchases. "
+        "Action is a rules-based research illustration, not a live broker order. "
+        "The purchase-only portfolio does not prove current holdings after any sales."
+    )
+    left,right=st.columns(2)
+    with left:
+        chosen_style=st.selectbox(
+            "Dynamic DCA-in sizing",
+            ["adaptive_recovery","adaptive_value"],
+            format_func=lambda x:("Recovery confirmation" if x=="adaptive_recovery"
+                                  else "Value weighted below 200WMA"),
+            key="cycle_decision_buy_style",
+        )
+        cash_input=st.number_input(
+            "AUD cash available for research buying",
+            min_value=0.0,value=float(starting_cash_default),
+            step=1000.0,format="%.2f",key="cycle_decision_cash",
+            help="Prefilled from saved 2026 portfolio, never from hypothetical historic cycle accounts. "
+                 "Do not enter more than cash actually available in My Portfolio."
+        )
+        ibit_quote=st.number_input(
+            "Current broker ASX:IBIT unit price, A$",
+            min_value=0.0,value=0.0,step=0.10,format="%.2f",
+            key="cycle_decision_ibit_quote",
+            help="Enter the current executable ETF price manually. BTC/USD is not an ETF quote."
+        )
+    with right:
+        confirm_units=st.checkbox(
+            "I have verified my currently held ASX:IBIT units in my broker",
+            value=False,key="cycle_decision_confirm_units"
+        )
+        current_units=st.number_input(
+            "Current unsold ASX:IBIT units (from broker)",
+            min_value=0.0,
+            value=0.0,step=1.0,format="%.0f",
+            disabled=not confirm_units,key="cycle_decision_current_ibit_units",
+            help="Your saved portfolio is purchase-only. Confirm this number afresh after every sale."
+        )
+        already_traded=st.checkbox(
+            "Already executed a BTC/IBIT transaction for this signal today",
+            value=False,key="cycle_decision_already_traded",
+            help="Prevents repeated suggestions during this visit. This is NOT persisted as a trade ledger."
+        )
+
+    decision=make_current_decision(
+        market,saved_live_portfolio if not saved_live_error else None,
+        today=today,usable_cash_aud=cash_input,buy_style=chosen_style,
+        ibit_price_aud=ibit_quote if ibit_quote>0 else None,
+        verified_current_ibit_units=(current_units if confirm_units else None),
+        already_traded_today=already_traded,
+        feed_verified=(provider_error is None and verification is not None
+                       and staleness<=3),
+    )
+    d1,d2,d3=st.columns(3)
+    d1.metric("Research action",decision["action"])
+    d2.metric("Illustrative trade amount",
+              f"A${decision['action_aud']:,.2f}" if decision["action"]!="HOLD" else "A$0")
+    d3.metric("ASX:IBIT whole units",
+              f"{decision['estimated_ibit_units']:,}"
+              if decision["estimated_ibit_units"] is not None else "Quote needed")
+    for reason in decision["why"]:
+        st.write("• "+reason)
+    if decision.get("sell_signal") and decision["action"]=="HOLD":
+        st.warning("Potential SELL watch, but no sell sizing until valid broker holdings and quote are confirmed.")
+    if decision["action"]=="BUY" and decision.get("quote_aud") is None:
+        st.warning("Research BUY signal only. Enter the broker's ASX:IBIT quote to calculate actual ETF units.")
+    if decision["action"]=="SELL":
+        st.warning(
+            "Before selling, check FIFO tax lots, 12-month CGT discount eligibility, "
+            "actual broker holdings, your SMSF phase and potential CGT. "
+            "The dashboard does not know whether you already sold a prior tranche."
+        )
+        if "estimated_net_sale_aud_before_cgt" in decision:
+            st.caption(
+                f"Gross A${decision['action_aud']:,.2f}; net of A$3 brokerage "
+                f"A${decision['estimated_net_sale_aud_before_cgt']:,.2f}, before CGT."
+            )
+    if decision["action"]=="BUY" and decision["estimated_ibit_units"] is not None:
+        st.caption(
+            f"At your manual broker quote, {decision['estimated_ibit_units']} whole units "
+            f"cost approximately A${decision.get('estimated_gross_ibit_aud',0):,.2f} "
+            "including an assumed A$3 fee; reconfirm bid/ask and available cash."
+        )
+    with st.expander("How to use the action safely"):
+        st.write(
+            "BUY: check your broker's ASX:IBIT live quote, manually place a suitable "
+            "limit order and record only executed purchases under Research → My Portfolio. "
+            "SELL: confirm unsold units in your broker and assess actual SMSF capital gains "
+            "before placing any manual order. My Portfolio currently only records purchases "
+            "so it cannot track or prevent repeat SELL transactions. "
+            "HOLD means these experimental price/cycle rules did not support a trade "
+            "or data/portfolio safeguards prevented reliable sizing. "
+            "Model confidence has NOT been calibrated from prospective market-top tests."
+        )
+    st.caption(
+        "Late-cycle SELL rollover is an experimental price-only safeguard, not the "
+        "validated day-500 sell-backtest. The previous 2024 halving's day-500 window "
+        "passed in 2025 before your actual purchases. No order is ever submitted."
+    )
+    st.divider()
+    st.subheader("Underlying market signals")
     current_signal=("Prior close below the 200WMA — buyback gate observed"
                     if market["previous_close_below_200wma"] else
                     "Prior close above the 200WMA — initial buyback gate not observed")
     st.info(current_signal)
     st.caption("This is an entry-gate observation, not an assertion that the bear-market low is in.")
 
-    chosen_style=st.selectbox(
-        "Research buyback sizing approach",
-        ["adaptive_recovery","adaptive_value"],
-        format_func=lambda x:("Recovery confirmation (research preferred)"
-                              if x=="adaptive_recovery" else
-                              "Value weighting (deep-discount preference)"),
-        key="cycle_research_buy_style"
-    )
-    st.markdown("**Illustrative order calculation**")
-    cash_input=st.number_input(
-        "Available AUD cash for *this hypothetical cycle-trading account*",
-        min_value=0.,value=starting_cash_default,step=1000.,format="%.2f",
-        help="Defaults to remaining AUD capital from the saved portfolio, when available. This is NOT a trade proposal or proof you sold BTC in 2025.",
-        key="cycle_research_cash_input"
-    )
-    proposal=planned_buy_order(market,cash_available=cash_input,style=chosen_style)
-    if staleness>3 or market["usd_aud_prior"] is None:
-        st.error("Cannot produce a current AUD order: verified price and prior FX are required.")
-    else:
-        d1,d2=st.columns(2)
-        d1.metric("Illustrative next buy",f"A${proposal['amount_aud']:,.2f}")
-        btcval=proposal.get("btc_equivalent_estimate")
-        d2.metric("Illustrative BTC equivalent",
-                  f"{btcval:.7f} BTC-eq" if btcval is not None else "Unavailable")
-        st.caption(proposal["reason"])
-        if proposal["action"]=="ILLUSTRATIVE BUY":
-            st.caption(
-                f"Includes A$3 brokerage. Estimated AUD/BTC {market['btc_price_aud_estimate']:,.0f}; "
-                "ASX:IBIT units and actual fee/spread require a current broker quote."
-            )
     st.subheader("Market history")
     hist=market["price_history"]
     st.line_chart(hist.tail(420).rename("BTC/USD daily price"))
