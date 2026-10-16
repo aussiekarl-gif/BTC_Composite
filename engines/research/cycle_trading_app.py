@@ -304,6 +304,14 @@ with tabs[0]:
             "Model confidence has NOT been calibrated from prospective market-top tests."
         )
     st.caption(
+        "MODEL VALIDATION: The live SELL percentages are applied to REMAINING units "
+        "(37.32% remains if all seven stages execute); the historical exit test "
+        "uses ORIGINAL BTC and dynamic regime factors, including a different 20% "
+        "holdback policy. The live recovery BUY is also an initial 200WMA gate "
+        "rather than the complete backtested recovery phase. The earlier historical "
+        "BTC multipliers do not validate these live allocation rules."
+    )
+    st.caption(
         "The recovered-cash calculation uses recorded sale proceeds but does not "
         "automatically escrow real SMSF taxes. Consider tax reserves before trading."
     )
