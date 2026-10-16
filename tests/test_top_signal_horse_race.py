@@ -6,6 +6,7 @@ import pandas as pd
 
 from engines.research.top_signal_horse_race import (
     build_daily_signals, distinct_events, evaluate_alerts, parse_chart_csv,
+    first_tradeable_maturity_warning_by_cycle,
 )
 
 
@@ -63,6 +64,25 @@ class TopSignalHorseRaceTests(unittest.TestCase):
         self.assertEqual(x["distinct_events_since_2013"],1)
         self.assertEqual(x["fully_followed_events"],0)
         self.assertEqual(x["censored_recent_events"],1)
+
+    def test_first_live_top_warning_cannot_cherry_pick_later_alert(self):
+        idx=pd.date_range("2016-01-01",periods=800,freq="D",tz="UTC")
+        frame=pd.DataFrame({"price_usd":[100.]*800},index=idx)
+        # In 2017 the actual peak is December, while first maturity
+        # warning in June is 70% below peak. Best-looking later
+        # warning MUST NOT substitute for the first tradeable one.
+        frame.loc["2017-12-16","price_usd"]=1000.
+        signs=pd.DataFrame({"cycle_maturity_warning":[False]*800},index=idx)
+        signs.loc["2017-06-24","cycle_maturity_warning"]=True
+        signs.loc["2017-12-15","cycle_maturity_warning"]=True
+        output=first_tradeable_maturity_warning_by_cycle(
+            frame,signs,maturity_start_days=350,
+            maturity_end_days=800)
+        self.assertEqual(len(output["cycles"]),1)
+        row=output["cycles"][0]
+        self.assertEqual(row["first_warning"],"2017-06-24")
+        self.assertEqual(row["error_from_hindsight_peak_pct"],90.)
+        self.assertFalse(row["first_warning_within_25pct_hindsight"])
 
     def test_prior_day_breakdown_signal_occurs_after_downtrend(self):
         df=sample()
