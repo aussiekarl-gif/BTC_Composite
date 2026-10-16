@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from engines.research.halving_window_top_audit import make_sale_schedule
+from engines.research.halving_window_top_audit import (make_sale_schedule, make_day500_then_weekly_schedule)
 
 
 class HalvingClockSaleTests(unittest.TestCase):
@@ -85,6 +85,40 @@ class HalvingClockSaleTests(unittest.TestCase):
         changed.loc[self.halving+pd.Timedelta(days=700):]=1e6
         self.assertEqual(base,make_sale_schedule(changed,self.halving,
                         day_start=525,day_end=560,method="trend_weighted"))
+
+    def test_day500_then_weekly_7_fills_and_only_21_aud_brokerage(self):
+        w=make_day500_then_weekly_schedule(self.prices,self.halving,day500_fraction=.1)
+        self.assertEqual(w["first_sale_day"],"2021-09-23")
+        self.assertEqual(w["last_sale_day"],"2021-11-22")
+        self.assertEqual(w["sales"],7)
+        self.assertEqual(w["execution_day_indices"],[500,525,532,539,546,553,560])
+        self.assertEqual(w["brokerage_aud_at_3_per_order"],21)
+        self.assertAlmostEqual(w["total_fraction_sold"],1.)
+
+    def test_zero_early_allocation_executes_six_weekly_orders(self):
+        six=make_day500_then_weekly_schedule(self.prices,self.halving,day500_fraction=0)
+        self.assertEqual(six["sales"],6)
+        self.assertEqual(six["brokerage_aud_at_3_per_order"],18)
+        self.assertEqual(six["first_sale_day"],"2021-10-18")
+        self.assertEqual(six["last_sale_day"],"2021-11-22")
+
+    def test_day500_fraction_is_causal_and_later_prices_do_not_rewrite_history(self):
+        for fraction in (.1,.15,.25):
+            original=make_day500_then_weekly_schedule(
+                self.prices,self.halving,day500_fraction=fraction)
+            changed=self.prices.copy()
+            changed.loc[self.halving+pd.Timedelta(days=561):]=10000000.
+            after=make_day500_then_weekly_schedule(
+                changed,self.halving,day500_fraction=fraction)
+            self.assertEqual(original,after)
+            self.assertEqual(original["sales"],7)
+            self.assertAlmostEqual(original["total_fraction_sold"],1.)
+
+    def test_day500_fraction_must_not_sell_negative_or_all_the_btc_early(self):
+        for fraction in (-.1,1.,1.1):
+            with self.assertRaisesRegex(ValueError,"day500_fraction"):
+                make_day500_then_weekly_schedule(
+                    self.prices,self.halving,day500_fraction=fraction)
 
     def test_invalid_window_and_missing_day_rejected(self):
         with self.assertRaises(ValueError):
