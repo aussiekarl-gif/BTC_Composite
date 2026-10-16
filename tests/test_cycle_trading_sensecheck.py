@@ -97,6 +97,20 @@ class DailyVersusWeeklySafetyTests(unittest.TestCase):
         self.assertEqual(c["next_eligible_date"],"2026-10-23")
 
 
+class BacktestParityGuards(unittest.TestCase):
+    def test_live_sell_percent_is_of_remaining_not_original_btc(self):
+        from engines.research.cycle_trade_allocation import (
+            SELL_REVIEW_DAY_WEIGHTS,SCHEDULE_REMAINING_IF_ALL_TRIGGERED,
+            BACKTEST_LIVE_PARITY_VERIFIED,
+        )
+        fraction=1.
+        for pct in SELL_REVIEW_DAY_WEIGHTS.values():
+            fraction*=1-pct
+        self.assertAlmostEqual(fraction,.37316471808,places=8)
+        self.assertAlmostEqual(SCHEDULE_REMAINING_IF_ALL_TRIGGERED,fraction)
+        self.assertFalse(BACKTEST_LIVE_PARITY_VERIFIED)
+        self.assertNotAlmostEqual(fraction,.20)
+
 class DateAwareReferenceTests(unittest.TestCase):
     def setUp(self):
         self.prices=pd.Series(
