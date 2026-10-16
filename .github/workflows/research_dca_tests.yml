@@ -1,6 +1,11 @@
 name: Research DCA regression tests
 
 on:
+  pull_request:
+    paths:
+      - "engines/research/**"
+      - "tests/**"
+      - ".github/workflows/research_dca_tests.yml"
   push:
     branches: [main]
     paths:
@@ -24,4 +29,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Run research DCA regression tests
-        run: python -m unittest discover -s tests -p 'test_bottom_challenger_sizing.py' -v
+        run: |
+          python -m unittest discover -s tests -p 'test_bottom_challenger_sizing.py' -v
+          python -m unittest discover -s tests -p 'test_below_200wma_carry.py' -v
