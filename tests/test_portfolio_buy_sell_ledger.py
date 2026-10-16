@@ -103,6 +103,38 @@ class PortfolioBuySellLedgerTests(unittest.TestCase):
         self.assertEqual(view["unpriced_or_unknown_rows"],1)
         self.assertEqual(view["ibit_units"],100.)
 
+    def test_duplicate_execution_is_blocked_but_distinct_order_ref_works(self):
+        prior=initial()
+        one,_=append_executed_trade(
+            prior,side="SELL",asset="ASX:IBIT",
+            trade_date="16/10/26",quantity=3,trade_price_aud=23.,
+            fee_aud=3.,note="order-123")
+        with self.assertRaisesRegex(ValueError,"Matching execution"):
+            append_executed_trade(
+                one,side="SELL",asset="ASX:IBIT",
+                trade_date="16/10/26",quantity=3,
+                trade_price_aud=23.,fee_aud=3.,note="order-123")
+        two,status=append_executed_trade(
+            one,side="SELL",asset="ASX:IBIT",trade_date="16/10/26",
+            quantity=3,trade_price_aud=23.,fee_aud=3.,note="order-124")
+        self.assertEqual(status["ibit_units"],94.)
+        self.assertEqual(len(two["sales"]),2)
+
+    def test_old_editor_preserves_execution_ids_and_notes(self):
+        base=initial()
+        after,_=append_executed_trade(
+            base,side="BUY",asset="ASX:IBIT",
+            trade_date="16/10/26",quantity=2,trade_price_aud=22.,
+            btc_aud_price=150000.,note="broker-fill-42")
+        legacy_buys=[{k:v for k,v in row.items()
+                      if k not in ("Notes","Transaction ID")}
+                     for row in after["rows"]]
+        merged=merge_legacy_purchase_editor(
+            after,after,edited_buys=legacy_buys,starting_capital_aud=500000.)
+        self.assertEqual(merged["rows"][-1]["Notes"],"broker-fill-42")
+        self.assertEqual(merged["rows"][-1]["Transaction ID"],
+                         after["rows"][-1]["Transaction ID"])
+
     def test_stale_session_writes_are_rejected(self):
         old=initial()
         updated,status=append_executed_trade(
