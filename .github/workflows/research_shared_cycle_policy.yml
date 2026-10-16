@@ -1,0 +1,39 @@
+name: Shared Cycle Trading Policy Parity — Research Only
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/shared_cycle_policy.py"
+      - "engines/research/cycle_position_anchor.py"
+      - "engines/research/cycle_account_shadow.py"
+      - "engines/research/day500_dynamic_dca_out.py"
+      - "engines/research/day500_aftertax_reinvestment.py"
+      - "tests/test_shared_cycle_policy.py"
+      - "tests/test_cycle_position_anchor.py"
+      - "tests/test_cycle_account_shadow.py"
+      - ".github/workflows/research_shared_cycle_policy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exact-historical-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - name: Validate Python syntax for shared policy and old replays
+        run: python -m py_compile engines/research/shared_cycle_policy.py engines/research/day500_dynamic_dca_out.py engines/research/day500_aftertax_reinvestment.py
+      - name: Exact 2017 2021 and 2025 policy parity
+        run: python -m unittest discover -s tests -p 'test_shared_cycle_policy.py' -v
+      - name: Verify original position anchor from recorded buys and sells
+        run: python -m unittest discover -s tests -p 'test_cycle_position_anchor.py' -v
+      - name: Validate account-specific original-position sale proposals match historical replay
+        run: python -m unittest discover -s tests -p 'test_cycle_account_shadow.py' -v
+      - name: Retain existing self-financing SMSF tests
+        run: python -m unittest discover -s tests -p 'test_day500_aftertax_reinvestment.py' -v

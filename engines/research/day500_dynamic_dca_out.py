@@ -35,6 +35,11 @@ from engines.research.top_signal_horse_race import (
     HALVINGS, PEAK_WINDOWS, read_exported_history,
 )
 
+from engines.research.shared_cycle_policy import (
+    staged_exit_decision,exit_review_days,
+    prior_price_regime,STAGED_POLICIES,
+)
+
 START_DAY=500
 REVIEW_DAY=730
 WEEK_DAYS=tuple(range(START_DAY+7,REVIEW_DAY+1,7))
@@ -59,25 +64,8 @@ def _validate_price(price, start, end):
 
 
 def _prior_state(price, day):
-    observed=price.loc[day-pd.Timedelta(days=90):day-pd.Timedelta(days=1)]
-    assert len(observed)==90
-    prior=float(observed.iloc[-1])
-    hi=float(observed.max())
-    ma50=float(observed.iloc[-50:].mean())
-    prior_50=float(price.loc[
-        day-pd.Timedelta(days=64):day-pd.Timedelta(days=15)].mean())
-    drawdown=1-prior/hi
-    # Two independent confirmations for hard riskoff. The first can
-    # protect after a sharp break; the second avoids panic-only sell.
-    if drawdown>=.15 and prior<ma50 and ma50<prior_50:
-        regime="breakdown"
-    elif prior>=.95*hi and prior>ma50:
-        regime="high"
-    else:
-        regime="neutral"
-    return regime,{"prior_close":prior,"trailing_high":hi,
-                   "drawdown_from_prior_90d_high_pct":100*drawdown,
-                   "prior_sma50":ma50,"prior_sma50_14days_ago":prior_50}
+    """Compatibility alias — same strictly prior regime as shared policy."""
+    return prior_price_regime(price, day)
 
 
 def adaptive_weekly_exit(price, halving, *, policy="balanced",
@@ -144,16 +132,7 @@ def adaptive_weekly_exit(price, halving, *, policy="balanced",
 # followed by a genuinely UNBOUNDED-by-schedule tail (tracked to day730).
 # Both candidate core shares are deliberately registered BEFORE running
 # this feature's historical tests, but prior models inspired the proposal.
-STAGED_POLICIES={
-    "maturity_80pct": {"initial":.05,"core_fraction":.80},
-    "maturity_90pct": {"initial":.05,"core_fraction":.90},
-    "maturity_90pct_holdback20pct": {
-        "initial":.05,"core_fraction":.90,
-        "pre560_sold_cap":.80,
-        "tail_confirm_only":True,
-    },
-}
-
+# Policy definitions are single-sourced in shared_cycle_policy.py.
 
 def staged_day500_dynamic_exit(price, halving, *, policy="maturity_80pct",
                                review_day=REVIEW_DAY):
@@ -172,66 +151,26 @@ def staged_day500_dynamic_exit(price, halving, *, policy="maturity_80pct",
     start=halving+pd.Timedelta(days=START_DAY)
     end=halving+pd.Timedelta(days=review_day)
     _validate_price(price,start,end)
-    p=STAGED_POLICIES[policy]
-    initial=float(p["initial"])
-    core=float(p["core_fraction"])
-    early_cap=float(p.get("pre560_sold_cap",1.))
-    tail_confirm=bool(p.get("tail_confirm_only",False))
-    if not initial<=early_cap<=1.:
-        raise ValueError("Early sold fraction cap invalid")
-    if initial+core>1 or core<0:
-        raise ValueError("Invalid core allocation")
-    # Six planned maturity dates known in advance, not chosen after
-    # observing prices inside the original simulation.
-    anchor_days=(525,532,539,546,553,560)
-    anchor_weights=(6.,5.,4.,3.,2.,1.)
-    anchor_values={j:(core*w/sum(anchor_weights))
-                   for j,w in zip(anchor_days,anchor_weights)}
+    # One shared prior-data-only state transition produces this fraction
+    # and the identical source signal used by the Research preview.
+    # The legacy account is exactly 1 original BTC, so a portion of
+    # ORIGINAL holdings equals the raw modeled BTC quantity.
     left=1.
     proceeds=0.
     trades=[]
-    # Anchor days 525+7*n differ from day500+7*n.
-    # Include both streams, but execute exactly once per date.
-    calendar=sorted(set([START_DAY]+list(range(START_DAY+7,review_day+1,7))
-                        +list(anchor_days)))
+    calendar=exit_review_days(review_day=review_day)
     for d in calendar:
         if d>review_day or left<=1e-10:
             break
         day=halving+pd.Timedelta(days=d)
-        px=float(price.loc[day])
-        if d==500:
-            regime="maturity-start"
-            portion=min(left,initial)
-        elif d in anchor_values:
-            regime,metrics=_prior_state(price,day)
-            # Strength sells more near the high, confirmed deterioration
-            # also accelerates risk reduction; only past closes used.
-            factor={"high":1.20,"neutral":.75,"breakdown":1.30}[regime]
-            portion=min(left,anchor_values[d]*factor)
-        elif d<525:
-            # No assumption that strength persists between day500 and
-            # the anchor. Sell tiny additional amount only on a
-            # clearly observable price breakdown.
-            regime,metrics=_prior_state(price,day)
-            portion=min(left,.025) if regime=="breakdown" else 0.
-        elif d>560:
-            regime,metrics=_prior_state(price,day)
-            if tail_confirm:
-                # Maintain a material trailing BTC reserve through a later
-                # bullish extension, and reduce only after two prior-close
-                # bearish confirmations. Never depend on future highs.
-                portion=min(left,.070) if regime=="breakdown" else 0.
-            else:
-                portion=min(left,{"high":.045,"neutral":.012,
-                                  "breakdown":.070}[regime])
-        else:
-            # Day 500+7*n falls between explicit anchor days;
-            # don't double-order. Make decisions only on anchor dates.
-            continue
-        if d<=560:
-            portion=min(portion,max(0.,early_cap-(1-left)))
+        step=staged_exit_decision(
+            price,halving,day=d,sold_original_fraction=1-left,
+            policy=policy)
+        portion=float(step["fraction_original"])
+        regime=step["regime"]
         if portion<=1e-12:
             continue
+        px=float(price.loc[day])
         left-=portion
         proceeds+=portion*px
         trades.append({
@@ -239,7 +178,8 @@ def staged_day500_dynamic_exit(price, halving, *, policy="maturity_80pct",
             "signal_regime":regime,
             "btc_sold":round(portion,10),
             "execution_price_usd_per_btc":round(px,2),
-            "cash_proceeds_usd":round(portion*px,4)})
+            "cash_proceeds_usd":round(portion*px,4),
+        })
     if left<1e-10:left=0.
     sold=1-left
     return {
