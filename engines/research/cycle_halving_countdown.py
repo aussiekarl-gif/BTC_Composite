@@ -152,6 +152,59 @@ def fetch_halving_countdown(*, now=None, timeout=8):
     return _calendar_fallback(now)
 
 
+def normalise_halving_epoch_metadata(countdown):
+    """Backfill historical 2024 epoch metadata missing from cached old quotes.
+
+    Streamlit may hold a successful pre-upgrade countdown dict for an hour.
+    Those old results have a verified live block height, but predate the
+    last_halving_date/halving_date_verified fields. Never infer a future
+    halving date merely from calendar time or an unverified quote.
+    """
+    if not isinstance(countdown, dict):
+        raise ValueError("Invalid halving quote payload")
+    result = dict(countdown)
+    height = result.get("current_height")
+    next_height = result.get("next_halving_height")
+    # The actual 2024 event is independently established history.
+    # A valid live block tip in the same epoch proves no NEW halving has
+    # occurred, even if this quote was cached before the schema upgrade.
+    known_2024_epoch = (
+        result.get("height_verified") is True
+        and isinstance(height, int) and not isinstance(height, bool)
+        and FIRST_CURRENT_ERA_HEIGHT <= height < FIRST_CURRENT_ERA_HEIGHT + BLOCKS_PER_HALVING
+        and next_height == FIRST_CURRENT_ERA_HEIGHT + BLOCKS_PER_HALVING
+    )
+    if known_2024_epoch:
+        existing = result.get("last_halving_date")
+        if existing not in (None, LAST_KNOWN_HALVING_DATE.isoformat()):
+            raise ValueError("Conflicting verified halving event date")
+        result["last_halving_date"] = LAST_KNOWN_HALVING_DATE.isoformat()
+        result["last_halving_height"] = FIRST_CURRENT_ERA_HEIGHT
+        result["halving_date_verified"] = True
+        return result
+
+    # A future epoch is only valid when the actual epoch-start block date
+    # has already been separately verified by the provider fetch path.
+    if result.get("halving_date_verified") is True:
+        date_raw = result.get("last_halving_date")
+        if not isinstance(date_raw, str) or not date_raw:
+            result["halving_date_verified"] = False
+        elif (not isinstance(height, int) or isinstance(height, bool)
+              or not isinstance(next_height, int)
+              or next_height != (height // BLOCKS_PER_HALVING + 1) * BLOCKS_PER_HALVING):
+            result["halving_date_verified"] = False
+        else:
+            try:
+                confirmed = dt.date.fromisoformat(date_raw)
+                if confirmed < LAST_KNOWN_HALVING_DATE:
+                    result["halving_date_verified"] = False
+            except ValueError:
+                result["halving_date_verified"] = False
+    else:
+        result["halving_date_verified"] = False
+    return result
+
+
 # Research-only time markers; not assertions about BTC price tops.
 CYCLE_REVIEW_MARKERS = (
     (500, "D500", "First distribution review"),

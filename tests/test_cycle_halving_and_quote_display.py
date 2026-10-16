@@ -8,6 +8,7 @@ from engines.research.ibit_quote import (
 )
 from engines.research.cycle_halving_countdown import (
     estimate_halving_from_height, fetch_halving_countdown,
+    normalise_halving_epoch_metadata,
     build_halving_timeline, build_halving_progress_bar,
 )
 
@@ -159,6 +160,57 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertEqual(timeline["elapsed_days"], 1)
         self.assertEqual(timeline["milestones"], [])
 
+    def test_older_streamlit_cache_restores_known_2024_date(self):
+        # This is the exact pre-upgrade payload shape left in Streamlit's
+        # one-hour cache and previously caused an erroneous red warning.
+        old_cached={
+            "current_height":971_634,
+            "next_halving_height":1_050_000,
+            "height_verified":True,
+            "days_remaining":545,
+            "estimated_date_utc":"2028-04-14",
+            "source":"mempool.space",
+        }
+        fixed=normalise_halving_epoch_metadata(old_cached)
+        self.assertEqual(fixed["last_halving_date"],"2024-04-20")
+        self.assertTrue(fixed["halving_date_verified"])
+        self.assertEqual(fixed["last_halving_height"],840_000)
+        self.assertNotIn("last_halving_date",old_cached)
+        timeline=build_halving_timeline(
+            last_halving_date=fixed["last_halving_date"],
+            today=dt.date(2026,10,17),countdown=fixed,
+        )
+        self.assertEqual(timeline["elapsed_days"],910)
+        self.assertEqual(timeline["remaining_days"],545)
+
+    def test_no_fake_verified_future_epoch_from_old_cache(self):
+        old_future={
+            "current_height":1_050_020,
+            "next_halving_height":1_260_000,
+            "height_verified":True,
+            "days_remaining":1_458,
+        }
+        fixed=normalise_halving_epoch_metadata(old_future)
+        self.assertFalse(fixed["halving_date_verified"])
+        self.assertIsNone(fixed.get("last_halving_date"))
+
+    def test_provider_calendar_fallback_cannot_authorize_cycle_trades(self):
+        old_offline={
+            "current_height":None,"next_halving_height":None,
+            "height_verified":False,"days_remaining":550,
+        }
+        fixed=normalise_halving_epoch_metadata(old_offline)
+        self.assertFalse(fixed["halving_date_verified"])
+
+    def test_verified_new_halving_date_is_preserved(self):
+        now=dt.datetime(2028,4,26,tzinfo=dt.timezone.utc)
+        quote=estimate_halving_from_height(1_050_020,now=now)
+        quote.update(last_halving_date="2028-04-25",
+                     halving_date_verified=True)
+        fixed=normalise_halving_epoch_metadata(quote)
+        self.assertEqual(fixed["last_halving_date"],"2028-04-25")
+        self.assertTrue(fixed["halving_date_verified"])
+
     def test_future_halving_block_does_not_guess_event_date(self):
         # Crossing the epoch is different from independently verifying
         # the calendar date when block 1,050,000 was actually mined.
@@ -237,6 +289,8 @@ class HalvingCountdownTests(unittest.TestCase):
         app=(Path(__file__).resolve().parents[1] /
              "engines/research/cycle_trading_app.py").read_text()
         self.assertIn('st.fragment(run_every="1m")',app)
+        self.assertIn('normalise_halving_epoch_metadata(cached_halving_countdown_v2())',app)
+        self.assertIn('cached_halving_countdown_v2.clear()',app)
         self.assertIn('cycle_refresh_heartbeat()',app)
         self.assertIn('st.rerun()',app)
         self.assertIn('and staleness<=3 and cycle_feed_verified',app)

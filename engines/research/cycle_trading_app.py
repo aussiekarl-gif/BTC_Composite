@@ -23,6 +23,7 @@ from engines.research.cycle_position_anchor import original_cycle_inventory
 from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
 from engines.research.cycle_halving_countdown import (
     fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
+    normalise_halving_epoch_metadata,
 )
 from engines.research.cycle_aud_price_levels import observed_aud_cycle_levels
 
@@ -81,7 +82,8 @@ def cached_ibit_quote():
 
 
 @st.cache_data(ttl=60*60,show_spinner=False)
-def cached_halving_countdown():
+def cached_halving_countdown_v2():
+    # Renaming this cached function invalidates pre-upgrade Streamlit values.
     return fetch_halving_countdown()
 
 
@@ -115,7 +117,7 @@ with st.spinner("Checking public BTC and AUD exchange-rate updates..."):
         provider_error=f"{type(exc).__name__}: {exc}"
 
 # Use verified Bitcoin epoch dates; never silently assume 2024 after 2028.
-halving_countdown=cached_halving_countdown()
+halving_countdown=normalise_halving_epoch_metadata(cached_halving_countdown_v2())
 verified_halving_date=(halving_countdown.get("last_halving_date")
                        if halving_countdown.get("halving_date_verified") else None)
 anchor_matches_close=bool(verified_halving_date and
@@ -163,7 +165,7 @@ if st.button("Refresh market feed and My Portfolio",key="cycle_research_refresh"
     cycle_fx_source.clear()
     stored_portfolio.clear()
     cached_ibit_quote.clear()
-    cached_halving_countdown.clear()
+    cached_halving_countdown_v2.clear()
     st.rerun()
 
 with st.spinner("Reading saved Portfolio for optional cash default..."):
