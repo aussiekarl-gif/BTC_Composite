@@ -85,6 +85,10 @@ verification=None
 with st.spinner("Checking public BTC and AUD exchange-rate updates..."):
     try:
         public_prices,public_fx=public_source(asof)
+        # Today's public quote may be intraday. Restrict historical
+        # close decisions to completed UTC calendar days.
+        public_prices=public_prices.loc[
+            public_prices.index<pd.Timestamp(today,tz="UTC")]
         daily,verification=merge_verified_daily(research_history,public_prices)
         fx=public_fx
         source_label="BlockHorizon archive + cross-checked Blockchain.com public daily closes"
@@ -130,6 +134,15 @@ st.caption(
     "No rule should retroactively sell your BTC/ETF bought in 2026."
 )
 
+with st.spinner("Reading saved Portfolio for optional cash default..."):
+    saved_live_portfolio, saved_live_error=stored_portfolio()
+saved_cash=portfolio_snapshot(saved_live_portfolio) if not saved_live_error else {"valid":False}
+starting_cash_default=(
+    float(saved_cash["cash_remaining_aud"])
+    if saved_cash.get("valid") and saved_cash.get("rows",0)>0
+    else 50000.
+)
+
 tabs=st.tabs(["Current signals", "My Portfolio (read-only)", "Historical sell & buyback"])
 
 with tabs[0]:
@@ -151,8 +164,8 @@ with tabs[0]:
     st.markdown("**Illustrative order calculation**")
     cash_input=st.number_input(
         "Available AUD cash for *this hypothetical cycle-trading account*",
-        min_value=0.,value=50000.,step=1000.,format="%.2f",
-        help="Illustration only. Does not modify your My Portfolio or assume you sold BTC in 2025.",
+        min_value=0.,value=starting_cash_default,step=1000.,format="%.2f",
+        help="Defaults to remaining AUD capital from the saved portfolio, when available. This is NOT a trade proposal or proof you sold BTC in 2025.",
         key="cycle_research_cash_input"
     )
     proposal=planned_buy_order(market,cash_available=cash_input,style=chosen_style)
@@ -172,14 +185,12 @@ with tabs[0]:
             )
     st.subheader("Market history")
     hist=market["price_history"]
-    ma=hist.shift(1).resample("7D").last() # chart context only; actual signal above uses strict prior 200 weekly samples
-    st.line_chart(hist.tail(420).rename("BTC/USD closing price"))
+    st.line_chart(hist.tail(420).rename("BTC/USD daily price"))
     st.caption("Chart is price only; all buy/sell decisions remain manual.")
 
 with tabs[1]:
     st.subheader("Your saved My Portfolio")
-    with st.spinner("Reading shared Portfolio from Google Sheets..."):
-        portfolio,store_error=stored_portfolio()
+    portfolio,store_error=saved_live_portfolio,saved_live_error
     if store_error:
         st.error("Could not load the persistent Portfolio: "+store_error)
         st.caption("No holdings are assumed when storage cannot be read.")
