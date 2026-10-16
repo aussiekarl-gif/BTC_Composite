@@ -2,7 +2,8 @@
 
 The runner controls once-per-Brisbane-day with a durable Git commit sent-date
 marker. This script only constructs message content or POSTs on explicit send.
-Never independently schedules or repeats; no Production DCA comparison.
+Never independently schedules or repeats; Production/Research labels are
+read-only major-risk comparisons, not matched DCA percentages.
 """
 from __future__ import annotations
 import argparse
@@ -21,6 +22,7 @@ from engines.research.cycle_trading_dashboard_model import build_dashboard_marke
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_model_redflags import (
     evaluate_major_red_flags,fetch_reference_model_risks,
+    model_agreement_statuses,MODELS,
 )
 from engines.research.cycle_trade_allocation import (
     calculate_allocation_signal,DEFAULT_BUY_STYLE,
@@ -54,6 +56,7 @@ def daily_message(*,now=None,quote=None,market=None,
                 market=None
         except Exception:market=None
     lines=[f"Cycle Trading daily | {today} Brisbane"]
+    agreement={name:"no data" for name in MODELS}
     if quote:
         lines.append(f"ASX:IBIT A${quote['price_aud']:,.2f} (indicative, delayed)")
         lines.append(f"ETF quote {quote['timestamp_utc']} UTC")
@@ -80,6 +83,13 @@ def daily_message(*,now=None,quote=None,market=None,
                     and (allocation["buy_pct_cash"]>0 or allocation["sell_pct_held"]>0)):
                 try:
                     baselines=reference_snapshot_fetcher()
+                    agreement=model_agreement_statuses(
+                        buy_pct_cash=allocation["buy_pct_cash"],
+                        sell_pct_held=allocation["sell_pct_held"],
+                        snapshots=baselines,market_asof=market["asof_date"],
+                        today=now.date(),
+                        confirmed_halving_date=market["halving_date"],
+                    )
                     crosscheck=evaluate_major_red_flags(
                         buy_pct_cash=allocation["buy_pct_cash"],
                         sell_pct_held=allocation["sell_pct_held"],
@@ -113,6 +123,9 @@ def daily_message(*,now=None,quote=None,market=None,
     else:
         lines.append("Cycle signal: DATA UNAVAILABLE — no trade recommendation")
         lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
+    lines.append(f"Production: {agreement[MODELS[0]]}")
+    lines.append(f"Research: {agreement[MODELS[1]]}")
+    lines.append("Agrees = no extreme risk contradiction, not an identical DCA recommendation.")
     lines.append(
         "Allocation is market-only: no Google Sheets/broker access in ntfy job. "
         "Streamlit shows actual AUD / ETF units after holdings confirmation."
