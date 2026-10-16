@@ -9,6 +9,8 @@ on:
       - 'engines/research/test_200wma_fair_liquidation.py'
       - 'engines/research/test_200wma_adaptive_challengers.py'
       - 'engines/research/test_adaptive_200wma_checks.py'
+      - 'engines/research/test_200wma_execution_cost_stress.py'
+      - 'engines/research/test_symmetric_dca_execution_checks.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,6 +28,8 @@ jobs:
           python-version: '3.11'
       - name: Install research dependencies
         run: python -m pip install pandas numpy requests
+      - name: Check DCA and no-tier strategy use symmetric friction and final tax
+        run: python -m engines.research.test_symmetric_dca_execution_checks
       - name: Check matched final CGT, trading fees and no double taxation
         run: python -m engines.research.test_terminal_liquidation_checks
       - name: Check opt-in guards and strictly prior-week decisions
@@ -51,3 +55,10 @@ jobs:
         with:
           name: aud-btc-adaptive-sell-reentry-challengers
           path: research_outputs/200wma_adaptive_challengers_fair_exit_aud.json
+      - name: Stress cost at 0.5, 1 and 2 percent slippage for trading and DCA
+        run: python -m engines.research.test_200wma_execution_cost_stress
+      - name: Archive symmetric execution-cost stress
+        uses: actions/upload-artifact@v4
+        with:
+          name: aud-btc-fair-exit-execution-cost-stress
+          path: research_outputs/200wma_execution_cost_stress_fair_exit_aud.json
