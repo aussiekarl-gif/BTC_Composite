@@ -152,7 +152,7 @@ def _coerce_daily_prices(price):
     return p
 
 
-def build_dashboard_market(price,fx,*,asof=None):
+def build_dashboard_market(price,fx,*,asof=None,confirmed_halving_date=None):
     """200 prior, 7-days-apart BTC closes; no current close in the SMA.
 
     Archive and public providers merged ONLY with newer dates after
@@ -186,7 +186,17 @@ def build_dashboard_market(price,fx,*,asof=None):
         if not available.empty and (last-available.index[-1]).days<=7:
             fx_val=float(available["aud_per_usd"].iloc[-1])
             fx_date=str(available.index[-1].date())
-    age=(last-LAST_CONFIRMED_HALVING).days
+    # Historical research defaults to the known 2024 epoch. Live callers
+    # should pass the newly verified epoch-start block date after 2028.
+    halving=LAST_CONFIRMED_HALVING
+    if confirmed_halving_date is not None:
+        candidate=pd.Timestamp(confirmed_halving_date)
+        candidate=(candidate.tz_localize("UTC") if candidate.tzinfo is None
+                   else candidate.tz_convert("UTC")).normalize()
+        if candidate<LAST_CONFIRMED_HALVING or candidate>last:
+            raise ValueError("Confirmed halving cannot precede 2024 or postdate the observed BTC close")
+        halving=candidate
+    age=(last-halving).days
     state=("Accumulation observation only" if age>560
            else "Day-500 staged distribution observation" if age>=500
            else "Before day-500 distribution window")
@@ -201,9 +211,9 @@ def build_dashboard_market(price,fx,*,asof=None):
         "fx_source_date":fx_date,
         "btc_price_aud_estimate":px*fx_val if fx_val else None,
         "halving_day":age,
-        "halving_date":str(LAST_CONFIRMED_HALVING.date()),
-        "day500_date":str((LAST_CONFIRMED_HALVING+pd.Timedelta(days=500)).date()),
-        "day560_date":str((LAST_CONFIRMED_HALVING+pd.Timedelta(days=560)).date()),
+        "halving_date":str(halving.date()),
+        "day500_date":str((halving+pd.Timedelta(days=500)).date()),
+        "day560_date":str((halving+pd.Timedelta(days=560)).date()),
         "phase":state,
         "price_history":p,
     }
