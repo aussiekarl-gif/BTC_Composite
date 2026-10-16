@@ -17,7 +17,10 @@ def market(*,n=1260):
     x=np.interp(i,[0,400,500,560,650,800,1000,1259],
                 [100.,300.,550.,800.,450.,220.,300.,350.])
     price=pd.Series(x,index=days)
-    fx=pd.DataFrame({"aud_per_usd":np.full(n,1.5)},index=days)
+    fx_days=pd.date_range(halving-pd.Timedelta(days=10),
+                          periods=n+10,freq="D",tz="UTC")
+    fx=pd.DataFrame({"aud_per_usd":np.full(len(fx_days),1.5)},
+                    index=fx_days)
     return halving,price,fx
 
 
