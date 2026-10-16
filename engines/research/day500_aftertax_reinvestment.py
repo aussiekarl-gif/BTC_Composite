@@ -44,6 +44,7 @@ SCORE_DAYS=1150
 BUY_WEEKS=24
 BUY_DURATION_TESTS=(24,52)
 WMA_BUY_DURATION_TESTS=(12,24,52)
+WMA_DYNAMIC_STYLES=("adaptive_value","adaptive_recovery")
 DELAY_DAYS_AFTER_LAST_SELL=14
 GATES=(.40,.55,.65)
 SELLERS=("fixed_525_to_560","dynamic_90pct","dynamic_90pct_holdback20pct")
@@ -94,7 +95,7 @@ def sell_orders(price,halving,policy):
 
 
 def causal_buyback_dates(price,*,start,gate,terminal,weekly_limit=BUY_WEEKS,
-                         entry_mode="drawdown"):
+                         entry_mode="drawdown",buyback_style="fixed"):
     """Strictly prior 365-day drawdown gate, followed by weekly buys.
 
     One-time activation; no hindsight minimum/maximum prices. Once the
@@ -152,6 +153,10 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
     if initial_aud<=3:raise ValueError("Cash must cover entry brokerage")
     if not isinstance(buyback_weeks,int) or buyback_weeks<1:
         raise ValueError("Invalid buyback duration")
+    if buyback_style not in ("fixed",)+WMA_DYNAMIC_STYLES:
+        raise ValueError("Invalid buyback policy") 
+    if buyback_style!="fixed" and entry_mode!="below_200wma":
+        raise ValueError("Adaptive style requires strict-prior 200WMA gate")
     start=halving
     if start not in price.index:raise ValueError("Missing dated halving price")
     if terminal not in price.index:raise ValueError("Missing dated terminal price")
@@ -182,7 +187,8 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
     waiting=(prev or halving+pd.Timedelta(days=500))+pd.Timedelta(days=DELAY_DAYS_AFTER_LAST_SELL)
     trigger,plan=causal_buyback_dates(
         price,start=waiting,gate=gate,terminal=terminal,
-        weekly_limit=buyback_weeks,entry_mode=entry_mode)
+        weekly_limit=(buyback_weeks if buyback_style=="fixed" else 10000),
+        entry_mode=entry_mode)
     bought=[]
     if plan and actual.cash>100.:
         # Weighted DCA over 24 weeks; never adapt using future entry prices.
@@ -195,12 +201,39 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
         # horizon), and scale tranche from observed discount.
         initial_budget=actual.cash
         target=initial_budget/buyback_weeks
+        prices=price.to_numpy(float)
         for j,e in enumerate(plan):
             day=e["day"]
-            gross=min(actual.cash,target*e["weight"])
-            # On the final of all 24 pre-scheduled windows, deploy
-            # residual cash. Not forced when data cutoff is earlier.
-            if j==buyback_weeks-1:gross=actual.cash
+            if buyback_style=="fixed":
+                gross=min(actual.cash,target*e["weight"])
+                # Only the final fixed-schedule week forces deployment.
+                if j==buyback_weeks-1:gross=actual.cash
+            else:
+                pos=int(price.index.searchsorted(day))
+                indexes=pos-1-7*np.arange(200)
+                if np.min(indexes)<0:
+                    raise AssertionError("Historical 200WMA not warmed")
+                ma200=float(np.mean(prices[indexes]))
+                prior=float(prices[pos-1])
+                ratio=prior/ma200
+                if buyback_style=="adaptive_value":
+                    # Buy deepest BTC/USD discounts the most; accelerate
+                    # near a modest WMA reclaim, taper into strength.
+                    frac=(.10 if ratio<=.85 else
+                          .035 if ratio<=1.0 else
+                          .12 if ratio<=1.25 else
+                          .04 if ratio<=1.5 else .01)
+                else:
+                    # Alternative independent momentum confirmation:
+                    # reserve more in capitulation and increase pace
+                    # after observable 50-day average recovery.
+                    recent=float(np.mean(prices[pos-50:pos]))
+                    earlier=float(np.mean(prices[pos-64:pos-14]))
+                    strengthening=(prior>recent and recent>earlier)
+                    frac=(.025 if ratio<=1.0 else
+                          .15 if ratio<=1.25 and strengthening else
+                          .045 if ratio<=1.5 else .01)
+                gross=min(actual.cash,initial_budget*frac)
             if gross>100.:
                 if actual.buy(day,float(price.loc[day])*fx_before(fx,day),
                               min(1.,gross/actual.cash)):
@@ -231,7 +264,9 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
         "buyback_entry_mode":entry_mode,
         "buyback_prior_drawdown_gate_pct":(
             round(100*gate,1) if entry_mode=="drawdown" else None),
-        "planned_buyback_weeks":buyback_weeks,
+        "planned_buyback_weeks":(
+            buyback_weeks if buyback_style=="fixed" else None),
+        "buyback_style":buyback_style,
         "average_repurchase_usd_per_btc":(
             round(effective_buy_usd,2) if effective_buy_usd is not None else None),
         "post_sale_hindsight_low_close_usd":(
@@ -293,6 +328,14 @@ def evaluate(historical,*, fx_for_cycle=fetch_fx_for_cycle):
             for seller in SELLERS
             for duration in WMA_BUY_DURATION_TESTS
         )
+        strategies.extend(
+            simulate_roundtrip(price,fx,halving,terminal,
+                               seller=seller,gate=.40,
+                               buyback_weeks=52,entry_mode="below_200wma",
+                               buyback_style=style)
+            for seller in SELLERS
+            for style in WMA_DYNAMIC_STYLES
+        )
         out.append({
             "cycle":cycle,
             "halving":str(halving.date()),
@@ -347,6 +390,27 @@ def evaluate(historical,*, fx_for_cycle=fetch_fx_for_cycle):
                 [m["btc_equivalent_relative_to_hold_pct"] for m in cohort])),3)
                 if cohort else None,
         })
+    for seller in SELLERS:
+      for style in WMA_DYNAMIC_STYLES:
+        cohort=[next(m for m in row["models"]
+                     if m["seller"]==seller
+                     and m["buyback_entry_mode"]=="below_200wma"
+                     and m["buyback_style"]==style)
+                for row in out if row["complete_day1150_observation"]]
+        summary.append({
+            "seller":seller,"buyback_gate_pct":None,
+            "buyback_entry_mode":"below_200wma",
+            "buyback_style":style,"buyback_weeks":None,
+            "complete_cycles":len(cohort),
+            "better_btc_equivalent_than_hold":sum(
+                m["btc_equivalent_relative_to_hold_pct"]>0 for m in cohort),
+            "mean_btc_equivalent_lift_pct":round(float(np.mean(
+                [m["btc_equivalent_relative_to_hold_pct"] for m in cohort])),3)
+                if cohort else None,
+            "min_btc_equivalent_lift_pct":round(float(np.min(
+                [m["btc_equivalent_relative_to_hold_pct"] for m in cohort])),3)
+                if cohort else None,
+        })
     return {
         "research_only":True,
         "primary_cycles":["2017","2021"],
@@ -367,6 +431,8 @@ def evaluate(historical,*, fx_for_cycle=fetch_fx_for_cycle):
             "The post-sale low is computed using FUTURE observed closes for EVALUATION only, never entry; 2025 remains provisional/right-censored.",
             "Strict-prior 200-week BTC/USD moving-average threshold is a separate buyer activation; each week's source is sampled 7 days apart ending at t-1, not hindsight interpolated.",
             "Whether price touches the 200WMA in a future bull/bear regime is not assured; a no-trigger scenario means no buyback and AUD cash remains.",
+            "Adaptive WMA buying has NO fixed terminal deadline, and releases fixed fractions of initial after-tax cash at each qualifying observed price/WMA ratio; no future weights or forced liquidation.",
+            "The adaptive-value and adaptive-recovery DCA sizing parameters were inspired by the inspected 2018/2022/2026 periods, so their apparent historical success is wholly in-sample.",
             "A low buyback VWAP error does not imply it will reproduce next cycle; variation in purchase dates, FX and 52-week periods matters.",
             "Frankfurter USD/AUD FX strictly BEFORE transaction day, no future same-day FX leakage; priced BTC/USD daily historical archive may not be executable.",
             "Fees AUD3 each buy/sell, simplified FIFO eligible 10% long-held and 15% short-held SMSF accrual held in cash immediately; not actual fund annual taxation.",
