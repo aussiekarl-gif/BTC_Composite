@@ -14,6 +14,7 @@ from engines.research.cycle_trading_dashboard_model import (
 from engines.research.day500_aftertax_reinvestment import fetch_fx_for_cycle
 from engines.research.top_signal_horse_race import HALVINGS,read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
+from engines.research.cycle_market_feed import merge_verified_cycle_prices
 from engines.shared.portfolio_store import load_portfolio
 from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
@@ -56,28 +57,6 @@ def cached_ibit_quote():
     return fetch_ibit_quote()
 
 
-def merge_verified_daily(archive,remote):
-    """Do not replace archive history or use unsupported remote archives.
-
-    Verify at least three exact-day overlap BTC/USD prices before adding
-    any newly fetched, time-stamped public closes.
-    """
-    local=archive["price_usd"].copy().sort_index()
-    remote=remote["btc_usd"].copy().sort_index()
-    overlap=local.index.intersection(remote.index)
-    relevant=overlap[overlap>=local.index[-1]-pd.Timedelta(days=30)]
-    if len(relevant)<3:
-        raise ValueError("Cannot verify at least 3 recent BTC/USD provider prices")
-    dev=(remote.loc[relevant]/local.loc[relevant]-1).abs()
-    if float(dev.median())>.06 or float(dev.max())>.15:
-        raise ValueError("BTC/USD public data inconsistent with historical source")
-    additions=remote.loc[remote.index>local.index[-1]]
-    combined=pd.concat([local,additions]).sort_index()
-    return combined,{"overlap_days":len(relevant),
-                     "max_overlap_difference_pct":round(100*float(dev.max()),2),
-                     "added_dates":len(additions)}
-
-
 with st.spinner("Loading historical BTC observations..."):
     try:
         research_history=historical_source()
@@ -100,11 +79,8 @@ verification=None
 with st.spinner("Checking public BTC and AUD exchange-rate updates..."):
     try:
         public_prices,public_fx=public_source(asof)
-        # Today's public quote may be intraday. Restrict historical
-        # close decisions to completed UTC calendar days.
-        public_prices=public_prices.loc[
-            public_prices.index<pd.Timestamp(today,tz="UTC")]
-        daily,verification=merge_verified_daily(research_history,public_prices)
+        daily,verification=merge_verified_cycle_prices(
+            research_history,public_prices,utc_today=today)
         fx=public_fx
         source_label="BlockHorizon archive + cross-checked Blockchain.com public daily closes"
     except Exception as exc:
