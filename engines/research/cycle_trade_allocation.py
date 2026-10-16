@@ -23,6 +23,18 @@ SELL_REVIEW_DAY_WEIGHTS = {
     500: 0.05, 525: 0.24, 532: 0.20, 539: 0.16,
     546: 0.12, 553: 0.08, 560: 0.05,
 }
+# IMPORTANT: These *live* percentages are applied to CURRENT REMAINING
+# holdings. The full historical exit simulator instead allocates fractions
+# of ORIGINAL BTC and adjusts each tranche by price regime. They differ.
+# Applying all seven below percentages consecutively sells 62.68% of
+# original BTC and leaves 37.32%, not the 20% holdback in a separate
+# historical research variant. DO NOT attribute earlier 2017/2021
+# historical BTC multipliers to this distinct unbacktested live schedule.
+BACKTEST_LIVE_PARITY_VERIFIED=False
+SCHEDULE_REMAINING_IF_ALL_TRIGGERED=1.0
+for _pct in SELL_REVIEW_DAY_WEIGHTS.values():
+    SCHEDULE_REMAINING_IF_ALL_TRIGGERED*=(1-_pct)
+
 DEFAULT_BUY_STYLE="adaptive_recovery"
 BUY_STYLES=("adaptive_recovery","adaptive_value")
 
@@ -80,6 +92,9 @@ def calculate_allocation_signal(market,*,buy_style=DEFAULT_BUY_STYLE):
         "denominator_buy":"remaining available AUD cash",
         "denominator_sell":"current net BTC/IBIT holdings (per asset)",
         "rule_research_only":True,
+        "historical_backtest_parity_verified":BACKTEST_LIVE_PARITY_VERIFIED,
+        "live_scheduled_original_btc_remaining_pct_if_all_filled":
+            round(100*SCHEDULE_REMAINING_IF_ALL_TRIGGERED,2),
         "requires_portfolio_confirmation":True,
         **data,
     }
