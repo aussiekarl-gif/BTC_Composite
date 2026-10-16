@@ -25,8 +25,8 @@ class ExitConfirmationAuditTests(unittest.TestCase):
         self.assertEqual(sig["risk_score"].iloc[6], 1.0)
         r = simulate(sig, initial_cash=1000, fee_rate=0,
                      buy_weeks=1, sell_weeks=1)
-        self.assertEqual(r["equity_path"][6]["action"], "HOLD")
-        self.assertEqual(r["equity_path"][7]["action"], "SELL")
+        self.assertEqual(r["equity_path"][5]["action"], "HOLD")
+        self.assertEqual(r["equity_path"][6]["action"], "SELL")
         self.assertEqual(r["sell_plans"], 1)
 
     def test_rising_bull_with_high_risk_does_not_sell(self):
