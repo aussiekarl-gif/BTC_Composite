@@ -8,7 +8,7 @@ import streamlit as st
 
 from engines.research.cycle_trading_dashboard_model import (
     build_dashboard_market, historical_one_scenario,
-    planned_buy_order,portfolio_snapshot,
+    planned_buy_order,portfolio_snapshot,portfolio_buy_error_from_reported_low,
 )
 from engines.research.day500_aftertax_reinvestment import fetch_fx_for_cycle
 from engines.research.top_signal_horse_race import HALVINGS,read_exported_history
@@ -215,6 +215,29 @@ with tabs[1]:
             if snap["approx_average_cost_aud_per_btc"] is not None:
                 st.metric("Average recorded cost including fees",
                           f"A${snap['approx_average_cost_aud_per_btc']:,.0f} / BTC-eq")
+            buy_error=portfolio_buy_error_from_reported_low(
+                portfolio,fx)
+            if buy_error["available"]:
+                k1,k2=st.columns(2)
+                k1.metric(
+                    "Average cost error vs reported 2026 low",
+                    f"{buy_error['error_above_user_reported_low_pct']:+.2f}%")
+                k2.metric(
+                    "AUD/FX-adjusted USD entry price",
+                    f"US${buy_error['effective_avg_usd_per_btc']:,.0f} / BTC-eq")
+                st.caption(
+                    f"Benchmark: user-reported BTC bottom US$"
+                    f"{buy_error['reference_low_usd']:,.0f} on 30 Jun 2026 "
+                    "(intraday, not independently certified). "
+                    "Purchase-weighted costs include recorded A$ fees and "
+                    "the preceding known AUD/USD rate. BTC-equivalent ETF "
+                    "exposure may differ from actual holdings."
+                )
+            else:
+                st.caption(
+                    "Purchase price error unavailable: "+buy_error["reason"]+
+                    ". No incomplete transaction average is displayed."
+                )
             st.caption(
                 "ASX:IBIT BTC-equivalent is estimated from recorded AUD paid / historic BTC/AUD. "
                 "It is NOT direct BTC, the ETF's exact redemption entitlement, or a tax-lot ledger. "
