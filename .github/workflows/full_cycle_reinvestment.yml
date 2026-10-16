@@ -7,6 +7,8 @@ on:
       - "tests/test_full_cycle_reinvestment.py"
       - "engines/research/exit_confirmation_audit.py"
       - "tests/test_exit_confirmation_audit.py"
+      - "engines/research/diminishing_cycle_smsf_projection.py"
+      - "tests/test_diminishing_cycle_smsf_projection.py"
       - ".github/workflows/full_cycle_reinvestment.yml"
   workflow_dispatch:
 
@@ -29,6 +31,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p "test_full_cycle_reinvestment.py" -v
           python -m unittest discover -s tests -p "test_exit_confirmation_audit.py" -v
+          python -m unittest discover -s tests -p "test_diminishing_cycle_smsf_projection.py" -v
 
   historical-read-only:
     needs: unit-tests
@@ -51,6 +54,8 @@ jobs:
           AUDIT_GITHUB_REPO: aussiekarl-gif/btc-audit-data
           AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN }}
         run: python -m engines.research.exit_confirmation_audit --output exit_confirmation_results.json
+      - name: Generate hypothetical 2026 to 2038 SMSF scenarios
+        run: python -m engines.research.diminishing_cycle_smsf_projection --output diminishing_cycle_smsf_scenarios.json
       - name: Upload read-only aggregate results
         uses: actions/upload-artifact@v4
         with:
@@ -58,3 +63,4 @@ jobs:
           path: |
             full_cycle_reinvestment_results.json
             exit_confirmation_results.json
+            diminishing_cycle_smsf_scenarios.json
