@@ -11,6 +11,10 @@ on:
       - "engines/research/research_app.py"
       - "tests/test_portfolio_buy_sell_ledger.py"
       - ".github/workflows/cycle_trading_portfolio_transactions.yml"
+      - "engines/research/cycle_trade_execution_safety.py"
+      - "engines/research/cycle_market_feed.py"
+      - "tests/test_cycle_trading_sensecheck.py"
+      - "tests/test_cycle_market_feed.py"
   workflow_dispatch:
 
 permissions:
@@ -35,3 +39,5 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_cycle_trading_dashboard_model.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trade_decision.py' -v
+      - name: Validate executed trade date and quote automation
+        run: python -m unittest discover -s tests -p 'test_cycle_trading_sensecheck.py' -v
