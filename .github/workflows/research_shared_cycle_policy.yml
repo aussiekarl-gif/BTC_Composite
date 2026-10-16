@@ -4,9 +4,11 @@ on:
   pull_request:
     paths:
       - "engines/research/shared_cycle_policy.py"
+      - "engines/research/cycle_position_anchor.py"
       - "engines/research/day500_dynamic_dca_out.py"
       - "engines/research/day500_aftertax_reinvestment.py"
       - "tests/test_shared_cycle_policy.py"
+      - "tests/test_cycle_position_anchor.py"
       - ".github/workflows/research_shared_cycle_policy.yml"
   workflow_dispatch:
 
@@ -27,5 +29,7 @@ jobs:
         run: python -m py_compile engines/research/shared_cycle_policy.py engines/research/day500_dynamic_dca_out.py engines/research/day500_aftertax_reinvestment.py
       - name: Exact 2017 2021 and 2025 policy parity
         run: python -m unittest discover -s tests -p 'test_shared_cycle_policy.py' -v
+      - name: Verify original position anchor from recorded buys and sells
+        run: python -m unittest discover -s tests -p 'test_cycle_position_anchor.py' -v
       - name: Retain existing self-financing SMSF tests
         run: python -m unittest discover -s tests -p 'test_day500_aftertax_reinvestment.py' -v
