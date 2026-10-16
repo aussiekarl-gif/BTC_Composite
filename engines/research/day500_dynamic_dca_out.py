@@ -181,10 +181,8 @@ def staged_day500_dynamic_exit(price, halving, *, policy="maturity_80pct",
     left=1.
     proceeds=0.
     trades=[]
-    for d in [START_DAY]+list(range(START_DAY+7,review_day+1,7)):
-        # Critical: anchor days 525+7*n do NOT coincide with
-        # day500+7*n (525 mod7 differs). Include BOTH streams.
-        pass
+    # Anchor days 525+7*n differ from day500+7*n.
+    # Include both streams, but execute exactly once per date.
     calendar=sorted(set([START_DAY]+list(range(START_DAY+7,review_day+1,7))
                         +list(anchor_days)))
     for d in calendar:
