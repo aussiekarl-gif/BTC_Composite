@@ -107,6 +107,56 @@ def evaluate_major_red_flags(*, buy_pct_cash, sell_pct_held, snapshots,
     return result
 
 
+
+def model_agreement_statuses(*, buy_pct_cash, sell_pct_held, snapshots,
+                             market_asof, today,
+                             confirmed_halving_date="2024-04-20"):
+    """For the DAILY summary: one label for EACH model, independently.
+
+    Here 'agrees' means **no extreme contradictory risk** to the Cycle
+    Trading BUY/SELL direction. It is NOT a claim that the model advocates
+    the same DCA percentage or independently recommends the trade.
+
+    'no data' also covers missing/stale reference inputs, the absence of
+    a comparable Cycle BUY/SELL, or an unsupported new halving cycle.
+    The latter are not silently called agreements.
+    """
+    output={name:"no data" for name in MODELS}
+    try:
+        buy=float(buy_pct_cash)
+        sell=float(sell_pct_held)
+        if (not math.isfinite(buy) or not math.isfinite(sell)
+                or buy<0 or sell<0 or (buy>0)==(sell>0)):
+            return output
+        asof=_date(market_asof)
+        current=_date(today)
+        if not 0<=(current-asof).days<=MAX_MODEL_AGE_DAYS:
+            return output
+        if _date(confirmed_halving_date)>dt.date(2024,4,20):
+            # V5.82/V5.9 epoch-calibrations are not verified in later cycles.
+            return output
+        if not isinstance(snapshots,dict):
+            return output
+    except (TypeError,ValueError,OverflowError):
+        return output
+
+    for name in MODELS:
+        try:
+            snapshot=snapshots[name]
+            score=float(snapshot["risk"])
+            observed=_date(snapshot["risk_data_date"])
+            if (not math.isfinite(score) or not 0<=score<=1
+                    or not 0<=(current-observed).days<=MAX_MODEL_AGE_DAYS
+                    or not 0<=(asof-observed).days<=MAX_SOURCE_ASOF_GAP_DAYS):
+                continue
+            extreme_opposition=(buy>0 and score>=EXTREME_HIGH) or (
+                sell>0 and score<=EXTREME_LOW)
+            output[name]="disagrees" if extreme_opposition else "agrees"
+        except (KeyError,TypeError,ValueError,OverflowError):
+            continue
+    return output
+
+
 def fetch_reference_model_risks():
     """Invoke existing exact V5.8.2 and V5.9 default risk calculations.
 
