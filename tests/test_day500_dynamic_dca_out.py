@@ -93,7 +93,12 @@ class Day500DynamicDcaOutTests(unittest.TestCase):
             self.assertEqual(q["sale_detail"][0]["halving_day"],500)
             self.assertAlmostEqual(q["sale_detail"][0]["btc_sold"],.05)
             anchor={525,532,539,546,553,560}
-            self.assertTrue(anchor.issubset({x["halving_day"] for x in q["sale_detail"]}))
+            traded={x["halving_day"] for x in q["sale_detail"]}
+            self.assertTrue(traded.intersection(anchor))
+            # Dynamic acceleration may SELL OUT before all six dates.
+            # This is valid, but must not be mistaken for missing fills.
+            if not anchor.issubset(traded):
+                self.assertAlmostEqual(q["btc_left"],0.,delta=1e-9)
             self.assertTrue(all(x["halving_day"] in anchor
                                 or x["halving_day"]==500
                                 or x["halving_day"]>=560
