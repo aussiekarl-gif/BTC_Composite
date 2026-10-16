@@ -82,6 +82,41 @@ class HybridSelfFinancingTests(unittest.TestCase):
         early_b=hybrid_account(changed.iloc[:155],"2026-01-01",core_fraction=.50)
         self.assertEqual(early_a,early_b)
 
+    def test_reserve_fallback_keeps_participating_when_no_large_drop_arrives(self):
+        d=sample(kind="bull")
+        for fraction in BASE_CORE_FRACTIONS:
+            original=hybrid_account(d,"2026-01-01",core_fraction=fraction)
+            with_fallback=hybrid_account(
+                d,"2026-01-01",core_fraction=fraction,
+                fallback_after_weeks=26,fallback_spread_weeks=26)
+            self.assertFalse(with_fallback["gate_triggered"])
+            self.assertGreater(with_fallback["fallback_buy_orders"],0)
+            self.assertGreater(with_fallback["BTC_held"],original["BTC_held"])
+            self.assertLess(with_fallback["AUD_cash_left"],original["AUD_cash_left"])
+            self.assertGreater(with_fallback["marked_value_aud"],
+                               original["marked_value_aud"])
+
+    def test_fallback_only_starts_after_predeclared_elapsed_calendar_weeks(self):
+        d=sample(kind="bull")
+        # 2026 baseline starts at index 105; no reserve trade before week 26.
+        jan=np.flatnonzero(d.index>=pd.Timestamp("2026-01-01",tz="UTC"))[0]
+        first_25=hybrid_account(d.iloc[:jan+26],"2026-01-01",
+                                core_fraction=.25,fallback_after_weeks=26)
+        self.assertEqual(first_25["fallback_buy_orders"],0)
+        after_27=hybrid_account(d.iloc[:jan+27],"2026-01-01",
+                                core_fraction=.25,fallback_after_weeks=26)
+        self.assertEqual(after_27["fallback_buy_orders"],1)
+
+    def test_prior_drawdown_gate_overrides_calendar_fallback(self):
+        d=sample(kind="bear")
+        a=hybrid_account(d,"2026-01-01",core_fraction=.25)
+        b=hybrid_account(d,"2026-01-01",core_fraction=.25,
+                         fallback_after_weeks=26)
+        self.assertTrue(a["gate_triggered"])
+        self.assertEqual(b["fallback_buy_orders"],0)
+        self.assertAlmostEqual(a["marked_value_aud"],b["marked_value_aud"])
+        self.assertAlmostEqual(a["BTC_held"],b["BTC_held"])
+
     def test_fixed_yearly_comparison_same_matched_start_and_horizon(self):
         idx=pd.date_range("2018-01-01",periods=160,freq="W-MON",tz="UTC")
         prices=np.array([100000+200*i for i in range(160)],dtype=float)
