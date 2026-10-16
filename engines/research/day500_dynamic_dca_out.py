@@ -37,7 +37,7 @@ from engines.research.top_signal_horse_race import (
 
 from engines.research.shared_cycle_policy import (
     staged_exit_decision,exit_review_days,
-    prior_price_regime,
+    prior_price_regime,STAGED_POLICIES,
 )
 
 START_DAY=500
@@ -132,16 +132,7 @@ def adaptive_weekly_exit(price, halving, *, policy="balanced",
 # followed by a genuinely UNBOUNDED-by-schedule tail (tracked to day730).
 # Both candidate core shares are deliberately registered BEFORE running
 # this feature's historical tests, but prior models inspired the proposal.
-STAGED_POLICIES={
-    "maturity_80pct": {"initial":.05,"core_fraction":.80},
-    "maturity_90pct": {"initial":.05,"core_fraction":.90},
-    "maturity_90pct_holdback20pct": {
-        "initial":.05,"core_fraction":.90,
-        "pre560_sold_cap":.80,
-        "tail_confirm_only":True,
-    },
-}
-
+# Policy definitions are single-sourced in shared_cycle_policy.py.
 
 def staged_day500_dynamic_exit(price, halving, *, policy="maturity_80pct",
                                review_day=REVIEW_DAY):
