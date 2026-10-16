@@ -30,6 +30,7 @@ from engines.research.cycle_trading_dashboard_model import (
 from engines.research.cycle_trade_allocation import (
     SELL_REVIEW_DAY_WEIGHTS,calculate_allocation_signal,_prior_top_state,
 )
+from engines.research.cycle_trade_execution_safety import cooldown_check
 
 
 MAX_STALE_DAYS = 3
@@ -127,9 +128,6 @@ def make_current_decision(
         base["quote_aud"]=quote
     else:
         base["warnings"].append("Enter a current broker ASX:IBIT unit quote to estimate tradeable whole units.")
-    if already_traded_today:
-        base["why"].append("You marked this signal date as already traded; no duplicate transaction.")
-        return base
     try:
         model_signal=calculate_allocation_signal(market,buy_style=buy_style)
     except (ValueError,KeyError,TypeError):
@@ -151,6 +149,21 @@ def make_current_decision(
         "prior_90day_drawdown_pct","prior_price_over_200wma",
         "prior_sma50_declining"
     )})
+    # Daily market observations are not daily DCA orders. A weekly tranche
+    # requires no already-recorded BUY or SELL in the past seven days.
+    # Still show the market WATCH percentage even when trading is blocked.
+    try:
+        cooldown=cooldown_check(saved_portfolio,today=today)
+    except ValueError as exc:
+        base["why"].append(f"Transaction date/ledger needs review: {exc}")
+        return base
+    base["next_dca_eligible_date"]=cooldown["next_eligible_date"]
+    if already_traded_today:
+        base["why"].append("Already executed a transaction for this signal; no repeat order.")
+        return base
+    if not cooldown["allowed"] and model_signal["signal"]!="HOLD":
+        base["why"].append(cooldown["reason"])
+        return base
 
     # An observed undervaluation overrides any potential post-top exit.
     # A below-200WMA environment is explicitly for ACCUMULATION research.
@@ -160,6 +173,15 @@ def make_current_decision(
                  else _nonnegative_number(usable_cash_aud))
         if balance is None or balance>portfolio["cash_remaining_aud"]+0.01:
             base["why"].append("Available cash cannot exceed saved uninvested portfolio capital.")
+            return base
+        # Market-level BUY WATCH is not an actionable ETF BUY without
+        # a genuine ASX:IBIT AUD quote. Avoid showing a large A$ order
+        # when actual executable unit cost is unknown.
+        if base["quote_aud"] is None:
+            base["why"].append(
+                "BTC buy watch only: no verified ASX:IBIT AUD quote. "
+                "Wait for automatic refresh or enter a broker quote."
+            )
             return base
         proposal=planned_buy_order(market,cash_available=balance,
                                    style=buy_style)
