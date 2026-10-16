@@ -1,0 +1,43 @@
+name: Research BTC Top Signal Horse Race
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/top_signal_horse_race.py"
+      - "tests/test_top_signal_horse_race.py"
+      - ".github/workflows/research_top_signal_horse_race.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pandas numpy
+      - run: python -m py_compile engines/research/top_signal_horse_race.py
+      - run: python -m unittest discover -s tests -p "test_top_signal_horse_race.py" -v
+
+  past-data-only-historical-audit:
+    needs: unit-tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pandas numpy
+      - name: Audit classic and causal market-top event warnings
+        run: python -m engines.research.top_signal_horse_race --output top_signal_horse_race.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-btc-top-signal-horse-race
+          path: top_signal_horse_race.json
