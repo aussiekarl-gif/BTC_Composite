@@ -1,0 +1,43 @@
+name: Research Day500 Dynamic BTC DCA Out
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/day500_dynamic_dca_out.py"
+      - "tests/test_day500_dynamic_dca_out.py"
+      - ".github/workflows/research_day500_dynamic_exit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install numpy pandas
+      - run: python -m py_compile engines/research/day500_dynamic_dca_out.py
+      - run: python -m unittest discover -s tests -p "test_day500_dynamic_dca_out.py" -v
+
+  past-data-only-historical-exits:
+    needs: audit-unit-tests
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install numpy pandas
+      - name: Compare 2013, 2017, 2021, 2025 day500 dynamic selling versus fixed and hold
+        run: python -m engines.research.day500_dynamic_dca_out --output dynamic_day500_exit_results.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-day500-dynamic-btc-exit
+          path: dynamic_day500_exit_results.json
