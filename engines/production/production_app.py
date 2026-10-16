@@ -1367,6 +1367,13 @@ elif mode == "My Portfolio":
                 st.rerun()
 
     saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
+    if saved_portfolio.get("sales"):
+        st.info(
+            "Sales are now recorded in Cycle Trading → My Portfolio. "
+            "The historical purchase table and purchase-cost figures here describe "
+            "lifetime BUY transactions; the exact NET IBIT/BTC holdings and "
+            "net proceeds after recorded SELL trades are shown in Cycle Trading."
+        )
     saved_rows = saved_portfolio.get("rows", [])
     if not saved_rows:
         st.warning(
