@@ -9,6 +9,7 @@ if str(_REPO_ROOT) not in _sys.path:
 
 from engines.production import production_model as _model
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
+from engines.shared.portfolio_transactions import merge_legacy_purchase_editor,portfolio_positions
 from engines.shared.portfolio_execution_accuracy import (
     calculate_portfolio_entry_error, DEFAULT_REFERENCE_USD, DEFAULT_REFERENCE_DATE,
 )
@@ -1366,6 +1367,13 @@ elif mode == "My Portfolio":
                 st.rerun()
 
     saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
+    if saved_portfolio.get("sales"):
+        st.info(
+            "Sales are now recorded in Cycle Trading → My Portfolio. "
+            "The historical purchase table and purchase-cost figures here describe "
+            "lifetime BUY transactions; the exact NET IBIT/BTC holdings and "
+            "net proceeds after recorded SELL trades are shown in Cycle Trading."
+        )
     saved_rows = saved_portfolio.get("rows", [])
     if not saved_rows:
         st.warning(
@@ -1961,23 +1969,34 @@ elif mode == "My Portfolio":
     browser_state["decision_rows"] = edited_decisions[decision_cols].to_dict(orient="records")
 
     if st.session_state.pop("portfolio_save_pending", False):
-        browser_state["portfolio"] = {
-            "starting_capital_aud": float(starting_portfolio_capital),
-            "capital_remaining_aud": float(capital_remaining),
-            "rows": export_clean[portfolio_cols].to_dict(orient="records"),
-        }
-        saved_ok, save_error = save_portfolio(browser_state["portfolio"])
+        # The buy-only legacy editor must keep recorded SALES written in
+        # Cycle Trading. Fail closed if another session has saved new
+        # transactions since this editor loaded its snapshot.
+        fresh_saved, fresh_error = load_portfolio()
+        if fresh_error:
+            saved_ok, save_error = False, fresh_error
+        else:
+            try:
+                merged = merge_legacy_purchase_editor(
+                    saved_portfolio, fresh_saved,
+                    edited_buys=export_clean[portfolio_cols].to_dict(orient="records"),
+                    starting_capital_aud=float(starting_portfolio_capital),
+                )
+                browser_state["portfolio"] = merged
+                saved_ok, save_error = save_portfolio(merged)
+            except ValueError as exc:
+                saved_ok, save_error = False, str(exc)
         if saved_ok:
             _save_shared_portfolio(browser_state["portfolio"])
             shared_portfolio = browser_state["portfolio"].copy()
             _save_browser_state(browser_state)
             st.success("Portfolio saved and verified in the persistent database.")
         else:
-            _save_shared_portfolio(browser_state["portfolio"])
-            _save_browser_state(browser_state)
+            # Do not write a stale buy-only browser copy over saved
+            # SALE transactions when the shared Google state has changed.
             st.error(
-                f"Persistent save failed: {save_error}. A browser recovery copy was retained; "
-                "download the CSV before closing the app."
+                f"Portfolio save not applied: {save_error}. Refresh your "
+                "portfolio to reconcile purchases and sales before retrying."
             )
     else:
         _save_browser_state(browser_state)
