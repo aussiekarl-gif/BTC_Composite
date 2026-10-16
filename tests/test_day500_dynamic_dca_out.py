@@ -152,7 +152,7 @@ class Day500DynamicDcaOutTests(unittest.TestCase):
                           "late_peak_day680","uninterrupted_bull_market"})
         for r in results:
             outcomes=r["outcomes"]
-            self.assertEqual(len(outcomes),3)
+            self.assertEqual(len(outcomes),4)
             self.assertEqual(outcomes[0]["model"],"hold")
             self.assertAlmostEqual(outcomes[0]["relative_to_hold_pct"],0.)
             for x in outcomes:
