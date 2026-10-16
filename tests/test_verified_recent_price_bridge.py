@@ -8,6 +8,7 @@ from engines.research.verified_recent_price_bridge import (
     parse_blockchain_price, parse_frankfurter_fx,
     weighted_entry_from_synthetic_orders, nearest_historical_fx,
     first_causal_gate_week, evaluate_causal_drawdown_entry_gates,
+    historical_entry_gate_transfer,
 )
 
 
@@ -126,6 +127,22 @@ class PublicPriceBridgeTests(unittest.TestCase):
             frame.assign(btc_price_aud=100000.),
             drawdown=.50,start_date="2026-01-01")
         self.assertIsNone(empty)
+
+    def test_drawdown_gates_can_miss_a_full_rising_market(self):
+        # Explicit negative control: no deep correction at all in 2020.
+        idx=pd.date_range("2018-01-01",periods=160,freq="W-MON",tz="UTC")
+        vals=[100000. if i<104 else 100000.+1000*(i-104) for i in range(160)]
+        history=pd.DataFrame({"btc_price_aud":vals,
+                              "risk_score":[.2]*160},index=idx)
+        out=historical_entry_gate_transfer(history,years=(2020,))
+        self.assertEqual(len(out["fixed_one_year_eras"]),1)
+        rows=out["fixed_one_year_eras"][0]["scenarios"]
+        self.assertEqual(len(rows),4)
+        for row in rows[1:]:
+            self.assertFalse(row["triggered"])
+            self.assertEqual(row["BTC_held"],0)
+            self.assertEqual(row["ending_equity_aud"],500000)
+            self.assertLess(row["relative_to_matched_hold_pct"],0)
 
     def test_predeclared_gates_keep_full_capital_until_activation(self):
         idx=pd.date_range("2024-01-01",periods=142,freq="W-MON",tz="UTC")
