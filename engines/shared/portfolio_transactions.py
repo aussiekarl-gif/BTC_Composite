@@ -223,3 +223,25 @@ def append_with_stale_guard(original,fresh,**kwargs):
             !=fresh.get("starting_capital_aud",500000.)):
         raise ValueError("Portfolio capital changed since page load; refresh")
     return append_executed_trade(fresh,**kwargs)
+
+
+def merge_legacy_purchase_editor(original,fresh,*,edited_buys,starting_capital_aud):
+    """Persist previous Portfolio editor changes WITHOUT deleting new sales.
+
+    This deliberately rejects conflicting stale purchases and sale edits.
+    The older editor may modify historical purchases, but NEVER silently
+    overwrites `sales`. A dedicated Cycle Trading editor controls sales.
+    """
+    prior_buys,prior_sells=_read_ledger(original)
+    current_buys,current_sells=_read_ledger(fresh)
+    if prior_buys!=current_buys or prior_sells!=current_sells:
+        raise ValueError("Portfolio changed elsewhere; refresh before saving legacy purchase edits")
+    if not isinstance(edited_buys,list):
+        raise ValueError("Edited purchases must be a list")
+    result=copy.deepcopy(fresh)
+    result["rows"]=copy.deepcopy(edited_buys)
+    result["starting_capital_aud"]=numeric(
+        starting_capital_aud,label="Starting capital",allow_zero=True)
+    status=portfolio_positions(result)
+    result["capital_remaining_aud"]=status["cash_remaining_aud"]
+    return result
