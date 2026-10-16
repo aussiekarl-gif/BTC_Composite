@@ -116,6 +116,10 @@ def asof_on_mondays(price, fx, *, start, end, max_price_lag_days=2,
     q=pd.DataFrame({"date":monday})
     p=price.rename_axis("date").reset_index().rename(columns={"date":"price_source_date"})
     x=fx.rename_axis("date").reset_index().rename(columns={"date":"fx_source_date"})
+    # Some providers expose Unix-second dates while pandas.date_range is
+    # microsecond-resolution in pandas 3. Normalize all merge keys exactly.
+    for frame,key in ((q,"date"),(p,"price_source_date"),(x,"fx_source_date")):
+        frame[key]=pd.to_datetime(frame[key],utc=True).astype("datetime64[ns, UTC]")
     q=pd.merge_asof(q,p,left_on="date",right_on="price_source_date",direction="backward")
     q=pd.merge_asof(q,x,left_on="date",right_on="fx_source_date",direction="backward")
     q["price_lag_days"]=(q["date"]-q["price_source_date"]).dt.days
