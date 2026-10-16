@@ -6,6 +6,7 @@ import pandas as pd
 from engines.research.verified_recent_price_bridge import (
     append_verified_prices, asof_on_mondays, expanding_aud_powerlaw_risk,
     parse_blockchain_price, parse_frankfurter_fx,
+    weighted_entry_from_synthetic_orders, nearest_historical_fx,
 )
 
 
@@ -67,6 +68,45 @@ class PublicPriceBridgeTests(unittest.TestCase):
                                       d["btc_price_aud"].to_numpy()))
         self.assertNotIn("risk_score",merged.columns)
         self.assertEqual(audit["new_public_weeks"],1)
+
+    def test_weighted_2026_dca_error_targets_are_not_arithmetic_average(self):
+        fx=pd.DataFrame({"aud_per_usd":[1.0,1.0]},
+                        index=pd.to_datetime(["2026-06-01","2026-06-08"],utc=True))
+        o=[
+            {"date":"2026-06-01 00:00:00+00:00","side":"BUY",
+             "gross_aud":150003.,"btc":150000./110000.},
+            {"date":"2026-06-08 00:00:00+00:00","side":"BUY",
+             "gross_aud":50003.,"btc":50000./140000.}
+        ]
+        a=weighted_entry_from_synthetic_orders(o,fx,low_usd=100000)
+        self.assertAlmostEqual(a["average_entry_usd_per_btc"],116229.90,places=1)
+        self.assertAlmostEqual(a["error_from_observed_low_pct"],16.23,places=1)
+        self.assertTrue(a["within_25pct"])
+        self.assertAlmostEqual(a["aud_capital_deployed_pct"],40.001,delta=.002)
+
+    def test_weighted_entry_uses_transaction_day_fx_and_rejects_stale(self):
+        fx=pd.DataFrame({"aud_per_usd":[2.,4.]},
+                        index=pd.to_datetime(["2026-06-01","2026-06-08"],utc=True))
+        o=[
+            {"date":"2026-06-01 00:00:00+00:00","side":"BUY",
+             "gross_aud":200000.,"btc":1.},
+            {"date":"2026-06-08 00:00:00+00:00","side":"BUY",
+             "gross_aud":200000.,"btc":1.}
+        ]
+        a=weighted_entry_from_synthetic_orders(o,fx,low_usd=60000)
+        self.assertAlmostEqual(a["average_entry_usd_per_btc"],75000.)
+        self.assertAlmostEqual(a["error_from_observed_low_pct"],25.)
+        bad=[{"date":"2026-06-20 00:00:00+00:00","side":"BUY",
+              "gross_aud":1000,"btc":.01}]
+        with self.assertRaisesRegex(ValueError,"unavailable"):
+            weighted_entry_from_synthetic_orders(bad,fx)
+        self.assertAlmostEqual(
+            nearest_historical_fx(fx,"2026-06-07 00:00:00+00:00"),2.)
+
+    def test_no_orders_never_claims_25pct_success(self):
+        empty=weighted_entry_from_synthetic_orders([],pd.DataFrame())
+        self.assertIsNone(empty["within_25pct"])
+        self.assertIsNone(empty["error_from_observed_low_pct"])
 
     def test_powerlaw_uses_only_prefix_price_information(self):
         idx=pd.date_range("2021-01-04",periods=220,freq="W-MON",tz="UTC")
