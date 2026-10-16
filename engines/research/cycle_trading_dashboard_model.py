@@ -77,6 +77,76 @@ def portfolio_snapshot(saved):
     }
 
 
+
+def portfolio_buy_error_from_reported_low(saved,fx,*,low_usd=USER_REPORTED_2026_LOW_USD):
+    """Historical purchase VWAP in USD, user-reported intraday trough.
+
+    Uses actual saved AUD trade values plus recorded fee, estimated
+    BTC-equivalent exposure, and FX strictly BEFORE every purchase.
+    Never backfills missing BTC price or FX; returns no result on
+    incomplete records, never a misleading partial average.
+    """
+    if not isinstance(saved,dict) or not isinstance(saved.get("rows"),list):
+        return {"available":False,"reason":"No saved purchase records"}
+    if (not isinstance(fx,pd.DataFrame) or fx.empty
+            or "aud_per_usd" not in fx):
+        return {"available":False,"reason":"Historical USD/AUD rates unavailable"}
+    if not math.isfinite(low_usd) or low_usd<=0:
+        raise ValueError("Low-price benchmark must be positive")
+    cost_usd=btc_eq=0.
+    valid=0
+    for item in saved["rows"]:
+        if not isinstance(item,dict):
+            return {"available":False,"reason":"Invalid saved purchase row"}
+        raw_date=str(item.get("Date","")).strip()
+        date=None
+        for fmt in ("%d/%m/%y","%d/%m/%Y","%Y-%m-%d"):
+            try:
+                date=pd.Timestamp(pd.to_datetime(raw_date,format=fmt)).tz_localize("UTC")
+                break
+            except (ValueError,TypeError):
+                pass
+        if date is None:
+            return {"available":False,"reason":"Missing or malformed purchase date"}
+        eligible=fx.loc[fx.index<date]
+        if eligible.empty or (date-eligible.index[-1]).days>7:
+            return {"available":False,"reason":"Purchase date FX not historically available"}
+        rate=float(eligible.iloc[-1]["aud_per_usd"])
+        if rate<=0 or not math.isfinite(rate):
+            return {"available":False,"reason":"Invalid historical FX"}
+        asset=str(item.get("Asset","")).strip()
+        aud=_cash(item.get("AUD Spent"))
+        fee=_cash(item.get("Brokerage / Fee AUD"))
+        if asset=="ASX:IBIT":
+            historic=_cash(item.get("BTC AUD Price"))
+            qty=aud/historic if historic>0 else 0.
+        elif asset=="Direct BTC":
+            qty=_cash(item.get("Units / BTC Received"))
+        else:
+            qty=0.
+        if aud<=0 or qty<=0:
+            return {"available":False,
+                    "reason":"At least one purchase lacks a valid BTC-equivalent or AUD cost"}
+        cost_usd+=(aud+fee)/rate
+        btc_eq+=qty
+        valid+=1
+    if btc_eq<=0:
+        return {"available":False,"reason":"No recorded BTC-equivalent purchases"}
+    avg=cost_usd/btc_eq
+    return {
+        "available":True,
+        "purchases_count":valid,
+        "btc_equivalent_purchased":round(btc_eq,8),
+        "total_usd_cost":round(cost_usd,2),
+        "effective_avg_usd_per_btc":round(avg,2),
+        "error_above_user_reported_low_pct":round(100*(avg/low_usd-1),2),
+        "reference_low_usd":float(low_usd),
+        "reference_low_kind":"User-reported intraday 30 Jun 2026 — provisional",
+        "limit":"Approximate BTC-equivalent ETF exposure from saved trades, not direct BTC; charges included, ETF tracking and FX spread excluded.",
+    }
+
+
+
 def _coerce_daily_prices(price):
     if isinstance(price,pd.DataFrame):
         if "price_usd" in price.columns:
