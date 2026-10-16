@@ -280,11 +280,55 @@ def evaluate_alerts(frame, signals, *, peak_windows=PEAK_WINDOWS):
     return output
 
 
+def first_tradeable_maturity_warning_by_cycle(frame, signals, *,
+                                               maturity_start_days=350,
+                                               maturity_end_days=800):
+    """Precommitted FIRST signal after maturity, not best-fit later warning.
+
+    Uses halving times as fixed public past events. Future peak prices only
+    enter retrospective attribution, NEVER the selected trading signal.
+    2013 is included to test transfer across earlier structural regimes.
+    """
+    scored=[]
+    for halving,label in zip(HALVINGS,("2013","2017","2021","2025")):
+        window=PEAK_WINDOWS[label]
+        observed=frame.loc[window[0]:window[1],"price_usd"]
+        if observed.empty:continue
+        future_peak_date=observed.idxmax()
+        true_peak_price=float(observed.max())
+        earliest=halving+pd.Timedelta(days=maturity_start_days)
+        latest=halving+pd.Timedelta(days=maturity_end_days)
+        eligible=signals["cycle_maturity_warning"].loc[
+            (signals.index>=earliest)&(signals.index<=latest)]
+        fired=eligible[eligible.fillna(False)].index
+        selected=fired[0] if len(fired) else None
+        price=float(frame.loc[selected,"price_usd"]) if selected is not None else None
+        scored.append({
+            "cycle":label,
+            "first_warning":str(selected.date()) if selected is not None else None,
+            "first_trade_execution_price_usd":round(price,2) if price is not None else None,
+            "eventual_peak_date_hindsight":str(future_peak_date.date()),
+            "eventual_peak_usd_hindsight":round(true_peak_price,2),
+            "days_from_eventual_peak":(selected-future_peak_date).days if selected is not None else None,
+            "error_from_hindsight_peak_pct":round(
+                max(0.,100*(1-price/true_peak_price)),3) if price is not None else None,
+            "first_warning_within_25pct_hindsight":(
+                bool(price>=.75*true_peak_price) if price is not None else False),
+        })
+    return {
+        "policy":"Take the FIRST post-halving day-350/800 warning, no hindsight nearest-event cherry picking.",
+        "cycles":scored,
+        "under_25pct":sum(x["first_warning_within_25pct_hindsight"] for x in scored),
+        "total_cycles":len(scored),
+    }
+
+
 def audit():
     source=read_exported_history()
     data=source.loc[:pd.Timestamp("2026-10-07",tz="UTC")]
     signals=build_daily_signals(data)
     scores=evaluate_alerts(data,signals)
+    first_warning=first_tradeable_maturity_warning_by_cycle(data,signals)
     return {
         "research_only":True,
         "price_data_start":str(data.index[0]),
@@ -295,12 +339,14 @@ def audit():
         "macro_window_scoring":"Peaks selected ex post within 2013, 2017, 2021, 2025 fixed named windows. Nearby alerts must lie 140 days BEFORE or 56 days AFTER observed peak.",
         "decline_followup":"30% decline within 365 days of alert close, censored if full 365-day future unavailable",
         "family_results":scores,
+        "no_cherry_pick_first_cycle_warning":first_warning,
         "warnings":[
             "A fixed threshold that worked before 2021 can silently fail at recent peaks.",
             "The 2021 cycle had distinct April and November highs; alerts months before November can be too early.",
             "Historical onchain CSV exports were created in October 2026; publication vintages and revisions unverified.",
             "Known cycle windows and scores are evaluation hindsight, not inputs to signal detector.",
             "Multiple repeated alerts, signal lag, slippage, false sells and taxes matter; no live trades simulated.",
+            "Do not confuse a signal NEAR each hindsight peak with the FIRST signal that a live investor would act upon.",
             "No indicator or combination can guarantee it detects every future BTC peak.",
             "No changes to Production, portfolio, validated master, or Research defaults.",
         ],
