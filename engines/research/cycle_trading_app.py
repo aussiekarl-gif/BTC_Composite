@@ -326,56 +326,56 @@ with tabs[0]:
                     "Prior close above the 200WMA — initial buyback gate not observed")
     st.info(current_signal)
     st.caption("This is an entry-gate observation, not an assertion that the bear-market low is in.")
-    with st.expander("Market detail — BTC cycle top/bottom (A$), 200WMA and price chart",
+    st.subheader("Current cycle top and bottom (A$ BTC)")
+    st.caption("Observed Bitcoin prices in Australian dollars; percentages compare the latest available close with each level.")
+    try:
+        # Historic 2025 peak MUST be converted with FX from 2025,
+        # not today's AUD/USD. The standard public fetch only
+        # includes FX from December 2025 onwards.
+        cycle_historic_fx=cycle_fx_source("2024-04-20",market["asof_date"])
+        cycle_aud=observed_aud_cycle_levels(
+            market["price_history"],cycle_historic_fx,
+            asof=market["asof_date"])
+    except Exception as exc:
+        cycle_aud=None
+        st.warning("Historical cycle BTC/AUD extremes unavailable: "
+                   f"{type(exc).__name__}: {exc}. "
+                   "No unverified AUD prices are substituted.")
+    if cycle_aud is not None:
+        high_col,low_col,range_col=st.columns(3)
+        high_col.metric(
+            "Cycle TOP (BTC/AUD)",
+            f"A${cycle_aud['cycle_top_aud']:,.0f}",
+            delta=f"{cycle_aud['pct_change_from_top']:+.1f}% from top",
+            help=f"Observed high daily BTC/AUD close on {cycle_aud['cycle_top_date']}")
+        low_col.metric(
+            "Post-top BOTTOM (BTC/AUD)",
+            f"A${cycle_aud['cycle_bottom_aud']:,.0f}",
+            delta=f"{cycle_aud['pct_change_from_bottom']:+.1f}% from bottom",
+            help=f"Observed lowest daily BTC/AUD close after top on {cycle_aud['cycle_bottom_date']}")
+        range_col.metric(
+            "Position between bottom and top",
+            f"{cycle_aud['position_between_low_high_pct']:.1f}%",
+            help="0% = observed post-top bottom; 100% = observed cycle top.")
+        st.caption(
+            f"Bottom A${cycle_aud['cycle_bottom_aud']:,.0f} "
+            f"({cycle_aud['cycle_bottom_date']}) → "
+            f"Top A${cycle_aud['cycle_top_aud']:,.0f} "
+            f"({cycle_aud['cycle_top_date']}). "
+            f"Latest BTC/AUD daily close A${cycle_aud['last_price_aud']:,.0f} "
+            f"({cycle_aud['asof_date']}). "
+            "Range is since the 20 Apr 2024 halving, with the bottom "
+            "defined AFTER the observed top. Same-date historical FX; "
+            "daily closes, not intraday extremes or a prediction."
+        )
+
+    with st.expander("200WMA, halving dates and BTC price chart",
                      expanded=False):
         c1,c2,c3,c4=st.columns(4)
         c1.metric("BTC/USD historical close",f"US${market['btc_price_usd']:,.0f}")
         c2.metric("Prior-observation 200WMA",f"US${market['prior_200wma_usd']:,.0f}")
         c3.metric("Prior close / 200WMA",f"{market['prior_close_vs_200wma_pct']:+.1f}%")
         c4.metric("Days from last confirmed halving",f"{market['halving_day']:,}")
-
-        st.subheader("Current cycle top and bottom (A$ BTC)")
-        st.caption("Observed Bitcoin prices in Australian dollars; percentages compare the latest available close with each level.")
-        try:
-            # Historic 2025 peak MUST be converted with FX from 2025,
-            # not today's AUD/USD. The standard public fetch only
-            # includes FX from December 2025 onwards.
-            cycle_historic_fx=cycle_fx_source("2024-04-20",market["asof_date"])
-            cycle_aud=observed_aud_cycle_levels(
-                market["price_history"],cycle_historic_fx,
-                asof=market["asof_date"])
-        except Exception as exc:
-            cycle_aud=None
-            st.warning("Historical cycle BTC/AUD extremes unavailable: "
-                       f"{type(exc).__name__}: {exc}. "
-                       "No unverified AUD prices are substituted.")
-        if cycle_aud is not None:
-            high_col,low_col,range_col=st.columns(3)
-            high_col.metric(
-                "Cycle TOP (BTC/AUD)",
-                f"A${cycle_aud['cycle_top_aud']:,.0f}",
-                delta=f"{cycle_aud['pct_change_from_top']:+.1f}% from top",
-                help=f"Observed high daily BTC/AUD close on {cycle_aud['cycle_top_date']}")
-            low_col.metric(
-                "Post-top BOTTOM (BTC/AUD)",
-                f"A${cycle_aud['cycle_bottom_aud']:,.0f}",
-                delta=f"{cycle_aud['pct_change_from_bottom']:+.1f}% from bottom",
-                help=f"Observed lowest daily BTC/AUD close after top on {cycle_aud['cycle_bottom_date']}")
-            range_col.metric(
-                "Position between bottom and top",
-                f"{cycle_aud['position_between_low_high_pct']:.1f}%",
-                help="0% = observed post-top bottom; 100% = observed cycle top.")
-            st.caption(
-                f"Bottom A${cycle_aud['cycle_bottom_aud']:,.0f} "
-                f"({cycle_aud['cycle_bottom_date']}) → "
-                f"Top A${cycle_aud['cycle_top_aud']:,.0f} "
-                f"({cycle_aud['cycle_top_date']}). "
-                f"Latest BTC/AUD daily close A${cycle_aud['last_price_aud']:,.0f} "
-                f"({cycle_aud['asof_date']}). "
-                "Range is since the 20 Apr 2024 halving, with the bottom "
-                "defined AFTER the observed top. Same-date historical FX; "
-                "daily closes, not intraday extremes or a prediction."
-            )
 
         st.caption(
             f"Confirmed halving 20 Apr 2024 • day 500: {market['day500_date']} "
