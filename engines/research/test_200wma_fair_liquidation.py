@@ -36,31 +36,32 @@ def summarize(rows,key):
         "worst_pct":round(float(np.min(v)),3),
         "p10_pct":round(float(np.percentile(v,10)),3)}
 
-def fair_benchmark(s,signal,ma,start,end):
+def fair_benchmark(s,signal,ma,start,end,slippage=SLIPPAGE,fee=FEE,brokerage=BROKER_AUD):
     ledger=FifoCgtLedger()
     state=pure_dca(s,ma,start,end,12,True,signal_price=signal,
-                   brokerage_fixed=BROKER_AUD,trade_callback=ledger)
+                   brokerage_fixed=brokerage,trade_callback=ledger,fee=fee,slippage=slippage)
     mark=state["value_usd"]
     liquidation=terminal_liquidation(ledger,state["cash_usd"],
         ledger.bought_units-ledger.sold_units,s.index[end],s.iloc[end],
-        brokerage=BROKER_AUD,fee=FEE,slippage=SLIPPAGE)
+        brokerage=brokerage,fee=fee,slippage=slippage)
     return state,liquidation
 
 def fair_trading(s,signal,ma,start,end,
                  cash_recycle_idle_weeks=0,
                  max_cash_weight_after_sell=None,
                  sell_guard_lookback=0,
-                 trend_reentry_lookback=0):
+                 trend_reentry_lookback=0,
+                 slippage=SLIPPAGE,fee=FEE,brokerage=BROKER_AUD):
     ledger=FifoCgtLedger()
     events=[]
     def track(event):
         ledger(event)
         events.append((event["side"],event.get("kind","UNKNOWN")))
-    hook=AnnualSmsfTaxPayment(ledger,BROKER_AUD,FEE,SLIPPAGE)
+    hook=AnnualSmsfTaxPayment(ledger,brokerage,fee,slippage)
     state=staged(s,ma,start,shape="bell",reverse_cancel=False,
       buy_weeks=12,sell_weeks=16,block_overlap=True,
-      fee=FEE,slippage=SLIPPAGE,
-      brokerage_fixed=BROKER_AUD,end_index=end,
+      fee=fee,slippage=slippage,
+      brokerage_fixed=brokerage,end_index=end,
       initial_btc_fraction=.20,funding_weeks=12,
       funding_weighted=True,signal_price=signal,
       cash_recycle_idle_weeks=cash_recycle_idle_weeks,
@@ -76,7 +77,7 @@ def fair_trading(s,signal,ma,start,end,
     # Take the comparison on exactly the same completed weekly bar.
     liquidation=terminal_liquidation(ledger,state["cash_usd"],
       ledger.bought_units-ledger.sold_units,s.index[end],s.iloc[end],
-      brokerage=BROKER_AUD,fee=FEE,slippage=SLIPPAGE)
+      brokerage=brokerage,fee=fee,slippage=slippage)
     # Report the previous method to quantify the unfair tax timing it used.
     estimate=state["value_usd"]-ledger.tax_summary()["tax_outstanding"]
     return state,liquidation,estimate
