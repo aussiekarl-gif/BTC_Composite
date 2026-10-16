@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from engines.research.cycle_model_redflags import (
     MODELS,evaluate_major_red_flags,fetch_reference_model_risks,
+    model_agreement_statuses,
 )
 from cycle_trading_daily_ntfy import daily_message
 
@@ -131,6 +132,72 @@ class MajorOnlyCrossCheckTests(unittest.TestCase):
         _,message=daily_message(**dict(kwargs,market=hold),
             reference_snapshot_fetcher=lambda:1/0)
         self.assertNotIn("RED FLAG",message)
+
+    def test_daily_individual_agreement_matches_extreme_risk_conflicts(self):
+        cases=[
+            (.10,.15,2.5,0.,("agrees","agrees")),
+            (.90,.85,2.5,0.,("disagrees","disagrees")),
+            (.12,.93,2.5,0.,("agrees","disagrees")),
+            (.25,.77,2.5,0.,("agrees","agrees")),
+            (.12,.10,0.,24.,("disagrees","disagrees")),
+            (.85,.90,0.,24.,("agrees","agrees")),
+            (.10,.90,0.,24.,("disagrees","agrees")),
+        ]
+        for prod,res,buy,sell,expected in cases:
+            with self.subTest(prod=prod,res=res,buy=buy,sell=sell):
+                labels=model_agreement_statuses(
+                    buy_pct_cash=buy,sell_pct_held=sell,
+                    snapshots=models(prod,res),market_asof=MARKET_DATE,
+                    today=TODAY,
+                )
+                self.assertEqual(tuple(labels[x] for x in MODELS),expected)
+
+    def test_daily_independent_missing_stale_hold_and_future_cycle_are_no_data(self):
+        base=dict(buy_pct_cash=2.5,sell_pct_held=0.,
+                  market_asof=MARKET_DATE,today=TODAY)
+        v=model_agreement_statuses(**base,snapshots={
+            MODELS[0]:models(.30,.80)[MODELS[0]]
+        })
+        self.assertEqual(v[MODELS[0]],"agrees")
+        self.assertEqual(v[MODELS[1]],"no data")
+        v=model_agreement_statuses(**base,snapshots=models(
+            .85,.9,research_date="01/10/26"))
+        self.assertEqual(v[MODELS[0]],"disagrees")
+        self.assertEqual(v[MODELS[1]],"no data")
+        no_direction=model_agreement_statuses(
+            buy_pct_cash=0.,sell_pct_held=0.,snapshots=models(.8,.9),
+            market_asof=MARKET_DATE,today=TODAY)
+        self.assertEqual(list(no_direction.values()),["no data","no data"])
+        future=model_agreement_statuses(
+            **base,snapshots=models(.85,.9),
+            confirmed_halving_date="2028-04-25")
+        self.assertEqual(list(future.values()),["no data","no data"])
+        stale=model_agreement_statuses(
+            **{**base,"today":dt.date(2026,10,21)},
+            snapshots=models(.85,.9))
+        self.assertEqual(list(stale.values()),["no data","no data"])
+
+    def test_daily_message_individual_labels_and_one_warning(self):
+        quote={"price_aud":24.,"timestamp_utc":"2026-10-16T03:00:00+00:00"}
+        market=fake_market(buy=True)
+        kwargs=dict(now=dt.datetime(2026,10,17,tzinfo=dt.timezone.utc),
+                    quote=quote,market=market)
+        _,report=daily_message(**kwargs,
+            reference_snapshot_fetcher=lambda:models(.90,.55))
+        self.assertIn("Production: disagrees",report)
+        self.assertIn("Research: agrees",report)
+        self.assertNotIn("MAJOR RED FLAG",report)
+        _,both=daily_message(**kwargs,
+            reference_snapshot_fetcher=lambda:models(.90,.92))
+        self.assertIn("Production: disagrees",both)
+        self.assertIn("Research: disagrees",both)
+        self.assertEqual(both.count("MAJOR RED FLAG"),1)
+        _,not_available=daily_message(**kwargs,
+            reference_snapshot_fetcher=lambda:{})
+        self.assertIn("Production: no data",not_available)
+        self.assertIn("Research: no data",not_available)
+        self.assertEqual(not_available.count("Production:"),1)
+        self.assertEqual(not_available.count("Research:"),1)
 
     def test_streamlit_only_shows_warnings_with_no_success_badges(self):
         from pathlib import Path

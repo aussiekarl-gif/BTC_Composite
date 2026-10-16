@@ -34,7 +34,8 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         self.assertEqual(day,"2026-10-17")
         self.assertIn("ASX:IBIT A$22.42",message)
         self.assertIn("Cycle signal: DATA UNAVAILABLE",message)
-        self.assertNotIn("Production:",message)
+        self.assertIn("Production: no data",message)
+        self.assertIn("Research: no data",message)
         self.assertNotIn("A$500,000",message)
         self.assertNotIn("V5.9",message)
     def test_quote_network_fail_closed(self):
@@ -51,6 +52,13 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         self.assertNotIn("NTFY_TOPIC",validation)
         daily=(root/".github/workflows/cycle_trading_daily_ntfy.yml").read_text()
         self.assertEqual(daily.count("cron:"),1)
+        self.assertIn("cron: '0 0 * * *'",daily)
+        self.assertNotIn("cron: '0 22 * * *'",daily)
+        # Brisbane does not use DST: midnight UTC = 10:00 AEST.
+        from zoneinfo import ZoneInfo
+        self.assertEqual(
+            dt.datetime(2026,10,17,0,0,tzinfo=dt.timezone.utc)
+            .astimezone(ZoneInfo("Australia/Brisbane")).hour,10)
         self.assertIn("last_cycle_ntfy_date.txt",daily)
         self.assertNotIn("  workflow_dispatch:",daily.split("jobs:")[0])
 
