@@ -17,6 +17,9 @@ def sample(*, kind="bull", n=183):
         prices=np.array([100000.]*108 +
                         [max(37000.,100000.-2500*(i-108))
                          for i in range(108,n)],dtype=float)
+    elif kind=="mild_bear":
+        prices=np.array([100000.]*105 +
+                        [100000.-100*(i-105) for i in range(105,n)],dtype=float)
     else:
         raise ValueError
     # Externally provided risk is synthetic and does NOT need any future info.
@@ -116,6 +119,40 @@ class HybridSelfFinancingTests(unittest.TestCase):
         self.assertEqual(b["fallback_buy_orders"],0)
         self.assertAlmostEqual(a["marked_value_aud"],b["marked_value_aud"])
         self.assertAlmostEqual(a["BTC_held"],b["BTC_held"])
+
+    def test_trend_fallback_pauses_during_mild_decline_without_gate(self):
+        d=sample(kind="mild_bear")
+        plain=hybrid_account(d,"2026-01-01",core_fraction=.5,
+                             fallback_after_weeks=26)
+        filtered=hybrid_account(d,"2026-01-01",core_fraction=.5,
+                                fallback_after_weeks=26,
+                                fallback_requires_trend=True)
+        self.assertFalse(plain["gate_triggered"])
+        self.assertFalse(filtered["gate_triggered"])
+        self.assertGreater(plain["fallback_buy_orders"],0)
+        self.assertEqual(filtered["fallback_buy_orders"],0)
+        self.assertGreater(filtered["AUD_cash_left"],plain["AUD_cash_left"])
+        self.assertGreater(filtered["marked_value_aud"],plain["marked_value_aud"])
+
+    def test_trend_fallback_has_no_fixed_end_date_and_joins_rally(self):
+        d=sample(kind="bull")
+        filtered=hybrid_account(d,"2026-01-01",core_fraction=.25,
+                                fallback_after_weeks=26,
+                                fallback_requires_trend=True)
+        self.assertEqual(filtered["fallback_buy_orders"],26)
+        self.assertAlmostEqual(filtered["brokerage_aud"],3*(12+26))
+        self.assertGreater(filtered["BTC_held"],0)
+        self.assertLess(filtered["AUD_cash_left"],1.)
+
+    def test_early_deep_gate_supersedes_both_fallback_styles(self):
+        d=sample(kind="bear")
+        plain=hybrid_account(d,"2026-01-01",core_fraction=.25)
+        filtered=hybrid_account(d,"2026-01-01",core_fraction=.25,
+                                fallback_after_weeks=26,
+                                fallback_requires_trend=True)
+        self.assertTrue(filtered["gate_triggered"])
+        self.assertEqual(filtered["fallback_buy_orders"],0)
+        self.assertEqual(filtered["BTC_held"],plain["BTC_held"])
 
     def test_fixed_yearly_comparison_same_matched_start_and_horizon(self):
         idx=pd.date_range("2018-01-01",periods=160,freq="W-MON",tz="UTC")
