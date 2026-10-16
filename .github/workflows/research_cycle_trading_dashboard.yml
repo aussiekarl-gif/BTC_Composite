@@ -6,6 +6,8 @@ on:
       - "app.py"
       - "engines/research/cycle_trading_app.py"
       - "engines/research/cycle_trading_dashboard_model.py"
+      - "engines/research/cycle_aud_price_levels.py"
+      - "tests/test_cycle_aud_price_levels.py"
       - "tests/test_cycle_trading_dashboard_model.py"
       - ".github/workflows/research_cycle_trading_dashboard.yml"
   workflow_dispatch:
@@ -28,5 +30,7 @@ jobs:
         run: python -m py_compile app.py engines/research/cycle_trading_app.py engines/research/cycle_trading_dashboard_model.py
       - name: Regression of read-only Google portfolio, 200WMA and navigation
         run: python -m unittest discover -s tests -p "test_cycle_trading_dashboard_model.py" -v
+      - name: Check AUD cycle high, post-peak low and percentage calculations
+        run: python -m unittest discover -s tests -p "test_cycle_aud_price_levels.py" -v
       - name: Existing historical FIFO rebuy regression
         run: python -m unittest discover -s tests -p "test_day500_aftertax_reinvestment.py" -v
