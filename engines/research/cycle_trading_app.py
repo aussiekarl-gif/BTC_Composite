@@ -290,13 +290,53 @@ with tabs[0]:
         feed_verified=(provider_error is None and verification is not None
                        and staleness<=3),
     )
+    # Percentage is the primary allocation signal; show BOTH cash-buy
+    # and holdings-sell bases so the user never mistakes dollars for BTC.
+    buy_percent=decision["buy_pct_total_cash"]
+    sell_percent=decision["sell_pct_total_holdings"]
+    signal_valid=decision["market_signal"]!="UNAVAILABLE"
+    st.subheader("Dynamic DCA allocation — % of what you hold")
+    pct1,pct2,pct3=st.columns(3)
+    pct1.metric("BUY — % of available AUD cash",
+                f"{buy_percent:.2f}%" if signal_valid else "Unavailable",
+                help="Percentage of UNINVESTED cash remaining in saved My Portfolio, not A$500k original capital.")
+    pct2.metric("SELL — % of current BTC/IBIT holdings",
+                f"{sell_percent:.2f}%" if signal_valid else "Unavailable",
+                help="Percentage of currently held IBIT ETF units and direct BTC, separately; whole ETF units are rounded down.")
+    pct3.metric("Cycle market signal",
+                decision["market_signal"],
+                help="Market-only watch can exist without verified broker units or available cash; not permission to trade.")
     d1,d2,d3=st.columns(3)
     d1.metric("Research action",decision["action"])
-    d2.metric("Illustrative trade amount",
+    d2.metric("Illustrative transaction",
               f"A${decision['action_aud']:,.2f}" if decision["action"]!="HOLD" else "A$0")
     d3.metric("ASX:IBIT whole units",
               f"{decision['estimated_ibit_units']:,}"
-              if decision["estimated_ibit_units"] is not None else "Quote needed")
+              if decision['estimated_ibit_units'] is not None else "Quote needed")
+    if decision["action"]=="BUY":
+        st.caption(
+            f"{buy_percent:.2f}% × your selected available A$ cash "
+            f"= A${decision['action_aud']:,.2f} planned gross buy. "
+            "Whole ETF unit rounding may leave part of that amount unused."
+        )
+    if decision["action"]=="SELL":
+        st.caption(
+            f"{sell_percent:.2f}% × recorded/confirmed net ASX:IBIT holdings "
+            f"= {decision['suggested_ibit_units']:,} whole ETF units (rounding down). "
+            f"Actual units sold equal {decision['effective_ibit_pct_held_after_rounding']:.2f}% "
+            "of confirmed IBIT units."
+        )
+        if decision.get("recorded_direct_btc_net",0)>0:
+            st.caption(
+                f"Separately, {sell_percent:.2f}% of your recorded direct BTC holding "
+                f"would be approximately {decision['direct_btc_sale_quantity_estimate']:.8f} BTC. "
+                "This informational amount is NOT included in IBIT sale proceeds."
+            )
+    if decision["market_signal"]=="SELL WATCH" and decision["action"]!="SELL":
+        st.caption(
+            f"Market-only SELL WATCH is {sell_percent:.2f}% of remaining BTC/IBIT holdings. "
+            "The portfolio-specific action remains HOLD until broker quantities and an ETF quote are confirmed."
+        )
     for reason in decision["why"]:
         st.write("• "+reason)
     if decision.get("sell_signal") and decision["action"]=="HOLD":
@@ -330,6 +370,11 @@ with tabs[0]:
             "or data/portfolio safeguards prevented reliable sizing. "
             "Model confidence has NOT been calibrated from prospective market-top tests."
         )
+    st.caption(
+        "A BUY percentage is measured against AVAILABLE AUD CASH; a SELL percentage "
+        "is measured against CURRENT HOLDINGS, not the original A$500k. "
+        "Both percentages are the same research market rules reported by the daily ntfy message."
+    )
     st.caption(
         "Late-cycle SELL rollover is an experimental price-only safeguard, not the "
         "validated day-500 sell-backtest. The previous 2024 halving's day-500 window "
