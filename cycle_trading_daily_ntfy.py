@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from engines.research.ibit_quote import fetch_ibit_quote
 from engines.research.top_signal_horse_race import read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
+from engines.research.cycle_market_feed import merge_verified_cycle_prices
 from engines.research.cycle_trading_dashboard_model import build_dashboard_market
 from engines.research.cycle_trade_allocation import (
     calculate_allocation_signal,DEFAULT_BUY_STYLE,
@@ -33,19 +34,9 @@ def daily_message(*,now=None,quote=None,market=None):
         try:
             history=read_exported_history()["price_usd"]
             remote,fx=fetch_public_series(asof=now.date().isoformat())
-            # Match the Streamlit verified-price bridge, with no current
-            # unfinished UTC close, and no revision of archived price rows.
-            remote=remote.loc[remote.index<pd.Timestamp(now.date(),tz="UTC")]
-            overlap=history.index.intersection(remote.index)
-            overlap=overlap[overlap>=history.index[-1]-pd.Timedelta(days=30)]
-            if len(overlap)<3:
-                raise ValueError("Public BTC overlap insufficient to trust daily signal")
-            divergence=(remote.loc[overlap,"btc_usd"]/
-                        history.loc[overlap]-1).abs()
-            if float(divergence.median())>.06 or float(divergence.max())>.15:
-                raise ValueError("Unverified BTC prices; no allocation signal")
-            fresh=remote.loc[remote.index>history.index[-1],"btc_usd"]
-            series=pd.concat([history,fresh]).sort_index()
+            series,verified=merge_verified_cycle_prices(
+                pd.DataFrame({"price_usd":history}),remote,
+                utc_today=now.date())
             market=build_dashboard_market(series,fx,asof=now.date().isoformat())
             age=(now.date()-pd.Timestamp(market["asof_date"]).date()).days
             if age<0 or age>3 or market["usd_aud_prior"] is None:
