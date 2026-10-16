@@ -100,6 +100,40 @@ class AfterTaxBuybackTests(unittest.TestCase):
         self.assertGreaterEqual(res["orders_total"],2)
         self.assertGreaterEqual(res["cash_remaining_aud"],0)
 
+    def test_52week_dca_keeps_cash_during_short_incomplete_observation(self):
+        h,p,fx=market(n=840)
+        result=simulate_roundtrip(
+            p,fx,h,p.index[-1],seller="fixed_525_to_560",
+            gate=.40,buyback_weeks=52)
+        self.assertEqual(result["planned_buyback_weeks"],52)
+        self.assertGreater(result["cash_remaining_aud"],0)
+        self.assertLess(result["buyback_buy_count"],52)
+        self.assertIsNotNone(result["average_repurchase_usd_per_btc"])
+        self.assertIsNotNone(result["post_sale_hindsight_low_close_usd"])
+
+    def test_hindsight_bottom_is_scoring_only_not_order_signal(self):
+        h,p,fx=market()
+        cutoff=h+pd.Timedelta(days=960)
+        baseline=simulate_roundtrip(
+            p,fx,h,cutoff,seller="fixed_525_to_560",
+            gate=.55,buyback_weeks=52)
+        changed=p.copy()
+        changed.loc[cutoff+pd.Timedelta(days=1):]*=.01
+        altered=simulate_roundtrip(
+            changed,fx,h,cutoff,seller="fixed_525_to_560",
+            gate=.55,buyback_weeks=52)
+        self.assertEqual(baseline,altered)
+
+    def test_no_rebuy_has_null_error_instead_of_false_success(self):
+        h,p,fx=market()
+        never=pd.Series(1000.+np.arange(len(p)),index=p.index)
+        result=simulate_roundtrip(
+            never,fx,h,h+pd.Timedelta(days=1150),
+            seller="fixed_525_to_560",gate=.65,buyback_weeks=52)
+        self.assertIsNone(result["average_repurchase_usd_per_btc"])
+        self.assertIsNone(result["buyback_error_above_post_sale_low_pct"])
+        self.assertEqual(result["buyback_buy_count"],0)
+
     def test_invalid_fx_fails_closed(self):
         h,p,fx=market()
         fx=fx.loc[:h+pd.Timedelta(days=3)]
