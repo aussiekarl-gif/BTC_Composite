@@ -7,6 +7,7 @@ from engines.research.verified_recent_price_bridge import (
     append_verified_prices, asof_on_mondays, expanding_aud_powerlaw_risk,
     parse_blockchain_price, parse_frankfurter_fx,
     weighted_entry_from_synthetic_orders, nearest_historical_fx,
+    first_causal_gate_week, evaluate_causal_drawdown_entry_gates,
 )
 
 
@@ -102,6 +103,47 @@ class PublicPriceBridgeTests(unittest.TestCase):
             weighted_entry_from_synthetic_orders(bad,fx)
         self.assertAlmostEqual(
             nearest_historical_fx(fx,"2026-06-07 00:00:00+00:00"),2.)
+
+    def test_entry_gate_is_next_week_of_past_only_drawdown(self):
+        idx=pd.date_range("2025-01-06",periods=90,freq="W-MON",tz="UTC")
+        price=np.array([100000.]*55 + [100000.-2000*i for i in range(35)])
+        frame=pd.DataFrame({"btc_price_aud":price,"risk_score":[.1]*90},index=idx)
+        trigger,drop=first_causal_gate_week(frame,drawdown=.30,
+                                             start_date="2026-01-01")
+        self.assertIsNotNone(trigger)
+        self.assertGreaterEqual(trigger,pd.Timestamp("2026-01-01",tz="UTC"))
+        before=np.where(idx==trigger)[0][0]
+        prev_price=price[before-1]
+        trailing_max=float(price[before-52:before].max())
+        self.assertGreaterEqual(1-prev_price/trailing_max,.30)
+        # Any future price change cannot cause an earlier gate to move.
+        later=frame.copy()
+        later.iloc[before+2:,0]=999999.
+        t2,_=first_causal_gate_week(later,drawdown=.30,
+                                    start_date="2026-01-01")
+        self.assertEqual(trigger,t2)
+        empty,_=first_causal_gate_week(
+            frame.assign(btc_price_aud=100000.),
+            drawdown=.50,start_date="2026-01-01")
+        self.assertIsNone(empty)
+
+    def test_predeclared_gates_keep_full_capital_until_activation(self):
+        idx=pd.date_range("2024-01-01",periods=142,freq="W-MON",tz="UTC")
+        prices=np.array([100000.]*110+
+                        [max(35000.,100000.-3000*i) for i in range(32)])
+        frame=pd.DataFrame({"btc_price_aud":prices,
+                            "risk_score":[.1]*142},index=idx)
+        fx=pd.DataFrame({"aud_per_usd":[1.5]*len(idx)},
+                        index=idx)
+        rows=evaluate_causal_drawdown_entry_gates(frame,fx)
+        self.assertEqual(len(rows),3)
+        for x in rows:
+            self.assertIn("triggered",x)
+            if x["triggered"]:
+                self.assertGreaterEqual(pd.Timestamp(x["gate_execution_date"]),
+                                        pd.Timestamp("2026-01-01",tz="UTC"))
+                self.assertGreaterEqual(x["cash_remaining_aud"],0)
+                self.assertLessEqual(x["entry_vs_reported_low"]["aud_capital_deployed_pct"],100.0001)
 
     def test_no_orders_never_claims_25pct_success(self):
         empty=weighted_entry_from_synthetic_orders([],pd.DataFrame())
