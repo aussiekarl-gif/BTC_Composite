@@ -78,7 +78,8 @@ def _snapshot(account, date, last_price, label, start, order_dates, terminal_dat
     }
 
 
-def benchmark_account(history, start_date, mode, *, initial_cash=CAPITAL):
+def benchmark_account(history, start_date, mode, *, initial_cash=CAPITAL,
+                      include_research_orders=False):
     """No signals/future-peeking: immediate BTC, 12-slice equal DCA or cash."""
     d=validate_history(history)
     start=_start_index(d, start_date)
@@ -100,12 +101,16 @@ def benchmark_account(history, start_date, mode, *, initial_cash=CAPITAL):
             raise ValueError("Unsupported benchmark mode")
         acct.mark(cur)
     orders=[x["date"] for x in acct.orders]
-    return _snapshot(acct, first, float(prices[-1]), mode,
+    result=_snapshot(acct, first, float(prices[-1]), mode,
                      str(pd.Timestamp(start_date).date()), orders, d.index[-1])
+    if include_research_orders:
+        result["_research_orders"]=[dict(x) for x in acct.orders]
+    return result
 
 
 def adaptive_account(history, start_date, *, confirm_drawdown=0.10,
-                     policy="adaptive", initial_cash=CAPITAL):
+                     policy="adaptive", initial_cash=CAPITAL,
+                     include_research_orders=False):
     d=validate_history(history)
     start=_start_index(d,start_date)
     source=simulate_adaptive(d, confirm_drawdown=confirm_drawdown,
@@ -118,7 +123,7 @@ def adaptive_account(history, start_date, *, confirm_drawdown=0.10,
                      starting_cash=initial_cash)
     # The tax-aware model reruns transaction sizes with the actual net cash.
     order_dates=[x["date"] for x in simulated["orders"]]
-    return {
+    result={
         "model":f"{policy}_adaptive_exit_{int(100*confirm_drawdown)}pct",
         "requested_deployment_date":str(pd.Timestamp(start_date).date()),
         "first_weekly_execution":str(d.index[start]),
@@ -139,27 +144,36 @@ def adaptive_account(history, start_date, *, confirm_drawdown=0.10,
         "last_order_date":order_dates[-1] if order_dates else None,
         "signal_opportunities":len(source["trades"]),
     }
+    if include_research_orders:
+        result["_research_orders"]=[dict(x) for x in simulated["orders"]]
+    return result
 
 
-def evaluate_cohorts(history, *, dates=COHORTS, initial_cash=CAPITAL):
+def evaluate_cohorts(history, *, dates=COHORTS, initial_cash=CAPITAL,
+                     include_research_orders=False):
     d=validate_history(history)
     out=[]
     for start in dates:
         i=_start_index(d,start)
         results=[
-            benchmark_account(d,start,"immediate_buy",initial_cash=initial_cash),
-            benchmark_account(d,start,"equal_12week_buy",initial_cash=initial_cash),
-            benchmark_account(d,start,"cash_only",initial_cash=initial_cash),
+            benchmark_account(d,start,"immediate_buy",initial_cash=initial_cash,
+                              include_research_orders=include_research_orders),
+            benchmark_account(d,start,"equal_12week_buy",initial_cash=initial_cash,
+                              include_research_orders=include_research_orders),
+            benchmark_account(d,start,"cash_only",initial_cash=initial_cash,
+                              include_research_orders=include_research_orders),
         ]
         results.extend(
             adaptive_account(d,start,confirm_drawdown=confirmation,
-                             policy="adaptive",initial_cash=initial_cash)
+                             policy="adaptive",initial_cash=initial_cash,
+                             include_research_orders=include_research_orders)
             for confirmation in SELL_CONFIRMATIONS
         )
         # Fixed opportunity dates but distinct self-financing size strategies.
         results.append(adaptive_account(d,start,confirm_drawdown=.10,
                                         policy="trend_reserve",
-                                        initial_cash=initial_cash))
+                                        initial_cash=initial_cash,
+                                        include_research_orders=include_research_orders))
         buy_and_hold=results[0]["account_marked_value_aud"]
         for x in results:
             x["vs_immediate_buy_marked_pct"]=round(
