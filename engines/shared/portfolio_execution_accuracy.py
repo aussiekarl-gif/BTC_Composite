@@ -126,6 +126,7 @@ def calculate_portfolio_entry_error(
     skipped_earlier=0
     issues=[]
     rates=_normalise_fx(usd_per_aud)
+    row_errors=[None]*len(rows)
     for n, (_,row) in enumerate(rows.iterrows(),start=1):
         spent=_nonnegative_finite(row["AUD Spent"])
         fee=_nonnegative_finite(row["Brokerage / Fee AUD"])
@@ -150,12 +151,15 @@ def calculate_portfolio_entry_error(
         total_aud+=cash
         btc+=quantity
         purchased_rows+=1
+        reference_cash=cash
         if reference_currency=="USD":
             fx=fx_rate_asof(rates,trade_date)
             if fx is None:
                 issues.append(f"Row {n}: USD/AUD FX unavailable on or before {trade_date.date()}.")
-            else:
-                total_usd+=cash*fx
+                continue
+            reference_cash=cash*fx
+            total_usd+=reference_cash
+        row_errors[n-1]=100*(reference_cash/quantity/ref-1)
 
     # No misleading partial result if some purchase costs or FX were missing.
     average_aud=total_aud/btc if btc>0 and not issues else None
@@ -176,6 +180,7 @@ def calculate_portfolio_entry_error(
         "weighted_average_aud":average_aud,
         "weighted_average_in_reference_currency":average_reference,
         "error_pct":error_pct,
+        "per_transaction_error_pct":row_errors,
         "within_25pct": (abs(error_pct)<=25 if error_pct is not None else None),
         "issues":issues,
         "provisional_reference":True,
