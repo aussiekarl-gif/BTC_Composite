@@ -95,10 +95,12 @@ class Day500DynamicDcaOutTests(unittest.TestCase):
             anchor={525,532,539,546,553,560}
             traded={x["halving_day"] for x in q["sale_detail"]}
             self.assertTrue(traded.intersection(anchor))
-            # Dynamic acceleration may SELL OUT before all six dates.
-            # This is valid, but must not be mistaken for missing fills.
+            # Dynamic acceleration may sell out before all anchors.
+            # Holdback intentionally pauses at 80% sold before day560.
             if not anchor.issubset(traded):
-                self.assertAlmostEqual(q["btc_left"],0.,delta=1e-9)
+                self.assertTrue(
+                    abs(q["btc_left"])<=1e-9 or
+                    policy=="maturity_90pct_holdback20pct")
             self.assertTrue(all(x["halving_day"] in anchor
                                 or x["halving_day"]==500
                                 or x["halving_day"]>=560
@@ -161,6 +163,34 @@ class Day500DynamicDcaOutTests(unittest.TestCase):
         bull=next(r for r in results if r["scenario"]=="uninterrupted_bull_market")
         for x in bull["outcomes"][1:]:
             self.assertLess(x["relative_to_hold_pct"],0)
+
+    def test_holdback_never_sells_over_80pct_before_day560(self):
+        model=staged_day500_dynamic_exit(
+            self.up,self.halving,policy="maturity_90pct_holdback20pct")
+        until560=sum(t["btc_sold"] for t in model["sale_detail"]
+                     if t["halving_day"]<=560)
+        self.assertLessEqual(until560,.800000001)
+        self.assertLessEqual(model["btc_sold"],1.0)
+        self.assertGreater(model["btc_left"],0)
+        self.assertTrue(all(
+            t["signal_regime"]=="breakdown"
+            for t in model["sale_detail"] if t["halving_day"]>560
+        ))
+        self.assertAlmostEqual(model["brokerage_aud_3_per_order"],
+                               3*model["orders"])
+
+    def test_holdback_preserves_late_top_extended_rally_exposure(self):
+        idx=self.idx
+        points=[0,450,500,560,600,680,730,799]
+        prices=[100,220,300,390,520,1200,900,800]
+        series=pd.Series(np.interp(np.arange(len(idx)),points,prices),index=idx)
+        later=staged_day500_dynamic_exit(
+            series,self.halving,policy="maturity_90pct_holdback20pct")
+        fast=staged_day500_dynamic_exit(
+            series,self.halving,policy="maturity_90pct")
+        self.assertGreaterEqual(later["btc_left"],0.)
+        self.assertAlmostEqual(later["btc_sold"]+later["btc_left"],1.,delta=1e-8)
+        self.assertGreater(later["ending_mark_usd"],fast["ending_mark_usd"])
 
     def test_fail_closed_when_missing_price_or_invalid_parameters(self):
         with self.assertRaises(ValueError):
