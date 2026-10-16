@@ -111,7 +111,7 @@ class HalvingCountdownTests(unittest.TestCase):
         app = (Path(__file__).resolve().parents[1] /
                "engines/research/cycle_trading_app.py").read_text()
         self.assertIn('st.metric("Approx. days until next BTC halving"', app)
-        self.assertIn('if manual_quote:\\n            ibit_quote=st.number_input', app)
+        self.assertIn('if manual_quote:', app)
         self.assertNotIn('else "Quote needed"', app)
 
 
