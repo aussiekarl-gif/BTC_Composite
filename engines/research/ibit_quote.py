@@ -9,6 +9,7 @@ import math
 import requests
 
 URL="https://query1.finance.yahoo.com/v8/finance/chart/IBIT.AX"
+FALLBACK_URL="https://query2.finance.yahoo.com/v8/finance/chart/IBIT.AX"
 MAX_QUOTE_AGE_DAYS=5
 
 def parse_ibit_quote(payload,*,now=None):
@@ -35,11 +36,29 @@ def parse_ibit_quote(payload,*,now=None):
             "indicative_only":True}
 
 def fetch_ibit_quote(*,timeout=12,now=None):
-    response=requests.get(URL,params={"interval":"1d","range":"5d"},
-        headers={"User-Agent":"Mozilla/5.0 (BTC-Composite read-only Research)"},
-        timeout=timeout)
-    response.raise_for_status()
-    quote=parse_ibit_quote(response.json(),now=now)
-    if quote is None:
-        raise ValueError("No valid recent AUD quote for ASX:IBIT; broker entry required")
-    return quote
+    """Try two Yahoo chart hosts; neither claims to be a live broker quote.
+
+    Do not mix up ASX IBIT.AX with US IBIT, or silently use an old quote.
+    Both endpoints share one underlying provider, not independent prices.
+    """
+    errors=[]
+    for endpoint in (URL,FALLBACK_URL):
+        try:
+            response=requests.get(
+                endpoint,params={"interval":"1d","range":"5d"},
+                headers={"User-Agent":"Mozilla/5.0 (read-only IBIT.AX AUD quote)"},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            quote=parse_ibit_quote(response.json(),now=now)
+            if quote is not None:
+                return quote
+            errors.append("Rejected unavailable/wrong symbol or stale AUD quote")
+        except requests.RequestException as exc:
+            errors.append(type(exc).__name__)
+        except ValueError:
+            errors.append("Invalid quote response")
+    raise ValueError(
+        "ASX:IBIT automatic quote unavailable (two provider endpoints checked). "
+        "Use broker price override. Reasons: "+"; ".join(errors)
+    )

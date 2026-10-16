@@ -73,7 +73,9 @@ class CurrentResearchDecisionTests(unittest.TestCase):
 
     def test_buy_signals_are_not_fake_broker_quotes(self):
         d=self.evaluate(self.undervalued(),ibit_price_aud=None)
-        self.assertEqual(d["action"],"BUY")
+        self.assertEqual(d["action"],"HOLD")
+        self.assertEqual(d["market_signal"],"BUY WATCH")
+        self.assertEqual(d["action_aud"],0.)
         self.assertIsNone(d["estimated_ibit_units"])
         self.assertTrue(d["quote_required_for_units"])
 

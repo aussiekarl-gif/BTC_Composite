@@ -9,6 +9,10 @@ on:
       - "tests/test_cycle_trade_decision.py"
       - "tests/test_cycle_trading_pct_allocation.py"
       - ".github/workflows/research_cycle_trade_decision.yml"
+      - "engines/research/cycle_trade_execution_safety.py"
+      - "engines/research/cycle_market_feed.py"
+      - "tests/test_cycle_trading_sensecheck.py"
+      - "tests/test_cycle_market_feed.py"
   workflow_dispatch:
 
 permissions:
@@ -34,3 +38,7 @@ jobs:
       - name: Verify Streamlit and ntfy percentages match
         run: python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
 
+      - name: Validate transaction cooldown and fully dated online price references
+        run: |
+          python -m unittest discover -s tests -p 'test_cycle_trading_sensecheck.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v

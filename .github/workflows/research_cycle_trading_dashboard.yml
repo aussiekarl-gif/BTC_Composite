@@ -10,6 +10,10 @@ on:
       - "tests/test_cycle_aud_price_levels.py"
       - "tests/test_cycle_trading_dashboard_model.py"
       - ".github/workflows/research_cycle_trading_dashboard.yml"
+      - "engines/research/cycle_trade_execution_safety.py"
+      - "engines/research/cycle_market_feed.py"
+      - "tests/test_cycle_trading_sensecheck.py"
+      - "tests/test_cycle_market_feed.py"
   workflow_dispatch:
 
 permissions:
@@ -34,3 +38,5 @@ jobs:
         run: python -m unittest discover -s tests -p "test_cycle_aud_price_levels.py" -v
       - name: Existing historical FIFO rebuy regression
         run: python -m unittest discover -s tests -p "test_day500_aftertax_reinvestment.py" -v
+      - name: Validate shared public price crosscheck
+        run: python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v

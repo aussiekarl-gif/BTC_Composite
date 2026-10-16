@@ -169,7 +169,7 @@ class UnifiedCycleAllocations(unittest.TestCase):
         p["rows"][0]["AUD Spent"]=500000.
         p["rows"][0]["Brokerage / Fee AUD"]=0.
         p["sales"]=[{
-            "Date":"15/10/26","Asset":"ASX:IBIT","Units Sold":1000,
+            "Date":"15/09/26","Asset":"ASX:IBIT","Units Sold":1000,
             "AUD Proceeds":25000.,"Brokerage / Fee AUD":3.
         }]
         d=make_current_decision(set_buy(fixture()),p,
