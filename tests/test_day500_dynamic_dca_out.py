@@ -53,7 +53,7 @@ class Day500DynamicDcaOutTests(unittest.TestCase):
 
     def test_declining_price_sets_defensive_regime_after_confirmation(self):
         px=pd.Series([4000.]*570+
-                     [4000.-20*(j-569) for j in range(570,800)],
+                     [max(800.,4000.-20*(j-569)) for j in range(570,800)],
                      index=self.idx)
         day=self.halving+pd.Timedelta(days=620)
         regime,metrics=_prior_state(px,day)
