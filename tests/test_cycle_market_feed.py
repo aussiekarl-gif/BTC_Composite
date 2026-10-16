@@ -43,7 +43,7 @@ class CycleMarketFeedTests(unittest.TestCase):
         archive,public=self.prices()
         combined,report=merge_verified_cycle_prices(
             archive,public,utc_today="2026-10-20")
-        self.assertEqual(report["price_staleness_days"],12)
+        self.assertEqual(report["price_staleness_days"],11)
         # Consumer explicitly blocks transaction if stale;
         # stale public prices cannot silently be today's quote.
         self.assertEqual(str(combined.index[-1].date()),"2026-10-09")
