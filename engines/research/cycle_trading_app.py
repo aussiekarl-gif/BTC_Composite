@@ -454,6 +454,7 @@ with tabs[0]:
         cycle_historic_fx=cycle_fx_source(market["halving_date"],market["asof_date"])
         cycle_aud=observed_aud_cycle_levels(
             market["price_history"],cycle_historic_fx,
+            start=market["halving_date"],
             asof=market["asof_date"])
     except Exception as exc:
         cycle_aud=None
