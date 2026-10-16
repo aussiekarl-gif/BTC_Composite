@@ -119,6 +119,44 @@ def evaluate_confirmations(data, *, initial_cash=CAPITAL, fee_rate=COST_PER_SIDE
     }
 
 
+
+def stress_test_latency_and_costs(data):
+    """Predeclared 1/3/5-week total signal delays and 0.3%/1.0% per-side costs.
+
+    This is an in-sample execution robustness diagnostic, NOT an optimisation.
+    Each cohort restarts capital only to compare equivalent local regimes.
+    """
+    history = validate_history(data)
+    if not isinstance(history.index, pd.DatetimeIndex):
+        raise ValueError("Require dated historical observations")
+    boundary = pd.Timestamp("2022-01-01", tz=history.index.tz)
+    cohorts = (("all_available", history),
+               ("2022_onward", history[history.index >= boundary]))
+    rows = []
+    for era, subset in cohorts:
+        if len(subset) < 3:
+            continue
+        for strategy in ("plain", "confirmed_25pct"):
+            source = (subset if strategy == "plain"
+                      else make_confirmed_signals(subset, drawdown_trigger=0.25))
+            for extra_delay in (0, 2, 4):
+                signal = source.copy()
+                if extra_delay:
+                    signal["risk_score"] = signal["risk_score"].shift(extra_delay).fillna(0.5)
+                for fee in (0.003, 0.01):
+                    hold = matched_hold(subset, fee_rate=fee)
+                    sim = simulate(signal, buy_risk=0.35, sell_risk=0.60,
+                                   buy_weeks=16, sell_weeks=16, fee_rate=fee)
+                    rows.append({
+                        "cohort": era, "strategy": strategy,
+                        "total_signal_delay_weeks": 1 + extra_delay,
+                        "fee_per_side": fee,
+                        "ending_equity_aud": round(sim["ending_equity_aud"], 2),
+                        "vs_hold": round(sim["ending_equity_aud"] / hold["ending_equity_aud"], 6),
+                        "buy_plans": sim["buy_plans"], "sell_plans": sim["sell_plans"],
+                    })
+    return rows
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="")
@@ -130,6 +168,7 @@ def main():
              & clean["btc_price_aud"].gt(0)
              & clean["risk_score"].between(0, 1))
     result = evaluate_confirmations(clean.loc[valid])
+    result["latency_and_cost_stress"] = stress_test_latency_and_costs(clean.loc[valid])
     result["source_valid_rows"] = int(valid.sum())
     result["source_excluded_rows"] = int((~valid).sum())
     output = json.dumps(result, indent=2, allow_nan=False)
