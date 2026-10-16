@@ -103,3 +103,8 @@ Given full 2026 historical inspection, the cleanest proof will be
 prospective forward research on future BTC regimes, not another
 100 parameter choices fitted to these same three tops.
 Authoritative data master, user portfolio and Production unchanged.
+
+
+## Follow-up: the user's exact day-500 proposal
+
+The user requested a new test: sell all BTC **500 days after each halving**. [The validated day-500 numerical follow-up](day500_halving_sell_20261016.md) finds this meets the 25% historical average selling-price target **only 1/4 cycles**, compared with **3/4** for our earlier day-525–560 staging. An earlier 10% or 15% preliminary sale on day 500, followed by six fixed front-loaded weekly trades days 525–560, meets 25% for 2017/2021/2025 but still fails 2013. All early-sale variants lowered the gross historical sale VWAP compared with six weekly sales without the day-500 tranche. This is in-sample and **not** a recommendation for automatic liquidation; the 2024 halving's day 500 fell 2 September 2025, before actual 2026 portfolio deployment.
