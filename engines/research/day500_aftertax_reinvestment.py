@@ -166,20 +166,19 @@ def simulate_roundtrip(price,fx,halving,terminal,*,seller,gate,
         # Weighted DCA over 24 weeks; never adapt using future entry prices.
         # Predictably invest the reserved NET sale proceeds each eligible
         # weekly day. Initial cash (if any) is included; no new funding.
-        weights=np.array([e["weight"] for e in plan],dtype=float)
         # Critically, all weights are computed from prior observations.
         # Budgeting with future weights before the first order would
         # create LOOKAHEAD. Instead use a causal fractional target:
         # reserve 24 weekly tranches (not truncated to current data
         # horizon), and scale tranche from observed discount.
         initial_budget=actual.cash
-        target=initial_budget/weekly_limit
+        target=initial_budget/BUY_WEEKS
         for j,e in enumerate(plan):
             day=e["day"]
             gross=min(actual.cash,target*e["weight"])
             # On the final of all 24 pre-scheduled windows, deploy
             # residual cash. Not forced when data cutoff is earlier.
-            if j==weekly_limit-1:gross=actual.cash
+            if j==BUY_WEEKS-1:gross=actual.cash
             if gross>100.:
                 if actual.buy(day,float(price.loc[day])*fx_before(fx,day),
                               min(1.,gross/actual.cash)):
