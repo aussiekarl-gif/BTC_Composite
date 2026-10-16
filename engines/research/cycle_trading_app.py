@@ -402,8 +402,8 @@ with tabs[0]:
                 if not anchored["eligible"]:
                     st.caption(
                         "Portfolio reconciliation: no recorded BTC/IBIT "
-                        "held before 2 September 2025. Do NOT treat your "
-                        "later 2026 purchases as historical day-500 holdings."
+                        f"held before this cycle's day-500 review ({market['day500_date']}). "
+                        "Do not backdate holdings purchased after the review."
                     )
             except (ValueError,KeyError,TypeError):
                 st.caption("Historical position anchor unavailable: check recorded transactions.")
