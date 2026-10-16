@@ -1,0 +1,43 @@
+name: Research Day500 Sell and SMSF BTC Buyback
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/day500_aftertax_reinvestment.py"
+      - "tests/test_day500_aftertax_reinvestment.py"
+      - ".github/workflows/research_day500_aftertax_reinvestment.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fifo-rebuy-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install numpy pandas requests
+      - run: python -m py_compile engines/research/day500_aftertax_reinvestment.py
+      - run: python -m unittest discover -s tests -p "test_day500_aftertax_reinvestment.py" -v
+
+  historical-2017-2021-complete-2025-censored:
+    needs: fifo-rebuy-unit
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install numpy pandas requests
+      - name: Public Frankfurter historical AUD FX and BTC day500 after-tax FIFO roundtrip
+        run: python -m engines.research.day500_aftertax_reinvestment --output day500_aftertax_reinvestment.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-day500-aud-smsf-buyback
+          path: day500_aftertax_reinvestment.json
