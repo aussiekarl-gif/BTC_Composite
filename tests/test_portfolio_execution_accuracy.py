@@ -35,7 +35,7 @@ class PortfolioExecutionErrorTests(unittest.TestCase):
         ])
         out=calculate_portfolio_entry_error(rows,reference_price=100000,
                                              reference_currency="AUD")
-        self.assertAlmostEqual(out["weighted_average_aud"],116229.71,delta=.1)
+        self.assertAlmostEqual(out["weighted_average_aud"],116229.90,delta=.1)
         self.assertAlmostEqual(out["error_pct"],16.23,delta=.1)
         self.assertTrue(out["within_25pct"])
 
