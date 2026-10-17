@@ -17,6 +17,9 @@ from engines.shared.portfolio_transactions import (
 from engines.research.cycle_trade_execution_safety import (
     historical_btc_aud_reference,
 )
+from engines.research.cycle_funding_provenance import (
+    classify_with_stale_guard,UNREVIEWED,INDEPENDENT,CYCLE_SALE,FUNDING_LABELS,
+)
 
 
 def show_portfolio_editor(portfolio,*,today,ibit_quote=None,btc_aud_quote=None,
@@ -152,6 +155,76 @@ def show_portfolio_editor(portfolio,*,today,ibit_quote=None,btc_aud_quote=None,
         st.dataframe(pd.DataFrame(buys),hide_index=True,width="stretch")
     else:
         st.info("No recorded purchases yet.")
+    with st.expander("Identify funding of recorded BUYs (optional)",expanded=False):
+        st.caption(
+            "Label an EXISTING executed purchase; this does not create, "
+            "cancel or alter a broker trade. Old purchases are Unreviewed "
+            "and remain fully deducted from historical buyback cash. "
+            "'Independent cash' means YOU have checked that the purchase "
+            "was not funded by original cycle BTC sale proceeds. "
+            "Classification is not independently verified."
+        )
+        if buys:
+            with st.form("cycle_buy_funding_source_form",clear_on_submit=False):
+                selected=st.selectbox(
+                    "Existing recorded BUY to classify",
+                    options=list(range(len(buys))),
+                    format_func=lambda i:(
+                        f"#{i+1} {buys[i].get('Date','')} "
+                        f"{buys[i].get('Asset','')} "
+                        f"{buys[i].get('Units / BTC Received','')} units · "
+                        f"A${float(buys[i].get('AUD Spent',0)):,.2f}"
+                    ),key="cycle_buy_funding_row")
+                current_source=buys[selected].get("Funding Source",UNREVIEWED)
+                if current_source not in FUNDING_LABELS:
+                    current_source=UNREVIEWED
+                source=st.selectbox(
+                    "Funding of this recorded purchase",
+                    options=list(FUNDING_LABELS),
+                    index=list(FUNDING_LABELS).index(current_source),
+                    key="cycle_buy_funding_kind")
+                cycle_date=None
+                if source==CYCLE_SALE:
+                    cycle_date=st.date_input(
+                        "Halving that generated the original-sale proceeds",
+                        value=dt.date(2024,4,20),
+                        max_value=today,
+                        key="cycle_buy_funding_halving")
+                    st.warning(
+                        "The original cycle sale must have occurred in the "
+                        "recorded day500–730 exit window, and this BUY must "
+                        "be after day744. 2026 purchases cannot be funded "
+                        "by a fictitious September 2025 sale."
+                    )
+                assert_funding=st.checkbox(
+                    "I have checked the BUY funding source against my "
+                    "cash movements, sale records and broker confirmation.",
+                    key="cycle_buy_funding_confirm")
+                save_funding=st.form_submit_button(
+                    "Save BUY funding label",use_container_width=True)
+            if save_funding:
+                latest,read_error=load_portfolio()
+                if read_error:
+                    st.error("Could not reread saved ledger: "+str(read_error))
+                else:
+                    try:
+                        updated=classify_with_stale_guard(
+                            portfolio,latest,
+                            row_index=int(selected),funding_source=source,
+                            halving=cycle_date,confirmed=assert_funding)
+                        ok,error=save_portfolio(updated)
+                        if not ok:
+                            st.error("Could not save funding classification: "+str(error))
+                        else:
+                            st.success(
+                                "Funding label saved. Actual trade quantities, "
+                                "prices, cash and positions were NOT changed.")
+                            st.cache_data.clear()
+                            st.rerun()
+                    except (ValueError,AssertionError,KeyError) as exc:
+                        st.error(str(exc)+" — existing trade unchanged.")
+        else:
+            st.caption("No recorded purchases to classify.")
     st.subheader("Recorded sales")
     if sells:
         st.dataframe(pd.DataFrame(sells),hide_index=True,width="stretch")
