@@ -81,11 +81,10 @@ def daily_message(*,now=None,quote=None,market=None,
             # No added notifications, ordinary disagreements or 'all clear'
             # text. Check V5.8.2 and V5.9 only for actionable market
             # percentages, and warn solely when extreme conflict is verified.
-            if (reference_snapshot_fetcher is not None
-                    and (allocation["buy_pct_cash"]>0 or allocation["sell_pct_held"]>0)):
+            if reference_snapshot_fetcher is not None:
                 try:
                     baselines=reference_snapshot_fetcher()
-                    agreement=model_agreement_statuses(
+                    agreement=daily_reference_labels(
                         buy_pct_cash=allocation["buy_pct_cash"],
                         sell_pct_held=allocation["sell_pct_held"],
                         snapshots=baselines,market_asof=market["asof_date"],
