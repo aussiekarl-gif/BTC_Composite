@@ -189,7 +189,7 @@ def format_mobile_notification(lines):
         row=fields.get(name)
         if row:
             # Bold ONLY the actionable percentage so it stands out on mobile.
-            match=re.match(r"^(BUY allocation:|SELL allocation:) (\\d+(?:\\.\\d+)?%)(.*)$",row)
+            match=re.match(r"^(BUY allocation:|SELL allocation:) (\d+(?:\.\d+)?%)(.*)$",row)
             if match:
                 out.append(f"**{match.group(1)} {match.group(2)}**{match.group(3)}")
             else:
