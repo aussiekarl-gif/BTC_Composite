@@ -185,6 +185,7 @@ def original_sale_cash_reconciliation(saved,halving,*,asof):
 
 def original_buyback_preview(saved,price,halving,*,asof,
                              verified_unpaid_tax_reserve_aud=None,
+                             verified_broker_cash_before_tax_aud=None,
                              confirmation=False):
     """No actionable recommendation; opt-in historic tranche preview only.
 
@@ -228,13 +229,18 @@ def original_buyback_preview(saved,price,halving,*,asof,
     if not confirmation:return response
     if verified_unpaid_tax_reserve_aud is None:
         raise ValueError("Verified unpaid tax reserve is required")
+    if verified_broker_cash_before_tax_aud is None:
+        raise ValueError("Verified broker available cash is required")
     tax=_num(verified_unpaid_tax_reserve_aud,"Unpaid SMSF tax provision",zero=True)
+    broker_cash=_num(verified_broker_cash_before_tax_aud,
+                     "Verified broker cash before unpaid tax",zero=True)
     if tax>amount+EPS:
         raise ValueError("Tax provision exceeds original gross net sale proceeds")
     net=amount-tax
     spent=summary["all_later_buys_including_fees_aud"]
     remaining=max(0.,net-spent)
-    available=max(0.,summary["recorded_cash_before_tax_reserve_aud"]-tax)
+    available=max(0.,min(summary["recorded_cash_before_tax_reserve_aud"],
+                         broker_cash)-tax)
     already=any(
         parse_date(v.get("Date"))==latest.date()
         for v in saved.get("rows",[])
@@ -244,6 +250,7 @@ def original_buyback_preview(saved,price,halving,*,asof,
     response.update(
         tax_reserve_verified=True,
         confirmed_unpaid_cgt_provision_aud=round(tax,2),
+        verified_broker_cash_before_tax_aud=round(broker_cash,2),
         reconciled_original_aftertax_budget_aud=round(net,2),
         reconciled_unused_buyback_budget_aud=round(remaining,2),
         cash_net_unpaid_tax_escrow_aud=round(available,2),
