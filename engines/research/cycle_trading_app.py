@@ -25,6 +25,7 @@ from engines.research.cycle_real_sale_budget import (
     original_sale_cash_reconciliation, original_buyback_preview,
 )
 from engines.research.cycle_weekly_buyback_audit import weekly_original_buyback_ledger
+from engines.research.cycle_forward_quick_view import cycle_forward_quick_view
 from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
 from engines.research.cycle_halving_countdown import (
     fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
@@ -323,6 +324,99 @@ with tabs[0]:
         feed_verified=(provider_error is None and verification is not None
                        and staleness<=3 and cycle_feed_verified),
     )
+    # QUICK VIEW is read-only and built from the same current decision
+    # already calculated above. It does not create a second model signal.
+    st.subheader("Cycle Trading — quick view")
+    st.caption(
+        "Side by side: simplified daily market WATCH versus the ORIGINAL "
+        "historically backtested account strategy. The percentages have "
+        "different denominators; they are NOT interchangeable."
+    )
+    try:
+        quick=cycle_forward_quick_view(
+            market,
+            saved_live_portfolio if not saved_live_error else None,
+            decision,
+            feed_verified=(provider_error is None and verification is not None
+                           and staleness<=3 and cycle_feed_verified),
+        )
+    except (ValueError,KeyError,TypeError,AssertionError) as exc:
+        quick=None
+        st.warning(
+            "Original-cycle quick view cannot be reconciled: "
+            f"{type(exc).__name__}: {exc}. No original trade sizing is inferred."
+        )
+    if quick is not None:
+        c1,c2,c3=st.columns(3)
+        with c1:
+            st.metric("Daily simplified market signal",
+                      quick["simplified_market_signal"])
+            if quick["simplified_buy_pct_remaining_cash"] is not None:
+                st.caption(
+                    f"BUY: {quick['simplified_buy_pct_remaining_cash']:.2f}% "
+                    "of REMAINING AUD cash; "
+                    f"SELL: {quick['simplified_sell_pct_remaining_holdings']:.2f}% "
+                    "of REMAINING BTC/IBIT holdings. "
+                    "These are not the original backtested sizes."
+                )
+            else:
+                st.caption("Verified daily signal unavailable; no allocation.")
+        with c2:
+            st.metric("Original strategy: next review",
+                      quick["original_next_review_date"]
+                      if quick["original_next_review_date"]
+                      else "Date not yet known")
+            st.caption(quick["original_next_review_label"])
+        with c3:
+            if quick["original_next_pct_original_holdings"] is not None:
+                label="Original SELL review — % of original holdings"
+                amount=f"{quick['original_next_pct_original_holdings']:.2f}%"
+            elif quick["last_completed_recovery_pct_original_budget"] is not None:
+                label="Last completed original BUY review"
+                amount=f"{quick['last_completed_recovery_pct_original_budget']:.2f}%"
+            else:
+                label="Original BUY/SELL allocation"
+                amount="Not established"
+            st.metric(label,amount)
+            if quick["last_completed_recovery_pct_original_budget"] is not None:
+                st.caption(
+                    f"Historical review on "
+                    f"{quick['last_completed_recovery_review_date']}: "
+                    "% of ORIGINAL after-tax sale proceeds; next week's "
+                    "percentage is not known in advance."
+                )
+            else:
+                st.caption("Future amount requires actual prior prices, "
+                           "eligible original holdings or verified sale proceeds.")
+        if quick["future_ledger_transactions_excluded"]:
+            st.caption(
+                "Some saved transactions occurred AFTER the latest verified "
+                "BTC close and are excluded from this dated research snapshot."
+            )
+        if quick["recorded_available_cash_before_tax_aud"] is not None:
+            st.caption(
+                f"Recorded portfolio: "
+                f"A${quick['recorded_available_cash_before_tax_aud']:,.2f} "
+                "cash BEFORE unpaid taxes; "
+                f"{quick['recorded_ibit_units']:,.0f} IBIT units and "
+                f"{quick['recorded_direct_btc']:.8f} direct BTC. "
+                "These balances are not broker-confirmed."
+            )
+        if quick["recorded_original_sale_cash_before_cgt_aud"] is not None:
+            st.caption(
+                "Original recorded sale receipts before CGT: "
+                f"A${quick['recorded_original_sale_cash_before_cgt_aud']:,.2f}. "
+                "No verified after-tax original BUY budget is assumed."
+            )
+        st.info(quick["original_readiness"]+" "+quick["original_blocker"])
+        st.caption(
+            "No automated trading. Original strategy live-order parity is "
+            "NOT verified; exact future halving+500 review cannot be "
+            "scheduled until that next halving is confirmed. Daily ntfy "
+            "and the existing simplified decision remain unchanged."
+        )
+    st.divider()
+
     # Percentage is the primary allocation signal; show BOTH cash-buy
     # and holdings-sell bases so the user never mistakes dollars for BTC.
     buy_percent=decision["buy_pct_total_cash"]
