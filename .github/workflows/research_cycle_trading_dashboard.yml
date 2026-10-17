@@ -32,6 +32,9 @@ on:
       - "engines/research/cycle_portfolio_editor.py"
       - "engines/research/cycle_broker_csv_reconciliation.py"
       - "tests/test_cycle_broker_csv_reconciliation.py"
+      - "engines/research/cycle_broker_csv_mapping.py"
+      - "engines/research/cycle_broker_csv_mapper_ui.py"
+      - "tests/test_cycle_broker_csv_mapping.py"
       - "engines/shared/portfolio_transactions.py"
       - "tests/test_cycle_market_feed.py"
   workflow_dispatch:
@@ -74,6 +77,10 @@ jobs:
         run: python -m unittest discover -s tests -p "test_cycle_single_screen_brief.py" -v
       - name: Compare broker-only CSV executions and balances without storage writes or duplicate guessing
         run: python -m unittest discover -s tests -p "test_cycle_broker_csv_reconciliation.py" -v
+      - name: Map native broker CSV using explicit currency/exchange/fee confirmations
+        run: |
+          python -m py_compile engines/research/cycle_broker_csv_mapper_ui.py
+          python -m unittest discover -s tests -p "test_cycle_broker_csv_mapping.py" -v
       - name: Existing historical FIFO rebuy regression
         run: python -m unittest discover -s tests -p "test_day500_aftertax_reinvestment.py" -v
       - name: Validate shared public price crosscheck

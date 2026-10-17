@@ -21,9 +21,11 @@ from engines.research.cycle_funding_provenance import (
     classify_with_stale_guard,UNREVIEWED,INDEPENDENT,CYCLE_SALE,FUNDING_LABELS,
 )
 from engines.research.cycle_broker_csv_reconciliation import (
-    parse_broker_executions_csv,parse_broker_balances_csv,
     compare_broker_transactions,compare_broker_balances,
     TRANSACTION_TEMPLATE,BALANCE_TEMPLATE,
+)
+from engines.research.cycle_broker_csv_mapper_ui import (
+    broker_executions_from_upload,broker_balances_from_upload,
 )
 
 
@@ -66,12 +68,12 @@ def show_portfolio_editor(portfolio,*,today,ibit_quote=None,btc_aud_quote=None,
             "There is NO automatic import or broker order."
         )
         st.caption(
-            "Different brokers export different columns. Download the simple "
-            "standardised CSV examples below, transfer the columns from your "
-            "broker's execution and balance statements, and keep the original "
-            "broker exports separately for verification. Asset labels: ASX:IBIT "
-            "(or IBIT.AX), Direct BTC (or BTC), AUD Cash (balances only). "
-            "US-listed IBIT is deliberately NOT mapped to ASX:IBIT."
+            "Upload the standardised template OR select 'Map source broker "
+            "columns' below to identify fields directly from your original "
+            "CSV export. Map the GROSS AUD consideration, not net settlement. "
+            "Confirm the ASX ETF listing, currency and fees explicitly; "
+            "unknown assets and US-listed IBIT are never silently converted. "
+            "Keep your original broker statement for verification."
         )
         a1,a2=st.columns(2)
         a1.download_button(
@@ -106,8 +108,8 @@ def show_portfolio_editor(portfolio,*,today,ibit_quote=None,btc_aud_quote=None,
                 "and date range (not just selected trades)",
                 value=False,key="cycle_broker_statement_complete")
             try:
-                parsed_trades=parse_broker_executions_csv(
-                    file_broker_trades.getvalue(),today=today)
+                parsed_trades=broker_executions_from_upload(
+                    file_broker_trades,today=today)
                 report=compare_broker_transactions(
                     portfolio,parsed_trades,start_date=period_start,
                     end_date=period_end,
@@ -152,8 +154,8 @@ def show_portfolio_editor(portfolio,*,today,ibit_quote=None,btc_aud_quote=None,
                     mime="text/csv",key="cycle_broker_reconciliation_export")
         if file_broker_balance is not None:
             try:
-                statement=parse_broker_balances_csv(
-                    file_broker_balance.getvalue(),today=today)
+                statement=broker_balances_from_upload(
+                    file_broker_balance,today=today)
                 balances=compare_broker_balances(portfolio,statement)
             except (ValueError,TypeError,KeyError) as exc:
                 st.error(
