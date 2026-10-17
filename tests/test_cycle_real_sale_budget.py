@@ -83,7 +83,8 @@ class RealSaleCashBudgetTests(unittest.TestCase):
         p=portfolio(has_rebuy=True)
         t=original_buyback_preview(
             p,prices(),H,asof=ASOF,
-            verified_unpaid_tax_reserve_aud=1498,confirmation=True)
+            verified_unpaid_tax_reserve_aud=1498,
+            verified_broker_cash_before_tax_aud=100000,confirmation=True)
         self.assertTrue(t["tax_reserve_verified"])
         self.assertEqual(t["reconciled_original_aftertax_budget_aud"],18492)
         self.assertEqual(t["all_later_buys_including_fees_aud"],1003)
@@ -93,15 +94,37 @@ class RealSaleCashBudgetTests(unittest.TestCase):
         self.assertFalse(t["broker_order_allowed"])
         self.assertFalse(t["place_order"])
 
+    def test_confirmed_available_broker_cash_is_strict_cap(self):
+        p=portfolio()
+        preview=original_buyback_preview(
+            p,prices(),H,asof=ASOF,
+            verified_unpaid_tax_reserve_aud=1498,
+            verified_broker_cash_before_tax_aud=1600,
+            confirmation=True)
+        self.assertEqual(preview["cash_net_unpaid_tax_escrow_aud"],102)
+        self.assertEqual(preview["read_only_historical_review_aud"],102)
+        zero=original_buyback_preview(
+            p,prices(),H,asof=ASOF,
+            verified_unpaid_tax_reserve_aud=1498,
+            verified_broker_cash_before_tax_aud=1000,
+            confirmation=True)
+        self.assertEqual(zero["read_only_historical_review_aud"],0)
+        with self.assertRaisesRegex(ValueError,"broker available cash"):
+            original_buyback_preview(
+                p,prices(),H,asof=ASOF,
+                verified_unpaid_tax_reserve_aud=1498,confirmation=True)
+
     def test_same_research_review_buy_prevents_second_preview(self):
         p=portfolio(has_rebuy=False)
         q=original_buyback_preview(
             p,prices(),H,asof=ASOF,verified_unpaid_tax_reserve_aud=1498,
+            verified_broker_cash_before_tax_aud=100000,
             confirmation=True)
         review=pd.Timestamp(q["last_weekly_research_review_date"])
         p["rows"].append(buy(review.strftime("%d/%m/%y"),2,400,3))
         s=original_buyback_preview(
             p,prices(),H,asof=ASOF,verified_unpaid_tax_reserve_aud=1498,
+            verified_broker_cash_before_tax_aud=100000,
             confirmation=True)
         self.assertTrue(s["already_recorded_buy_on_review_day"])
         self.assertEqual(s["read_only_historical_review_aud"],0)
@@ -112,7 +135,9 @@ class RealSaleCashBudgetTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 original_buyback_preview(
                     p,prices(),H,asof=ASOF,
-                    verified_unpaid_tax_reserve_aud=value,confirmation=True)
+                    verified_unpaid_tax_reserve_aud=value,
+                    verified_broker_cash_before_tax_aud=100000,
+                    confirmation=True)
         with self.assertRaisesRegex(ValueError,"required"):
             original_buyback_preview(
                 p,prices(),H,asof=ASOF,confirmation=True)
