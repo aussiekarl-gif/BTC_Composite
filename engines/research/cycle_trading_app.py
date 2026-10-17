@@ -554,6 +554,17 @@ with tabs[0]:
                                         "and recorded sale proceeds with your SMSF "
                                         "records; the prefilled number is only an estimate."
                                     ))
+                                broker_cash=st.number_input(
+                                    "Available cash shown at broker before unpaid CGT (AUD)",
+                                    min_value=0.0,
+                                    value=0.0,
+                                    step=1000.,format="%.2f",
+                                    key=f"cycle_verified_broker_cash_{signature}",
+                                    help=(
+                                        "Enter independently verified broker cash, "
+                                        "not a value copied from the Google Sheets ledger. "
+                                        "Other unpaid liabilities must also be considered."
+                                    ))
                                 verified=st.checkbox(
                                     "I have reconciled the recorded sale proceeds, "
                                     "unpaid tax reserve and buyback spending.",
@@ -567,6 +578,8 @@ with tabs[0]:
                                         asof=market["asof_date"],
                                         verified_unpaid_tax_reserve_aud=(
                                             tax_entered if verified else None),
+                                        verified_broker_cash_before_tax_aud=(
+                                            broker_cash if verified else None),
                                         confirmation=verified)
                                 except (ValueError,TypeError,KeyError) as exc:
                                     st.warning("Research budget preview unavailable: "+str(exc))
