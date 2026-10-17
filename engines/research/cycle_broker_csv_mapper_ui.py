@@ -29,8 +29,6 @@ def _field(key,display,headers,*,required=True):
         help=("Select the exact existing broker CSV source column. "
               "Do not use net settlement cash in place of gross AUD consideration."))
     if chosen=="(not provided)":
-        if required:
-            raise ValueError("Select source column for "+display)
         return None
     return chosen
 
@@ -40,6 +38,10 @@ def _field_group(headers,key,spec):
     # Each field must be manually identified, never guessed from header words.
     for target,label,required in spec:
         fields[target]=_field(key+"_"+target,label,headers,required=required)
+    missing=[label for target,label,required in spec
+             if required and fields[target] is None]
+    if missing:
+        raise ValueError("Select required broker columns: "+", ".join(missing))
     return fields
 
 
