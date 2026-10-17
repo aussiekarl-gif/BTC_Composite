@@ -15,6 +15,8 @@ on:
       - "tests/test_cycle_trading_sensecheck.py"
       - "engines/research/cycle_wallet_readonly_status.py"
       - "tests/test_cycle_wallet_readonly_status.py"
+      - "engines/research/cycle_real_sale_budget.py"
+      - "tests/test_cycle_real_sale_budget.py"
       - "tests/test_cycle_market_feed.py"
   workflow_dispatch:
 
@@ -40,6 +42,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_cycle_aud_price_levels.py" -v
       - name: Verify original 200WMA/day500 portfolio shadow never invents executable trades
         run: python -m unittest discover -s tests -p "test_cycle_wallet_readonly_status.py" -v
+      - name: Reconcile executed original BTC sales, tax and single weekly cash tranche
+        run: python -m unittest discover -s tests -p "test_cycle_real_sale_budget.py" -v
       - name: Existing historical FIFO rebuy regression
         run: python -m unittest discover -s tests -p "test_day500_aftertax_reinvestment.py" -v
       - name: Validate shared public price crosscheck
