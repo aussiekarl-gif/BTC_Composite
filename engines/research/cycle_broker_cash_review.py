@@ -253,7 +253,12 @@ def broker_reconciled_trade_preview(saved,decision,*,asof,
         pct=_num(decision.get("buy_pct_total_cash"),"Existing model BUY fraction")/100.
         if pct>1:
             raise ValueError("Invalid BUY percentage")
-        gross=min(available*pct,available)
+        # The independent reconciliation is a CAP, never permission to
+        # increase the original model's candidate after manual cash limits.
+        existing_gross=_num(
+            decision.get("action_aud"),"Existing model proposed gross AUD",
+            allow_zero=True)
+        gross=min(available*pct,available,existing_gross)
         units=max(0,math.floor((gross-FEE_AUD)/quote+1e-10))
         result.update(
             confirmed_free_broker_cash_aud=round(broker,2),
