@@ -216,11 +216,32 @@ def evaluate_saved_history(prices):
             cohort[policy]=simulate_cash_cohort(
                 prices,halving=halving,policy=policy)
         data[label]=cohort
+    # Predeclared start-date sensitivity. The 620-day cohort is only
+    # one possible historical deployment clock; don't cherry-pick its VWAP.
+    sensitivity={}
+    for start_day in (560,730):
+        scenarios={}
+        for label,halving in CYCLE_HALVINGS.items():
+            values={}
+            for policy in ("current_2p5pct","staged_value_recovery"):
+                rec=simulate_cash_cohort(prices,halving=halving,policy=policy,
+                                         start_day=start_day)
+                values[policy]={
+                    key:rec[key] for key in (
+                        "complete_window","buy_count","cash_deployed_pct",
+                        "btc_units","terminal_btc_equivalent_including_cash",
+                        "vwap_error_above_observed_low_pct",
+                        "meets_25pct_target_with_50pct_deployment",
+                        "meets_20pct_stretch_with_50pct_deployment")
+                }
+            scenarios[label]=values
+        sensitivity[str(start_day)]=scenarios
     return {
         "study":"Frozen research staged DCA-in challenger",
         "asof":str(prices.index.max().date()),
         "benchmark":"same fresh USD 500,000 cash at halving+620; buy-and-hold BTC acquired day620",
         "eligible_cycles":data,
+        "start_day_sensitivity":sensitivity,
         "targets":{"central_vwap_error_pct":25,"stretch_vwap_error_pct":20,
                    "minimum_cash_deployed_pct":50},
         "caveats":[
@@ -259,6 +280,16 @@ def main():
                 "meets_20":rec["meets_20pct_stretch_with_50pct_deployment"],
                 "provisional_under_25":rec["provisional_below_25pct_error_with_50pct_deployment"],
             },sort_keys=True))
+    for start_day,scenarios in result["start_day_sensitivity"].items():
+        for cycle,group in scenarios.items():
+            for policy,rec in group.items():
+                print(json.dumps({
+                    "sensitivity_start_day":start_day,"cycle":cycle,
+                    "policy":policy,"complete":rec["complete_window"],
+                    "deployed_pct":rec["cash_deployed_pct"],
+                    "error_pct":rec["vwap_error_above_observed_low_pct"],
+                    "terminal_btc_equiv":rec["terminal_btc_equivalent_including_cash"],
+                },sort_keys=True))
     if args.output:
         args.output.parent.mkdir(parents=True,exist_ok=True)
         args.output.write_text(json.dumps(result,indent=2,default=str))
