@@ -20,6 +20,7 @@ import json
 import math
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from engines.research.day500_aftertax_reinvestment import (
@@ -48,20 +49,25 @@ def _utc(value):
 
 
 def _historical_wma(price,day):
-    """Previous close vs exact previous 200 x 7-day-spaced closes."""
-    idx=pd.DatetimeIndex([
+    """Strictly lagged index-exact weekly close lookup without per-day joins."""
+    if day not in price.index:
+        raise ValueError("Review day missing from dated BTC history")
+    pos=price.index.get_loc(day)
+    offsets=pos-1-7*np.arange(200)
+    if offsets.min()<0:
+        raise ValueError("Insufficient prior 200-week BTC history")
+    observed=price.index.take(offsets)
+    expected=pd.DatetimeIndex([
         day-pd.Timedelta(days=1+7*i) for i in range(200)])
-    if not idx.isin(price.index).all():
+    if not observed.equals(expected):
         raise ValueError("200 exact prior weekly closes unavailable")
-    series=price.loc[idx].astype(float)
-    prior=day-pd.Timedelta(days=1)
-    if prior not in price.index:
-        raise ValueError("Prior daily close missing")
-    close=float(price.loc[prior])
-    ma=float(series.mean())
-    if not math.isfinite(close) or not math.isfinite(ma) or close<=0 or ma<=0:
+    values=price.to_numpy(dtype=float)
+    previous=float(values[pos-1])
+    mean=float(values[offsets].mean())
+    if (not math.isfinite(previous) or not math.isfinite(mean)
+            or previous<=0 or mean<=0):
         raise ValueError("Invalid prior BTC close or WMA")
-    return close,ma
+    return previous,mean
 
 
 def matched_fresh_cash_replay(price,fx,*,start,terminal,policy,
