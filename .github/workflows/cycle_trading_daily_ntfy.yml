@@ -1,6 +1,7 @@
 name: Cycle Trading single daily ntfy
 
-# Two best-effort UTC triggers: 00:00 (10:00 Brisbane) and 00:15 (10:15 Brisbane).
+# Three best-effort UTC triggers: 00:00 (10:00 Brisbane), 00:15 (10:15),
+# and 00:35 (10:35) to avoid relying entirely on the busy top of the hour.
 # Brisbane observes UTC+10 all year. Both runs share one concurrency group
 # and the same durable Brisbane-date reservation, so there is at most one send.
 # GitHub Actions scheduling may be delayed or skipped; neither trigger is guaranteed.
@@ -9,6 +10,7 @@ on:
   schedule:
     - cron: '0 0 * * *'
     - cron: '15 0 * * *'
+    - cron: '35 0 * * *'
 
 permissions:
   contents: write
@@ -27,13 +29,30 @@ jobs:
         with:
           ref: main
           persist-credentials: true
+      - name: Skip expensive preparation if today's message is already reserved
+        id: delivery_precheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          today="$(TZ=Australia/Brisbane date +%F)"
+          previous="$(cat .github/notification_state/last_cycle_ntfy_date.txt 2>/dev/null || true)"
+          if [[ "$previous" == "$today" ]]; then
+            echo "Already reserved for Brisbane $today; skip price fetch and ntfy."
+            echo "already_reserved=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_reserved=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/setup-python@v5
+        if: steps.delivery_precheck.outputs.already_reserved != 'true'
         with:
           python-version: '3.12'
-      - run: python -m pip install -r requirements.txt
+      - if: steps.delivery_precheck.outputs.already_reserved != 'true'
+        run: python -m pip install -r requirements.txt
       - name: Prepare ONE daily Cycle Trading summary
+        if: steps.delivery_precheck.outputs.already_reserved != 'true'
         run: python cycle_trading_daily_ntfy.py --prepare
       - name: Reserve Brisbane delivery date BEFORE sending
+        if: steps.delivery_precheck.outputs.already_reserved != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
