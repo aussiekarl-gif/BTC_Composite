@@ -66,15 +66,23 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         validation=(root/".github/workflows/validation_research_tuning.yml").read_text()
         self.assertNotIn("NTFY_TOPIC",validation)
         daily=(root/".github/workflows/cycle_trading_daily_ntfy.yml").read_text()
-        self.assertEqual(daily.count("cron:"),1)
-        self.assertIn("cron: '0 0 * * *'",daily)
+        self.assertEqual(daily.count("cron:"),2)
+        self.assertEqual(daily.count("cron: '0 0 * * *'"),1)
+        self.assertEqual(daily.count("cron: '15 0 * * *'"),1)
         self.assertNotIn("cron: '0 22 * * *'",daily)
-        # Brisbane does not use DST: midnight UTC = 10:00 AEST.
+        # Brisbane never changes clocks; both UTC times are Brisbane-local
+        # 10:00 and 10:15 respectively, including in southern summer.
         from zoneinfo import ZoneInfo
-        self.assertEqual(
-            dt.datetime(2026,10,17,0,0,tzinfo=dt.timezone.utc)
-            .astimezone(ZoneInfo("Australia/Brisbane")).hour,10)
+        for date in (dt.date(2026,1,17),dt.date(2026,10,17)):
+            primary=dt.datetime.combine(date,dt.time(0),tzinfo=dt.timezone.utc)
+            backup=primary+dt.timedelta(minutes=15)
+            self.assertEqual(primary.astimezone(ZoneInfo("Australia/Brisbane")).strftime("%H:%M"),"10:00")
+            self.assertEqual(backup.astimezone(ZoneInfo("Australia/Brisbane")).strftime("%H:%M"),"10:15")
         self.assertIn("last_cycle_ntfy_date.txt",daily)
+        self.assertIn("group: btc-cycle-daily-notify-global",daily)
+        self.assertIn('if [[ "$previous" == "$today" ]]',daily)
+        self.assertIn('SEND_NTFY=no',daily)
+        self.assertIn('SEND_NTFY=yes',daily)
         self.assertNotIn("  workflow_dispatch:",daily.split("jobs:")[0])
 
 
