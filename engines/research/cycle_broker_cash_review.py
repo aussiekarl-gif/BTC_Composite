@@ -99,6 +99,7 @@ def fifo_sales_and_inventory(saved,*,asof):
         gain=0.
         basis_used=0.
         provision=0.
+        positive_parcel_gains=0.
         for lot in lots[asset]:
             if left<=SMALL:break
             if lot["units"]<=SMALL:continue
@@ -107,6 +108,7 @@ def fifo_sales_and_inventory(saved,*,asof):
             net=(amount-fee)*take/units
             part_gain=net-part_basis
             provision+=_positive_tax_provision(part_gain,lot["date"],day)
+            positive_parcel_gains+=max(0.,part_gain)
             gain+=part_gain
             basis_used+=part_basis
             lot["units"]-=take
