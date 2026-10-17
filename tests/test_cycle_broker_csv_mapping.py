@@ -100,7 +100,7 @@ class NativeCsvMappingTests(unittest.TestCase):
             read_unmapped_csv(duplicate)
         with self.assertRaisesRegex(ValueError,"two meanings"):
             normalize(columns={**COLUMNS,"Units":"Consideration"})
-        with self.assertRaisesRegex(ValueError,"does not have"):
+        with self.assertRaisesRegex(ValueError,"missing"):
             source_column_values(data(TRADE),"Unknown")
         with self.assertRaises(ValueError):
             normalize(blob=data(TRADE.replace("10,250.00","10,not_money")))
