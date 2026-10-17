@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from engines.shared.portfolio_transactions import portfolio_positions
+from engines.shared.portfolio_transactions import portfolio_positions,parse_date
 from engines.research.cycle_position_anchor import original_cycle_inventory
 from engines.research.cycle_account_shadow import shadow_original_btc_exit
 from engines.research.cycle_real_sale_budget import original_sale_cash_reconciliation
@@ -83,10 +83,26 @@ def cycle_forward_quick_view(market, saved, simplified_decision, *, feed_verifie
         "last_completed_recovery_pct_original_budget":None,
         "original_readiness":"Recorded holdings could not be verified.",
         "original_blocker":"Recorded portfolio missing or inconsistent.",
+        "future_ledger_transactions_excluded":False,
     }
     if not isinstance(saved,dict):
         return result
     try:
+        # A user's live Google Sheets ledger may contain trades placed AFTER
+        # the latest fully observed public BTC close. Never show those
+        # future holdings in a past-dated original strategy review.
+        snapshot={k:v for k,v in saved.items() if k not in ("rows","sales")}
+        for key in ("rows","sales"):
+            entries=saved.get(key,[])
+            if not isinstance(entries,list):
+                raise ValueError("Executed trade ledger must be a list")
+            snapshot[key]=[
+                row for row in entries
+                if parse_date(row.get("Date"))<=seen.date()
+            ]
+            if len(snapshot[key])<len(entries):
+                result["future_ledger_transactions_excluded"]=True
+        saved=snapshot
         positions=portfolio_positions(saved)
     except (ValueError,TypeError,KeyError) as exc:
         result["original_blocker"]="Portfolio ledger cannot be reconciled: "+str(exc)
