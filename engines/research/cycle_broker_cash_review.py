@@ -120,7 +120,7 @@ def fifo_sales_and_inventory(saved,*,asof):
             "gross_positive_parcel_gains_aud":0.,
             "indicative_max_gains_tax_aud":0.,"sale_count":0})
         row["realized_net_gain_aud"]+=gain
-        row["gross_positive_parcel_gains_aud"]+=provision/.15 if False else max(0.,gain)
+        row["gross_positive_parcel_gains_aud"]+=positive_parcel_gains
         row["indicative_max_gains_tax_aud"]+=provision
         row["sale_count"]+=1
         sales.append(dict(
@@ -233,13 +233,13 @@ def broker_reconciled_trade_preview(saved,decision,*,asof,
     if not confirmed:
         result["phase"]="NEEDS_BROKER_CONFIRMATION"
         return result
-    if verified_broker_ibit_price_aud is None:
-        raise ValueError("A current manually checked ASX:IBIT broker quote is required")
-    quote=_num(verified_broker_ibit_price_aud,"Broker ETF price")
     action=decision.get("action")
     if action=="HOLD":
         result["phase"]="HOLD_REMAINS_HOLD"
         return result
+    if verified_broker_ibit_price_aud is None:
+        raise ValueError("A current manually checked ASX:IBIT broker quote is required")
+    quote=_num(verified_broker_ibit_price_aud,"Broker ETF price")
     if action not in ("BUY","SELL"):
         raise ValueError("Unexpected model action")
     if action=="BUY":
