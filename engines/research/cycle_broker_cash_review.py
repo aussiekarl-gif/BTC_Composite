@@ -260,13 +260,17 @@ def broker_reconciled_trade_preview(saved,decision,*,asof,
             allow_zero=True)
         gross=min(available*pct,available,existing_gross)
         units=max(0,math.floor((gross-FEE_AUD)/quote+1e-10))
+        enough=bool(gross>=MIN_ORDER_AUD+FEE_AUD and units>=1)
+        spend=round(units*quote+FEE_AUD,2) if enough else 0.
         result.update(
             confirmed_free_broker_cash_aud=round(broker,2),
             max_cash_without_reconciling_other_liabilities_aud=round(available,2),
-            phase=("BROKER_CASH_TOO_SMALL" if gross<MIN_ORDER_AUD+FEE_AUD or units<1
-                   else "BUY_RESEARCH_PREVIEW"),
-            reconciled_research_gross_aud=round(gross,2) if units>=1 else 0.,
-            reconciled_whole_ibit_units=units,
+            phase="BUY_RESEARCH_PREVIEW" if enough else "BROKER_CASH_TOO_SMALL",
+            reconciled_research_gross_aud=round(gross,2) if enough else 0.,
+            reconciled_whole_ibit_units=units if enough else 0,
+            estimated_whole_unit_spend_including_fee_aud=spend,
+            estimated_preview_cash_unspent_due_to_rounding_aud=(
+                round(max(0.,gross-spend),2) if enough else 0.),
         )
     else:
         units=int(decision.get("suggested_ibit_units",0))
