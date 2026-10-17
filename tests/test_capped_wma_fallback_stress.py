@@ -123,6 +123,32 @@ class TenPercentFallbackTests(unittest.TestCase):
         # money if the market falls severely before the 200WMA crossing.
         self.assertLess(out["marked_terminal_aud"],40000.)
 
+    def test_crash_comes_after_fallback_bought_and_hurts_vs_no_fallback(self):
+        from engines.research.staged_dca_delayed_bottom_stress import delayed_bottom_path
+        dates,fx=market()
+        h=pd.Timestamp("2016-07-09",tz="UTC")
+        cash_start=h+pd.Timedelta(days=900)
+        end=h+pd.Timedelta(days=1150)
+        crash=delayed_bottom_path(
+            dates,h,shock_start_day=990,
+            loss_fraction=.70,terminal_price_fraction=.55)
+        candidate=fallback_fresh_cash_replay(
+            crash,fx,start=cash_start,terminal=end,budget_aud=40000.)
+        original=matched_fresh_cash_replay(
+            crash,fx,start=cash_start,terminal=end,
+            policy="forward_original_budget_weekly",budget_aud=40000.)
+        self.assertEqual(candidate["fallback_cash_spent_pct_original"],10.)
+        self.assertEqual(candidate["fallback_fills"],4)
+        self.assertTrue(all(
+            pd.Timestamp(x["date"],tz="UTC") <
+            h+pd.Timedelta(days=990)
+            for x in candidate["orders"] if x["kind"]=="limited_starter"))
+        self.assertLess(candidate["observed_post_start_low_usd"],100)
+        self.assertLess(
+            candidate["after_hypothetical_liquidation_cgt_aud"],
+            original["after_hypothetical_liquidation_cgt_aud"],
+            "A true post-starter crash must expose real downside vs holding cash")
+
     def test_unfunded_cyclic_data_and_invalid_state_fail_closed(self):
         price,fx=market()
         with self.assertRaisesRegex(ValueError,"Invalid funded"):
