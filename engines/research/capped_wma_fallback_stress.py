@@ -42,7 +42,9 @@ FALLBACK_CHUNK_PCT_ORIGINAL=2.5
 FALLBACK_MAX_TOTAL_PCT_ORIGINAL=10.
 FALLBACK_MAX_WMA_RATIO=1.5
 OBSERVATION_CUTOFF=pd.Timestamp("2026-10-05",tz="UTC")
-STRESS_CYCLE_STARTS=((750,900),(850,960))
+# Include one post-fallback crash: 2017 day900 cash start buys its
+# 10% starter by day977, BEFORE the day990 synthetic shock.
+STRESS_CYCLE_STARTS=((750,900),(850,960),(900,990))
 STRESS_DROP_FRACTIONS=(.50,.70)
 STRESS_TERMINAL_FRACTIONS=(.55,1.05)
 STRESS_TROUGH_DAY=1060
@@ -294,6 +296,14 @@ def run_fallback_audit(history,*,fx_fetcher=fetch_fx_for_cycle,
                     })
     if not historic or not stresses:
         raise ValueError("Missing research observations")
+    # Ensure crash testing actually contains at least one scenario in
+    # which the fallback purchased BTC BEFORE the artificial crash.
+    # Otherwise a passing "stress" is vacuous: both policies were identical.
+    exposed=[s for s in stresses if s[
+        "fallback_10pct"]["fallback_cash_spent_pct_original"]>0]
+    if (tuple(stress_pairs)==tuple(STRESS_CYCLE_STARTS)
+            and tuple(stress_cycles)==("2017","2021") and not exposed):
+        raise AssertionError("No adverse scenario exposed the capped fallback")
     summary={}
     for label in stress_cycles:
         cases=[x for x in stresses if x["cycle"]==label]
@@ -311,6 +321,15 @@ def run_fallback_audit(history,*,fx_fetcher=fetch_fx_for_cycle,
                 x["fallback_cash_spent_before_forced_low_pct"] for x in cases),
             "minimum_fallback_ending_cash_pct":min(
                 x["fallback_10pct"]["cash_left_pct"] for x in cases),
+            "exposed_starter_scenarios":sum(
+                x["fallback_10pct"]["fallback_cash_spent_pct_original"]>0 for x in cases),
+            "worst_exposed_fallback_vs_original_pct":(
+                min(x["fallback_vs_baselines_aftertax_pct"][
+                    "forward_original_budget_weekly"] for x in cases
+                    if x["fallback_10pct"]["fallback_cash_spent_pct_original"]>0)
+                if any(x["fallback_10pct"][
+                    "fallback_cash_spent_pct_original"]>0 for x in cases)
+                else None),
         }
     return {
         "study":"ONE predeclared capped 10% above-200WMA cash starter stress",
