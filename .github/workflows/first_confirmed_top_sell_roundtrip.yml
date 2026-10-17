@@ -1,0 +1,40 @@
+name: Research First Confirmed Top SELL vs Original Wallet
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/first_confirmed_top_sell_roundtrip.py"
+      - "tests/test_first_confirmed_top_sell_roundtrip.py"
+      - ".github/workflows/first_confirmed_top_sell_roundtrip.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  first-confirmed-sell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install exact research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Causal first top warning and original wallet parity regressions
+        run: |
+          python -m py_compile engines/research/first_confirmed_top_sell_roundtrip.py
+          python -m unittest discover -s tests -p "test_first_confirmed_top_sell_roundtrip.py" -v
+          python -m unittest discover -s tests -p "test_cycle_indicator_timing_audit.py" -v
+          python -m unittest discover -s tests -p "test_cycle_chronological_wallet.py" -v
+          python -m unittest discover -s tests -p "test_shared_cycle_policy.py" -v
+      - name: Score actual completed historical 2017 and 2021 and censored 2025
+        run: |
+          python -m engines.research.first_confirmed_top_sell_roundtrip --output /tmp/first_confirmed_top_sell_roundtrip.json
+      - name: Preserve full dated orders and matched AUD CGT 0,1,3,7-day results
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-confirmed-mature-top-sell-aftertax-audit
+          path: /tmp/first_confirmed_top_sell_roundtrip.json
+          retention-days: 21
