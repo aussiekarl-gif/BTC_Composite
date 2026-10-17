@@ -21,6 +21,9 @@ from engines.research.cycle_trade_decision import make_current_decision
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_position_anchor import original_cycle_inventory
 from engines.research.cycle_wallet_readonly_status import historical_cycle_wallet_status
+from engines.research.cycle_real_sale_budget import (
+    original_sale_cash_reconciliation, original_buyback_preview,
+)
 from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
 from engines.research.cycle_halving_countdown import (
     fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
@@ -498,6 +501,110 @@ with tabs[0]:
                         "of ORIGINAL after-tax buyback cash. Your verified budget "
                         "is unavailable, so no amount or trade is proposed."
                     )
+                # Reconcile the ORIGINAL sale proceeds with dated FIFO lots,
+                # but never infer tax paid, unrelated purchases, or an order.
+                if historic_wallet["halving_day"]>=500:
+                    try:
+                        net_sale=original_sale_cash_reconciliation(
+                            saved_live_portfolio,market["halving_date"],
+                            asof=market["asof_date"])
+                    except (ValueError,KeyError,TypeError) as exc:
+                        st.warning(
+                            "Original after-tax budget unavailable: "
+                            f"{type(exc).__name__}: {exc}. "
+                            "No BUY budget or dollar recommendation is inferred."
+                        )
+                    else:
+                        if net_sale["qualifying_sale_count"]>0:
+                            st.markdown("**Original sale-cash reconciliation (research)**")
+                            p1,p2,p3=st.columns(3)
+                            p1.metric("Recorded ORIGINAL sale proceeds after fees",
+                                      f"A${net_sale['original_net_sale_proceeds_before_cgt_aud']:,.2f}")
+                            p2.metric("Illustrative unpaid SMSF CGT reserve",
+                                      f"A${net_sale['illustrative_unpaid_smsf_cgt_reserve_aud']:,.2f}")
+                            p3.metric("Provisional original buyback budget",
+                                      f"A${net_sale['illustrative_aftertax_sale_cash_aud']:,.2f}")
+                            st.caption(
+                                "FIFO estimate only (10% long-term / 15% short-term "
+                                "positive gains without tax-loss offsets), not an "
+                                "ATO assessment. Broker fees and all recorded BUYs "
+                                "after day744 are conservatively deducted from "
+                                "the original buyback cash. Actual SMSF status "
+                                "and tax liabilities require confirmation."
+                            )
+                            if net_sale["unrecorded_future_transactions_ignored"]:
+                                st.info(
+                                    "Some trades are newer than the last verified BTC "
+                                    "daily close; those trades are not included in this "
+                                    "as-of-date historical calculation."
+                                )
+                            if historic_wallet["buyback_trigger_date"]:
+                                signature=net_sale["ledger_fingerprint"]
+                                tax_entered=st.number_input(
+                                    "Unpaid original-sale SMSF tax to reserve (AUD)",
+                                    min_value=0.0,
+                                    max_value=float(net_sale[
+                                        "original_net_sale_proceeds_before_cgt_aud"]),
+                                    value=float(net_sale[
+                                        "illustrative_unpaid_smsf_cgt_reserve_aud"]),
+                                    step=100.,format="%.2f",
+                                    key=f"cycle_verified_tax_{signature}",
+                                    help=(
+                                        "You must reconcile this unpaid tax reserve "
+                                        "and recorded sale proceeds with your SMSF "
+                                        "records; the prefilled number is only an estimate."
+                                    ))
+                                verified=st.checkbox(
+                                    "I have reconciled the recorded sale proceeds, "
+                                    "unpaid tax reserve and buyback spending.",
+                                    value=False,
+                                    key=f"cycle_verified_budget_{signature}")
+                                try:
+                                    preview=original_buyback_preview(
+                                        saved_live_portfolio,
+                                        market["price_history"],
+                                        market["halving_date"],
+                                        asof=market["asof_date"],
+                                        verified_unpaid_tax_reserve_aud=(
+                                            tax_entered if verified else None),
+                                        confirmation=verified)
+                                except (ValueError,TypeError,KeyError) as exc:
+                                    st.warning("Research budget preview unavailable: "+str(exc))
+                                else:
+                                    if preview["read_only_historical_review_aud"] is not None:
+                                        st.metric(
+                                            "Last scheduled research BUY tranche",
+                                            f"A${preview['read_only_historical_review_aud']:,.2f}",
+                                            help=(
+                                                "Hypothetical sizing from ORIGINAL net "
+                                                "sale cash, capped by recorded unspent "
+                                                "budget and available AUD after unpaid CGT. "
+                                                "This is NOT a current broker order."
+                                            ))
+                                        st.caption(
+                                            f"Historical weekly review "
+                                            f"{preview['last_weekly_research_review_date']}: "
+                                            f"{preview['last_review_buy_pct_of_original_budget']:.2f}% "
+                                            "of the fixed original after-tax proceeds "
+                                            f"(A${preview['reconciled_original_aftertax_budget_aud']:,.2f}); "
+                                            f"cash budget still unspent "
+                                            f"A${preview['reconciled_unused_buyback_budget_aud']:,.2f}. "
+                                            "All recorded later purchases reduce the available "
+                                            "budget to prevent double-spending. "
+                                            "Do not retroactively execute a missed review."
+                                        )
+                                    else:
+                                        st.info(
+                                            "No reconciled original after-tax BUY amount. "
+                                            "The historical percentage alone is not "
+                                            "a cash-available trading instruction."
+                                        )
+                        else:
+                            st.caption(
+                                "No executed sales of the ORIGINAL pre-day500 position "
+                                "during day500–730 are recorded; no original after-tax "
+                                "buyback budget can be established."
+                            )
                 st.caption(
                     "Cash recorded in the portfolio is before SMSF tax escrow. "
                     "Historical research-to-live trade quantities are not "
