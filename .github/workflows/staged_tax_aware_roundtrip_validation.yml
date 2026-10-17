@@ -1,0 +1,36 @@
+name: Integrated AUD SMSF Staged DCA Roundtrip Research
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/staged_tax_aware_roundtrip.py'
+      - 'tests/test_staged_tax_aware_roundtrip.py'
+      - '.github/workflows/staged_tax_aware_roundtrip_validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  historical-aftertax-roundtrip:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Audit causal transactions and 10/15 percent FIFO tax with synthetic FX
+        run: |
+          python -m py_compile engines/research/staged_tax_aware_roundtrip.py
+          python -m unittest discover -s tests -p 'test_staged_tax_aware_roundtrip.py' -v
+      - name: Matched real BTC/USD with strictly previous-date USD/AUD FX
+        run: |
+          python -m engines.research.staged_tax_aware_roundtrip --output /tmp/staged_dca_tax_aware_roundtrip.json
+      - name: Preserve full trade-ledger audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: staged-dca-aud-aftertax-roundtrip
+          path: /tmp/staged_dca_tax_aware_roundtrip.json
+          retention-days: 14
