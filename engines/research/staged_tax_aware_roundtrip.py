@@ -40,7 +40,8 @@ FEE_AUD=3.0
 
 def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
                      initial_aud=INITIAL_AUD, buy_start_day=BUY_START_DAY,
-                     execution_slippage_bps=0):
+                     execution_slippage_bps=0,
+                     min_net_sale_proceeds_reserve_pct=0):
     """Independent self-financing account, no look-ahead trade decisions."""
     if seller not in SELLERS or buyer not in BUYERS:
         raise ValueError("Unrecognised sell/buy research policy")
@@ -64,6 +65,10 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
             or not 0<=float(execution_slippage_bps)<=500):
         raise ValueError("Require bounded adverse execution slippage 0..500bp")
     slip=float(execution_slippage_bps)/10000.0
+    if (not math.isfinite(float(min_net_sale_proceeds_reserve_pct))
+            or not 0<=float(min_net_sale_proceeds_reserve_pct)<=90):
+        raise ValueError("Sale-proceeds reserve must be between 0 and 90 percent")
+    reserve_pct=float(min_net_sale_proceeds_reserve_pct)/100.0
     price=price.loc[:terminal].copy()
     all_dates=pd.date_range(halving,terminal,freq="D",tz="UTC")
     if not all_dates.isin(price.index).all():
@@ -92,6 +97,7 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
     buys=[]
     sales=[]
     reserve=float(initial_aud)*CASH_RESERVE_PCT_OF_INITIAL/100.0
+    net_sale_proceeds_so_far=0.0
     for day in all_dates[1:]:
         btc_usd=float(price.loc[day])
         if not math.isfinite(btc_usd) or btc_usd<=0:
@@ -113,13 +119,15 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
                     row=account.orders[-1]
                     if len(account.orders)!=before+1:
                         raise AssertionError("Sale ledger failed")
+                    net_sale_proceeds_so_far+=row["gross_aud"]-FEE_AUD-row["tax_aud"]
                     sales.append({
                         "date":str(day.date()),"btc":row["btc"],
                         "gross_aud":row["gross_aud"],"tax_aud":row["tax_aud"],
                         "usd_price":btc_usd*(1-slip),"aud_per_usd":aud_per_usd,
                         "fraction_original":sell_map[day],
                     })
-        elif day in buy_dates and account.cash>reserve+100:
+        elif day in buy_dates and account.cash>max(
+                reserve,net_sale_proceeds_so_far*reserve_pct)+100:
             # Signal uses the preceding day's close and the strictly
             # previous 200 weekly samples; the current day's execution
             # price cannot affect the allocation.
@@ -131,7 +139,8 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
                       if buyer=="current_2p5pct" else
                       candidate_buy_signal(market)["buy_pct_cash"])
             if fraction>0:
-                gross=min(account.cash*fraction/100.0,account.cash-reserve)
+                floor=max(reserve,net_sale_proceeds_so_far*reserve_pct)
+                gross=min(account.cash*fraction/100.0,account.cash-floor)
                 if gross>100.0 and gross>FEE_AUD*2:
                     before=len(account.orders)
                     if account.buy(day,px_aud*(1+slip),gross/account.cash):
@@ -187,6 +196,7 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
     return {
         "seller":seller,"buyer":buyer,
         "execution_slippage_bps":float(execution_slippage_bps),
+        "minimum_net_sale_proceeds_reserve_pct":float(min_net_sale_proceeds_reserve_pct),
         "start_date":str(halving.date()),"terminal":str(terminal.date()),
         "complete_window":bool(complete),
         "initial_aud":float(initial_aud),
