@@ -388,6 +388,11 @@ with tabs[0]:
             else:
                 st.caption("Future amount requires actual prior prices, "
                            "eligible original holdings or verified sale proceeds.")
+        if quick["future_ledger_transactions_excluded"]:
+            st.caption(
+                "Some saved transactions occurred AFTER the latest verified "
+                "BTC close and are excluded from this dated research snapshot."
+            )
         if quick["recorded_available_cash_before_tax_aud"] is not None:
             st.caption(
                 f"Recorded portfolio: "
