@@ -48,7 +48,7 @@ class TenPercentFallbackTests(unittest.TestCase):
         self.assertEqual(account["fallback_cash_spent_pct_original"],10.)
         self.assertEqual(account["cash_left_pct"],90.)
         self.assertEqual(len(account["orders"]),4)
-        self.assertEqual([pd.Timestamp(x["date"])-START for x in account["orders"]],
+        self.assertEqual([pd.Timestamp(x["date"],tz="UTC")-START for x in account["orders"]],
                          [pd.Timedelta(days=n) for n in FALLBACK_REVIEW_DAYS])
         self.assertTrue(all(x["kind"]=="limited_starter" for x in account["orders"]))
         self.assertEqual(account["after_gate_fills"],0)
