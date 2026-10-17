@@ -123,7 +123,7 @@ def daily_message(*,now=None,quote=None,market=None,
         lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
     lines.append(f"Production: {agreement[MODELS[0]]}")
     lines.append(f"Research: {agreement[MODELS[1]]}")
-    lines.append("Percentages are market-only, per eligible tranche, not daily orders.")
+    lines.append("Market-only % per eligible tranche; no Google Sheets/broker access; not a broker order.")
     lines.append("Research only: verify broker holdings, quote and SMSF tax before trading.")
     return today,"\n".join(lines)
 
