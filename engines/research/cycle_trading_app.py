@@ -20,6 +20,7 @@ from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_position_anchor import original_cycle_inventory
+from engines.research.cycle_wallet_readonly_status import historical_cycle_wallet_status
 from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
 from engines.research.cycle_halving_countdown import (
     fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
@@ -442,6 +443,67 @@ with tabs[0]:
             "(not an instruction to sell; original-BTC holdings and "
             "prior executions must be reconciled)."
         )
+    # Original historical research model shown as a portfolio-aware,
+    # strictly read-only SHADOW. It NEVER replaces the live % signals above,
+    # because actual SMSF after-tax buyback cash has not been reconciled.
+    with st.expander("Original backtested strategy — portfolio status (read only)",
+                     expanded=False):
+        st.caption(
+            "Original strategy: day-500 staged SELL as % of original BTC/IBIT "
+            "held before the review; following the full review window, "
+            "weekly 200WMA recovery BUY as % of ORIGINAL after-tax sale cash. "
+            "This panel cannot initiate an order or change the daily ntfy."
+        )
+        if saved_live_error or not isinstance(saved_live_portfolio,dict):
+            st.info(
+                "Saved executed-trade portfolio is unavailable. "
+                "No original-position or after-tax buyback amount is inferred."
+            )
+        else:
+            try:
+                historic_wallet=historical_cycle_wallet_status(
+                    market["price_history"],market["halving_date"],
+                    saved_live_portfolio,asof=market["asof_date"])
+            except (ValueError,KeyError,TypeError) as exc:
+                st.warning("Original-strategy ledger cannot be reconciled: "
+                           f"{type(exc).__name__}: {exc}")
+            else:
+                st.write("**Research phase:** "+
+                         historic_wallet["phase"].replace("_"," ").title())
+                st.write(historic_wallet["reason"])
+                a,b=st.columns(2)
+                a.metric("Original pre-day500 ASX:IBIT units",
+                    (f"{historic_wallet['original_ibit_units']:,.0f}"
+                     if historic_wallet["original_ibit_units"] is not None
+                     else "Not fixed yet"))
+                b.metric("Original pre-day500 direct BTC",
+                    (f"{historic_wallet['original_direct_btc']:.8f}"
+                     if historic_wallet["original_direct_btc"] is not None
+                     else "Not fixed yet"))
+                if historic_wallet["action"]=="SELL REVIEW — VERIFY":
+                    st.info(
+                        f"Historical research SELL review: "
+                        f"{historic_wallet['sale_review_ibit_units']:,.0f} "
+                        f"recorded ASX:IBIT units and "
+                        f"{historic_wallet['sale_review_direct_btc']:.8f} direct BTC. "
+                        "These are NOT broker orders; verify actual holdings, "
+                        "original tax parcels and SMSF CGT before any trade."
+                    )
+                if historic_wallet["buyback_trigger_date"] is not None:
+                    st.caption(
+                        "Historical prior-200WMA recovery phase observed from "
+                        f"{historic_wallet['buyback_trigger_date']}. Latest research "
+                        "weekly sizing would be "
+                        f"{historic_wallet['buyback_pct_original_budget']:.2f}% "
+                        "of ORIGINAL after-tax buyback cash. Your verified budget "
+                        "is unavailable, so no amount or trade is proposed."
+                    )
+                st.caption(
+                    "Cash recorded in the portfolio is before SMSF tax escrow. "
+                    "Historical research-to-live trade quantities are not "
+                    "validated as equivalent. Nothing here writes to Google "
+                    "Sheets, your broker or ntfy."
+                )
     st.caption(
         "MODEL VALIDATION: The live SELL percentages are applied to REMAINING units "
         "(37.32% remains if all seven stages execute); the historical exit test "

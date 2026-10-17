@@ -13,6 +13,8 @@ on:
       - "engines/research/cycle_trade_execution_safety.py"
       - "engines/research/cycle_market_feed.py"
       - "tests/test_cycle_trading_sensecheck.py"
+      - "engines/research/cycle_wallet_readonly_status.py"
+      - "tests/test_cycle_wallet_readonly_status.py"
       - "tests/test_cycle_market_feed.py"
   workflow_dispatch:
 
@@ -36,6 +38,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_cycle_trading_dashboard_model.py" -v
       - name: Check AUD cycle high, post-peak low and percentage calculations
         run: python -m unittest discover -s tests -p "test_cycle_aud_price_levels.py" -v
+      - name: Verify original 200WMA/day500 portfolio shadow never invents executable trades
+        run: python -m unittest discover -s tests -p "test_cycle_wallet_readonly_status.py" -v
       - name: Existing historical FIFO rebuy regression
         run: python -m unittest discover -s tests -p "test_day500_aftertax_reinvestment.py" -v
       - name: Validate shared public price crosscheck
