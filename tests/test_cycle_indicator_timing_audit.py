@@ -19,9 +19,13 @@ def synthetic(*,low_day=780):
     # Historical peak score is a hindsight label ONLY, not a signal.
     peak=HALVING+pd.Timedelta(days=550)
     price.loc[peak]=500.
+    # Keep subsequent pre-trough closes above the prior WMA. Otherwise
+    # a one-day synthetic 500 spike lifts WMA above flat 100 and causes a
+    # *genuine earlier* strict below-WMA signal on halving day744.
+    price.loc[price.index>peak]=150.
     low=HALVING+pd.Timedelta(days=low_day)
     price.loc[price.index>=low]=60.
-    price.loc[price.index>=low+pd.Timedelta(days=24)]=105.
+    price.loc[price.index>=low+pd.Timedelta(days=24)]=210.
     return price
 
 
