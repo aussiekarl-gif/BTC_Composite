@@ -39,7 +39,8 @@ FEE_AUD=3.0
 
 
 def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
-                     initial_aud=INITIAL_AUD, buy_start_day=BUY_START_DAY):
+                     initial_aud=INITIAL_AUD, buy_start_day=BUY_START_DAY,
+                     execution_slippage_bps=0):
     """Independent self-financing account, no look-ahead trade decisions."""
     if seller not in SELLERS or buyer not in BUYERS:
         raise ValueError("Unrecognised sell/buy research policy")
@@ -59,12 +60,16 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
         raise ValueError("Invalid predeclared post-distribution entry day")
     if not math.isfinite(float(initial_aud)) or initial_aud<=FEE_AUD:
         raise ValueError("Positive AUD capital must exceed brokerage")
+    if (not math.isfinite(float(execution_slippage_bps))
+            or not 0<=float(execution_slippage_bps)<=500):
+        raise ValueError("Require bounded adverse execution slippage 0..500bp")
+    slip=float(execution_slippage_bps)/10000.0
     price=price.loc[:terminal].copy()
     all_dates=pd.date_range(halving,terminal,freq="D",tz="UTC")
     if not all_dates.isin(price.index).all():
         raise ValueError("BTC/USD missing a required daily observation")
 
-    entered_price_aud=float(price.loc[halving])*fx_before(fx,halving)
+    entered_price_aud=float(price.loc[halving])*fx_before(fx,halving)*(1+slip)
     account=AuditSmsfAccount(float(initial_aud),fee=FEE_AUD,tax=True)
     held=AuditSmsfAccount(float(initial_aud),fee=FEE_AUD,tax=True)
     if not account.buy(halving,entered_price_aud,1.) or not held.buy(halving,entered_price_aud,1.):
@@ -103,14 +108,15 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
                 raise ArithmeticError("SELL would consume BTC not held")
             if qty_target>1e-10:
                 before=len(account.orders)
-                if account.sell(day,px_aud,min(1.0,qty_target/existing)):
+                if account.sell(day,px_aud*(1-slip),
+                                min(1.0,qty_target/existing)):
                     row=account.orders[-1]
                     if len(account.orders)!=before+1:
                         raise AssertionError("Sale ledger failed")
                     sales.append({
                         "date":str(day.date()),"btc":row["btc"],
                         "gross_aud":row["gross_aud"],"tax_aud":row["tax_aud"],
-                        "usd_price":btc_usd,"aud_per_usd":aud_per_usd,
+                        "usd_price":btc_usd*(1-slip),"aud_per_usd":aud_per_usd,
                         "fraction_original":sell_map[day],
                     })
         elif day in buy_dates and account.cash>reserve+100:
@@ -128,13 +134,13 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
                 gross=min(account.cash*fraction/100.0,account.cash-reserve)
                 if gross>100.0 and gross>FEE_AUD*2:
                     before=len(account.orders)
-                    if account.buy(day,px_aud,gross/account.cash):
+                    if account.buy(day,px_aud*(1+slip),gross/account.cash):
                         row=account.orders[-1]
                         if len(account.orders)!=before+1:
                             raise AssertionError("Buy ledger failed")
                         buys.append({
                             "date":str(day.date()),"btc":row["btc"],
-                            "gross_aud":row["gross_aud"],"usd_price":btc_usd,
+                            "gross_aud":row["gross_aud"],"usd_price":btc_usd*(1+slip),
                             "aud_per_usd":aud_per_usd,
                             "pct_remaining_cash":fraction,
                         })
@@ -180,6 +186,7 @@ def replay_roundtrip(price, fx, halving, terminal, *, seller, buyer,
 
     return {
         "seller":seller,"buyer":buyer,
+        "execution_slippage_bps":float(execution_slippage_bps),
         "start_date":str(halving.date()),"terminal":str(terminal.date()),
         "complete_window":bool(complete),
         "initial_aud":float(initial_aud),
@@ -231,10 +238,12 @@ def evaluate_saved_cycles(history, *, fx_fetcher=fetch_fx_for_cycle):
     cutoff=pd.Timestamp("2026-10-05",tz="UTC")
     price=price.loc[:cutoff]
     out={}
+    fx_fetcher_cache={}
     for label,details in PRIMARY.items():
         halving=pd.Timestamp(details["halving"],tz="UTC")
         terminal=min(halving+pd.Timedelta(days=SCORE_DAYS),price.index.max())
         fx=fx_fetcher(halving,terminal)
+        fx_fetcher_cache[label]=fx
         comparisons={}
         for seller in SELLERS:
             variants={}
@@ -246,15 +255,42 @@ def evaluate_saved_cycles(history, *, fx_fetcher=fetch_fx_for_cycle):
             # buybacks alter tax lots, especially in the dynamic tail.
             comparisons[seller]=variants
         out[label]=comparisons
+    # Adverse 1% and 2% price friction at EVERY initial BUY / staged SELL /
+    # repurchase; held comparator bears the same initial buy friction.
+    # Only complete historic periods are interpreted as completed tests.
+    slippage_sensitivity={}
+    for bps in (100,200):
+        matrix={}
+        for label in ("2017","2021"):
+            details=PRIMARY[label]
+            halving=pd.Timestamp(details["halving"],tz="UTC")
+            terminal=min(halving+pd.Timedelta(days=SCORE_DAYS),price.index.max())
+            fx=fx_fetcher_cache[label]
+            controls={}
+            for buyer in BUYERS:
+                rec=replay_roundtrip(price,fx,halving,terminal,
+                    seller="fixed_525_to_560",buyer=buyer,
+                    execution_slippage_bps=bps)
+                controls[buyer]={
+                    "complete_window":rec["complete_window"],
+                    "liquidated_aud_vs_hold_pct":rec["liquidated_aud_vs_hold_pct"],
+                    "terminal_btc_equiv_vs_hold_pct":rec["terminal_btc_equiv_vs_hold_pct"],
+                    "buy_error_above_observed_bottom_pct":rec["buy_error_above_observed_bottom_pct"],
+                    "buyback_spent_aud":rec["buyback_spent_aud"],
+                }
+            matrix[label]=controls
+        slippage_sensitivity[str(bps)]=matrix
     return {
         "study":"Matched AUD SMSF self-financing staged sell and DCA rebuy",
         "currency":"AUD",
         "cutoff":"2026-10-05",
         "cohorts":out,
+        "adverse_execution_slippage_sensitivity":slippage_sensitivity,
         "assumptions":[
             "Hypothetical A$500k fully invested at historical halving; not the real portfolio.",
             "Both arms use same original-BTC-denominated sell schedule; dynamic tail can overlap rebuy window.",
             "No outside capital; fees A$3/order; prior dated USD/AUD FX; FIFO immediate 10/15% CGT escrow.",
+            "Adverse 100/200bp slippage stress uses 1/2% worse filled prices for all buys and sells. Held comparator has same initial buy friction.",
             "GST, ETF brokerage spreads, pension phase, complex tax-loss treatment, annual CGT timing not modeled.",
             "Hindsight top/bottom errors are scoring only; execution is optimistic daily close proxy.",
             "2025/26 is right-censored: future low/top and end outcome unknown.",
@@ -281,6 +317,13 @@ def main():
                 print(json.dumps({
                     "cycle":cycle,"seller":seller,"buyer":buyer,
                     **{k:rec[k] for k in keys}
+                },sort_keys=True))
+    for bps,cycles in results["adverse_execution_slippage_sensitivity"].items():
+        for cycle,variants in cycles.items():
+            for buyer,rec in variants.items():
+                print(json.dumps({
+                    "slippage_bps":int(bps),"cycle":cycle,"buyer":buyer,
+                    **rec,
                 },sort_keys=True))
     if args.output:
         args.output.parent.mkdir(parents=True,exist_ok=True)
