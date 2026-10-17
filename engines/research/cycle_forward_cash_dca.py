@@ -124,6 +124,16 @@ def make_forward_cash_enrolment(saved, *, start_date, budget_aud,
     return result
 
 
+def enrol_with_stale_guard(page_snapshot,latest,**kwargs):
+    """Prevent an enrolment from overwriting changes in another session."""
+    if not isinstance(page_snapshot,dict) or not isinstance(latest,dict):
+        raise ValueError("Saved portfolio unavailable")
+    if any(page_snapshot.get(k)!=latest.get(k)
+           for k in ("rows","sales","starting_capital_aud",CONFIG_KEY)):
+        raise ValueError("Portfolio changed since page load; refresh before enrolment")
+    return make_forward_cash_enrolment(latest,**kwargs)
+
+
 def forward_cash_dca_status(price,saved,*,asof,
                             broker_cash_after_reserves_aud=None,
                             feed_verified=True):
@@ -164,6 +174,13 @@ def forward_cash_dca_status(price,saved,*,asof,
     if config.get("research_only") is not True or config.get("style")!=DEFAULT_STYLE:
         raise ValueError("Unrecognised forward cash research configuration")
     start=_day(config["start_date"])
+    # The initial unspent-cash budget cannot be trusted if historical
+    # transactions/balances from the enrolment day were subsequently edited.
+    initial_snapshot,_=_dated_snapshot(saved,start)
+    if _fingerprint(initial_snapshot)!=config.get("original_ledger_fingerprint"):
+        raise ValueError(
+            "Pre-enrolment portfolio trade history changed; reconcile before using forward budget"
+        )
     date=_day(asof)
     budget=_finite_positive(config["initial_budget_aud"],"Initial budget")
     if budget<MIN_BUDGET_AUD or budget>float(config.get("recorded_initial_cash_aud",0))+.005:
