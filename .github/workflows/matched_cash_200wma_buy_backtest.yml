@@ -1,0 +1,37 @@
+name: Matched Cash BTC 200WMA Buy-Only Research
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/fresh_cash_200wma_matched_backtest.py'
+      - 'tests/test_fresh_cash_200wma_matched_backtest.py'
+      - '.github/workflows/matched_cash_200wma_buy_backtest.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prospective-cash-starts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Synthetic no-lookahead tests for equal-budget four-policy comparison
+        run: |
+          python -m py_compile engines/research/fresh_cash_200wma_matched_backtest.py
+          python -m unittest discover -s tests -p 'test_fresh_cash_200wma_matched_backtest.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_forward_cash_dca.py' -v
+      - name: Matched historical entry dates in AUD, including censored 2025/26
+        run: |
+          python -m engines.research.fresh_cash_200wma_matched_backtest --output /tmp/fresh_cash_200wma_matched_backtest.json
+      - name: Archive original-budget/live-cash/fixed-DCA/lump-sum dated trades
+        uses: actions/upload-artifact@v4
+        with:
+          name: matched-cash-200wma-buy-only-research
+          path: /tmp/fresh_cash_200wma_matched_backtest.json
+          retention-days: 21
