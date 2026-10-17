@@ -15,7 +15,7 @@ from engines.research.day500_aftertax_reinvestment import fetch_fx_for_cycle
 from engines.research.top_signal_horse_race import HALVINGS,read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.research.cycle_market_feed import merge_verified_cycle_prices
-from engines.shared.portfolio_store import load_portfolio
+from engines.shared.portfolio_store import load_portfolio,save_portfolio
 from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
@@ -26,6 +26,9 @@ from engines.research.cycle_real_sale_budget import (
 )
 from engines.research.cycle_weekly_buyback_audit import weekly_original_buyback_ledger
 from engines.research.cycle_forward_quick_view import cycle_forward_quick_view
+from engines.research.cycle_forward_cash_dca import (
+    CONFIG_KEY, enrol_with_stale_guard, forward_cash_dca_status,
+)
 from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
 from engines.research.cycle_halving_countdown import (
     fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
@@ -415,6 +418,144 @@ with tabs[0]:
             "scheduled until that next halving is confirmed. Daily ntfy "
             "and the existing simplified decision remain unchanged."
         )
+    # This is a prospective adaptation of the ORIGINAL weekly 200WMA
+    # fractions to independently verified *fresh* AUD cash. Never fake
+    # a 2025 SELL. It stays separate from the live simplified decision.
+    with st.expander("2026 onward — forward cash-funded 200WMA DCA (Research)",
+                     expanded=False):
+        st.caption(
+            "The original historical cycle buys used after-tax proceeds "
+            "from an earlier day500 SELL. New 2026 purchases have no "
+            "such backdated sale. This opt-in research path uses the SAME "
+            "strict prior-200WMA trigger and weekly adaptive recovery "
+            "percentage, but against a FIXED newly-confirmed AUD cash "
+            "budget instead. Its prospective performance is NOT backtested "
+            "as equivalent to the earlier after-tax historical roundtrip."
+        )
+        if saved_live_error or not isinstance(saved_live_portfolio,dict):
+            st.warning("Cannot read My Portfolio. No fresh cash budget or order.")
+        elif not saved_live_portfolio.get(CONFIG_KEY):
+            st.write("**Optional: start a new dated accumulation research budget**")
+            st.caption(
+                "Start today only; no retroactive cycle trades or automatic "
+                "use of your full A$500,000. The broker amount must be cash "
+                "available AFTER unpaid tax and other commitments. "
+                "This stores only research metadata alongside the existing "
+                "portfolio; it does not buy BTC or alter old trades."
+            )
+            with st.form("forward_cash_budget_enrolment"):
+                broker_free=st.number_input(
+                    "Verified broker AUD cash AFTER tax and reserves",
+                    min_value=0.0,value=0.0,step=1000.,format="%.2f",
+                    key="forward_cash_broker_start")
+                starting_budget=st.number_input(
+                    "Amount of that cash allocated to 200WMA research",
+                    min_value=0.0,value=0.0,step=1000.,format="%.2f",
+                    key="forward_cash_budget_start")
+                approved=st.checkbox(
+                    "I verified the broker cash and agree to start this "
+                    "research budget TODAY (not an actual trade)",
+                    value=False,key="forward_cash_confirm_start")
+                submitted=st.form_submit_button(
+                    "Save prospective research budget",use_container_width=True)
+            if submitted:
+                fresh,err=load_portfolio()
+                if err:
+                    st.error("Unable to recheck saved portfolio: "+err)
+                else:
+                    try:
+                        state=enrol_with_stale_guard(
+                            saved_live_portfolio,fresh,
+                            start_date=dt.datetime.now(
+                                ZoneInfo("Australia/Brisbane")).date(),
+                            budget_aud=starting_budget,
+                            broker_available_after_reserves_aud=broker_free,
+                            confirmed=approved,
+                        )
+                        saved,error=save_portfolio(state)
+                    except (ValueError,AssertionError,KeyError,TypeError) as exc:
+                        st.error(
+                            "Research enrolment rejected; old trades unchanged: "
+                            f"{exc}")
+                    else:
+                        if not saved:
+                            st.error("Research budget was not saved: "+str(error))
+                        else:
+                            st.success(
+                                "Prospective budget saved; no broker order "
+                                "or historical sale was created.")
+                            stored_portfolio.clear()
+                            st.rerun()
+        else:
+            details=saved_live_portfolio[CONFIG_KEY]
+            st.caption(
+                f"Fixed starting budget: A${float(details['initial_budget_aud']):,.2f} "
+                f"from {details['start_date']}. This is confirmed NEW cash "
+                "for the research model, NOT earlier cycle-sale proceeds. "
+                "Historical portfolio rows are protected by an anchor fingerprint."
+            )
+            broker_checked=st.checkbox(
+                "I have checked broker cash available AFTER all taxes/reserves",
+                value=False,key="forward_cash_broker_confirm_now")
+            broker_current=st.number_input(
+                "Broker-verified available AUD cash for this review",
+                min_value=0.0,value=0.,step=1000.,format="%.2f",
+                key="forward_cash_broker_current")
+            try:
+                forward=forward_cash_dca_status(
+                    market["price_history"],
+                    saved_live_portfolio,
+                    asof=market["asof_date"],
+                    broker_cash_after_reserves_aud=(
+                        broker_current if broker_checked else None),
+                    feed_verified=(
+                        provider_error is None and verification is not None
+                        and staleness<=3 and cycle_feed_verified),
+                )
+            except (ValueError,KeyError,TypeError,AssertionError) as exc:
+                st.error(
+                    "Prospective research state cannot be reconciled: "
+                    f"{exc}. No amount or order is proposed."
+                )
+            else:
+                a1,a2,a3=st.columns(3)
+                a1.metric("Original research cash budget",
+                          f"A${forward['original_fresh_cash_budget_aud']:,.2f}")
+                a2.metric("Available unspent research budget",
+                          f"A${forward['remaining_unspent_budget_aud']:,.2f}")
+                a3.metric("Research state",
+                          forward["phase"].replace("_"," ").title())
+                st.caption(forward["message"])
+                if forward["trigger_date"]:
+                    st.write(
+                        f"Observed 200WMA activation: {forward['trigger_date']}; "
+                        f"last weekly review: {forward['last_completed_review_date']}; "
+                        f"next research review: {forward['next_review_date']}."
+                    )
+                if forward["last_review_pct_original_budget"] is not None:
+                    st.caption(
+                        f"Last observed weekly allocation: "
+                        f"{forward['last_review_pct_original_budget']:.2f}% "
+                        "of ORIGINAL confirmed cash budget. It is not a "
+                        "percentage of remaining cash."
+                    )
+                if forward["research_review_aud"] is not None:
+                    st.metric(
+                        "Today's cash-funded research BUY preview (AUD)",
+                        f"A${forward['research_review_aud']:,.2f}")
+                    st.warning(
+                        "Informational only. Check exact ASX:IBIT broker quote, "
+                        "minimum whole-unit order, SMSF tax and recorded "
+                        "transactions; no broker order is placed."
+                    )
+                st.caption(
+                    "Recorded post-enrolment purchases consume the fixed "
+                    f"budget: A${forward['spent_since_enrolment_aud']:,.2f} "
+                    "debited; independent-cash purchases still reduce "
+                    "actual available broker cash. New funding is never "
+                    "silently added. Existing daily ntfy remains a DIFFERENT "
+                    "simplified rule."
+                )
     st.divider()
 
     # Percentage is the primary allocation signal; show BOTH cash-buy
