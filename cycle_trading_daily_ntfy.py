@@ -10,6 +10,7 @@ import argparse
 import datetime as dt
 import os
 import requests
+import re
 import pandas as pd
 from zoneinfo import ZoneInfo
 
@@ -125,16 +126,116 @@ def daily_message(*,now=None,quote=None,market=None,
     lines.append(f"Research: {agreement[MODELS[1]]}")
     lines.append("Market-only % per eligible tranche; no Google Sheets/broker access; not a broker order.")
     lines.append("Research only: verify broker holdings, quote and SMSF tax before trading.")
-    return today,"\n".join(lines)
+    return today,format_mobile_notification(lines)
+
+
+def format_mobile_notification(lines):
+    """Render the SAME checked figures in short Markdown sections for ntfy.
+
+    No trading decisions are made here. Unrecognised informational fields
+    are retained in an 'Other notes' section rather than silently dropped.
+    Body text remains readable even on clients without Markdown support.
+    """
+    prefixes={
+        "Cycle Trading daily |":"date",
+        "Cycle signal:":"signal",
+        "BUY allocation:":"buy",
+        "SELL allocation:":"sell",
+        "Reason:":"reason",
+        "ASX:IBIT ":"ibit",
+        "ETF quote dated":"quote_date",
+        "BTC close ":"btc",
+        "Prior 200WMA ":"wma",
+        "Halving day:":"halving",
+        "Production:":"production",
+        "Research:":"research",
+        "Historical original-BTC EXIT research review:":"review",
+        "Market-only % per eligible tranche;":"market_note",
+        "Research only:":"research_note",
+    }
+    fields={}
+    warnings=[]
+    extras=[]
+    for line in lines:
+        if line.startswith(("⚠ ","MAJOR RED FLAG")):
+            warnings.append(line)
+            continue
+        key=next((name for prefix,name in prefixes.items() if line.startswith(prefix)),None)
+        if key is None:
+            extras.append(line)
+        else:
+            fields[key]=line
+
+    stamp=fields.get("date","Cycle Trading daily")
+    if " | " in stamp:
+        stamp=stamp.split(" | ",1)[1]
+    signal=fields.get("signal","Cycle signal: DATA UNAVAILABLE")
+    signal_text=signal.split(":",1)[-1].strip().upper()
+    if signal_text=="HOLD":
+        icon="⏸️"
+    elif "BUY" in signal_text:
+        icon="🟢"
+    elif "SELL" in signal_text:
+        icon="🟠"
+    else:
+        icon="⚪"
+
+    out=[f"*{stamp}*","",f"## {icon} {signal}"]
+    if warnings:
+        out.extend(["","> **🚨 REVIEW BEFORE TRADING**"])
+        out.extend(["> "+item.lstrip("⚠ ").strip() for item in warnings])
+    out.append("")
+    for name in ("buy","sell"):
+        row=fields.get(name)
+        if row:
+            # Bold ONLY the actionable percentage so it stands out on mobile.
+            match=re.match(r"^(BUY allocation:|SELL allocation:) (\\d+(?:\\.\\d+)?%)(.*)$",row)
+            if match:
+                out.append(f"**{match.group(1)} {match.group(2)}**{match.group(3)}")
+            else:
+                out.append(row)
+    reason=fields.get("reason")
+    if reason and signal_text!="HOLD":
+        out.append("*"+reason+"*")
+
+    out.extend(["","**📈 MARKET SNAPSHOT**"])
+    for key in ("btc","wma","ibit","quote_date","halving"):
+        line=fields.get(key)
+        if line:
+            out.append("- "+line)
+
+    out.extend(["","**🧭 OTHER MODELS**"])
+    for key in ("production","research"):
+        line=fields.get(key)
+        if line:
+            out.append("- "+line)
+    if fields.get("review"):
+        extras.append(fields["review"])
+    if extras:
+        out.extend(["","**Notes**"])
+        out.extend(["- "+item for item in extras])
+    notes=[fields[key] for key in ("market_note","research_note") if fields.get(key)]
+    if notes:
+        out.extend(["","---","*"+(" ".join(notes))+"*"])
+    return "\n".join(out)
 
 def send_ntfy(body,*,topic):
     if not topic:raise ValueError("Missing NTFY_TOPIC")
     if topic.startswith(("https://","http://")):
         url=topic.rstrip("/")
     else:url="https://ntfy.sh/"+topic.strip("/")
+    # ASCII-only HTTP headers avoid the UnicodeEncodeError found in Oct 2026.
+    # Markdown is supported by ntfy Android/web; non-Markdown clients still
+    # see line breaks, labels and emoji in the UTF-8 message body.
+    match=re.search(r"Cycle signal: (BUY WATCH|SELL WATCH|HOLD)",body)
+    signal=match.group(1) if match else None
+    has_critical="MAJOR RED FLAG" in body
+    title=("BTC Cycle - MAJOR WARNING" if has_critical else
+           f"BTC Cycle - {signal}" if signal else "BTC Cycle Trading - Daily")
     result=requests.post(url,data=body.encode("utf-8"),
-        headers={"Title":"BTC Cycle Trading - Daily","Priority":"default",
-                 "Tags":"chart_with_upwards_trend","Cache":"no"},
+        headers={"Title":title,"Priority":"high" if has_critical else "default",
+                 "Tags":"warning" if has_critical else "chart_with_upwards_trend",
+                 "Markdown":"yes","Cache":"no"},
         timeout=20)
     result.raise_for_status()
 
