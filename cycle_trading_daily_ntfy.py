@@ -110,10 +110,8 @@ def daily_message(*,now=None,quote=None,market=None,
         full_status=cycle_exit_stage_status(
             market["halving_date"],market["asof_date"])
         if full_status["exit_window_expired"]:
-            lines.append(
-                "Historical day500–730 exit window expired; no retroactive SELL "
-                "of later-acquired holdings."
-            )
+            # Already enforced by the Cycle model; no repeated daily banner.
+            pass
         elif full_status["next_exit_review_date"]:
             lines.append(
                 f"Historical original-BTC EXIT research review: "
