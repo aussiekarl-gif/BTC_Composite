@@ -123,8 +123,8 @@ class UnifiedCycleAllocations(unittest.TestCase):
            "timestamp_utc":"2026-10-16T05:00:00+00:00"}
         date,msg=daily_message(now=NOW,quote=q,market=m)
         self.assertEqual(date,"2026-10-17")
-        self.assertIn("BUY allocation: 2.50% of available AUD cash",msg)
-        self.assertIn("SELL allocation: 0.00% of current BTC/IBIT holdings",msg)
+        self.assertIn("**BUY allocation: 2.50%** of available AUD cash",msg)
+        self.assertIn("**SELL allocation: 0.00%** of current BTC/IBIT holdings",msg)
         self.assertIn("Cycle signal: BUY WATCH",msg)
         self.assertIn("no Google Sheets/broker access",msg)
         self.assertNotIn("A$500,000",msg)
@@ -136,8 +136,8 @@ class UnifiedCycleAllocations(unittest.TestCase):
             quote={"price_aud":22.,"timestamp_utc":"2026-10-16T05:00:00+00:00"},
             market=m)
         self.assertIn("Cycle signal: SELL WATCH",msg)
-        self.assertIn("SELL allocation: 24.00% of current BTC/IBIT holdings",msg)
-        self.assertIn("BUY allocation: 0.00% of available AUD cash",msg)
+        self.assertIn("**SELL allocation: 24.00%** of current BTC/IBIT holdings",msg)
+        self.assertIn("**BUY allocation: 0.00%** of available AUD cash",msg)
         self.assertIn("not a broker order",msg)
 
     def test_incomplete_or_inconsistent_prices_fail_closed(self):
