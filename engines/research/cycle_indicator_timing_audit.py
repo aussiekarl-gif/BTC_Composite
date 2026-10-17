@@ -235,8 +235,8 @@ def audit_timing(history,*,cycles=("2017","2021","2025")):
         baseline=original_calendar_events(price,h,end)
         sells=baseline["original_sell_events"]
         buys=baseline["buy_events"]
-        sell_prices=_weighted_prices(price,sells,kind="SELL")
-        buy_prices=_weighted_prices(price,buys,kind="BUY")
+        sell_prices=_weighted_prices(price.loc[:end],sells,kind="SELL")
+        buy_prices=_weighted_prices(price.loc[:end],buys,kind="BUY")
         peakday=_utc(peak["date"])
         lowday=_utc(low["date"]) if low else None
         warnings=[]
