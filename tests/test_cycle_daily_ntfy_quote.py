@@ -30,7 +30,8 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         self.assertIsNone(parse_ibit_quote({},now=NOW))
     def test_daily_message_is_one_cycle_summary_without_portfolio_numbers(self):
         quote=parse_ibit_quote(payload(),now=NOW)
-        day,message=daily_message(now=NOW,quote=quote,market=None)
+        with patch("cycle_trading_daily_ntfy.read_exported_history",side_effect=RuntimeError("offline")):
+            day,message=daily_message(now=NOW,quote=quote,market=None)
         self.assertEqual(day,"2026-10-17")
         self.assertIn("ASX:IBIT A$22.42",message)
         self.assertIn("Cycle signal: DATA UNAVAILABLE",message)
