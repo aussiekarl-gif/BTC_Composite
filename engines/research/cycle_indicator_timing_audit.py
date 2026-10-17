@@ -322,6 +322,7 @@ def main():
             "original_sell_vwap_vs_peak_pct":item["original_sell_weighted_close_vs_peak_pct"],
             "pct_original_sold_before_peak":item["original_sell_pct_original_position_before_peak"],
             "pct_original_sold_near_peak":item["original_sell_pct_original_position_within_60d_peak"],
+            "pct_original_sold_in_historical_window":item["original_sold_btc_pct"],
             "original_buy_activation":item["original_buy_activation_date"],
             "days_buy_trigger_vs_low":item["first_buy_days_relative_to_future_low"],
             "buy_vwap_above_low_pct":item["original_buy_vwap_vs_future_low_pct"],
