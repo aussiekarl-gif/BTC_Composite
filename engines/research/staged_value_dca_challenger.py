@@ -140,6 +140,8 @@ def simulate_cash_cohort(prices, *, halving, policy, start_day=START_DAY,
             prior,pd.DataFrame(),asof=str(when.date()),
             confirmed_halving_date=str(halving.date())
             if halving>=pd.Timestamp("2024-04-20",tz="UTC") else None)
+        market["halving_day"]=int((when-halving).days)
+        market["halving_date"]=str(halving.date())
         signal=(calculate_allocation_signal(market)["buy_pct_cash"]
                 if policy=="current_2p5pct" else
                 candidate_buy_signal(market)["buy_pct_cash"])
@@ -170,13 +172,18 @@ def simulate_cash_cohort(prices, *, halving, policy, start_day=START_DAY,
         raise ValueError("No observed entry period")
     trough=float(window.min())
     terminal=float(window.iloc[-1])
-    vwap=(sum((float(x["gross_usd"])-fee) for x in buys)/btc) if btc else None
+    # Cost-weighted execution VWAP uses full-precision cash, not rounded
+    # presentation rows, preventing a tiny numerical audit discrepancy.
+    vwap=((spent-fee*len(buys))/btc) if btc else None
     btc_equiv=btc+cash/terminal
     bh_price=float(prices.loc[entry])
     buy_hold=(deployment-fee)/bh_price
+    completed=bool(end>=halving+pd.Timedelta(days=final_day))
+    target25=bool(vwap is not None and vwap<=1.25*trough and spent>=.5*deployment)
+    target20=bool(vwap is not None and vwap<=1.20*trough and spent>=.5*deployment)
     return {
         "policy":policy,"window_start":str(entry.date()),
-        "window_end":str(end.date()),"complete_window":bool(end>=halving+pd.Timedelta(days=final_day)),
+        "window_end":str(end.date()),"complete_window":completed,
         "buy_count":len(buys),
         "cash_deployed_pct":round(100*spent/deployment,2),
         "cash_left_usd":round(cash,2),
@@ -187,10 +194,13 @@ def simulate_cash_cohort(prices, *, halving, policy, start_day=START_DAY,
         "observed_window_low_usd":round(trough,2),
         "vwap_usd":round(vwap,2) if vwap is not None else None,
         "vwap_error_above_observed_low_pct":round(100*(vwap/trough-1),2) if vwap else None,
-        "meets_25pct_target_with_50pct_deployment":bool(
-            vwap is not None and vwap<=1.25*trough and spent>=.5*deployment),
-        "meets_20pct_stretch_with_50pct_deployment":bool(
-            vwap is not None and vwap<=1.20*trough and spent>=.5*deployment),
+        # Only completed windows can earn the historical target verdict.
+        # The 2025/26 window is RIGHT-CENSORED: a lower future trough may
+        # change both bottom and execution-price error substantially.
+        "meets_25pct_target_with_50pct_deployment":target25 if completed else None,
+        "meets_20pct_stretch_with_50pct_deployment":target20 if completed else None,
+        "provisional_below_25pct_error_with_50pct_deployment":target25 if not completed else None,
+        "provisional_below_20pct_error_with_50pct_deployment":target20 if not completed else None,
         "first_buy":buys[0]["date"] if buys else None,
         "last_buy":buys[-1]["date"] if buys else None,
         "trades":buys,
@@ -247,6 +257,7 @@ def main():
                 "vs_buy_hold_pct":rec["terminal_btc_eq_vs_buy_hold_pct"],
                 "meets_25":rec["meets_25pct_target_with_50pct_deployment"],
                 "meets_20":rec["meets_20pct_stretch_with_50pct_deployment"],
+                "provisional_under_25":rec["provisional_below_25pct_error_with_50pct_deployment"],
             },sort_keys=True))
     if args.output:
         args.output.parent.mkdir(parents=True,exist_ok=True)
