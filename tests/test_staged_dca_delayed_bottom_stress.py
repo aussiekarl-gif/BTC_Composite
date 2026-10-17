@@ -12,8 +12,8 @@ HALVING=pd.Timestamp("2020-05-11",tz="UTC")
 
 
 def synthetic_history():
-    idx=pd.date_range("2014-01-01",HALVING+pd.Timedelta(days=1160),
-                      freq="D",tz="UTC")
+    idx=pd.date_range(pd.Timestamp("2014-01-01",tz="UTC"),
+                      HALVING+pd.Timedelta(days=1160),freq="D")
     day=np.array((idx-HALVING).days,dtype=float)
     vals=np.interp(day,[-2500,-1700,-1000,0,400,525,560,700,850,1060,1160],
                    [120,95,105,150,325,550,460,300,245,235,330])
