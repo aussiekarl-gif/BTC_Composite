@@ -77,7 +77,6 @@ def daily_message(*,now=None,quote=None,market=None,
             lines.append(f"BUY allocation: {allocation['buy_pct_cash']:.2f}% of available AUD cash")
             lines.append(f"SELL allocation: {allocation['sell_pct_held']:.2f}% of current BTC/IBIT holdings")
             lines.append(f"Reason: {allocation['reason']}")
-            lines.append("Rule: recovery-confirmation dynamic DCA-in; research-only DCA-out")
             # No added notifications, ordinary disagreements or 'all clear'
             # text. Check V5.8.2 and V5.9 only for actionable market
             # percentages, and warn solely when extreme conflict is verified.
@@ -126,14 +125,8 @@ def daily_message(*,now=None,quote=None,market=None,
         lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
     lines.append(f"Production: {agreement[MODELS[0]]}")
     lines.append(f"Research: {agreement[MODELS[1]]}")
-    lines.append("Agrees = no extreme risk contradiction, not an identical DCA recommendation.")
-    lines.append(
-        "Allocation is market-only: no Google Sheets/broker access in ntfy job. "
-        "Streamlit shows actual AUD / ETF units after holdings confirmation."
-    )
-    lines.append("DCA % is per eligible research tranche, NOT a new daily order. Check executed trades.")
-    lines.append("Model parity: live % rules are NOT the fully backtested original-BTC exit/recovery strategy.")
-    lines.append("Research only; not a broker order. Review SMSF CGT before selling.")
+    lines.append("Percentages are market-only, per eligible tranche, not daily orders.")
+    lines.append("Research only: verify broker holdings, quote and SMSF tax before trading.")
     return today,"\n".join(lines)
 
 def send_ntfy(body,*,topic):
