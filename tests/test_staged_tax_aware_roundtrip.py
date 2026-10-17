@@ -103,12 +103,34 @@ class TaxAwareRoundtripTests(unittest.TestCase):
         sale_dates={x["date"] for x in out["sales"]}
         self.assertFalse(any(b["date"] in sale_dates for b in out["buybacks"]))
 
+    def test_adverse_fill_slippage_reduces_after_tax_terminal_value(self):
+        price,fx=synthetic()
+        end=HALVING+pd.Timedelta(days=1150)
+        values=[
+            replay_roundtrip(price,fx,HALVING,end,
+                seller=SELLERS[0],buyer=BUYERS[1],
+                execution_slippage_bps=bps)
+            for bps in (0,100,200)
+        ]
+        self.assertGreater(values[0]["account_after_hypothetical_liquidation_cgt_aud"],
+                           values[1]["account_after_hypothetical_liquidation_cgt_aud"])
+        self.assertGreater(values[1]["account_after_hypothetical_liquidation_cgt_aud"],
+                           values[2]["account_after_hypothetical_liquidation_cgt_aud"])
+        self.assertEqual([v["execution_slippage_bps"] for v in values],
+                         [0.0,100.0,200.0])
+        for value in values:
+            self.assertGreaterEqual(value["cash_remaining_aud"],0)
+            self.assertTrue(value["no_external_cash"])
+
     def test_policy_and_insufficient_history_fail_closed(self):
         price,fx=synthetic()
         end=HALVING+pd.Timedelta(days=900)
         with self.assertRaisesRegex(ValueError,"Unrecognised"):
             replay_roundtrip(price,fx,HALVING,end,
                              seller=SELLERS[0],buyer="unverified_new_model")
+        with self.assertRaisesRegex(ValueError,"bounded adverse"):
+            replay_roundtrip(price,fx,HALVING,end,seller=SELLERS[0],
+                             buyer=BUYERS[1],execution_slippage_bps=-50)
         with self.assertRaisesRegex(ValueError,"Terminal outside"):
             replay_roundtrip(price,fx,HALVING,
                              HALVING+pd.Timedelta(days=500),
