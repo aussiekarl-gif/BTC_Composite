@@ -1,0 +1,37 @@
+name: Original Cycle Chronological Wallet Parity — Research
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_chronological_wallet.py'
+      - 'tests/test_cycle_chronological_wallet.py'
+      - '.github/workflows/original_cycle_chronological_wallet.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chronological-cycle-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Verify original SELL parity and previous-close only buyback
+        run: |
+          python -m py_compile engines/research/cycle_chronological_wallet.py
+          python -m unittest discover -s tests -p 'test_cycle_chronological_wallet.py' -v
+          python -m unittest discover -s tests -p 'test_shared_cycle_policy.py' -v
+      - name: Compare previously reported results to chronological aftertax replay
+        run: |
+          python -m engines.research.cycle_chronological_wallet --output /tmp/original_cycle_chronological_wallet_audit.json
+      - name: Archive full dated wallet transactions and honest benchmark comparison
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-cycle-chronological-wallet-audit
+          path: /tmp/original_cycle_chronological_wallet_audit.json
+          retention-days: 30
