@@ -27,6 +27,8 @@ on:
       - "tests/test_cycle_forward_cash_dca.py"
       - "engines/research/cycle_broker_cash_review.py"
       - "tests/test_cycle_broker_cash_review.py"
+      - "engines/research/cycle_single_screen_brief.py"
+      - "tests/test_cycle_single_screen_brief.py"
       - "engines/research/cycle_portfolio_editor.py"
       - "engines/shared/portfolio_transactions.py"
       - "tests/test_cycle_market_feed.py"
@@ -66,6 +68,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_cycle_forward_cash_dca.py" -v
       - name: Verify recorded FIFO sales tax and manual broker spendable cash cap
         run: python -m unittest discover -s tests -p "test_cycle_broker_cash_review.py" -v
+      - name: One-screen broker-verified current decision can never become an order
+        run: python -m unittest discover -s tests -p "test_cycle_single_screen_brief.py" -v
       - name: Existing historical FIFO rebuy regression
         run: python -m unittest discover -s tests -p "test_day500_aftertax_reinvestment.py" -v
       - name: Validate shared public price crosscheck

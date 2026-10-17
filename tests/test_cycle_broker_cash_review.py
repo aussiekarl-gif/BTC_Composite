@@ -37,7 +37,7 @@ def decision(action="BUY",pct=2.5,units=10):
         "action":action,"buy_pct_total_cash":pct,
         "sell_pct_total_holdings":5.,
         "suggested_ibit_units":units,
-        "action_aud":1000.,
+        "action_aud":100000.,
         "market_signal":"BUY WATCH" if action=="BUY" else "SELL WATCH",
     }
 
@@ -115,6 +115,29 @@ class BrokerReconciliationTests(unittest.TestCase):
         # User-confirmed available cash is ALREADY net of unpaid liabilities
         # and should not have illustrative tax deducted a second time.
         self.assertEqual(state["confirmed_free_broker_cash_aud"],20000.)
+
+    def test_broker_confirmation_never_expands_manual_original_candidate(self):
+        p=portfolio()
+        d=decision("BUY",2.5)
+        d["action_aud"]=120.
+        q=broker_reconciled_trade_preview(
+            p,d,asof="2026-10-17",
+            confirmed_broker_cash_after_reserves_aud=100000.,
+            verified_broker_ibit_price_aud=30.,confirmed=True)
+        self.assertEqual(q["reconciled_research_gross_aud"],120.)
+        self.assertEqual(q["reconciled_whole_ibit_units"],3)
+        self.assertEqual(q["estimated_whole_unit_spend_including_fee_aud"],93.)
+        self.assertEqual(q[
+            "estimated_preview_cash_unspent_due_to_rounding_aud"],27.)
+        self.assertFalse(q["place_order"])
+        d["action_aud"]=90.
+        blocked=broker_reconciled_trade_preview(
+            p,d,asof="2026-10-17",
+            confirmed_broker_cash_after_reserves_aud=100000.,
+            verified_broker_ibit_price_aud=30.,confirmed=True)
+        self.assertEqual(blocked["phase"],"BROKER_CASH_TOO_SMALL")
+        self.assertEqual(blocked["reconciled_research_gross_aud"],0.)
+        self.assertEqual(blocked["reconciled_whole_ibit_units"],0)
 
     def test_auto_cash_cannot_be_overridden_by_unconfirmed_amount(self):
         p=portfolio()
