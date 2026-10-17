@@ -1,0 +1,37 @@
+name: Frozen BTC Cycle Indicator Timing Audit
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_indicator_timing_audit.py'
+      - 'tests/test_cycle_indicator_timing_audit.py'
+      - '.github/workflows/cycle_indicator_timing_audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  timing-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: No-retrospective-peak-selection and prior-data timing tests
+        run: |
+          python -m py_compile engines/research/cycle_indicator_timing_audit.py
+          python -m unittest discover -s tests -p 'test_cycle_indicator_timing_audit.py' -v
+          python -m unittest discover -s tests -p 'test_shared_cycle_policy.py' -v
+      - name: Archive first actionable top alerts, original staged SELL and 200WMA BUY timing
+        run: |
+          python -m engines.research.cycle_indicator_timing_audit --output /tmp/cycle_indicator_timing_audit.json
+      - name: Preserve all historical 2017/2021 and censored 2025 results
+        uses: actions/upload-artifact@v4
+        with:
+          name: frozen-cycle-indicator-timing-audit
+          path: /tmp/cycle_indicator_timing_audit.json
+          retention-days: 30
