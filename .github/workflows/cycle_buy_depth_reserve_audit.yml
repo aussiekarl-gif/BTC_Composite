@@ -1,0 +1,39 @@
+name: Research 200WMA Deep Discount Cash Reserve Timing
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/cycle_buy_depth_reserve_audit.py"
+      - "tests/test_cycle_buy_depth_reserve_audit.py"
+      - ".github/workflows/cycle_buy_depth_reserve_audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reserve-depth-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned Research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Verify causal 200WMA gated reserve, matched original and no lookahead
+        run: |
+          python -m py_compile engines/research/cycle_buy_depth_reserve_audit.py
+          python -m unittest discover -s tests -p "test_cycle_buy_depth_reserve_audit.py" -v
+          python -m unittest discover -s tests -p "test_cycle_chronological_wallet.py" -v
+          python -m unittest discover -s tests -p "test_shared_cycle_policy.py" -v
+      - name: Replay 2017 2021 2025 observed and fixed 50-70pct late-bottom stresses
+        run: |
+          python -m engines.research.cycle_buy_depth_reserve_audit --output /tmp/cycle_buy_depth_reserve_audit.json
+      - name: Archive all dated actual and synthetic scenario cash BTC and executed orders
+        uses: actions/upload-artifact@v4
+        with:
+          name: predeclared-half-cash-deep-200wma-reserve-audit
+          path: /tmp/cycle_buy_depth_reserve_audit.json
+          retention-days: 21
