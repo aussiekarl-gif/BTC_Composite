@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from engines.research.cycle_model_redflags import (
     MODELS,evaluate_major_red_flags,fetch_reference_model_risks,
-    model_agreement_statuses,
+    model_agreement_statuses,daily_reference_labels,
 )
 from cycle_trading_daily_ntfy import daily_message
 
@@ -198,6 +198,50 @@ class MajorOnlyCrossCheckTests(unittest.TestCase):
         self.assertIn("Research: no data",not_available)
         self.assertEqual(not_available.count("Production:"),1)
         self.assertEqual(not_available.count("Research:"),1)
+
+    def test_valid_scores_on_hold_do_not_show_false_no_data(self):
+        kwargs=dict(buy_pct_cash=0.,sell_pct_held=0.,
+                    snapshots=models(.27,0.),
+                    market_asof=MARKET_DATE,today=TODAY)
+        report=daily_reference_labels(**kwargs)
+        self.assertIn("no trade to compare (risk 0.27)",report[MODELS[0]])
+        self.assertIn("no trade to compare (risk 0.00)",report[MODELS[1]])
+        self.assertIn("not zero investment risk",report[MODELS[1]])
+        self.assertNotIn("agrees",report[MODELS[0]])
+        self.assertNotIn("no data",report[MODELS[1]])
+
+    def test_hold_missing_reference_is_real_no_data(self):
+        report=daily_reference_labels(
+            buy_pct_cash=0.,sell_pct_held=0.,
+            snapshots={MODELS[0]:models(.27,.20)[MODELS[0]]},
+            market_asof=MARKET_DATE,today=TODAY)
+        self.assertIn("risk 0.27",report[MODELS[0]])
+        self.assertEqual(report[MODELS[1]],"no data")
+
+    def test_buy_reference_labels_have_direction_and_risk(self):
+        report=daily_reference_labels(
+            buy_pct_cash=2.5,sell_pct_held=0.,
+            snapshots=models(.91,.15),
+            market_asof=MARKET_DATE,today=TODAY)
+        self.assertEqual(report[MODELS[0]],"disagrees (risk 0.91)")
+        self.assertEqual(report[MODELS[1]],"agrees (risk 0.15)")
+
+    def test_hold_notification_uses_two_actual_risk_values(self):
+        quote={"price_aud":22.41,"timestamp_utc":"2026-10-16T04:59:37+00:00"}
+        hold=fake_market(buy=False)
+        hold["halving_day"]=400
+        _,msg=daily_message(
+            now=dt.datetime(2026,10,17,tzinfo=dt.timezone.utc),
+            market=hold,quote=quote,
+            reference_snapshot_fetcher=lambda:models(.27,0.))
+        self.assertIn("Cycle signal: HOLD",msg)
+        self.assertIn("Production: no trade to compare (risk 0.27)",msg)
+        self.assertIn("Research: no trade to compare (risk 0.00)",msg)
+        self.assertNotIn("Production: no data",msg)
+        self.assertNotIn("Research: no data",msg)
+        self.assertNotIn("MAJOR RED FLAG",msg)
+        self.assertNotIn("Rule: recovery-confirmation",msg)
+        self.assertNotIn("Model parity:",msg)
 
     def test_streamlit_only_shows_warnings_with_no_success_badges(self):
         from pathlib import Path
