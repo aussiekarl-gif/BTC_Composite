@@ -11,7 +11,7 @@ HALVING=pd.Timestamp("2024-04-20",tz="UTC")
 
 
 def history(last="2026-10-15",*,profile="down"):
-    dates=pd.date_range("2018-01-01",pd.Timestamp(last,tz="UTC"),freq="D",tz="UTC")
+    dates=pd.date_range(pd.Timestamp("2018-01-01",tz="UTC"),pd.Timestamp(last,tz="UTC"),freq="D")
     t=np.arange(len(dates),dtype=float)
     if profile=="down":
         vals=np.maximum(20000.,110000.-24.0*t)
