@@ -168,7 +168,7 @@ def daily_reference_labels(*, buy_pct_cash, sell_pct_held, snapshots,
     for name,score in scores.items():
         risk_str=f"risk {score:.2f}"
         if name==MODELS[1] and score<.005:
-            risk_str+=" (near Power Law model floor, not zero investment risk)"
+            risk_str+="; near Power Law floor, not zero investment risk"
         if directional:
             output[name]=f"{comparisons[name]} ({risk_str})"
         elif hold:
