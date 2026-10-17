@@ -2,7 +2,7 @@ import datetime as dt
 import unittest
 from unittest.mock import patch,Mock
 from engines.research.ibit_quote import parse_ibit_quote,fetch_ibit_quote
-from cycle_trading_daily_ntfy import daily_message,send_ntfy
+from cycle_trading_daily_ntfy import daily_message,send_ntfy,format_mobile_notification
 
 NOW=dt.datetime(2026,10,17,2,0,tzinfo=dt.timezone.utc)
 
@@ -52,6 +52,91 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         for value in args.kwargs["headers"].values():
             value.encode("latin-1")
         self.assertEqual(args.kwargs["headers"]["Title"],"BTC Cycle Trading - Daily")
+        self.assertEqual(args.kwargs["headers"]["Markdown"],"yes")
+
+    def test_mobile_markdown_hold_layout_is_action_first(self):
+        lines=[
+            "Cycle Trading daily | 2026-10-17 Brisbane",
+            "ASX:IBIT A$22.41 (indicative, delayed)",
+            "ETF quote dated 2026-10-16 UTC",
+            "BTC close US$81,567 (2026-10-15)",
+            "Prior 200WMA US$66,909",
+            "Cycle signal: HOLD",
+            "BUY allocation: 0.00% of available AUD cash",
+            "SELL allocation: 0.00% of current BTC/IBIT holdings",
+            "Reason: No eligible Cycle Trading research signal.",
+            "Halving day: 908 (since 2024-04-20)",
+            "Production: no trade to compare (risk 0.27)",
+            "Research: no trade to compare (risk 0.00; near Power Law floor, not zero investment risk)",
+            "Market-only % per eligible tranche; no Google Sheets/broker access; not a broker order.",
+            "Research only: verify broker holdings, quote and SMSF tax before trading.",
+        ]
+        rendered=format_mobile_notification(lines)
+        self.assertIn("## ⏸️ Cycle signal: HOLD",rendered)
+        self.assertIn("**BUY allocation: 0.00%**",rendered)
+        self.assertIn("**SELL allocation: 0.00%**",rendered)
+        self.assertLess(rendered.index("Cycle signal: HOLD"),rendered.index("BTC close US$"))
+        self.assertIn("**📈 MARKET SNAPSHOT**",rendered)
+        self.assertIn("**🧭 OTHER MODELS**",rendered)
+        self.assertIn("Production: no trade to compare (risk 0.27)",rendered)
+        self.assertIn("Research: no trade to compare (risk 0.00;",rendered)
+        self.assertIn("Market-only % per eligible tranche",rendered)
+        self.assertNotIn("Reason: No eligible Cycle Trading",rendered)
+
+    def test_mobile_markdown_buy_and_major_red_flag_are_emphasized(self):
+        lines=[
+            "Cycle Trading daily | 2026-10-17 Brisbane",
+            "Cycle signal: BUY WATCH",
+            "BUY allocation: 2.50% of available AUD cash",
+            "SELL allocation: 0.00% of current BTC/IBIT holdings",
+            "Reason: BTC below strict 200WMA.",
+            "⚠ MAJOR RED FLAG — Both references at extreme risk",
+            "BTC close US$81,567 (2026-10-15)",
+            "Production: disagrees (risk 0.90)",
+            "Research: disagrees (risk 0.93)",
+        ]
+        body=format_mobile_notification(lines)
+        self.assertIn("## 🟢 Cycle signal: BUY WATCH",body)
+        self.assertIn("**BUY allocation: 2.50%**",body)
+        self.assertIn("**🚨 REVIEW BEFORE TRADING**",body)
+        self.assertEqual(body.count("MAJOR RED FLAG"),1)
+        self.assertLess(body.index("REVIEW BEFORE TRADING"),body.index("BUY allocation:"))
+        self.assertIn("Reason: BTC below strict 200WMA.",body)
+
+    def test_mobile_markdown_keeps_unavailable_data_and_unknown_notes(self):
+        body=format_mobile_notification([
+            "Cycle Trading daily | 2026-10-17 Brisbane",
+            "ASX:IBIT quote: unavailable/stale — check broker",
+            "Cycle signal: DATA UNAVAILABLE — no trade recommendation",
+            "BUY allocation: unavailable | SELL allocation: unavailable",
+            "Production: no data",
+            "Research: no data",
+            "Extra model metadata not recognized",
+        ])
+        self.assertIn("Cycle signal: DATA UNAVAILABLE",body)
+        self.assertIn("ASX:IBIT quote: unavailable",body)
+        self.assertIn("SELL allocation: unavailable",body)
+        self.assertIn("Extra model metadata not recognized",body)
+
+    def test_ntfy_push_title_is_short_and_major_warnings_are_prominent(self):
+        response=Mock()
+        bodies=[
+            ("## ⏸️ Cycle signal: HOLD", "BTC Cycle - HOLD", "default", "chart_with_upwards_trend"),
+            ("## 🟢 Cycle signal: BUY WATCH", "BTC Cycle - BUY WATCH", "default", "chart_with_upwards_trend"),
+            ("## 🟠 Cycle signal: SELL WATCH", "BTC Cycle - SELL WATCH", "default", "chart_with_upwards_trend"),
+            ("> MAJOR RED FLAG\\n## 🟢 Cycle signal: BUY WATCH","BTC Cycle - MAJOR WARNING","high","warning"),
+        ]
+        with patch("cycle_trading_daily_ntfy.requests.post",return_value=response) as post:
+            for body,title,priority,tags in bodies:
+                send_ntfy(body,topic="unit-test-channel")
+                headers=post.call_args.kwargs["headers"]
+                self.assertEqual(headers["Title"],title)
+                self.assertEqual(headers["Priority"],priority)
+                self.assertEqual(headers["Tags"],tags)
+                self.assertEqual(headers["Markdown"],"yes")
+                for field in headers.values():
+                    field.encode("latin-1")
+        self.assertEqual(post.call_count,len(bodies))
 
     def test_quote_network_fail_closed(self):
         with patch("engines.research.ibit_quote.requests.get",side_effect=RuntimeError("unavailable")):
