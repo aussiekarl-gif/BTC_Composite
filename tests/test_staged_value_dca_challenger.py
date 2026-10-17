@@ -78,6 +78,8 @@ class StagedResearchTests(unittest.TestCase):
         self.assertLessEqual(answer["cash_deployed_pct"],98.01)
         self.assertTrue(answer["buy_count"]<=80)
         self.assertFalse(answer["complete_window"])
+        self.assertIsNone(answer["meets_25pct_target_with_50pct_deployment"])
+        self.assertIsNone(answer["meets_20pct_stretch_with_50pct_deployment"])
         if answer["buy_count"]:
             d=[pd.Timestamp(x["date"]) for x in answer["trades"]]
             self.assertTrue(all((b-a).days>=7 for a,b in zip(d,d[1:])))
@@ -104,8 +106,9 @@ class StagedResearchTests(unittest.TestCase):
         a=simulate_cash_cohort(p,halving=HALVING,policy="staged_value_recovery",
                                asof="2026-10-15")
         self.assertEqual(a["buy_count"],0)
-        self.assertFalse(a["meets_20pct_stretch_with_50pct_deployment"])
-        self.assertFalse(a["meets_25pct_target_with_50pct_deployment"])
+        self.assertIsNone(a["meets_20pct_stretch_with_50pct_deployment"])
+        self.assertIsNone(a["meets_25pct_target_with_50pct_deployment"])
+        self.assertEqual(a["btc_units"],0.)
 
     def test_reject_bad_policy(self):
         with self.assertRaises(ValueError):
