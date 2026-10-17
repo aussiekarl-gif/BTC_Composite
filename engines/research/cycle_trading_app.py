@@ -24,6 +24,7 @@ from engines.research.cycle_wallet_readonly_status import historical_cycle_walle
 from engines.research.cycle_real_sale_budget import (
     original_sale_cash_reconciliation, original_buyback_preview,
 )
+from engines.research.cycle_weekly_buyback_audit import weekly_original_buyback_ledger
 from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
 from engines.research.cycle_halving_countdown import (
     fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
@@ -538,6 +539,74 @@ with tabs[0]:
                                     "daily close; those trades are not included in this "
                                     "as-of-date historical calculation."
                                 )
+                            if historic_wallet["buyback_trigger_date"]:
+                                with st.expander(
+                                    "Original weekly BUY audit — previous reviews only",
+                                    expanded=False):
+                                    try:
+                                        ledger=weekly_original_buyback_ledger(
+                                            market["price_history"],
+                                            market["halving_date"],
+                                            saved_live_portfolio,
+                                            asof=market["asof_date"])
+                                    except (ValueError,TypeError,KeyError,
+                                            AssertionError) as exc:
+                                        st.warning(
+                                            "Cannot reconcile historical weekly "
+                                            f"BUY ledger: {exc}")
+                                    else:
+                                        st.caption(
+                                            f"{ledger['review_count']} dated research "
+                                            "reviews since first prior-200WMA "
+                                            "trigger. Each percentage uses strictly "
+                                            "prior market closes and the ORIGINAL "
+                                            "after-tax buyback budget, not remaining "
+                                            "account cash. These are completed "
+                                            "historical reviews, NOT pending orders."
+                                        )
+                                        if ledger["review_count"]:
+                                            w1,w2=st.columns(2)
+                                            w1.metric(
+                                                "Latest completed research review",
+                                                ledger["current_review_date"])
+                                            w2.metric(
+                                                "Next scheduled model review",
+                                                ledger["next_review_date"])
+                                            st.caption(
+                                                f"Latest completed research review is "
+                                                f"{ledger['days_since_current_review']} "
+                                                "calendar days old; do not place "
+                                                "a retroactive BUY."
+                                            )
+                                            recent=[
+                                                {
+                                                    "Review date":item["review_date"],
+                                                    "% original budget":item[
+                                                        "pct_original_aftertax_buyback_budget"],
+                                                    "Recorded cycle buys A$":item[
+                                                        "recorded_this_cycle_aud"],
+                                                    "Unreviewed/other A$":item[
+                                                        "recorded_unreviewed_or_other_cycle_aud"],
+                                                    "Independent A$":item[
+                                                        "recorded_independent_aud"],
+                                                    "Funding evidence":item[
+                                                        "recorded_cycle_funding_provenance"],
+                                                }
+                                                for item in ledger["review_history"][-8:]
+                                            ]
+                                            st.dataframe(
+                                                pd.DataFrame(recent),
+                                                hide_index=True,
+                                                use_container_width=True)
+                                            st.caption(
+                                                "Recorded cycle-funded values are "
+                                                "user-labelled, NOT confirmed by "
+                                                "a broker. Unreviewed buys always "
+                                                "reduce the buyback budget; "
+                                                "independent-cash buys still "
+                                                "consume real account cash. "
+                                                "No automatic BUY is created."
+                                            )
                             if historic_wallet["buyback_trigger_date"]:
                                 signature=net_sale["ledger_fingerprint"]
                                 tax_entered=st.number_input(
