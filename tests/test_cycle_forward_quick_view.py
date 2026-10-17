@@ -131,6 +131,16 @@ class ForwardCycleQuickViewTests(unittest.TestCase):
         self.assertEqual(out["original_phase"],"PORTFOLIO_UNAVAILABLE")
         self.assertIn("ledger",out["original_blocker"])
 
+    def test_portfolio_future_trade_is_excluded_from_asof_snapshot(self):
+        p=saved_original(with_sale=False)
+        p["rows"].append(buy("01/10/26",25,2500.))
+        view=cycle_forward_quick_view(
+            market("2025-09-02"),p,decision(),feed_verified=True)
+        self.assertEqual(view["recorded_ibit_units"],100.)
+        self.assertEqual(view["original_position_ibit_units"],100.)
+        self.assertTrue(view["future_ledger_transactions_excluded"])
+        self.assertFalse(view["place_order"])
+
     def test_before_day500_provides_date_not_unearned_sell_amount(self):
         view=cycle_forward_quick_view(
             market("2025-08-20"),
