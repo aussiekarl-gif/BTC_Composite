@@ -18,6 +18,9 @@ from engines.research.cycle_market_feed import merge_verified_cycle_prices
 from engines.shared.portfolio_store import load_portfolio,save_portfolio
 from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
+from engines.research.cycle_broker_cash_review import (
+    fifo_sales_and_inventory, broker_reconciled_trade_preview,
+)
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_position_anchor import original_cycle_inventory
 from engines.research.cycle_wallet_readonly_status import historical_cycle_wallet_status
@@ -327,6 +330,143 @@ with tabs[0]:
         feed_verified=(provider_error is None and verification is not None
                        and staleness<=3 and cycle_feed_verified),
     )
+    # Independent broker/tax reconciliation: leave existing daily
+    # model decision, % denominator and ntfy entirely UNMODIFIED.
+    with st.expander(
+        "Broker cash and SMSF tax check — verify before any trade",
+        expanded=decision["action"] in ("BUY","SELL"),
+    ):
+        st.caption(
+            "Your saved portfolio cash can include sale proceeds BEFORE "
+            "SMSF tax, withdrawals or other liabilities. Its automatic "
+            "2.5%-of-remaining-cash suggestion is NOT a broker-verified "
+            "spendable amount. Check the account balance independently."
+        )
+        if saved_live_error or not isinstance(saved_live_portfolio,dict):
+            st.warning("Recorded trades unavailable. No verified cash or sale projection.")
+        else:
+            try:
+                tax_view=fifo_sales_and_inventory(
+                    saved_live_portfolio,asof=trade_today)
+            except (ValueError,KeyError,TypeError) as exc:
+                st.warning(
+                    "Cannot reconcile the FIFO trade ledger: "
+                    f"{type(exc).__name__}: {exc}. No trade confirmation."
+                )
+            else:
+                a,b=st.columns(2)
+                a.metric("Recorded cash BEFORE unpaid liabilities",
+                         f"A${tax_view['recorded_cash_before_tax_aud']:,.2f}")
+                b.metric("Illustrative CGT on recorded realised gains",
+                         f"A${tax_view['gross_positive_only_tax_projection_aud']:,.2f}")
+                st.caption(
+                    "CGT is a conservative POSITIVE-parcel-gain-only "
+                    "accumulation-phase illustration (10% over 12 months, "
+                    "15% otherwise), using entered FIFO cost bases. "
+                    "This is NOT an unpaid tax bill: payments, loss offsets, "
+                    "SMSF pension phase and annual tax returns are unknown. "
+                    "Do NOT subtract this estimate again from broker cash "
+                    "you have already confirmed AFTER reserves."
+                )
+                if tax_view["by_financial_year"]:
+                    st.dataframe(
+                        pd.DataFrame(tax_view["by_financial_year"]),
+                        hide_index=True,use_container_width=True)
+                if tax_view["newer_ledger_trades_excluded"]:
+                    st.info(
+                        "Some saved portfolio transactions are after today's "
+                        "dated research reference and are not included in "
+                        "this historical cash/tax snapshot."
+                    )
+                if decision["action"] not in ("BUY","SELL"):
+                    st.info(
+                        "The existing trading engine currently says HOLD. "
+                        "Broker cash checks cannot convert a HOLD into BUY or SELL."
+                    )
+                else:
+                    st.markdown("**Optional independent broker confirmation**")
+                    st.caption(
+                        "Enter a broker-checked, current ASX:IBIT unit price, "
+                        "not the delayed automatic indicative quote."
+                    )
+                    with st.form("cycle_broker_cash_and_tax_preview"):
+                        if decision["action"]=="BUY":
+                            broker_free_after=st.number_input(
+                                "Broker AUD cash available AFTER unpaid taxes, "
+                                "expenses and other reserves",
+                                min_value=0.,value=0.,step=1000.,format="%.2f",
+                                key="cycle_reconciled_broker_cash")
+                        else:
+                            broker_free_after=None
+                        real_broker_quote=st.number_input(
+                            "Manually verified ASX:IBIT broker quote (AUD/unit)",
+                            min_value=0.,value=0.,step=0.10,format="%.2f",
+                            key="cycle_reconciled_broker_price")
+                        acknowledged=st.checkbox(
+                            "I verified this broker quote and, if BUYing, "
+                            "the spendable cash AFTER liabilities.",
+                            value=False,key="cycle_reconciled_cash_confirm")
+                        preview_button=st.form_submit_button(
+                            "Calculate read-only broker reconciliation")
+                    if preview_button:
+                        try:
+                            review=broker_reconciled_trade_preview(
+                                saved_live_portfolio,decision,
+                                asof=trade_today,
+                                confirmed_broker_cash_after_reserves_aud=(
+                                    broker_free_after
+                                    if decision["action"]=="BUY" else None),
+                                verified_broker_ibit_price_aud=real_broker_quote,
+                                confirmed=acknowledged,
+                            )
+                        except (ValueError,KeyError,TypeError,AssertionError) as exc:
+                            st.warning(
+                                "Broker-reconciled preview unavailable: "
+                                f"{exc}. No order or portfolio change."
+                            )
+                        else:
+                            if review["phase"]=="BUY_RESEARCH_PREVIEW":
+                                st.metric(
+                                    "BUY — max verified cash-based research tranche",
+                                    f"A${review['reconciled_research_gross_aud']:,.2f}")
+                                st.metric(
+                                    "BUY — estimated whole ASX:IBIT units",
+                                    f"{review['reconciled_whole_ibit_units']:,}")
+                                st.caption(
+                                    "Existing BUY percentage applied to the "
+                                    "LESSER of recorded cash and broker-confirmed "
+                                    "free cash after tax/expenses. Whole-unit "
+                                    "brokerage, slippage and execution must be "
+                                    "rechecked before any manual transaction."
+                                )
+                            elif review["phase"]=="SELL_RESEARCH_PREVIEW":
+                                projection=review["projected_sale"]
+                                st.metric(
+                                    "SELL — existing model's whole ASX:IBIT units",
+                                    f"{review['reconciled_whole_ibit_units']:,}")
+                                st.metric(
+                                    "Indicative net AUD after illustrative CGT",
+                                    f"A${review['reconciled_research_net_sale_aud_after_illustrative_tax']:,.2f}")
+                                st.caption(
+                                    f"Estimated FIFO gross A${projection['illustrative_sell_gross_aud']:,.2f}; "
+                                    f"pre-CGT net A${projection['illustrative_net_before_cgt_aud']:,.2f}; "
+                                    f"illustrative accumulation-phase positive-gains "
+                                    f"tax A${projection['illustrative_positive_only_cgt_provision_aud']:,.2f}. "
+                                    "Check actual SMSF tax lots, phase and broker "
+                                    "filled price before manually selling."
+                                )
+                            elif review["phase"]=="BROKER_CASH_TOO_SMALL":
+                                st.warning(
+                                    "Verified free cash cannot support the model's "
+                                    "minimum whole-unit ASX:IBIT BUY at this quote."
+                                )
+                            else:
+                                st.info("No reconciled order preview; original HOLD applies.")
+                            st.caption(
+                                "This verification does not change the underlying "
+                                "DCA model, place an order, save a transaction, "
+                                "or send an ntfy alert."
+                            )
     # QUICK VIEW is read-only and built from the same current decision
     # already calculated above. It does not create a second model signal.
     st.subheader("Cycle Trading — quick view")
