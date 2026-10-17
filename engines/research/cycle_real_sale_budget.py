@@ -99,12 +99,18 @@ def original_sale_cash_reconciliation(saved,halving,*,asof):
     events.sort()
     lots={asset:[] for asset in ASSETS}
     original_units={asset:0. for asset in ASSETS}
+    original_at_day500=None
     originals_sold={asset:0. for asset in ASSETS}
     sale_proceeds=0.
     tax_estimate=0.
     allocated_fees=0.
     qualifying_sale_count=0
     for date,side,i,asset,quantity,amount,fee in events:
+        if original_at_day500 is None and date>=day500:
+            original_at_day500={
+                a:sum(max(0.,v["qty"]) for v in lots[a] if v["original"])
+                for a in ASSETS
+            }
         if side==0:
             lots[asset].append({
                 "date":date,"qty":quantity,"cost":amount,
@@ -135,9 +141,12 @@ def original_sale_cash_reconciliation(saved,halving,*,asof):
         if original_allocated>EPS:
             originals_sold[asset]+=original_allocated
             qualifying_sale_count+=1
-    for asset in ASSETS:
-        original_units[asset]=sum(max(0.,x["qty"]) for x in lots[asset]
-                                  if x["original"])+originals_sold[asset]
+    if original_at_day500 is None:
+        original_at_day500={
+            a:sum(max(0.,x["qty"]) for x in lots[a] if x["original"])
+            for a in ASSETS
+        }
+    original_units=original_at_day500
     gate_start=(h+pd.Timedelta(days=REVIEW_DAY+DELAY_DAYS_AFTER_LAST_SELL)).date()
     # Conservatively debit ALL buys on/after the first possible gated
     # buyback date. The ledger does not identify provenance of each spend.
