@@ -1,11 +1,14 @@
 name: Cycle Trading single daily ntfy
 
-# 00:00 UTC = 10:00 Brisbane (UTC+10, no daylight-saving), daily.
-# GitHub Actions schedules are best-effort; actual delivery may be delayed.
+# Two best-effort UTC triggers: 00:00 (10:00 Brisbane) and 00:15 (10:15 Brisbane).
+# Brisbane observes UTC+10 all year. Both runs share one concurrency group
+# and the same durable Brisbane-date reservation, so there is at most one send.
+# GitHub Actions scheduling may be delayed or skipped; neither trigger is guaranteed.
 # Only scheduled runner may POST ntfy; NO workflow_dispatch.
 on:
   schedule:
     - cron: '0 0 * * *'
+    - cron: '15 0 * * *'
 
 permissions:
   contents: write
