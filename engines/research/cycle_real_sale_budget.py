@@ -1,8 +1,8 @@
 """Research-only reconciliation of the ORIGINAL BTC/IBIT cycle-sale cash budget.
 
 The user's Google Sheets executed-trade ledger has no authoritative SMSF
-tax provision or explicit buyback-funding tag. Never treat gross current cash
-as verified original after-tax sale proceeds. This module traces ORIGINAL
+tax provision. User-confirmed funding tags are optional and never broker
+verified. Never treat gross current cash as verified original after-tax sale proceeds. This module traces ORIGINAL
 pre-day500 FIFO lots, identifies only their sales in days500..730, estimates
 tax conservatively (no losses offset), and treats ALL subsequent purchases
 as consuming this budget to avoid double-allocation.
@@ -148,14 +148,47 @@ def original_sale_cash_reconciliation(saved,halving,*,asof):
         }
     original_units=original_at_day500
     gate_start=(h+pd.Timedelta(days=REVIEW_DAY+DELAY_DAYS_AFTER_LAST_SELL)).date()
-    # Conservatively debit ALL buys on/after the first possible gated
-    # buyback date. The ledger does not identify provenance of each spend.
-    subsequent_spending=sum(
-        _num(row["AUD Spent"],"Recorded BUY consideration")+
-        _num(row.get("Brokerage / Fee AUD",0),"BUY fee",zero=True)
-        for row in snapshot["rows"]
-        if parse_date(row["Date"])>=gate_start
-    )
+    # Legacy/UNREVIEWED rows consume the original sale budget in full.
+    # Independently funded BUYs may be excluded only after the user
+    # explicitly labels their funding source; all such labels are user
+    # assertions, NOT independently broker-verified cash provenance.
+    # Cycle-sale labels are debited even if tagged to a different cycle,
+    # because this as-of account cannot prove that funds are segregated.
+    subsequent_spending=0.
+    unreviewed_spending=0.
+    cycle_spending=0.
+    independent_spending=0.
+    reviewed_later_buys=0
+    later_buys=0
+    for row in snapshot["rows"]:
+        if parse_date(row["Date"])<gate_start:
+            continue
+        later_buys+=1
+        gross=_num(row["AUD Spent"],"Recorded BUY consideration")+_num(
+            row.get("Brokerage / Fee AUD",0),"BUY fee",zero=True)
+        source=row.get("Funding Source","Unreviewed")
+        if source in ("Unreviewed",None,""):
+            subsequent_spending+=gross
+            unreviewed_spending+=gross
+        elif source=="Independent cash":
+            if row.get("Funding Cycle Halving"):
+                raise ValueError("Independent cash row cannot have a cycle halving tag")
+            reviewed_later_buys+=1
+            independent_spending+=gross
+        elif source=="Original cycle sale proceeds":
+            cycle_tag=row.get("Funding Cycle Halving")
+            if not cycle_tag:
+                raise ValueError("Cycle-funded BUY requires a confirmed halving tag")
+            epoch=_as_day(cycle_tag)
+            earliest_tag=(epoch+pd.Timedelta(
+                days=REVIEW_DAY+DELAY_DAYS_AFTER_LAST_SELL)).date()
+            if parse_date(row["Date"])<earliest_tag:
+                raise ValueError("Recorded cycle-funded BUY precedes its historical review window")
+            reviewed_later_buys+=1
+            subsequent_spending+=gross
+            cycle_spending+=gross
+        else:
+            raise ValueError("Unknown BUY Funding Source; fail closed")
     return {
         "research_only":True,"place_order":False,
         "ledger_fingerprint":signature,"asof_date":str(cutoff),
@@ -169,6 +202,11 @@ def original_sale_cash_reconciliation(saved,halving,*,asof):
         "illustrative_aftertax_sale_cash_aud":round(
             max(0.,sale_proceeds-tax_estimate),2),
         "all_later_buys_including_fees_aud":round(subsequent_spending,2),
+        "unreviewed_buys_including_fees_aud":round(unreviewed_spending,2),
+        "cycle_tagged_buys_including_fees_aud":round(cycle_spending,2),
+        "user_labeled_independent_buys_aud":round(independent_spending,2),
+        "funding_labels_reviewed_count":reviewed_later_buys,
+        "total_later_buy_count":later_buys,
         "recorded_cash_before_tax_reserve_aud":current["cash_remaining_aud"],
         "unrecorded_future_transactions_ignored":len(buys)!=len(snapshot["rows"]) or len(sells)!=len(snapshot["sales"]),
         "tax_reserve_verified":False,
@@ -177,8 +215,11 @@ def original_sale_cash_reconciliation(saved,halving,*,asof):
             "Tax is a conservative estimated escrow on positive FIFO gains "
             "at illustrative accumulation-phase rates; your verified annual "
             "SMSF liability, offsets, phase and broker balances may differ. "
-            "All purchases after review closure count against the budget, "
-            "including purchases that could be unrelated."
+            "All unreviewed purchases after review closure count against "
+            "the buyback budget. User-tagged independent cash purchases are "
+            "excluded from the budget but NOT from actual broker cash. "
+            "Cycle-funded purchases are always deducted. Labels are "
+            "user-attested, not broker-verified evidence."
         ),
     }
 

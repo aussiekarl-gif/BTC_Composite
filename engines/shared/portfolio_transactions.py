@@ -277,7 +277,8 @@ def merge_legacy_purchase_editor(original,fresh,*,edited_buys,starting_capital_a
         if (prev.get("Date")==row.get("Date")
                 and prev.get("Asset")==row.get("Asset")
                 and prev.get("Units / BTC Received")==row.get("Units / BTC Received")):
-            for key in ("Transaction ID","Notes"):
+            for key in ("Transaction ID","Notes",
+                        "Funding Source","Funding Cycle Halving"):
                 if key in prev and key not in row:
                     row[key]=prev[key]
     result["rows"]=retained
