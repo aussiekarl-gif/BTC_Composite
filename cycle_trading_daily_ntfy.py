@@ -22,7 +22,7 @@ from engines.research.cycle_trading_dashboard_model import build_dashboard_marke
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_model_redflags import (
     evaluate_major_red_flags,fetch_reference_model_risks,
-    model_agreement_statuses,MODELS,
+    model_agreement_statuses,daily_reference_labels,MODELS,
 )
 from engines.research.cycle_trade_allocation import (
     calculate_allocation_signal,DEFAULT_BUY_STYLE,
@@ -56,10 +56,12 @@ def daily_message(*,now=None,quote=None,market=None,
                 market=None
         except Exception:market=None
     lines=[f"Cycle Trading daily | {today} Brisbane"]
+    baselines={}
+    allocation=None
     agreement={name:"no data" for name in MODELS}
     if quote:
         lines.append(f"ASX:IBIT A${quote['price_aud']:,.2f} (indicative, delayed)")
-        lines.append(f"ETF quote {quote['timestamp_utc']} UTC")
+        lines.append(f"ETF quote dated {quote['timestamp_utc'][:10]} UTC")
     else:
         lines.append("ASX:IBIT quote: unavailable/stale — check broker")
     if market:
