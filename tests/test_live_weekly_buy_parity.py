@@ -20,7 +20,7 @@ def make_inputs(kind="cross"):
         px.loc["2020-04-16":]=140.
     elif kind=="deep":
         px.loc["2020-02-01":]=65.
-        for d in pd.date_range("2020-02-02",END,tz="UTC"):
+        for d in pd.date_range(pd.Timestamp("2020-02-02",tz="UTC"),END,freq="D"):
             px.loc[d]=max(12.,65.-(d-pd.Timestamp(
                 "2020-02-02",tz="UTC")).days*.23)
     elif kind=="no_cross":
