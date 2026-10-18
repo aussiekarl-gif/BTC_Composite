@@ -1,0 +1,35 @@
+name: Research BTC microstructure timestamp comparison (no trades)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/btc_crossvenue_timestamp_audit.py'
+      - 'tests/test_btc_crossvenue_timestamp_audit.py'
+      - '.github/workflows/research_btc_crossvenue_timestamp_audit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/btc_crossvenue_timestamp_audit.py'
+      - 'tests/test_btc_crossvenue_timestamp_audit.py'
+      - '.github/workflows/research_btc_crossvenue_timestamp_audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run offline audit tests
+        run: |
+          python -m py_compile engines/research/btc_crossvenue_timestamp_audit.py
+          python -m unittest discover -s tests -p 'test_btc_crossvenue_timestamp_audit.py' -v
+      - name: Preview authentic immutable research tape compatibility (no side effects)
+        if: github.event_name != 'pull_request'
+        run: python -m engines.research.btc_crossvenue_timestamp_audit
