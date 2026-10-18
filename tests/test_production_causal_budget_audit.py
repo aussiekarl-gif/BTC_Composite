@@ -78,7 +78,7 @@ class ProductionCausalAuditTests(unittest.TestCase):
 
     def test_no_fabricated_buy_if_weekly_risk_missing(self):
         risk,fx=fixture()
-        risk.loc["2020-01-15","risk_score"]=np.nan
+        risk.loc["2020-01-14","risk_score"]=np.nan
         with self.assertRaisesRegex(ValueError,"prior-production-risk"):
             matched_replay(risk,fx,start=pd.Timestamp(
                 "2020-01-14",tz="UTC"),terminal=END)
