@@ -1,0 +1,409 @@
+"""Research-only attribution of the ~6.29% BTC daily-price provider mismatch.
+
+The current Cycle market feed preserves October-2026 BlockHorizon archived
+BTC/USD prices, and only appends Blockchain.com prices after the archive
+cutoff. Its "crosscheck_max_diff_pct" is the MAX ABSOLUTE deviation over
+~30 overlapping days, NOT the newest price difference and NOT Kraken's
+latest-close accuracy. The research Kraken bridge also has its own recent
+overlap check. We must not collapse three distinct checks into one number.
+
+This report freezes date-exact archive vs Blockchain.com vs Kraken spot
+daily data, looks for the actual offending dates, and tests whether any
+last-prior-close below-200WMA classification would flip if the daily
+reference source were different. It does NOT replace any historical
+prices, trading recommendation, alert, personal portfolio, or live
+crosscheck thresholds. No broker/ASX quote is inferred.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from pathlib import Path
+
+import pandas as pd
+import requests
+
+from engines.research.top_signal_horse_race import read_exported_history
+from engines.research.verified_recent_price_bridge import fetch_public_series
+from engines.research.cycle_forward_kraken_bridge import (
+    fetch_completed_kraken_daily,
+)
+from engines.research.fresh_cash_200wma_matched_backtest import (
+    _historical_wma,
+)
+from engines.research.cycle_market_feed import merge_verified_cycle_prices
+from engines.research.cycle_forward_kraken_bridge import (
+    append_verified_kraken_after_blockchain,
+)
+from engines.research.cycle_trading_dashboard_model import build_dashboard_market
+from engines.research.cycle_trade_allocation import calculate_allocation_signal
+
+MAX_LOOKBACK_DAYS=30
+CROSSCHECK_REVIEW_LEVEL_PCT=5.
+CLOSE_THRESHOLD_REVIEW_MARGIN_PCT=5.
+
+
+def _day(v):
+    x=pd.Timestamp(v)
+    return (x.tz_localize("UTC") if x.tzinfo is None
+            else x.tz_convert("UTC")).normalize()
+
+
+def _prices(frame,col,name):
+    if (not isinstance(frame,pd.DataFrame) or col not in frame
+            or frame.empty or not isinstance(frame.index,pd.DatetimeIndex)
+            or frame.index.tz is None or frame.index.has_duplicates
+            or not frame.index.is_monotonic_increasing):
+        raise ValueError(f"Invalid {name} dated BTC price series")
+    series=frame[col].astype(float)
+    if not series.index.equals(series.index.normalize()):
+        raise ValueError(f"Non-UTC-midnight {name} dates")
+    if not series.map(math.isfinite).all() or series.le(0).any():
+        raise ValueError(f"Nonpositive/invalid {name} BTC prices")
+    return series
+
+
+def _pair(a,b,*,start,end,name_a,name_b):
+    left=a.loc[(a.index>=start)&(a.index<=end)]
+    right=b.loc[(b.index>=start)&(b.index<=end)]
+    days=left.index.intersection(right.index)
+    if not len(days):
+        return {"pair":f"{name_a}_versus_{name_b}","overlap_days":0,
+                "available":False}
+    signed=100*(right.loc[days]/left.loc[days]-1)
+    absolute=signed.abs()
+    worst=absolute.idxmax()
+    return {
+        "pair":f"{name_a}_versus_{name_b}",
+        "available":True,
+        "overlap_days":len(days),
+        "first_overlap_date":str(days[0].date()),
+        "last_overlap_date":str(days[-1].date()),
+        "maximum_absolute_pct":round(float(absolute.max()),5),
+        "maximum_deviation_date_utc":str(worst.date()),
+        "median_absolute_pct":round(float(absolute.median()),5),
+        "median_signed_pct":round(float(signed.median()),5),
+        "dates_exceeding_5pct":[str(d.date()) for d in days
+                                 if absolute.loc[d]>CROSSCHECK_REVIEW_LEVEL_PCT],
+        "latest_pair_deviation_pct":round(float(signed.iloc[-1]),5),
+        "latest_pair_absolute_pct":round(float(absolute.iloc[-1]),5),
+        "maximum_date_first_price_usd":round(float(a.loc[worst]),4),
+        "maximum_date_second_price_usd":round(float(b.loc[worst]),4),
+    }
+
+
+
+def shifted_daily_close_alignment(blockchain,kraken,*,start,end):
+    """DIAGNOSTIC ONLY: spot one-day UTC candle labelling differences.
+
+    For provider date D, compare Blockchain quote with Kraken
+    D-1, D and D+1 UTC close separately. A shifted match MAY reflect
+    different timestamp conventions, not provider price inaccuracy.
+    Never silently shift live market prices or use future data.
+    """
+    sample=blockchain.loc[(blockchain.index>=start)&
+                          (blockchain.index<=end)]
+    output=[]
+    for shift in (-1,0,1):
+        paired=[]
+        for d,v in sample.items():
+            key=d+pd.Timedelta(days=shift)
+            if key in kraken.index:
+                paired.append(100*abs(float(v)/float(kraken.loc[key])-1))
+        if paired:
+            output.append({
+                "Kraken_close_date_offset_from_Blockchain_quote_days":shift,
+                "paired_days":len(paired),
+                "median_absolute_deviation_pct":round(
+                    float(pd.Series(paired).median()),5),
+                "maximum_absolute_deviation_pct":round(max(paired),5),
+            })
+    if not output:
+        return {"available":False,"tests":[]}
+    winner=min(output,key=lambda x:x["median_absolute_deviation_pct"])
+    return {
+        "available":True,
+        "tests":output,
+        "lowest_median_absolute_deviation_offset_days":winner[
+            "Kraken_close_date_offset_from_Blockchain_quote_days"],
+        "possible_different_daily_timestamp_convention":winner[
+            "Kraken_close_date_offset_from_Blockchain_quote_days"]!=0,
+        "diagnostic_only_never_changes_prices_or_trade_dates":True,
+    }
+
+def source_overlap_audit(archive,blockchain,*,kraken=None,
+                         asof="2026-10-18"):
+    today=_day(asof)
+    a=_prices(archive,"price_usd","archived_BlockHorizon")
+    b=_prices(blockchain,"btc_usd","Blockchain.com")
+    a=a.loc[a.index<today]
+    b=b.loc[b.index<today]
+    if not len(a) or not len(b):
+        raise ValueError("No prior completed BTC prices")
+    cutoff=a.index[-1]
+    start=cutoff-pd.Timedelta(days=MAX_LOOKBACK_DAYS)
+    pair_ab=_pair(a,b,start=start,end=cutoff,
+                  name_a="archive",name_b="Blockchain")
+    # Alternative only; don't overwrite or redate the LIVE source here.
+    # Hypothesis: chart point at 00:00 UTC on D reflects BTC's
+    # close just before midnight, i.e. close of D-1. Reindex a
+    # COPY for experiment and compare against true dated exchange
+    # closes. A live parser change needs separate release approval.
+    b_at_previous_close_date=b.copy()
+    b_at_previous_close_date.index=(
+        b_at_previous_close_date.index-pd.Timedelta(days=1))
+    corrected_pair=_pair(
+        a,b_at_previous_close_date,start=start,end=cutoff,
+        name_a="archive",name_b="Blockchain_midnight_D_minus_1")
+    if not pair_ab["available"] or pair_ab["overlap_days"]<3:
+        raise ValueError("Not enough DATE-MATCHED archived/public BTC overlap")
+    k=None
+    pairs=[pair_ab]
+    if kraken is not None:
+        k=_prices(kraken,"btc_usd","Kraken_XBTUSD")
+        k=k.loc[k.index<today]
+        if len(k):
+            pairs.append(_pair(a,k,start=start,end=cutoff,
+                               name_a="archive",name_b="Kraken"))
+            pairs.append(_pair(b,k,start=start,end=cutoff,
+                               name_a="Blockchain",name_b="Kraken"))
+    post_archive=None
+    daily_alignment=None
+    post_archive_shift_diagnostic=None
+    if k is not None and len(k):
+        post_archive=_pair(
+            b,k,start=cutoff+pd.Timedelta(days=1),
+            end=today-pd.Timedelta(days=1),
+            name_a="Blockchain",name_b="Kraken")
+        daily_alignment=shifted_daily_close_alignment(
+            b,k,start=start,end=cutoff)
+        post_archive_shift_diagnostic=shifted_daily_close_alignment(
+            b,k,start=cutoff+pd.Timedelta(days=1),
+            end=today-pd.Timedelta(days=1))
+    common=a.index.intersection(b.index)
+    common=common[(common>=start)&(common<=cutoff)]
+    samples=[]
+    critical=[]
+    for d in common:
+        archive_px=float(a.loc[d])
+        public_px=float(b.loc[d])
+        kraken_px=(float(k.loc[d]) if k is not None and d in k.index
+                   else None)
+        # Compare how individual close references straddle the gate
+        # against ONE fixed, archived-history, exact-prior 200WMA.
+        # This is a local sensitivity only: NOT a complete alternate
+        # 200-week price history or actual changed BUY recommendation.
+        gate=None
+        try:
+            _,wma=_historical_wma(a,d+pd.Timedelta(days=1))
+            if math.isfinite(float(wma)) and wma>0:
+                status={
+                    "archive":archive_px<float(wma),
+                    "Blockchain":public_px<float(wma),
+                }
+                if kraken_px is not None:
+                    status["Kraken"]=kraken_px<float(wma)
+                flip=len(set(status.values()))>1
+                nearest=min(abs(v/float(wma)-1)
+                            for v in (archive_px,public_px)
+                            + ((kraken_px,) if kraken_px is not None else ()))
+                gate={
+                    "archived_reference_prior_200wma_usd":
+                        round(float(wma),3),
+                    "source_below_wma":status,
+                    "potential_different_single_day_gate":flip,
+                    "at_least_one_source_within_5pct_200wma":
+                        nearest<=CLOSE_THRESHOLD_REVIEW_MARGIN_PCT/100.,
+                }
+                if flip:
+                    critical.append(str(d.date()))
+        except (ValueError,KeyError,IndexError):
+            pass
+        item={
+            "date_utc":str(d.date()),
+            "archive_BTC_USD":round(archive_px,3),
+            "blockchain_BTC_USD":round(public_px,3),
+            "archive_vs_blockchain_signed_pct":round(
+                100*(public_px/archive_px-1),5),
+            "archive_vs_blockchain_absolute_pct":round(
+                100*abs(public_px/archive_px-1),5),
+            "kraken_BTC_USD":round(kraken_px,3)
+                if kraken_px is not None else None,
+            "archive_vs_kraken_absolute_pct":round(
+                100*abs(kraken_px/archive_px-1),5)
+                if kraken_px is not None else None,
+            "blockchain_vs_kraken_absolute_pct":round(
+                100*abs(kraken_px/public_px-1),5)
+                if kraken_px is not None else None,
+            "strict_prior_200wma_sensitivity":gate,
+        }
+        samples.append(item)
+    worst=pair_ab["maximum_deviation_date_utc"]
+    offending=next(x for x in samples if x["date_utc"]==worst)
+    third_source_assessment="UNAVAILABLE_NO_THIRD_SOURCE"
+    if offending["kraken_BTC_USD"] is not None:
+        ar=float(offending["archive_vs_kraken_absolute_pct"])
+        br=float(offending["blockchain_vs_kraken_absolute_pct"])
+        if ar<=1 and br>5:
+            third_source_assessment="KRAKEN_CLOSER_TO_ARCHIVE_ON_WORST_DAY"
+        elif br<=1 and ar>5:
+            third_source_assessment="KRAKEN_CLOSER_TO_BLOCKCHAIN_ON_WORST_DAY"
+        elif ar<=1 and br<=1:
+            third_source_assessment="ALL_SOURCES_AGREE_NEARLY_ON_WORST_DAY"
+        else:
+            third_source_assessment="AMBIGUOUS_PROVIDER_CLOSE_DEFINITIONS"
+    return {
+        "research_only":True,
+        "prices_overwritten":False,
+        "live_cycle_model_or_ntfy_modified":False,
+        "calculation":"ABS(blockchain BTC/USD daily point / BlockHorizon historical Price on EXACT UTC date -1), max over 30 calendar day archived cutoff overlap",
+        "archive_latest_date":str(cutoff.date()),
+        "blockchain_latest_completed_date":str(b.index[-1].date()),
+        "kraken_latest_completed_date":(
+            str(k.index[-1].date()) if k is not None and len(k) else None),
+        "source_pairs":pairs,
+        "archive_vs_blockchain_if_chart_timestamp_marks_end_of_previous_day":
+            corrected_pair,
+        "post_archive_new_daily_Blockchain_vs_Kraken":post_archive,
+        "post_archive_date_shift_diagnostic":post_archive_shift_diagnostic,
+        "prior_overlap_Blockchain_Kraken_date_shift_diagnostic":
+            daily_alignment,
+        "historical_6p29_crosscheck_is_NOT_last_BTC_spot_error":True,
+        "worst_blockchain_archive_overlap_day":offending,
+        "third_source_assessment_on_worst_date":third_source_assessment,
+        "potential_200wma_crossing_disagreement_dates":critical,
+        "local_gate_sensitivity_uses_archived_200wma_for_all_prices":True,
+        "source_observations":samples,
+        "manual_data_provenance_review_required":(
+            pair_ab["maximum_absolute_pct"]>=CROSSCHECK_REVIEW_LEVEL_PCT),
+        "eligible_to_change_live_source_or_signal":False,
+    }
+
+
+
+def shadow_live_feed_alignment(archive,blockchain,kraken,fx,*,asof):
+    """Read-only existing vs correctly daily-labelled Kraken-bridged signal.
+
+    This uses EXISTING shared market decision code, unchanged. We do not
+    claim corrected feed is independently approved; 2024 epoch is known
+    for this October 2026 investigation only, not a post-2028 solution.
+    """
+    now=_day(asof)
+    if now.year!=2026:
+        raise ValueError("This frozen historical audit is October 2026 only")
+    if kraken is None:
+        raise ValueError("No independently completed Kraken close for shadow")
+    archived,meta_old=merge_verified_cycle_prices(
+        archive,blockchain,utc_today=now)
+    shifted=blockchain.copy()
+    shifted.index=shifted.index-pd.Timedelta(days=1)
+    # Last Blockchain chart midnight sample D now labels
+    # the observed UTC CLOSE through D-1.
+    extended,bridge=append_verified_kraken_after_blockchain(
+        shifted,kraken,utc_today=now)
+    corrected,meta_corrected=merge_verified_cycle_prices(
+        archive,extended,utc_today=now)
+    def snapshot(series):
+        market=build_dashboard_market(
+            series,fx,asof=str(now.date()),
+            confirmed_halving_date="2024-04-20")
+        verdict=calculate_allocation_signal(
+            market,buy_style="adaptive_recovery")
+        return {
+            "observed_BTC_close_UTC_date":str(
+                pd.Timestamp(market["asof_date"]).date()),
+            "BTC_price_usd_observed_close":round(
+                float(market["btc_price_usd"]),3),
+            "prior_completed_close_usd":round(
+                float(market["previous_close_usd"]),3),
+            "prior_200week_average_usd":round(
+                float(market["prior_200wma_usd"]),3),
+            "signal_from_SHARED_UNCHANGED_market_code":verdict["signal"],
+            "BUY_pct_remaining_AUD_cash":verdict["buy_pct_cash"],
+            "SELL_pct_current_BTC_held":verdict["sell_pct_held"],
+            "market_signal_not_ASX_executable":True,
+        }
+    return {
+        "main_live_source_unmodified":snapshot(archived),
+        "corrected_chart_date_plus_completed_Kraken_SHADOW":snapshot(corrected),
+        "corrected_chart_as_archive_overlap_pct":
+            meta_corrected["max_overlap_difference_pct"],
+        "original_wrongly_labelled_chart_overlap_pct":
+            meta_old["max_overlap_difference_pct"],
+        "Kraken_last_completed_day_bridge":bridge,
+        "shadow_only_no_implemented_live_change":True,
+        "no_private_portfolio_or_daily_ntfy_changed":True,
+    }
+
+def main(argv=None):
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--out",type=Path,default=Path(
+        "artifacts/cycle_source_overlap_oct2026.json"))
+    args=parser.parse_args(argv)
+    import datetime as dt
+    today=dt.datetime.now(dt.timezone.utc)
+    archive=read_exported_history()
+    price,fx=fetch_public_series(asof=today.date().isoformat())
+    # Only source prices matter here; FX deliberately not fabricated.
+    kraken=None
+    kraken_error=None
+    try:
+        kraken=fetch_completed_kraken_daily(utc_today=today)
+    except (requests.RequestException,ValueError) as exc:
+        kraken_error=f"{type(exc).__name__}: {exc}"
+    outcome=source_overlap_audit(
+        archive,price,kraken=kraken,asof=today)
+    outcome["Kraken_3rd_source_fetch_status"]=(
+        "OK" if kraken is not None else "UNAVAILABLE")
+    outcome["Kraken_fetch_error"]=kraken_error
+    try:
+        outcome["read_only_shared_model_corrected_vs_current"]=(
+            shadow_live_feed_alignment(
+                archive,price,kraken,fx,asof=today)
+            if kraken is not None else None)
+    except (ValueError,KeyError) as e:
+        outcome["read_only_shared_model_corrected_vs_current"]={
+            "available":False,
+            "reason":str(e),
+            "no_live_change":True,
+        }
+    args.out.parent.mkdir(parents=True,exist_ok=True)
+    args.out.write_text(json.dumps(outcome,indent=2,sort_keys=True)+"\n")
+    for pair in outcome["source_pairs"]:
+        print(json.dumps(pair,sort_keys=True))
+    print("WORST_DAY "+
+          json.dumps(outcome["worst_blockchain_archive_overlap_day"],
+                     sort_keys=True))
+    print("CORRECTED_ONE_DAY_PROVIDER_TIMESTAMP_AUDIT "+
+          json.dumps(outcome[
+              "archive_vs_blockchain_if_chart_timestamp_marks_end_of_previous_day"],
+                     sort_keys=True))
+    print("POST_ARCHIVE_RECENT_BLOCKCHAIN_KRAKEN "+
+          json.dumps(outcome["post_archive_new_daily_Blockchain_vs_Kraken"],
+                     sort_keys=True))
+    print("POST_ARCHIVE_SHIFT_CHECK "+
+          json.dumps(outcome["post_archive_date_shift_diagnostic"],
+                     sort_keys=True))
+    print("DAILY_TIMESTAMP_SHIFT_DIAGNOSTIC "+
+          json.dumps(outcome[
+              "prior_overlap_Blockchain_Kraken_date_shift_diagnostic"],
+                     sort_keys=True))
+    print("SOURCE_INTERPRETATION "+
+          json.dumps({
+            "third_source_assessment":outcome[
+                "third_source_assessment_on_worst_date"],
+            "potential_200wma_crossing_disagreement_dates":outcome[
+                "potential_200wma_crossing_disagreement_dates"],
+            "not_last_BTC_price_error":True,
+            "manual_data_provenance_review_required":outcome[
+                "manual_data_provenance_review_required"],
+          },sort_keys=True))
+    print("SHADOW_MARKET_MODEL_CORRECTED_VS_CURRENT "+
+          json.dumps(outcome["read_only_shared_model_corrected_vs_current"],
+                     sort_keys=True))
+    print("RESEARCH ONLY. No live Cycle BUY/SELL, FX, ntfy or portfolio changes.")
+
+
+if __name__=="__main__":
+    main()
