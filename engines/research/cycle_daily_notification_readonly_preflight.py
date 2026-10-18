@@ -45,8 +45,11 @@ def main():
     # IMPORTANT: do NOT inject a market into the daily function.
     # Its own real fetch/halving validation must reproduce the same
     # independently calculated shared source signal.
+    # Exercise the normal Yahoo ASX:IBIT indicative quote lookup as
+    # the scheduled ntfy does. A stale/unavailable ETF quote must be
+    # clearly labelled and must never fabricate executable trade units.
     date,body=daily_message(
-        now=now,quote=False,market=None,
+        now=now,quote=None,market=None,
         reference_snapshot_fetcher=None)
     checks=[
         f"Cycle signal: {expected['signal']}",
@@ -65,8 +68,14 @@ def main():
         raise AssertionError("Daily notification is not able to produce valid BTC close")
     if "not a broker order" not in body:
         raise AssertionError("Missing trading research-only disclaimer")
-    if "ASX:IBIT" not in body:
-        raise AssertionError("Missing ASX quote status")
+    quote_ok="ASX:IBIT A$" in body
+    quote_unavailable="ASX:IBIT quote: unavailable/stale" in body
+    if quote_ok==quote_unavailable:
+        raise AssertionError(
+            "Expected exactly one verified AUD IBIT indicative quote "
+            "or explicit unavailable/stale broker check")
+    if quote_ok and "ETF quote dated" not in body:
+        raise AssertionError("Quote displayed without its dated provenance")
     result={
         "preflight_only_no_send":True,
         "local_message_date":date,
@@ -79,6 +88,9 @@ def main():
         "Kraken_recent_overlap_max_abs_percent":
             meta["recent_kraken_blockchain_max_diff_pct"],
         "all_message_market_lines_match_shared_model":True,
+        "ASX_IBIT_reference_quote_available":quote_ok,
+        "ASX_IBIT_if_unavailable_explicit":quote_unavailable,
+        "ASX_quote_is_not_a_broker_fill":True,
         "ntfy_posts_made":0,
         "delivery_reservation_changes":0,
         "real_trade_orders":0,
