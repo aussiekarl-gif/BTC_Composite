@@ -40,9 +40,16 @@ TARGET_DIR = ROOT / "data" / "research_forward_validation"
 SIGNAL_TAPE = "cycle_market_signals.csv"
 OUTCOME_TAPE = "cycle_signal_outcomes.csv"
 HORIZONS = (7, 30, 90)
-MAX_OBSERVED_LAG_DAYS = 3
+# A forward-only signal must use YESTERDAY'S completed UTC close.
+# A 2/3-day-old BTC mark remains useful market context but may already
+# include partly-known price returns, so it must NOT become a prediction.
+MAX_OBSERVED_LAG_DAYS = 1
 GENESIS = "0" * 64
 STRATEGY_LABEL = "shared_cycle_trade_allocation_market_v1_not_historical_wallet"
+
+
+class UnfreshSourceClose(ValueError):
+    """The public BTC provider does not yet have yesterday's UTC close."""
 SIGNAL_COLUMNS = (
     "observation_date_utc", "captured_at_utc",
     "signal_input_last_prior_close_date_utc",
@@ -194,8 +201,10 @@ def build_snapshot(archive,public,fx,*,captured_at_utc,
         combined,fx,asof=str(today.date()),
         confirmed_halving_date=verified_halving_date)
     date=_day(market["asof_date"])
-    if date>=today or (today-date).days>MAX_OBSERVED_LAG_DAYS:
-        raise ValueError("Stale or incomplete BTC UTC daily price")
+    if date>=today or (today-date).days != MAX_OBSERVED_LAG_DAYS:
+        raise UnfreshSourceClose(
+            "Stale or incomplete BTC UTC daily price: no forward snapshot "
+            "without the latest completed prior UTC close")
     if market["usd_aud_prior"] is None or not market["fx_source_date"]:
         raise ValueError("Stale or absent prior AUD/USD FX")
     prior_date=date-pd.Timedelta(days=1)
@@ -245,12 +254,28 @@ def build_snapshot(archive,public,fx,*,captured_at_utc,
     }
 
 
+def _was_captured_prospectively(row):
+    """One-day lag exactly; reject previously late research rows for scoring.
+
+    A row stamped 15 October but first written 18 October already observed
+    part of its seven-day future, so it cannot be labelled a true forward
+    forecast even if its stored value and chain are authentic.
+    """
+    try:
+        timestamp=_utc_instant(row["captured_at_utc"])
+        observed=_day(row["observation_date_utc"])
+    except (TypeError,ValueError,KeyError):
+        return False
+    return (timestamp.normalize()-observed).days==1
+
+
 def append_due_outcomes(existing,signals,*,evaluated_at_utc):
-    """Score ONLY price observations already frozen on successive UTC days.
+    """Score ONLY truly prospective price observations frozen after each UTC close.
 
     Future data cannot retroactively revise a signal row. Require ALL daily
     observations in the 7/30/90-day window for drawdown/return scoring.
-    Missing dates stay unscored; never silently interpolate or backfill.
+    Missing dates, originally late captures and current-day records stay
+    unscored; never silently interpolate or backfill.
     """
     snapshots=_read_rows(signals,SIGNAL_COLUMNS,
                          date_key="observation_date_utc")
@@ -262,6 +287,11 @@ def append_due_outcomes(existing,signals,*,evaluated_at_utc):
     timestamp=_utc_instant(evaluated_at_utc).isoformat()
     added=0
     for base in snapshots:
+        # Freeze and retain any legitimate older row without rewriting it.
+        # A 3-day late 'first capture' is an auditable data point, not a
+        # prospectively scored forecast. Its later rows must also be timely.
+        if not _was_captured_prospectively(base):
+            continue
         start=_day(base["observation_date_utc"])
         for horizon in HORIZONS:
             key=(str(start.date()),horizon)
@@ -271,6 +301,9 @@ def append_due_outcomes(existing,signals,*,evaluated_at_utc):
                                start+pd.Timedelta(days=horizon),
                                freq="D",tz="UTC")
             if not days.isin(list(present)).all():
+                continue
+            if not all(_was_captured_prospectively(present[day])
+                       for day in days):
                 continue
             future=present[days[-1]]
             px=float(base["btc_usd_observed_close"])
@@ -321,9 +354,23 @@ def run_once(*,out_dir=TARGET_DIR, now=None):
         instant.to_pydatetime()))
     verified_date=(halving["last_halving_date"]
                    if halving.get("halving_date_verified") else None)
-    new=build_snapshot(
-        archive,public,fx,captured_at_utc=instant,
-        verified_halving_date=verified_date)
+    try:
+        new=build_snapshot(
+            archive,public,fx,captured_at_utc=instant,
+            verified_halving_date=verified_date)
+    except UnfreshSourceClose as exc:
+        # This is an expected PROVIDER publication delay, not a reason to
+        # manufacture a forecast or spam GitHub failure notifications.
+        # Other failures (unverified halving/FX or provider disagreements)
+        # remain fail-closed with a visible failed action.
+        return {
+            "status":"skipped_provider_close_not_yesterday",
+            "captured_at_utc":instant.isoformat(),
+            "reason":str(exc),
+            "wrote_snapshot":False,
+            "wrote_outcomes":False,
+            "no_user_portfolio_or_ntfy_write":True,
+        }
     p_signals=out/SIGNAL_TAPE
     p_outcomes=out/OUTCOME_TAPE
     current=p_signals.read_text() if p_signals.exists() else ""

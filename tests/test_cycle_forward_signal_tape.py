@@ -4,6 +4,9 @@ No real GitHub/network/portfolios required; all price data are synthetic.
 """
 import unittest
 import datetime as dt
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -12,6 +15,7 @@ from engines.research.cycle_forward_signal_tape import (
     GENESIS, OUTCOME_COLUMNS, SIGNAL_COLUMNS, HORIZONS,
     _read_rows, append_snapshot, append_due_outcomes,
     build_snapshot, _prior_annual_volatility,
+    _was_captured_prospectively, run_once,
 )
 
 ASOF=pd.Timestamp("2026-10-18T12:30:00+00:00")
@@ -194,6 +198,76 @@ class ForwardTapeTests(unittest.TestCase):
         ref=_prior_annual_volatility(data,asof)
         data.loc[asof]=9999.
         self.assertAlmostEqual(_prior_annual_volatility(data,asof),ref)
+
+
+    def test_two_day_source_delay_rejected_as_forward_signal(self):
+        archive,public,fx=sources()
+        # Existing application may tolerate up to three days of market
+        # age, but the forward research recorder must not backdate.
+        public=public.loc[:"2026-10-16"]
+        with self.assertRaisesRegex(ValueError,"Stale or incomplete"):
+            build_snapshot(archive,public,fx,captured_at_utc=ASOF,
+                           verified_halving_date="2024-04-20",
+                           code_sha256="a"*64)
+
+    def test_first_real_stale_capture_retained_but_not_forward_scored(self):
+        # First published record (observed Oct15, captured Oct18)
+        # must remain hash-verifiable and MUST NOT be scored as
+        # prospectively actionable even if its next seven close dates
+        # are eventually observed and frozen.
+        original=snapshot()
+        late={
+            **original,
+            "observation_date_utc":"2026-10-15",
+            "signal_input_last_prior_close_date_utc":"2026-10-14",
+        }
+        self.assertFalse(_was_captured_prospectively(late))
+        tape,_=append_snapshot("",late)
+        d0=pd.Timestamp("2026-10-15",tz="UTC")
+        for i in range(1,8):
+            date=d0+pd.Timedelta(days=i)
+            item={
+                **original,
+                "observation_date_utc":str(date.date()),
+                "captured_at_utc":(
+                    date+pd.Timedelta(days=1,hours=12)).isoformat(),
+                "signal_input_last_prior_close_date_utc":str(
+                    (date-pd.Timedelta(days=1)).date()),
+                "btc_usd_observed_close":f"{64+i:.6f}",
+            }
+            self.assertTrue(_was_captured_prospectively(item))
+            tape,_=append_snapshot(tape,item)
+        rows=_read_rows(tape,SIGNAL_COLUMNS,
+                        date_key="observation_date_utc")
+        self.assertEqual(len(rows),8)
+        self.assertEqual(rows[0]["observation_date_utc"],"2026-10-15")
+        self.assertFalse(_was_captured_prospectively(rows[0]))
+        outcomes,count=append_due_outcomes(
+            "",tape,evaluated_at_utc="2026-10-25T12:00:00Z")
+        self.assertEqual(outcomes,"")
+        self.assertEqual(count,0)
+
+    def test_stale_external_provider_is_reported_as_skip_no_csv_file(self):
+        archive,public,fx=sources()
+        public=public.loc[:"2026-10-15"]
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch("engines.research.cycle_forward_signal_tape.read_exported_history",
+                      return_value=archive),
+                patch("engines.research.cycle_forward_signal_tape.fetch_public_series",
+                      return_value=(public,fx)),
+                patch("engines.research.cycle_forward_signal_tape.fetch_halving_countdown",
+                      return_value={}),
+                patch("engines.research.cycle_forward_signal_tape.normalise_halving_epoch_metadata",
+                      return_value={"last_halving_date":"2024-04-20",
+                                    "halving_date_verified":True}),
+            ):
+                result=run_once(out_dir=Path(directory),now=ASOF)
+            self.assertEqual(
+                result["status"],"skipped_provider_close_not_yesterday")
+            self.assertFalse(result["wrote_snapshot"])
+            self.assertFalse(result["wrote_outcomes"])
+            self.assertFalse(list(Path(directory).iterdir()))
 
 
 if __name__=="__main__":
