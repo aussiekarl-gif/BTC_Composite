@@ -163,6 +163,10 @@ except Exception as exc:
 
 last_day=pd.Timestamp(market["asof_date"]).date()
 staleness=(today-last_day).days
+if market["usd_aud_prior"] is None or market["fx_source_date"] is None:
+    cycle_feed_verified=False
+    st.error("Prior-dated AUD/USD FX unavailable or stale. "
+             "Cycle trade recommendations disabled until FX is verified.")
 if provider_error:
     st.error("Current public BTC/FX close verification FAILED: "+provider_error+
              " — current trade recommendations are disabled.")
