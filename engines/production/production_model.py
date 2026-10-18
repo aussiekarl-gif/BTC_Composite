@@ -787,10 +787,16 @@ def align_historical_fx_strict(data, fx_series, max_age_days=7):
         raise ValueError("Historical AUD FX invalid")
     # STRICT inequality: never use a quote labelled the execution day
     # itself, which could have been published later than the BTC mark.
-    positions = np.searchsorted(fx_dates.asi8, dates.asi8, side="left") - 1
+    # Timestamp precision can be nanoseconds OR microseconds depending
+    # on installed pandas. Compare on a common dtype, then calculate gaps
+    # with a real pandas Timedelta instead of assuming .asi8 is in ns.
+    positions = np.searchsorted(
+        fx_dates.to_numpy(dtype="datetime64[ns]"),
+        dates.to_numpy(dtype="datetime64[ns]"), side="left") - 1
     if (positions < 0).any():
         raise ValueError("No historical FX strictly before first BTC date")
-    gaps = (dates.asi8 - fx_dates.asi8[positions]) / (86400.0 * 1e9)
+    gaps = ((dates - fx_dates.take(positions)) /
+            pd.Timedelta(days=1)).to_numpy(dtype=float)
     if (gaps > max_age_days).any() or (gaps <= 0).any():
         raise ValueError("Historical FX absent or older than maximum age")
     result = data.copy()
