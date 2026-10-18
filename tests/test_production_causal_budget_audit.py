@@ -6,7 +6,7 @@ import pandas as pd
 
 from engines.production.production_model import (
     SMART_DCA_POINTS,apply_equal_capital_allocator,
-    align_fx_to_dates,interpolate,
+    align_fx_to_dates,interpolate,add_risk_indicators,simulate_dca_backtest,
 )
 from engines.research.production_causal_budget_audit import (
     equal_capital_hindsight_weights,matched_replay,
@@ -135,6 +135,48 @@ class ProductionCausalAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Missing exact"):
             matched_replay(risk.drop(START+pd.Timedelta(days=1)),
                            fx,start=START,terminal=END)
+
+
+    def test_start_filter_discards_indicator_warmup_in_production_backtest(self):
+        risk,fx=fixture()
+        prices=risk["price"].copy()
+        full=pd.DataFrame({
+            "price":prices,
+            "usd_per_aud":.70,
+            "mvrv_z":1.5,
+            "fear_greed":50.,
+            "regime_score":np.nan,
+        },index=risk.index)
+        from engines.research.production_causal_budget_audit import PARAMS
+        original_params={
+            **PARAMS, "risk_model":"Composite V3.6",
+            "start_date":START,"end_date":END,
+            "day_of_week":0, "fee_pct":0.,
+        }
+        chart,summary=simulate_dca_backtest(
+            full,original_params,1000.,"Weekly","Risk-Scaled DCA")
+        self.assertFalse(chart.empty)
+        first_day=pd.Timestamp(chart.iloc[0]["date"])
+        full_risk=add_risk_indicators(
+            full.loc[:END], "Composite V3.6", PARAMS)
+        # Same exact date, SAME price and risk model, but historical
+        # price/lookback prefix was removed before indicator computation.
+        displayed=float(chart.iloc[0]["risk_score"])
+        warmed=float(full_risk.loc[first_day,"risk_score"])
+        self.assertTrue(np.isfinite(displayed))
+        self.assertTrue(np.isfinite(warmed))
+        self.assertGreater(abs(displayed-warmed),.01)
+
+    def test_fx_backfill_currently_uses_future_rate_on_older_btc_date(self):
+        d=pd.date_range("2020-01-01","2020-01-04",tz="UTC",freq="D")
+        prices=pd.DataFrame({"price":[100.,101.,102.,103.]},index=d)
+        only_future_fx=pd.Series(
+            [0.77],index=pd.DatetimeIndex([d[2]]))
+        converted=align_fx_to_dates(prices,only_future_fx)
+        # This documents an existing SOURCE PROVENANCE bug, not proposed
+        # behaviour; research matched wallets forbid it through fx_before.
+        self.assertEqual(converted.loc[d[0],"usd_per_aud"],.77)
+        self.assertEqual(converted.loc[d[1],"usd_per_aud"],.77)
 
 
 if __name__=="__main__":
