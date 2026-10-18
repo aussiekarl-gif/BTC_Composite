@@ -1,0 +1,39 @@
+name: DCA Today Target Date Persistence Safety
+
+on:
+  pull_request:
+    paths:
+      - 'engines/shared/model_settings_store.py'
+      - 'engines/production/production_app.py'
+      - 'engines/research/research_app.py'
+      - 'tests/test_dca_target_date_persistence.py'
+      - '.github/workflows/dca_today_date_persistence_safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verified-pref-rows-no-portfolio-change:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing runtime packages
+        run: python -m pip install -r requirements.txt
+      - name: Compile Production and Research Streamlit pages
+        run: |
+          python -m py_compile engines/shared/model_settings_store.py
+          python -m py_compile engines/production/production_app.py
+          python -m py_compile engines/research/research_app.py
+      - name: Verify independent stored dates, browser migration and unchanged real portfolio
+        run: |
+          python -m unittest discover -s tests -p 'test_dca_target_date_persistence.py' -v
+          python -m unittest discover -s tests -p 'test_production_historical_integrity_review.py' -v
+          python -m unittest discover -s tests -p 'test_production_causal_budget_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Verify no real portfolio data files altered
+        run: git diff --exit-code -- data/ .github/notification_state/
