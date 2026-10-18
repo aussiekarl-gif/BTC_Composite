@@ -35,7 +35,7 @@ jobs:
         run: |
           python -m py_compile engines/research/cycle_forward_signal_tape.py
           python -m unittest discover -s tests -p 'test_cycle_forward_signal_tape.py' -v
-          python -m unittest discover -s tests -p 'test_cycle_trade_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
       - name: Capture only last VERIFIED completed close and market-level Cycle signal
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
