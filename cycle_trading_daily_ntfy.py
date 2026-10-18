@@ -17,8 +17,9 @@ from zoneinfo import ZoneInfo
 from engines.research.ibit_quote import fetch_ibit_quote
 from engines.research.cycle_halving_countdown import fetch_halving_countdown
 from engines.research.top_signal_horse_race import read_exported_history
-from engines.research.verified_recent_price_bridge import fetch_public_series
-from engines.research.cycle_market_feed import merge_verified_cycle_prices
+from engines.research.cycle_live_completed_utc_prices import (
+    fetch_cycle_live_sources,merge_verified_live_cycle_prices,
+)
 from engines.research.cycle_trading_dashboard_model import build_dashboard_market
 from engines.research.shared_cycle_policy import cycle_exit_stage_status
 from engines.research.cycle_model_redflags import (
@@ -42,10 +43,13 @@ def daily_message(*,now=None,quote=None,market=None,
     if market is None:
         try:
             history=read_exported_history()["price_usd"]
-            remote,fx=fetch_public_series(asof=now.date().isoformat())
-            series,verified=merge_verified_cycle_prices(
-                pd.DataFrame({"price_usd":history}),remote,
+            remote,fx,kraken=fetch_cycle_live_sources(
+                asof=now.date().isoformat())
+            series,verified=merge_verified_live_cycle_prices(
+                pd.DataFrame({"price_usd":history}),remote,kraken,
                 utc_today=now.date())
+            if not verified.get("strict_close_date_verified"):
+                raise ValueError("Unverified completed UTC BTC close")
             halving=fetch_halving_countdown(now=now)
             confirmed=(halving.get("last_halving_date") if halving.get("halving_date_verified") else None)
             if not confirmed or dt.date.fromisoformat(confirmed)>series.index[-1].date():
@@ -53,7 +57,7 @@ def daily_message(*,now=None,quote=None,market=None,
             market=build_dashboard_market(series,fx,asof=now.date().isoformat(),
                                           confirmed_halving_date=confirmed)
             age=(now.date()-pd.Timestamp(market["asof_date"]).date()).days
-            if age<0 or age>3 or market["usd_aud_prior"] is None:
+            if age!=1 or market["usd_aud_prior"] is None:
                 market=None
         except Exception:market=None
     lines=[f"Cycle Trading daily | {today} Brisbane"]
