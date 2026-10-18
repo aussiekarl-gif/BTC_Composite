@@ -1,0 +1,38 @@
+name: Research Production V5.8.2 Prospective Budget Audit
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/production_causal_budget_audit.py'
+      - 'tests/test_production_causal_budget_audit.py'
+      - '.github/workflows/research_production_causal_budget.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-only-no-production-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing Production and Research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Verify allocator hindsight, exact live cash-denominator and input reliability
+        run: |
+          python -m py_compile engines/research/production_causal_budget_audit.py
+          python -m unittest discover -s tests -p 'test_production_causal_budget_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Replay 2017 2021 complete and 2025 right-censored Production-risk proxy
+        run: python -m engines.research.production_causal_budget_audit --out artifacts/production_causal_budget
+      - name: Preserve dated orders, original vs deployable vs simple AUD aftertax
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-production-causal-remaining-cash-hindsight-audit
+          path: artifacts/production_causal_budget/
+          if-no-files-found: ignore
