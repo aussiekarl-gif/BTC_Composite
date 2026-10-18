@@ -250,6 +250,11 @@ class ForwardTapeTests(unittest.TestCase):
     def test_stale_external_provider_is_reported_as_skip_no_csv_file(self):
         archive,public,fx=sources()
         public=public.loc[:"2026-10-15"]
+        # Mock the prospective Kraken fallback too: no network, and no
+        # consecutive eligible dates through yesterday, so record SKIP.
+        kraken=pd.DataFrame(
+            {"btc_usd":np.full(len(public.index),100.)},
+            index=public.index)
         with tempfile.TemporaryDirectory() as directory:
             with (
                 patch("engines.research.cycle_forward_signal_tape.read_exported_history",
@@ -261,10 +266,12 @@ class ForwardTapeTests(unittest.TestCase):
                 patch("engines.research.cycle_forward_signal_tape.normalise_halving_epoch_metadata",
                       return_value={"last_halving_date":"2024-04-20",
                                     "halving_date_verified":True}),
+                patch("engines.research.cycle_forward_signal_tape.fetch_completed_kraken_daily",
+                      return_value=kraken),
             ):
                 result=run_once(out_dir=Path(directory),now=ASOF)
             self.assertEqual(
-                result["status"],"skipped_provider_close_not_yesterday")
+                result["status"],"skipped_kraken_verified_bridge_unavailable")
             self.assertFalse(result["wrote_snapshot"])
             self.assertFalse(result["wrote_outcomes"])
             self.assertFalse(list(Path(directory).iterdir()))
