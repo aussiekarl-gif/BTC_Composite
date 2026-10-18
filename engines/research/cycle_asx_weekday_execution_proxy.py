@@ -62,7 +62,9 @@ def utc_date(value):
 
 def replay_proxy(price,fx,*,start,terminal,fractions=FRACTIONS,
                  weekday_only=True,one_side_cost_bps=0,
-                 annual_nav_fee=0.,budget_aud=BUDGET_AUD):
+                 annual_nav_fee=0.,budget_aud=BUDGET_AUD,
+                 carry_weekend=False,carry_max_days=3,
+                 rebound_cap_over_200wma=.03):
     start,end=utc_date(start),utc_date(terminal)
     if (not isinstance(price,pd.Series)
             or not isinstance(price.index,pd.DatetimeIndex)
@@ -79,6 +81,12 @@ def replay_proxy(price,fx,*,start,terminal,fractions=FRACTIONS,
     values=price.loc[required].to_numpy(float)
     if (not np.isfinite(values).all() or (values<=0).any()
             or type(weekday_only) is not bool
+            or type(carry_weekend) is not bool
+            or (carry_weekend and not weekday_only)
+            or type(carry_max_days) is not int
+            or not 1<=carry_max_days<=3
+            or not math.isfinite(float(rebound_cap_over_200wma))
+            or not 0<=rebound_cap_over_200wma<=.10
             or not math.isfinite(float(one_side_cost_bps))
             or not 0<=one_side_cost_bps<=200
             or not math.isfinite(float(annual_nav_fee))
@@ -95,6 +103,8 @@ def replay_proxy(price,fx,*,start,terminal,fractions=FRACTIONS,
     market_watch=0
     watch_on_weekend=0
     watch_on_weekday=0
+    weekend_signal_pending=None
+    total_weekend_carried_fills=0
     for date in pd.date_range(start+pd.Timedelta(days=1),end,
                               freq="D",tz="UTC"):
         prior,wma=_historical_wma(price,date)
@@ -116,6 +126,19 @@ def replay_proxy(price,fx,*,start,terminal,fractions=FRACTIONS,
             else:watch_on_weekend+=1
         elif signal["signal"]=="BUY WATCH":
             raise AssertionError("New trade without original WMA gate")
+        # Candidate weekend carry is a SEPARATE rule from the live WMA
+        # trading policy. On Saturday/Sunday a valid LIVE market WATCH
+        # cannot be filled as an ASX order. Record its timestamp only.
+        # The next business WEEKDAY may use it at most once, without
+        # backdating the fill or overriding a 7-day executed-trade cooldown.
+        if carry_weekend and date.weekday()>=5 and eligible:
+            weekend_signal_pending=date
+        carry_eligible=(
+            carry_weekend and weekday_only and date.weekday()<5
+            and not eligible and weekend_signal_pending is not None
+            and 0<(date-weekend_signal_pending).days<=carry_max_days
+            and prior<=wma*(1+rebound_cap_over_200wma)
+        )
         nav_factor=(1-annual_nav_fee)**((date-start).days/365.)
         # Model's BTC-equivalent NAV, with hypothetical drag only on ETF
         # sensitivity, never on BTC signal. Not an actual IBIT valuation.
@@ -124,7 +147,7 @@ def replay_proxy(price,fx,*,start,terminal,fractions=FRACTIONS,
             due=(last_filled[fraction] is None or
                  (date-last_filled[fraction]).days>=TRADE_COOLDOWN_DAYS)
             allowed=not weekday_only or date.weekday()<5
-            if eligible and due and allowed:
+            if (eligible or carry_eligible) and due and allowed:
                 gross=account.cash*fraction
                 if gross>MIN_ORDER_AUD and gross>2*FEE_AUD:
                     adjusted_aud=aud_mid*(1+one_side_cost_bps/10000.)
@@ -133,6 +156,12 @@ def replay_proxy(price,fx,*,start,terminal,fractions=FRACTIONS,
                         order=account.orders[-1]
                         orders[fraction].append({
                             "date":str(date.date()),
+                            "entry_reason":(
+                                "last_weekend_prior_200wma_watch_carried"
+                                if carry_eligible else "strict_live_below_200wma"),
+                            "weekend_signal_origin_date":(
+                                str(weekend_signal_pending.date())
+                                if carry_eligible else None),
                             "gross_aud":round(float(order["gross_aud"]),2),
                             "btc_equivalent":round(float(order["btc"]),10),
                             "prior_usd_close":round(prior,3),
@@ -143,7 +172,14 @@ def replay_proxy(price,fx,*,start,terminal,fractions=FRACTIONS,
                                 annual_nav_fee*100,3),
                         })
                         last_filled[fraction]=date
+                        if carry_eligible:
+                            total_weekend_carried_fills+=1
             account.mark(aud_mid)
+        # A pending weekend WATCH is never reissued after its FIRST
+        # weekday review, regardless of cash dust, cooldown, price
+        # overshoot, or whether an executable fill was possible.
+        if weekday_only and date.weekday()<5:
+            weekend_signal_pending=None
     terminal_mid=float(price.loc[end])*fx_before(fx,end)*(
         (1-annual_nav_fee)**((end-start).days/365.))
     result={}
@@ -175,6 +211,11 @@ def replay_proxy(price,fx,*,start,terminal,fractions=FRACTIONS,
         "buy_watch_weekend_dates":watch_on_weekend,
         "buy_watch_weekday_dates":watch_on_weekday,
         "weekday_only":weekday_only,
+        "candidate_weekend_carry":carry_weekend,
+        "candidate_carry_max_days":carry_max_days if carry_weekend else None,
+        "candidate_max_rebound_over_wma_pct":(
+            round(100*rebound_cap_over_200wma,3) if carry_weekend else None),
+        "number_of_extra_carried_account_fills":total_weekend_carried_fills,
         "one_side_cost_bps":one_side_cost_bps,
         "assumed_annual_etf_nav_drag_pct":round(annual_nav_fee*100,3),
         "no_verified_asx_ibit_prices_before_listing":True,
