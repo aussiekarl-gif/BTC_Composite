@@ -136,7 +136,11 @@ class FirstTopAlertTests(unittest.TestCase):
         b=replay_first_alert_overlay(
             price,fx,signals,HALVING,TERMINAL,
             family="original_no_extra_sell")
-        self.assertEqual(sum(e["reason"]=="relative_euphoria"\n                             for e in a["executions"]),1)\n        self.assertLess(a["overlay_first_date"],\n                        next(e["date"] for e in b["executions"]\n                             if e["side"]=="SELL"))
+        self.assertEqual(sum(e["reason"]=="relative_euphoria"
+                             for e in a["executions"]),1)
+        self.assertLess(a["overlay_first_date"],
+                        next(e["date"] for e in b["executions"]
+                             if e["side"]=="SELL"))
         self.assertGreater(a["realised_tax_escrow_aud"],0)
         self.assertNotEqual(a["terminal_after_illustrative_cgt_aud"],
                             b["terminal_after_illustrative_cgt_aud"])
