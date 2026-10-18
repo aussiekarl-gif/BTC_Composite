@@ -243,9 +243,22 @@ def run_once(*, path: Path = OUTPUT,
 def main() -> None:
     parser = argparse.ArgumentParser(description="Paper-only prospective Kraken BTC depth")
     parser.add_argument("--self-check-only", action="store_true")
+    parser.add_argument("--probe-only", action="store_true",
+                        help="Fetch/parse a real public book without any persistence")
     args = parser.parse_args()
+    if args.self_check_only and args.probe_only:
+        parser.error("--probe-only and --self-check-only are mutually exclusive")
     read_verified_tape(OUTPUT)
-    if args.self_check_only:
+    if args.probe_only:
+        raw = fetch_kraken_book()
+        row = summarize_book(raw, captured_at_utc=dt.datetime.now(dt.timezone.utc))
+        print(json.dumps({
+            "status": "PROBE_SUCCESS_NO_WRITES_NO_TRADES",
+            "provider": row["provider"], "captured_at_utc": row["captured_at_utc"],
+            "spread_bps": row["spread_bps"],
+            "full_25bps_coverage": row["complete_25bps_band"],
+        }, sort_keys=True))
+    elif args.self_check_only:
         print("Existing depth tape verified; no network or write")
     else:
         appended = run_once()
