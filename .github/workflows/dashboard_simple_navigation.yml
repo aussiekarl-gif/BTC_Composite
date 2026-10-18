@@ -1,0 +1,32 @@
+name: BTC Dashboard Simple Navigation Safety
+
+on:
+  pull_request:
+    paths:
+      - 'app.py'
+      - 'tests/test_dashboard_simple_navigation.py'
+      - '.github/workflows/dashboard_simple_navigation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preserve-cycle-production-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install application dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Confirm four visible models and 200WMA BUY signal retained
+        run: |
+          python -m py_compile app.py
+          python -m unittest discover -s tests -p 'test_dashboard_simple_navigation.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_halving_and_quote_display.py' -v
+      - name: No change to data or positions
+        run: git diff --exit-code -- data/ .github/notification_state/
