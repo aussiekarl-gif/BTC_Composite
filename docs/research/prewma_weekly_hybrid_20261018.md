@@ -24,3 +24,36 @@ Previously completed studies rejected a 10% above-WMA starter only after day56 a
 Expected artifacts: full dated JSON order ledgers, historical and stress CSVs. CI unit tests check no gate, 10% starter cap, original WMA gate date, original post-gate sizing, no lookahead, no invented history, and bad historical price/FX fail closed.
 
 Live existing 200WMA recommendations and notices remain unchanged regardless of research outcome.
+
+
+## Completed numerical verdict — REJECT LIVE PROMOTION (18 October 2026)
+
+The frozen candidate and all independent comparative accounts passed [GitHub Actions run 39105863929](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39105863929): 8 new hybrid tests, 8 reference cash-only 200WMA tests and 9 existing earlier fallback tests **all pass**. [Detailed run ledger, cohort CSVs and shock paths](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39105863929/artifacts/12127813010). Historical period is already modelled/inspected, so no out-of-sample evidence.
+
+| Historical BTC cycle | Fresh cash start, halving+day | Pre-gate starter share of ORIGINAL AUD | Hybrid vs original 200WMA in illustrative after-tax AUD | Hybrid vs fixed 52-week DCA |
+|---|---:|---:|---:|---:|
+| 2017 completed | 650 | 10% | **-4.036%** | +27.293% |
+| 2017 completed | 750 | 10% | **-3.458%** | +31.324% |
+| 2017 completed | 850 | 6% | **-0.458%** | +48.787% |
+| 2017 completed | 900 | 10%; original gate never triggers | **+17.330%** | **-25.931%** |
+| 2021 completed | 650 | 10% | **-4.950%** | +6.463% |
+| 2021 completed | 750 | 2% | **-0.383%** | +6.460% |
+| 2021 completed | 850,900 | 0%; immediate WMA gate | 0.000% | +6.191%, +6.327% |
+| 2025/26 right-censored | 650 | 10% | +0.837%* | +7.124%* |
+| 2025/26 right-censored | 750 | 4% | +0.022%* | +11.535%* |
+| 2025/26 right-censored | 850 | 7%; no new gate by Oct 5 | +0.760%* | **-0.697%*** |
+
+*2025/26 current observed low/terminal price may change dramatically after archive cutoff Oct 5; NOT a completed investment period.*
+
+Against immediate lump sum, even the strongest late 2017-relative case (+17.330% over no-buy original) finished **56.923% below lump sum**. The proposed partial starter therefore fails to capture much of the upside in a fast recovery. It may marginally improve recent 2026 observed trajectories but they are right-censored.
+
+### Exposed delayed-bottom stress
+
+**All twelve** synthetic cases bought 10% of original cash before the forced shock, so none of the stress comparisons is vacuous. Ten of 12 ended behind the unchanged original 200WMA strategy (all four 2021+650 shocks and all four 2017+750 shocks, plus two of four 2017+900). The **worst relative after-tax outcome was -12.834%** (2017 +750, 70% delayed drawdown, end 55% of pre-shock price). Two 2017+900 synthetic endings were marginally ahead (+1.377%, +1.142%), but the same cohort lost (-3.701%, -2.744%) on the less favorable terminal recovery outcomes. These **invented paths are not sample outcomes and do not imply a 10/12 loss probability**.
+
+### Decision
+
+- **DO NOT promote** this 1% weekly max-10% starter to Streamlit or ntfy; its worst exposed delay-to-bottom loss, negative 2017/2021 cohorts and poor performance against conventional weekly DCA in a no-WMA rally do not establish a robust improvement.
+- The real tradeoff remains unsolved: an unconditional starter reduces cash drag when BTC recovers but adds price exposure before the eventual bottom; simply assuming future higher lows or shorter cycles cannot resolve the tradeoff.
+- Preserve strict prior-completed-close 200WMA as the existing baseline, no fabricated 2025 portfolio holdings and no daily trading rule changes. If considering a future candidate, distinguish prospective genuine personal cash-start dates and use a separately frozen forward test with slippage, ETF trading hours and real AUD tax lots.
+- Research negative result is recorded here and in GitHub PR #139; keep new research code off `main` by closing the draft unmerged. No production V5.8.2, Research V5.9, Streamlit, daily ntfy, live orders or Google Sheets data were changed.
