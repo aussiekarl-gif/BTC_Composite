@@ -1,0 +1,39 @@
+name: Research First Below 200WMA 10pct Cash BUY
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/first_wma_gate_10pct.py'
+      - 'tests/test_first_wma_gate_10pct.py'
+      - '.github/workflows/first_wma_gate_10pct.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-cash-initial-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install original analysis dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Tests and independent 2.5 percent original cash parity
+        run: |
+          python -m py_compile engines/research/first_wma_gate_10pct.py
+          python -m unittest discover -s tests -p 'test_first_wma_gate_10pct.py' -v
+          python -m unittest discover -s tests -p 'test_fresh_cash_200wma_matched_backtest.py' -v
+          python -m unittest discover -s tests -p 'test_shared_cycle_policy.py' -v
+      - name: Compare completed cycles, 2025 incomplete, delayed deeper bottoms
+        run: python -m engines.research.first_wma_gate_10pct --out artifacts/first_gate_10pct
+      - name: Preserve matched aftertax evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-gate-10pct-matched-evidence
+          path: artifacts/first_gate_10pct/
+          if-no-files-found: ignore
