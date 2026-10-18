@@ -1,0 +1,39 @@
+name: Research BTC Capped Weekly Pre-200WMA Hybrid Cash BUY
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/prewma_weekly_hybrid.py'
+      - 'tests/test_prewma_weekly_hybrid.py'
+      - '.github/workflows/prewma_weekly_hybrid.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cash-start-shallow-and-deep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned research requirements
+        run: python -m pip install -r requirements.txt
+      - name: Verify 1pct pre-gate cap, original 200WMA parity and causal execution
+        run: |
+          python -m py_compile engines/research/prewma_weekly_hybrid.py
+          python -m unittest discover -s tests -p 'test_prewma_weekly_hybrid.py' -v
+          python -m unittest discover -s tests -p 'test_fresh_cash_200wma_matched_backtest.py' -v
+          python -m unittest discover -s tests -p 'test_capped_wma_fallback_stress.py' -v
+      - name: Run real 2017/2021 and censored 2025/26 plus exposed delayed-bottom shocks
+        run: python -m engines.research.prewma_weekly_hybrid --out artifacts/prewma_weekly_hybrid
+      - name: Save executed orders, original cash comparisons and shocks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prewma-capped-weekly-cash-hybrid-evidence
+          path: artifacts/prewma_weekly_hybrid/
+          if-no-files-found: ignore
