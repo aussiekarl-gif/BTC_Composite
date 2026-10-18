@@ -1,0 +1,39 @@
+name: Research BTC Cycle Maturation and 200WMA Gate Diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/btc_cycle_maturation_audit.py'
+      - 'tests/test_btc_cycle_maturation_audit.py'
+      - '.github/workflows/btc_cycle_maturation_audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  observed-cycle-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check causal gating and existing original rule regression
+        run: |
+          python -m py_compile engines/research/btc_cycle_maturation_audit.py
+          python -m unittest discover -s tests -p 'test_btc_cycle_maturation_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_indicator_timing_audit.py' -v
+          python -m unittest discover -s tests -p 'test_shared_cycle_policy.py' -v
+      - name: Score archived 2017, 2021, and censored 2025-26
+        run: python -m engines.research.btc_cycle_maturation_audit --out artifacts/cycle_maturation
+      - name: Save dated observed cycle metrics and fresh-cash waiting periods
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-cycle-maturation-regime-diagnostic
+          path: artifacts/cycle_maturation/
+          if-no-files-found: ignore
