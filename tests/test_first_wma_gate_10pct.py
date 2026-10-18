@@ -100,8 +100,13 @@ class FirstGateTests(unittest.TestCase):
         self.assertEqual(advanced["orders"][0]["gross_aud"],4000.)
         self.assertEqual(ref["orders"][0]["gross_aud"],1000.)
         self.assertGreater(advanced["btc_purchased_and_held"],0)
-        self.assertNotEqual(advanced["cash_left_aud"],ref["cash_left_aud"])
-        self.assertLess(advanced["cash_left_pct"],ref["cash_left_pct"])
+        # Both can ultimately spend ALL cash in a long bear market.
+        # The risk of advancing the first buy is fewer BTC accumulated
+        # if the dominant remaining purchases occur at a lower price.
+        self.assertLess(advanced["btc_purchased_and_held"],
+                        ref["btc_purchased_and_held"])
+        self.assertGreater(advanced["average_buy_usd_vwap"],
+                           ref["average_buy_usd_vwap"])
 
     def test_reject_bad_inputs(self):
         price,fx=fixture()
