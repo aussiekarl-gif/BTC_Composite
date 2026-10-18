@@ -95,7 +95,7 @@ class ForwardReadinessTest(unittest.TestCase):
 
     def test_non_aus_market_session_refused(self):
         a,b=fixture()
-        row=ibit_record("2026-10-18","2026-10-18T08:00:00+00:00")
+        row=ibit_record("2026-10-18","2026-10-18T05:00:00+00:00")
         forged,_=append_market_observation("",row)
         with self.assertRaisesRegex(ValueError,"Non-prospective"):
             inspect_forward_tapes(a,forged,now=NOW)
