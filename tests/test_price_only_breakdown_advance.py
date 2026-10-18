@@ -119,7 +119,7 @@ class PriceOnlyBreakdownAdvanceTest(unittest.TestCase):
     def test_reject_missing_days_negative_price_and_future_end(self):
         price, fx = synthetic_prices(breakdown=True), synthetic_fx()
         for bad in (
-            price.drop(price.index[100]),
+            price.drop(H + pd.Timedelta(days=200)),
             price.mask(price.index == H + pd.Timedelta(days=200), np.nan),
             price.mask(price.index == H + pd.Timedelta(days=200), -1.),
         ):
