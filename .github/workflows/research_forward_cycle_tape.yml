@@ -1,6 +1,12 @@
 name: Research prospective Cycle signal tape (no ntfy)
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'engines/research/cycle_forward_signal_tape.py'
+      - '.github/workflows/research_forward_cycle_tape.yml'
   pull_request:
     paths:
       - 'engines/research/cycle_forward_signal_tape.py'
@@ -40,6 +46,13 @@ jobs:
       - name: Capture only last VERIFIED completed close and market-level Cycle signal
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: python -m engines.research.cycle_forward_signal_tape
+      - name: Preserve prospective source record even if repository write is blocked
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-forward-market-signal-capture
+          path: data/research_forward_validation/
+          if-no-files-found: ignore
       - name: Save only new immutable research observation and matured scores
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
