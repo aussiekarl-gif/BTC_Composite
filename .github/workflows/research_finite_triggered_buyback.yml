@@ -1,0 +1,41 @@
+name: Research Finite 24 and 52 Week Triggered Bitcoin Buyback
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/finite_triggered_buyback_audit.py'
+      - 'engines/research/live_cycle_self_financing_roundtrip.py'
+      - 'tests/test_finite_triggered_buyback_audit.py'
+      - '.github/workflows/research_finite_triggered_buyback.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  first-below-200wma-trigger-then-planned-buyback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install unchanged project dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Verify unmodified original 2.5% live BUY and finite candidate guardrails
+        run: |
+          python -m py_compile engines/research/finite_triggered_buyback_audit.py
+          python -m py_compile engines/research/live_cycle_self_financing_roundtrip.py
+          python -m unittest discover -s tests -p 'test_finite_triggered_buyback_audit.py' -v
+          python -m unittest discover -s tests -p 'test_live_cycle_self_financing_roundtrip.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Same SELLs plus real aftertax cash funding, 24/52 candidates and bull/bear stresses
+        run: python -m engines.research.finite_triggered_buyback_audit --out artifacts/finite_triggered_buyback
+      - name: Preserve exact portfolio ledgers and matched AUD/BTC comparative values
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-cycle-live-buyback-vs-first-gated-24-or-52-tranches
+          path: artifacts/finite_triggered_buyback/
+          if-no-files-found: ignore
