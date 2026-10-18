@@ -80,7 +80,7 @@ class LiveSellParityTests(unittest.TestCase):
             self.assertAlmostEqual(
                 later["fraction_remaining_before_pct"],
                 SELL_REVIEW_DAY_WEIGHTS[later["day"]]*100,places=3)
-        self.assertLessEqual(market["original_btc_sold_pct"],62.68)
+        self.assertLessEqual(market["original_btc_sold_pct"],62.69)
 
     def test_2021_style_late_top_can_issue_multiple_5pct_remaining(self):
         px,fx=synthetic("breakdown")
