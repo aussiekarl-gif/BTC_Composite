@@ -159,7 +159,7 @@ def matched_replay(risk,fx,*,start,terminal,budget_aud=BUDGET_AUD):
                 # remaining cash / remaining weeks * prior-known score weight.
                 # This does NOT know future risk or price; 'remaining weeks'
                 # counts scheduled calendar weeks (a user-entered deadline).
-                remaining_weeks=len(schedule)-i
+                remaining_weeks=max((end-date).days/7.0,1.0)
                 gross=min(account.cash,max(0.,account.cash/
                            remaining_weeks*float(multipliers[i])))
             if gross>max(100.,2*FEE_AUD):
