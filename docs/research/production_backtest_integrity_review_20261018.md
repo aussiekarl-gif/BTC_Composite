@@ -26,3 +26,22 @@ New tests must confirm exact prev-day FX rather than future-day fill, fail-close
 **A first earlier GitHub run exposed and prevented a real error in the proposed FX helper**: it assumed pandas datetime integers were always nanoseconds, and failed to reject stale one-month-old FX rates when stored at microsecond precision. The corrected helper explicitly aligns all timestamps to the same resolution and calculates staleness using real pandas `Timedelta` objects. Full tests now assert 31-day-old FX is correctly refused and same-day/forward FX is forbidden.
 
 Status: **Technical test gate PASSED, but branch still DRAFT and UNMERGED.** No application, live Production DCA Today, stored portfolio or ntfy rules have changed. Changes affect Historical Backtest view on merge only, and must be reviewed for historical performance differences because fixing indicator warmup can materially change displayed Smart DCA metrics. The existing future-total-weights equal-budget allocator remains retrospective and must not be called an executable forecast. No verified full historical provider vintages or actual ASX:IBIT historic trade records.
+
+
+## Final numerical review and release scope — 18 October 2026
+
+**[GitHub Actions run 39124488904](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39124488904) SUCCESS.** All 30 existing/new test cases passed and the separate numerical impact report completed. The other three matching PR workflow checks (Production causal budget audit, Cycle trading portfolio integrity, Portfolio 2026 entry accuracy) passed on the same candidate revision. Both Production model and Streamlit app compile.
+
+The diagnostic compares 181 BTC+archived MVRV-Z dates in each window, with pre-start 300-day history preserved versus the previous approach dropping it before computing risk. **This is a partial-input risk-score proxy, NOT verified past Production vintages: historical Fear & Greed unavailable, MVRV historical exports not contemporaneous independently verified. It does not compute any trading returns or use a synthetic FX rate.**
+
+| Historical start | Old risk-score missing /181 days | Corrected missing /181 days | Paired days with changed risk score | Median corrected/old DCA-weight ratio | Max abs risk-score change |
+|---|---:|---:|---:|---:|---:|
+| 2017-01-01 | 14 | 0 | 167 | 0.438448x | 0.464520 |
+| 2021-01-01 | 14 | 0 | 167 | 0.895934x | 0.149042 |
+| 2025-01-01 | 14 | 0 | 167 | 0.690708x | 0.289834 |
+
+First common valid date Jan15: 2017 legacy multiplier 2.174836x vs corrected 1.229533x; 2021 0.155909x vs corrected 0.068298x; 2025 1.025595x vs corrected 0.314145x. **Substantial historical input-calibration correctness problem confirmed.**
+
+Scope review: only historical DCA Backtest gets historical prior dated FX validation and complete available warmup for historical risk, plus an explicit label admitting its existing entire-future-normalised cash allocation is *retrospective, not executable DCA Today*. The untouched DCA Today formula and underlying production risk weights and live Cycle/portfolio/ntfy code remain unchanged. Missing FX now produces a visible error rather than a fabricated 0.70 USD/AUD historical rate. Historical scores and old chart gains will change: no old historical performance claim remains directly comparable.
+
+**Release decision:** This narrowly scoped backtest correctness patch passes numerical/test acceptance and can merge as historical reporting correction; not as a new strategy or a claim of superior Bitcoin accumulation. True causal funded capital allocation remains a separate known limitation; no further parameter tuning from these windows.
