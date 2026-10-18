@@ -13,7 +13,7 @@ from engines.research.btc_cycle_maturation_audit import (
 
 H=pd.Timestamp("2020-01-01",tz="UTC")
 END=H+pd.Timedelta(days=1050)
-DATES=pd.date_range("2016-01-01",END,freq="D",tz="UTC")
+DATES=pd.date_range(pd.Timestamp("2016-01-01",tz="UTC"),END,freq="D")
 
 
 def price_history(*,constant=False):
