@@ -293,7 +293,7 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertIn('cached_halving_countdown_v2.clear()',app)
         self.assertIn('cycle_refresh_heartbeat()',app)
         self.assertIn('st.rerun()',app)
-        self.assertIn('and staleness<=3 and cycle_feed_verified',app)
+        self.assertIn('and staleness==1 and cycle_feed_verified',app)
         self.assertIn('start=market["halving_date"]',app)
         self.assertNotIn('cycle_fx_source("2024-04-20"',app)
 
