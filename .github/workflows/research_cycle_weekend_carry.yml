@@ -1,0 +1,41 @@
+name: Research Weekend-to-Weekday Cycle BUY Carry
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_asx_weekday_execution_proxy.py'
+      - 'engines/research/cycle_weekend_carry_audit.py'
+      - 'tests/test_cycle_weekend_carry_audit.py'
+      - '.github/workflows/research_cycle_weekend_carry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-live-signal-change:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install unchanged research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Test original model parity and posthoc weekend candidate
+        run: |
+          python -m py_compile engines/research/cycle_weekend_carry_audit.py
+          python -m unittest discover -s tests -p 'test_cycle_weekend_carry_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_asx_weekday_execution_proxy.py' -v
+          python -m unittest discover -s tests -p 'test_live_weekly_buy_parity.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Replay historical 2017 and 2021, incomplete 2025 and artificial delayed crashes
+        run: python -m engines.research.cycle_weekend_carry_audit --out artifacts/cycle_weekend_carry
+      - name: Store all dated carries and audit rationale
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-cycle-weekend-wma-carry-research
+          path: artifacts/cycle_weekend_carry/
+          if-no-files-found: ignore
