@@ -190,7 +190,7 @@ def match_rows(replay,*,cycle,start_day,synthetic=False,
             "terminal_pct":terminal_pct,"complete":complete,
             "start":replay["start"],"terminal":replay["terminal"],
             "first_below_200wma":replay["first_below_200wma_buy_watch"],
-            "fraction_candidate_pct":fraction*100,
+            "fraction_candidate_pct":round(fraction*100,3),
             "aftertax_live_baseline_aud":base["aftertax_aud"],
             "aftertax_candidate_aud":challenger["aftertax_aud"],
             "candidate_relative_aftertax_pct":round(
