@@ -47,27 +47,39 @@ def calculate_impact(history):
             raise AssertionError("Different trading dates")
         old_score=old["risk_score"].to_numpy(dtype=float)
         new_score=new["risk_score"].to_numpy(dtype=float)
-        if not np.isfinite(old_score).all() or not np.isfinite(new_score).all():
-            raise ValueError("Missing proxy risk input; cannot measure")
-        old_mult=np.array([interpolate(SMART_DCA_POINTS,v)
+        # Legacy truncated warmup often has NO valid risk-score
+        # at all on early days. Do not silently convert missing risk
+        # to 1x then call it a model-derived score. Report each missing
+        # count and compare only the actual paired finite observations.
+        paired=np.isfinite(old_score)&np.isfinite(new_score)
+        if not paired.any():
+            raise ValueError("No paired valid proxy risk days")
+        old_mult=np.array([interpolate(SMART_DCA_POINTS,float(v))
+                           if np.isfinite(v) else float("nan")
                            for v in old_score],dtype=float)
-        new_mult=np.array([interpolate(SMART_DCA_POINTS,v)
+        new_mult=np.array([interpolate(SMART_DCA_POINTS,float(v))
+                           if np.isfinite(v) else float("nan")
                            for v in new_score],dtype=float)
-        if not np.isfinite(old_mult).all() or not np.isfinite(new_mult).all():
-            raise ValueError("Invalid multiplier")
-        differences=np.abs(new_score-old_score)
+        differences=np.abs(new_score[paired]-old_score[paired])
+        first=int(np.flatnonzero(paired)[0])
         results.append({
             "start_date":st,
-            "old_first_day_score":round(float(old_score[0]),6),
-            "corrected_first_day_score":round(float(new_score[0]),6),
-            "old_first_day_multiplier":round(float(old_mult[0]),6),
-            "corrected_first_day_multiplier":round(float(new_mult[0]),6),
+            "old_initial_score_missing":bool(not np.isfinite(old_score[0])),
+            "corrected_initial_score_missing":bool(not np.isfinite(new_score[0])),
+            "old_missing_score_dates":int((~np.isfinite(old_score)).sum()),
+            "corrected_missing_score_dates":int((~np.isfinite(new_score)).sum()),
+            "first_day_with_both_valid":str(old.index[first].date()),
+            "old_first_paired_day_score":round(float(old_score[first]),6),
+            "corrected_first_paired_day_score":round(float(new_score[first]),6),
+            "old_first_paired_day_multiplier":round(float(old_mult[first]),6),
+            "corrected_first_paired_day_multiplier":round(float(new_mult[first]),6),
             "max_absolute_risk_score_difference":round(float(differences.max()),6),
             "median_absolute_risk_score_difference":round(float(np.median(differences)),6),
-            "trade_dates_with_different_score":int((differences>1e-6).sum()),
+            "paired_dates_with_different_score":int((differences>1e-6).sum()),
+            "valid_paired_dates":int(paired.sum()),
             "calendar_dates_checked":len(old),
             "median_multiplier_ratio_corrected_over_old":round(
-                float(np.median(new_mult/old_mult)),6),
+                float(np.median(new_mult[paired]/old_mult[paired])),6),
         })
     return {
         "scope":"READ-ONLY old start-truncated versus draft warmup corrected risk only",
