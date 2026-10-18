@@ -759,6 +759,51 @@ def align_fx_to_dates(data, fx_series, fallback=0.70):
     return result
 
 
+def align_historical_fx_strict(data, fx_series, max_age_days=7):
+    """Historical BACKTEST only: verified prior FX, no future backfill.
+
+    Unlike legacy align_fx_to_dates (retained unchanged for DCA Today),
+    reject missing/stale dates, missing FX, bad FX and all quotes whose
+    date equals or follows the historical BTC execution timestamp.
+    The issuer's FX publication has no guaranteed morning timestamp;
+    using a strictly PRIOR market day avoids intraday lookahead.
+    """
+    if (not isinstance(data, pd.DataFrame) or data.empty
+            or not isinstance(data.index, pd.DatetimeIndex)
+            or data.index.has_duplicates
+            or not data.index.is_monotonic_increasing):
+        raise ValueError("Historical BTC prices require distinct ordered dates")
+    if (not isinstance(fx_series, pd.Series) or fx_series.empty
+            or not isinstance(fx_series.index, pd.DatetimeIndex)
+            or fx_series.index.has_duplicates
+            or not fx_series.index.is_monotonic_increasing):
+        raise ValueError("Historical AUD FX data unavailable; do not fabricate FX")
+    if not isinstance(max_age_days, int) or not 1 <= max_age_days <= 7:
+        raise ValueError("Invalid historical FX maximum age")
+    dates = pd.to_datetime(data.index, utc=True)
+    fx_dates = pd.to_datetime(fx_series.index, utc=True)
+    values = pd.to_numeric(fx_series, errors="coerce").to_numpy(float)
+    if (not np.isfinite(values).all() or (values <= 0).any()):
+        raise ValueError("Historical AUD FX invalid")
+    # STRICT inequality: never use a quote labelled the execution day
+    # itself, which could have been published later than the BTC mark.
+    # Timestamp precision can be nanoseconds OR microseconds depending
+    # on installed pandas. Compare on a common dtype, then calculate gaps
+    # with a real pandas Timedelta instead of assuming .asi8 is in ns.
+    positions = np.searchsorted(
+        fx_dates.to_numpy(dtype="datetime64[ns]"),
+        dates.to_numpy(dtype="datetime64[ns]"), side="left") - 1
+    if (positions < 0).any():
+        raise ValueError("No historical FX strictly before first BTC date")
+    gaps = ((dates - fx_dates.take(positions)) /
+            pd.Timedelta(days=1)).to_numpy(dtype=float)
+    if (gaps > max_age_days).any() or (gaps <= 0).any():
+        raise ValueError("Historical FX absent or older than maximum age")
+    result = data.copy()
+    result["usd_per_aud"] = values[positions]
+    return result
+
+
 # ================================================================
 # Risk Engines
 # ================================================================
@@ -1358,10 +1403,18 @@ def simulate_dca_backtest(
         raise ValueError(f"Unsupported active DCA strategy: {strategy_mode}")
     if df_full.empty:
         return pd.DataFrame(), {}
-    df = df_full[(df_full.index >= params["start_date"]) & (df_full.index <= params["end_date"])].copy()
+    # The selected investing start must NOT erase older indicator
+    # warmup and historical risk percentile calibration. Compute
+    # using the full AS-OF-TERMINAL price prefix; only THEN trim
+    # to eligible orders. This does not change today's live DCA rules.
+    prior_data = df_full[df_full.index <= params["end_date"]].copy()
+    if prior_data.empty:
+        return pd.DataFrame(), {}
+    with_warmup = add_risk_indicators(
+        prior_data, params["risk_model"], params)
+    df = with_warmup[with_warmup.index >= params["start_date"]].copy()
     if df.empty:
         return pd.DataFrame(), {}
-    df = add_risk_indicators(df, params["risk_model"], params)
     execution = select_execution_dates(df, dca_frequency, params["day_of_week"])
     if execution.empty:
         return pd.DataFrame(), {}

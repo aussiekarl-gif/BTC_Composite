@@ -796,7 +796,10 @@ if mode == "DCA Backtest":
 
     with st.spinner("Loading historical BTC and AUD/USD data..."):
         df_full = fetch_btc_history(params["start_date"], params["end_date"])
-        fx_series = fetch_aud_usd_rates(params["start_date"], params["end_date"])
+        # Historical price loader includes 300 days of pre-start warmup.
+        # Request PRIOR FX over that buffer; do not silently backfill it.
+        fx_series = fetch_aud_usd_rates(
+            params["start_date"] - timedelta(days=310), params["end_date"])
         bg_token = get_bgeometrics_token()
         bg_data = fetch_bgeometrics_bundle(
             params["start_date"] - timedelta(days=300),
@@ -808,7 +811,15 @@ if mode == "DCA Backtest":
         st.error("No BTC price data was returned.")
         st.stop()
 
-    df_full = align_fx_to_dates(df_full, fx_series)
+    try:
+        # Historical backtest must have dated, strictly PREVIOUS FX.
+        # Legacy DCA Today quotes and risk-score sizing are untouched.
+        df_full = align_historical_fx_strict(df_full, fx_series)
+    except ValueError as exc:
+        st.error(
+            f"Cannot run verified historical AUD backtest: {exc}. "
+            "A fixed USD/AUD assumption or later quote would misstate results.")
+        st.stop()
     df_full = merge_bgeometrics(df_full, bg_data)
 
     with st.spinner("Running equal-capital Plain DCA vs Smart DCA..."):
@@ -852,6 +863,12 @@ if mode == "DCA Backtest":
     )
 
     st.header("Simple DCA Backtest")
+    st.caption(
+        "RETROSPECTIVE ONLY: Smart DCA uses all historical weight values to allocate "
+        "the full budget across the selected interval. This is not the live DCA Today "
+        "cash-remaining / weeks-remaining execution policy. Earlier risk-score "
+        "warmup and strictly previous dated AUD/USD FX are preserved."
+    )
     st.caption(
         f"Same A${capital_target:,.0f} budget • {dca_frequency} • "
         f"{dca_backtest_start_date.strftime('%d/%m/%Y')} to "
