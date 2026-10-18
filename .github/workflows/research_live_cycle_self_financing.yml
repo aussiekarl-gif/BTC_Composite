@@ -1,0 +1,40 @@
+name: Research Full Cycle Sell And Self Financing Buyback Parity
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/live_cycle_self_financing_roundtrip.py'
+      - 'tests/test_live_cycle_self_financing_roundtrip.py'
+      - '.github/workflows/research_live_cycle_self_financing.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare-full-cycle-accounts-research-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install project research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Validate exact current market parity and fully funded BTC/AUD ledgers
+        run: |
+          python -m py_compile engines/research/live_cycle_self_financing_roundtrip.py
+          python -m unittest discover -s tests -p 'test_live_cycle_self_financing_roundtrip.py' -v
+          python -m unittest discover -s tests -p 'test_live_cycle_sell_parity_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Replay matched full Cycle SELL and BUYBACK including rising and declining stress
+        run: |
+          python -m engines.research.live_cycle_self_financing_roundtrip --out artifacts/live_cycle_full_roundtrip
+      - name: Preserve all transaction ledgers and after-tax portfolio values
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-cycle-exact-live-sell-and-buyback-full-roundtrip
+          path: artifacts/live_cycle_full_roundtrip/
+          if-no-files-found: ignore
