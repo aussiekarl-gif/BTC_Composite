@@ -53,7 +53,21 @@ def calculate_impact(history):
         # count and compare only the actual paired finite observations.
         paired=np.isfinite(old_score)&np.isfinite(new_score)
         if not paired.any():
-            raise ValueError("No paired valid proxy risk days")
+            # A short old backtest may have ZERO risk values because the
+            # start-date trim threw out 200-day and 365-day warmup.
+            # This is a substantive accuracy finding, not an error.
+            results.append({
+                "start_date":st,
+                "old_initial_score_missing":bool(not np.isfinite(old_score[0])),
+                "corrected_initial_score_missing":bool(not np.isfinite(new_score[0])),
+                "old_missing_score_dates":int((~np.isfinite(old_score)).sum()),
+                "corrected_missing_score_dates":int((~np.isfinite(new_score)).sum()),
+                "first_day_with_both_valid":None,
+                "valid_paired_dates":0,
+                "calendar_dates_checked":len(old),
+                "old_score_was_unavailable_in_entire_window":True,
+            })
+            continue
         old_mult=np.array([interpolate(SMART_DCA_POINTS,float(v))
                            if np.isfinite(v) else float("nan")
                            for v in old_score],dtype=float)
