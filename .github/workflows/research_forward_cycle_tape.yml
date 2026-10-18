@@ -1,0 +1,67 @@
+name: Research prospective Cycle signal tape (no ntfy)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'engines/research/cycle_forward_signal_tape.py'
+      - '.github/workflows/research_forward_cycle_tape.yml'
+  pull_request:
+    paths:
+      - 'engines/research/cycle_forward_signal_tape.py'
+      - 'tests/test_cycle_forward_signal_tape.py'
+      - '.github/workflows/research_forward_cycle_tape.yml'
+  workflow_dispatch:
+  schedule:
+    # 12:25 UTC = 22:25 Brisbane. Last UTC day is complete.
+    - cron: '25 12 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research-cycle-forward-signal-tape
+  cancel-in-progress: false
+
+jobs:
+  record-only-public-market:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install same research dependencies as Streamlit
+        run: python -m pip install -r requirements.txt
+      - name: Check frozen model equality, capture invariants and future-only grades
+        run: |
+          python -m py_compile engines/research/cycle_forward_signal_tape.py
+          python -m unittest discover -s tests -p 'test_cycle_forward_signal_tape.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
+      - name: Capture only last VERIFIED completed close and market-level Cycle signal
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: python -m engines.research.cycle_forward_signal_tape
+      - name: Preserve prospective source record even if repository write is blocked
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-forward-market-signal-capture
+          path: data/research_forward_validation/
+          if-no-files-found: ignore
+      - name: Save only new immutable research observation and matured scores
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- data/research_forward_validation/
+          if git diff --cached --quiet; then
+            echo 'No new verified BTC close or matured horizon to record.'
+          else
+            git commit -m 'Research forward BTC Cycle signal tape: completed-close capture [skip ci]'
+            git push origin HEAD:main
+          fi
