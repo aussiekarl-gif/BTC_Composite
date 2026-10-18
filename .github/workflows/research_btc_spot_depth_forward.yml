@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install public REST client for live source probe
+        run: python -m pip install 'requests>=2.31,<3'
       - name: Run isolated offline validation
         run: |
           python -m py_compile engines/research/btc_spot_depth_forward.py
