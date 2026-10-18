@@ -91,6 +91,44 @@ class SourceDisagreementAttributionTests(unittest.TestCase):
         self.assertEqual(corrected["latest_pair_absolute_pct"],0.)
         self.assertFalse(report["eligible_to_change_live_source_or_signal"])
 
+    def test_shadow_shared_market_restores_real_completed_UTC_day(self):
+        from engines.research.cycle_source_disagreement_audit import (
+            shadow_live_feed_alignment,
+        )
+        a,b,k=sources()
+        b=b.loc[:"2026-10-15"]
+        fx=pd.DataFrame({"aud_per_usd":np.full(40,1.5)},
+                        index=pd.date_range("2026-09-09",periods=40,
+                                            freq="D",tz="UTC"))
+        out=shadow_live_feed_alignment(
+            a,b,k,fx,asof=DATE)
+        base=out["main_live_source_unmodified"]
+        shadow=out["corrected_chart_date_plus_completed_Kraken_SHADOW"]
+        self.assertEqual(base["observed_BTC_close_UTC_date"],"2026-10-15")
+        self.assertEqual(shadow["observed_BTC_close_UTC_date"],"2026-10-17")
+        self.assertEqual(base["signal_from_SHARED_UNCHANGED_market_code"],
+                         shadow["signal_from_SHARED_UNCHANGED_market_code"])
+        self.assertEqual(out["Kraken_last_completed_day_bridge"][
+            "appended_dates"],[
+                "2026-10-15","2026-10-16","2026-10-17"])
+        self.assertTrue(out["shadow_only_no_implemented_live_change"])
+        self.assertEqual(shadow["BUY_pct_remaining_AUD_cash"],0.)
+
+    def test_shadow_rejects_unavailable_recent_completed_exchange_closes(self):
+        from engines.research.cycle_source_disagreement_audit import (
+            shadow_live_feed_alignment,
+        )
+        a,b,k=sources()
+        b=b.loc[:"2026-10-15"]
+        fx=pd.DataFrame({"aud_per_usd":np.full(40,1.5)},
+                        index=pd.date_range("2026-09-09",periods=40,
+                                            freq="D",tz="UTC"))
+        with self.assertRaisesRegex(ValueError,"consecutive"):
+            shadow_live_feed_alignment(
+                a,b,k.loc[:"2026-10-14"],fx,asof=DATE)
+        with self.assertRaisesRegex(ValueError,"independently"):
+            shadow_live_feed_alignment(a,b,None,fx,asof=DATE)
+
     def test_post_archive_new_public_days_check_against_kraken(self):
         a,b,k=sources()
         b.loc["2026-10-14","btc_usd"]=110.
