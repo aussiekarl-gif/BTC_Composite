@@ -87,6 +87,45 @@ def _pair(a,b,*,start,end,name_a,name_b):
     }
 
 
+
+def shifted_daily_close_alignment(blockchain,kraken,*,start,end):
+    """DIAGNOSTIC ONLY: spot one-day UTC candle labelling differences.
+
+    For provider date D, compare Blockchain quote with Kraken
+    D-1, D and D+1 UTC close separately. A shifted match MAY reflect
+    different timestamp conventions, not provider price inaccuracy.
+    Never silently shift live market prices or use future data.
+    """
+    sample=blockchain.loc[(blockchain.index>=start)&
+                          (blockchain.index<=end)]
+    output=[]
+    for shift in (-1,0,1):
+        paired=[]
+        for d,v in sample.items():
+            key=d+pd.Timedelta(days=shift)
+            if key in kraken.index:
+                paired.append(100*abs(float(v)/float(kraken.loc[key])-1))
+        if paired:
+            output.append({
+                "Kraken_close_date_offset_from_Blockchain_quote_days":shift,
+                "paired_days":len(paired),
+                "median_absolute_deviation_pct":round(
+                    float(pd.Series(paired).median()),5),
+                "maximum_absolute_deviation_pct":round(max(paired),5),
+            })
+    if not output:
+        return {"available":False,"tests":[]}
+    winner=min(output,key=lambda x:x["median_absolute_deviation_pct"])
+    return {
+        "available":True,
+        "tests":output,
+        "lowest_median_absolute_deviation_offset_days":winner[
+            "Kraken_close_date_offset_from_Blockchain_quote_days"],
+        "possible_different_daily_timestamp_convention":winner[
+            "Kraken_close_date_offset_from_Blockchain_quote_days"]!=0,
+        "diagnostic_only_never_changes_prices_or_trade_dates":True,
+    }
+
 def source_overlap_audit(archive,blockchain,*,kraken=None,
                          asof="2026-10-18"):
     today=_day(asof)
@@ -112,6 +151,15 @@ def source_overlap_audit(archive,blockchain,*,kraken=None,
                                name_a="archive",name_b="Kraken"))
             pairs.append(_pair(b,k,start=start,end=cutoff,
                                name_a="Blockchain",name_b="Kraken"))
+    post_archive=None
+    daily_alignment=None
+    if k is not None and len(k):
+        post_archive=_pair(
+            b,k,start=cutoff+pd.Timedelta(days=1),
+            end=today-pd.Timedelta(days=1),
+            name_a="Blockchain",name_b="Kraken")
+        daily_alignment=shifted_daily_close_alignment(
+            b,k,start=start,end=cutoff)
     common=a.index.intersection(b.index)
     common=common[(common>=start)&(common<=cutoff)]
     samples=[]
@@ -194,6 +242,9 @@ def source_overlap_audit(archive,blockchain,*,kraken=None,
         "kraken_latest_completed_date":(
             str(k.index[-1].date()) if k is not None and len(k) else None),
         "source_pairs":pairs,
+        "post_archive_new_daily_Blockchain_vs_Kraken":post_archive,
+        "prior_overlap_Blockchain_Kraken_date_shift_diagnostic":
+            daily_alignment,
         "historical_6p29_crosscheck_is_NOT_last_BTC_spot_error":True,
         "worst_blockchain_archive_overlap_day":offending,
         "third_source_assessment_on_worst_date":third_source_assessment,
@@ -233,6 +284,13 @@ def main(argv=None):
         print(json.dumps(pair,sort_keys=True))
     print("WORST_DAY "+
           json.dumps(outcome["worst_blockchain_archive_overlap_day"],
+                     sort_keys=True))
+    print("POST_ARCHIVE_RECENT_BLOCKCHAIN_KRAKEN "+
+          json.dumps(outcome["post_archive_new_daily_Blockchain_vs_Kraken"],
+                     sort_keys=True))
+    print("DAILY_TIMESTAMP_SHIFT_DIAGNOSTIC "+
+          json.dumps(outcome[
+              "prior_overlap_Blockchain_Kraken_date_shift_diagnostic"],
                      sort_keys=True))
     print("SOURCE_INTERPRETATION "+
           json.dumps({
