@@ -55,7 +55,13 @@ INITIAL_CAPITAL=INITIAL_AUD
 MIN_AUD_BUY=100.
 BUY_PCT_OF_REMAINING=.025
 MIN_TRADE_GAP_DAYS=7
-BUY_STYLES=("live_2p5_remaining_cash_strict_200wma",)
+BUY_STYLES=("live_2p5_remaining_cash_strict_200wma",
+            "finite_24_weekly_purchases_after_first_gate",
+            "finite_52_weekly_purchases_after_first_gate")
+FINITELY_PLANNED_BUYS={
+    "finite_24_weekly_purchases_after_first_gate":24,
+    "finite_52_weekly_purchases_after_first_gate":52,
+}
 STRESS_START_DAY=900
 STRESS_TROUGH_DAY=1060
 BULL_PREFIX_DAY=600
@@ -114,8 +120,9 @@ def _date_market_signals(prices,halving,terminal):
 
 def simulate_full_roundtrip(prices,fx,*,halving,terminal,
                             starting_cash=INITIAL_CAPITAL,
-                            weekday_only=False):
-    """One causal portfolio ledger per seller, SAME exact live BUY algorithm.
+                            weekday_only=False,
+                            buyback_mode=BUY_STYLES[0]):
+    """One causal portfolio ledger per seller, same shared first BUY gate.
 
     weekday_only is an optimistic Mon-Fri BTC/AUD quote proxy, NOT an
     official ASX holiday schedule; no fabricated ETF prices. Neither the
@@ -125,8 +132,8 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
     h,end=day(halving),day(terminal)
     _good_prices(prices,h,end)
     if (not math.isfinite(float(starting_cash)) or starting_cash<=100
-            or type(weekday_only) is not bool):
-        raise ValueError("Invalid cash amount or weekday execution flag")
+            or type(weekday_only) is not bool or buyback_mode not in BUY_STYLES):
+        raise ValueError("Invalid cash amount, weekday execution or buyback policy")
     signals=_date_market_signals(prices,h,end)
     stage={}
     for policy,variant in STAGED_LOOKUP.items():
@@ -152,6 +159,13 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
     filled={p:[] for p in POLICIES}
     last_fill={p:None for p in POLICIES}
     staged_original_sold={p:0. for p in STAGED_LOOKUP}
+    # Optional research-only finite redeployment schedules DO NOT
+    # activate until a truly executed first BUY below strictly prior
+    # 200-WEEK MA. Once activated they spend only real cash (including
+    # any additional realised sale proceeds) in 24/52 notional weekly
+    # purchase tranches. They may continue above 200WMA, unlike LIVE.
+    purchase_counts={p:0 for p in POLICIES}
+    buyback_trigger_dates={p:None for p in POLICIES}
 
     for t,signal in signals.items():
         aud=float(prices.loc[t])*fx_before(fx,t)
@@ -206,15 +220,41 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
             # prior close is below 200WMA. Do not use a false bought
             # earlier/2025 peak cash pool: only realised, aftertax cash
             # from this simulated portfolio can be spent.
-            if (not acted and due and policy!="buy_and_hold"
-                    and signal["signal"]=="BUY WATCH"):
-                gross=a.cash*BUY_PCT_OF_REMAINING
-                if gross>MIN_AUD_BUY:
-                    if a.buy(t,aud,BUY_PCT_OF_REMAINING):
+            if not acted and due and policy!="buy_and_hold":
+                if buyback_mode==BUY_STYLES[0]:
+                    eligible_buy=signal["signal"]=="BUY WATCH"
+                    fraction=BUY_PCT_OF_REMAINING
+                    origin="shared_live_200wma_watch"
+                else:
+                    max_count=FINITELY_PLANNED_BUYS[buyback_mode]
+                    begun=buyback_trigger_dates[policy] is not None
+                    # No fabricated initial entry: first funding BUY
+                    # requires the *unmodified* original 200WMA watch.
+                    # Later buys are scheduled only after that first fill,
+                    # never front-running the initial threshold.
+                    eligible_buy=(
+                        (not begun and signal["signal"]=="BUY WATCH")
+                        or (begun and purchase_counts[policy]<max_count
+                            and signal["signal"]!="SELL WATCH")
+                    )
+                    fraction=1.0/max(1,max_count-purchase_counts[policy])
+                    origin=("initial_original_200wma_watch"
+                            if not begun else "planned_weekly_reinvestment")
+                gross=a.cash*fraction
+                if eligible_buy and gross>MIN_AUD_BUY:
+                    if a.buy(t,aud,min(1.,fraction)):
                         order=a.orders[-1]
+                        if buyback_mode!=BUY_STYLES[0]:
+                            if buyback_trigger_dates[policy] is None:
+                                if signal["signal"]!="BUY WATCH":
+                                    raise AssertionError("Non-causal initial trigger")
+                                buyback_trigger_dates[policy]=t
+                            purchase_counts[policy]+=1
+                            if purchase_counts[policy]>max_count:
+                                raise AssertionError("Exceeded finite tranche count")
                         filled[policy].append({
                             "date":str(t.date()),"side":"BUY",
-                            "signal_origin":"shared_live_200wma_watch",
+                            "signal_origin":origin,
                             "btc":round(float(order["btc"]),9),
                             "gross_aud":round(float(order["gross_aud"]),2),
                             "estimated_cgt_aud":0.,
@@ -235,6 +275,11 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
         sells=[x for x in rows if x["side"]=="SELL"]
         result[policy]={
             "original_btc":round(initial_btc[policy],8),
+            "first_200wma_funded_buyback_trigger":(
+                str(buyback_trigger_dates[policy].date())
+                if buyback_trigger_dates[policy] is not None else
+                (buybacks[0]["date"] if buybacks else None)),
+            "scheduled_buyback_mode":buyback_mode,
             "btc_left_after_buybacks":round(a.btc,8),
             "cash_remaining_aud":round(a.cash,2),
             "btc_equivalent_mark_including_cash":round(
@@ -269,6 +314,9 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
         "strict_200week_prior_market_signal":True,
         "shared_live_buy_fraction_of_remaining_cash_pct":2.5,
         "seven_day_LEDGER_cooldown":True,
+        "buyback_mode":buyback_mode,
+        "finite_plan_can_buy_above_wma_after_original_first_gate":(
+            buyback_mode!=BUY_STYLES[0]),
         "no_external_cash_for_reinvestment":True,
         "no_actual_IBIT_orders":True,
         "accounts":result,
