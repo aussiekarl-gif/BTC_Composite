@@ -4,7 +4,7 @@
 ## What this adds
 
 - A public REST read-only Kraken **XBT/USD** order-book adapter, requiring no exchange account or API key: `engines/research/btc_spot_depth_forward.py`.
-- Four possible **prospective six-hour UTC snapshots per day** (01:17/07:17/13:17/19:17 UTC) via `.github/workflows/research_btc_spot_depth_forward.yml`. This schedule is dormant on the draft PR; it only operates on default `main` after a reviewed merge. Pull requests run mock tests without live network requests.
+- Four possible **prospective six-hour UTC snapshots per day** (01:17/07:17/13:17/19:17 UTC) via `.github/workflows/research_btc_spot_depth_forward.yml`. This schedule is dormant on the draft PR; it only operates on default `main` after a reviewed merge. Pull requests run mock offline tests AND one read-only live Kraken API parse smoke test, with no data persistence and no market signal. If Kraken is unavailable, the smoke check fails visibly.
 - An append-only, date-ordered, SHA256-chained CSV at `data/research_forward_validation/kraken_spot_depth_forward.csv`. No backfill, retrospective fabricated order book, historical rewrites, portfolio calls or alerts.
 - Per capture: pair/provider, client response-receipt UTC time, best bid/ask, spread in basis points, BTC and USD quantities **visible within 0.25% either side of midpoint**, and share of displayed near-mid bid liquidity.
 - If the returned 500 levels fail to span BOTH 0.25% price ranges, coverage is flagged incomplete and share remains **UNKNOWN**, not zero or a tradable estimate.
@@ -22,11 +22,11 @@ and https://docs.kraken.com/api/docs/rest-api/get-order-book
 
 ## Verification
 
-Offline local tests: `python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v` — **21 passed**, using mocked venue payloads. First real provider capture and GitHub runner operation are **NOT YET VERIFIED**; no data feed is declared operational until a real scheduled or explicit GitHub main workflow run succeeds. Failure must be visible in Actions, not silently substituted by a synthetic observation.
+Offline local tests: `python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v` — **21 passed**, using mocked venue payloads. Live read-only GitHub PR probe is pending. No stored real observation or scheduled runner operation is yet verified; no data feed is declared operational until a subsequent main workflow captures an authentic dated row. Failure must be visible in Actions, not silently substituted by a synthetic observation.
 
 ## Next independent acceptance gates
 
-1. Check first real GitHub Actions Kraken capture and provenance, including correct symbol, slot UTC time, spread and depth coverage.
+1. Check PR live provider smoke check, then first real GitHub Actions Kraken capture and provenance, including correct symbol, slot UTC time, spread and depth coverage.
 2. Establish independent spot-executed-trade flow and/or a second venue so one Kraken order-book snapshot is not misrepresented as independent market consensus.
 3. Freeze candidate evidence rules before forward scoring. Evaluate 7, 30 and 90-day out-of-sample BTC returns and false BUY/SELL rates with no survivor bias.
 4. Before proposing any live change, replay the actual Cycle Trading buy/sell state machine exactly, accounting for fees, costs, weekday ASX:IBIT order constraints, AUD FX, inventory, CGT reserve and execution delays. Compare buy-and-hold and equal DCA, including drawdown.
