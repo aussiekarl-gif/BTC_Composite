@@ -133,7 +133,7 @@ button[data-testid="stSidebarCollapseButton"] {
 # Sidebar priority does not promote or validate the research trading rules.
 section = st.sidebar.radio(
     "Model",
-    ["Cycle Trading — Research", "Production", "Research", "Bottom Signal Timeline", "200WMA Trading Model"],
+    ["Cycle Trading — Research", "Production", "Research", "Bottom Signal Timeline"],
     index=0,
     key="combined_app_section_selector",
     help="Cycle Trading opens by default as the primary dashboard (still research-only). Production V5.8.2 and Research V5.9 remain independently available.",
@@ -147,7 +147,6 @@ engine_path = {
     "Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
-    "200WMA Trading Model": Path(__file__).parent / "engines" / "research" / "wma_tier_app.py",
 }[section]
 
 if not engine_path.exists():
