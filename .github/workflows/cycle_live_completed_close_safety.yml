@@ -1,0 +1,49 @@
+name: Cycle Trading Correct UTC Close Shared Source Safety
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_live_completed_utc_prices.py'
+      - 'engines/research/cycle_trading_app.py'
+      - 'cycle_trading_daily_ntfy.py'
+      - 'engines/research/cycle_forward_signal_tape.py'
+      - 'tests/test_shared_cycle_live_completed_utc.py'
+      - 'engines/research/cycle_corrected_live_source_smoke.py'
+      - '.github/workflows/cycle_live_completed_close_safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shared-streamlit-ntfy-research-data-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing application dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Parse Streamlit and ntfy without running user side effects
+        run: |
+          python -m py_compile engines/research/cycle_live_completed_utc_prices.py
+          python -m py_compile engines/research/cycle_trading_app.py
+          python -m py_compile cycle_trading_daily_ntfy.py
+          python -m py_compile engines/research/cycle_forward_signal_tape.py
+      - name: Cross-source date shift, strictly complete UTC closes, market BUY/SELL and unavailable
+        run: |
+          python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_forward_kraken_bridge.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_forward_signal_tape.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_source_disagreement_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_sensecheck.py' -v
+      - name: Check real public BTC providers on the corrected UTC-date convention (never notifies or trades)
+        run: |
+          python -m engines.research.cycle_corrected_live_source_smoke
+      - name: Confirm no live trade or alert action in tests
+        run: |
+          git diff --exit-code -- data/ .github/notification_state/

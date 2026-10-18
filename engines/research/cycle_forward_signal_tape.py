@@ -37,6 +37,9 @@ from engines.research.verified_recent_price_bridge import fetch_public_series
 from engines.research.cycle_forward_kraken_bridge import (
     fetch_completed_kraken_daily, append_verified_kraken_after_blockchain,
 )
+from engines.research.cycle_live_completed_utc_prices import (
+    merge_verified_live_cycle_prices,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 TARGET_DIR = ROOT / "data" / "research_forward_validation"
@@ -366,45 +369,47 @@ def run_once(*,out_dir=TARGET_DIR, now=None):
         instant.to_pydatetime()))
     verified_date=(halving["last_halving_date"]
                    if halving.get("halving_date_verified") else None)
-    provider_label=None
-    fallback_bridge=None
+    # Use EXACT same date-corrected BTC market data as Streamlit and ntfy.
+    # Old observed signal CSV rows remain immutable and remain separately
+    # labelled by their historically recorded provider.
     try:
-        new=build_snapshot(
-            archive,public,fx,captured_at_utc=instant,
-            verified_halving_date=verified_date)
-    except UnfreshSourceClose as original_age_error:
-        # The old Blockchain.com multi-exchange reference sometimes lags
-        # the last completed UTC daily candle. Only the RESEARCH recorder
-        # may bridge a short gap with Kraken spot BTC/USD daily candles.
-        # NEVER change the Streamlit/ntfy price source or earlier tape rows.
         kraken=fetch_completed_kraken_daily(utc_today=instant)
-        try:
-            extended,fallback_bridge=append_verified_kraken_after_blockchain(
-                public,kraken,utc_today=instant)
-        except ValueError as bridge_error:
-            # A provider gap or missing yesterday's completed Kraken bar
-            # is an explicit skip; a price SOURCE DISAGREEMENT is a hard
-            # verification error, not a quiet skip.
-            if "conflicts" in str(bridge_error):
-                raise
-            return {
-                "status":"skipped_kraken_verified_bridge_unavailable",
-                "captured_at_utc":instant.isoformat(),
-                "original_reference_age_reason":str(original_age_error),
-                "fresh_source_reason":str(bridge_error),
-                "wrote_snapshot":False,
-                "wrote_outcomes":False,
-                "no_user_portfolio_or_ntfy_write":True,
-            }
-        provider_label=(
-            "archived_BlockHorizon_plus_Blockchain.com_"
-            "and_verified_completed_Kraken_XBTUSD_close")
-        new=build_snapshot(
-            archive,extended,fx,captured_at_utc=instant,
-            verified_halving_date=verified_date,
-            research_provider_label=provider_label,
-            extra_verified_price_diff_pct=fallback_bridge[
-                "kraken_blockchain_max_diff_pct"])
+        verified_series,quality=merge_verified_live_cycle_prices(
+            archive,public,kraken,utc_today=instant)
+    except ValueError as source_error:
+        # No source conflict may create a BUY/SELL/HOLD historical record.
+        if any(word in str(source_error).lower() for word in (
+                "conflict","disagreement","nonpositive","nonfinite")):
+            raise
+        return {
+            "status":"skipped_kraken_verified_bridge_unavailable",
+            "captured_at_utc":instant.isoformat(),
+            "fresh_source_reason":str(source_error),
+            "wrote_snapshot":False,
+            "wrote_outcomes":False,
+            "no_user_portfolio_or_ntfy_write":True,
+        }
+    # build_snapshot remains a pure testable step accepting already
+    # correctly dated BTC/USD close references. Re-checks same
+    # 200WMA and FX through the original shared model, with
+    # independent original archive still authoritative.
+    new=build_snapshot(
+        archive,pd.DataFrame({"btc_usd":verified_series}),fx,
+        captured_at_utc=instant,
+        verified_halving_date=verified_date,
+        research_provider_label=quality["source_provenance"],
+        extra_verified_price_diff_pct=max(
+            quality["max_overlap_difference_pct"],
+            quality["recent_kraken_blockchain_max_diff_pct"]))
+    fallback_bridge={
+        "appended_dates":quality["kraken_contiguous_completed_day_bridge"],
+        "kraken_blockchain_max_diff_pct":
+            quality["recent_kraken_blockchain_max_diff_pct"],
+        "kraken_blockchain_overlap_days":
+            quality["recent_kraken_blockchain_overlap_days"],
+        "only_prior_completed_utc_candles":True,
+        "timestamp_convention_corrected":True,
+    }
     p_signals=out/SIGNAL_TAPE
     p_outcomes=out/OUTCOME_TAPE
     current=p_signals.read_text() if p_signals.exists() else ""
