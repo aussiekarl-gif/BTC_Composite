@@ -33,6 +33,9 @@ jobs:
           python -m py_compile engines/research/btc_spot_depth_forward.py
           python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v
           python -m engines.research.btc_spot_depth_forward --self-check-only
+      - name: Probe live public Kraken order book without writes or trade signals
+        if: github.event_name == 'pull_request'
+        run: python -m engines.research.btc_spot_depth_forward --probe-only
       - name: Capture one research-only public Kraken XBTUSD order book
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: python -m engines.research.btc_spot_depth_forward
