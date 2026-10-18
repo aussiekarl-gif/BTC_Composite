@@ -188,8 +188,8 @@ class ForwardTapeTests(unittest.TestCase):
     def test_volatility_snapshot_uses_exact_thirty_prior_returns(self):
         a,p,fx=sources()
         data=a["price_usd"].copy()
-        data.loc[p.index[p.index>a.index[-1]]]=p.loc[
-            p.index[p.index>a.index[-1]],"btc_usd"]
+        added=p.loc[p.index>a.index[-1],"btc_usd"]
+        data=pd.concat([data,added]).sort_index()
         asof=pd.Timestamp("2026-10-17",tz="UTC")
         ref=_prior_annual_volatility(data,asof)
         data.loc[asof]=9999.
