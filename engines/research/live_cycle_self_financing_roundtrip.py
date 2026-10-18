@@ -62,6 +62,13 @@ FINITELY_PLANNED_BUYS={
     "finite_24_weekly_purchases_after_first_gate":24,
     "finite_52_weekly_purchases_after_first_gate":52,
 }
+# Separate opt-in research mode; deliberately NOT added to BUY_STYLES,
+# preserving every current live/24/52 research default and test.
+VALUE_RESERVE_MODE="value_52_core50_reserve50_after_first_gate"
+VALUE_TRANCHE_COUNT=52
+VALUE_CORE_SHARE=.50
+VALUE_RESERVE_WMA_RATIO=.85
+VALUE_RESERVE_EXTRA_CORE_MULT=2.0
 STRESS_START_DAY=900
 STRESS_TROUGH_DAY=1060
 BULL_PREFIX_DAY=600
@@ -132,7 +139,8 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
     h,end=day(halving),day(terminal)
     _good_prices(prices,h,end)
     if (not math.isfinite(float(starting_cash)) or starting_cash<=100
-            or type(weekday_only) is not bool or buyback_mode not in BUY_STYLES):
+            or type(weekday_only) is not bool
+            or buyback_mode not in (*BUY_STYLES,VALUE_RESERVE_MODE)):
         raise ValueError("Invalid cash amount, weekday execution or buyback policy")
     signals=_date_market_signals(prices,h,end)
     stage={}
@@ -166,6 +174,14 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
     # purchase tranches. They may continue above 200WMA, unlike LIVE.
     purchase_counts={p:0 for p in POLICIES}
     buyback_trigger_dates={p:None for p in POLICIES}
+    # Candidate cap: core 50% funded for <=52 buys, other 50% remains
+    # protected unless prior BTC trades at a >=15% discount to 200WMA.
+    # This is opt-in RESEARCH only and starts after the first genuine
+    # executed BUY; net proceeds of later SELLs split 50:50 as well.
+    core_target={p:0. for p in POLICIES}
+    core_spent={p:0. for p in POLICIES}
+    reserve_left={p:0. for p in POLICIES}
+    reserve_spent={p:0. for p in POLICIES}
 
     for t,signal in signals.items():
         aud=float(prices.loc[t])*fx_before(fx,t)
@@ -197,6 +213,7 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
             acted=False
             if desired_sale_pct>0:
                 before=a.btc
+                cash_before_sale=a.cash
                 if a.sell(t,aud,desired_sale_pct):
                     order=a.orders[-1]
                     sold=before-a.btc
@@ -216,6 +233,13 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
                     })
                     last_fill[policy]=t
                     acted=True
+                    if (buyback_mode==VALUE_RESERVE_MODE
+                        and buyback_trigger_dates[policy] is not None):
+                        new_net_cash=a.cash-cash_before_sale
+                        if new_net_cash<=0:
+                            raise AssertionError("Impossible negative new sale cash")
+                        core_target[policy]+=VALUE_CORE_SHARE*new_net_cash
+                        reserve_left[policy]+=(1-VALUE_CORE_SHARE)*new_net_cash
             # The ACTUAL live market model always prefers BUY when
             # prior close is below 200WMA. Do not use a false bought
             # earlier/2025 peak cash pool: only realised, aftertax cash
@@ -225,6 +249,34 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
                     eligible_buy=signal["signal"]=="BUY WATCH"
                     fraction=BUY_PCT_OF_REMAINING
                     origin="shared_live_200wma_watch"
+                elif buyback_mode==VALUE_RESERVE_MODE:
+                    max_count=VALUE_TRANCHE_COUNT
+                    begun=buyback_trigger_dates[policy] is not None
+                    eligible_buy=(
+                        (not begun and signal["signal"]=="BUY WATCH")
+                        or (begun and purchase_counts[policy]<max_count
+                            and signal["signal"]!="SELL WATCH")
+                    )
+                    # First gate budget from *actual* already-received
+                    # net of tax sale proceeds, no retrospective top sale.
+                    initial_core=(VALUE_CORE_SHARE*a.cash
+                                  if not begun else 0.)
+                    available_core=max(0.,core_target[policy]+initial_core
+                                       -core_spent[policy])
+                    remaining=max(1,max_count-purchase_counts[policy])
+                    core_order=available_core/remaining
+                    cheap=(float(signal["prior_price_over_200wma"])
+                           <=VALUE_RESERVE_WMA_RATIO)
+                    available_reserve=(reserve_left[policy]
+                                       if begun else
+                                       (1-VALUE_CORE_SHARE)*a.cash)
+                    reserve_order=(min(available_reserve,
+                                      VALUE_RESERVE_EXTRA_CORE_MULT*core_order)
+                                   if cheap else 0.)
+                    gross=min(a.cash,core_order+reserve_order)
+                    fraction=(gross/a.cash if a.cash>0 else 0.)
+                    origin=("initial_original_200wma_watch"
+                            if not begun else "value_reserve_weekly_buy")
                 else:
                     max_count=FINITELY_PLANNED_BUYS[buyback_mode]
                     begun=buyback_trigger_dates[policy] is not None
@@ -245,6 +297,22 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
                     if a.buy(t,aud,min(1.,fraction)):
                         order=a.orders[-1]
                         if buyback_mode!=BUY_STYLES[0]:
+                            if buyback_mode==VALUE_RESERVE_MODE:
+                                if not begun:
+                                    core_target[policy]+=initial_core
+                                    reserve_left[policy]+=(
+                                        (1-VALUE_CORE_SHARE)*
+                                        (a.cash+float(order["gross_aud"])))
+                                # Deduct precisely actual debited order.
+                                gross_actual=float(order["gross_aud"])
+                                reserved_actual=min(reserve_order,gross_actual)
+                                core_actual=gross_actual-reserved_actual
+                                core_spent[policy]+=core_actual
+                                reserve_left[policy]-=reserved_actual
+                                reserve_spent[policy]+=reserved_actual
+                                if (core_spent[policy]>core_target[policy]+1e-6
+                                    or reserve_left[policy]<-1e-6):
+                                    raise AssertionError("Budget/reserve overspent")
                             if buyback_trigger_dates[policy] is None:
                                 if signal["signal"]!="BUY WATCH":
                                     raise AssertionError("Non-causal initial trigger")
@@ -280,6 +348,9 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
                 if buyback_trigger_dates[policy] is not None else
                 (buybacks[0]["date"] if buybacks else None)),
             "scheduled_buyback_mode":buyback_mode,
+            "research_value_core_spent_aud":round(core_spent[policy],2),
+            "research_value_reserve_left_aud":round(reserve_left[policy],2),
+            "research_value_reserve_spent_aud":round(reserve_spent[policy],2),
             "btc_left_after_buybacks":round(a.btc,8),
             "cash_remaining_aud":round(a.cash,2),
             "btc_equivalent_mark_including_cash":round(
@@ -317,6 +388,7 @@ def simulate_full_roundtrip(prices,fx,*,halving,terminal,
         "buyback_mode":buyback_mode,
         "finite_plan_can_buy_above_wma_after_original_first_gate":(
             buyback_mode!=BUY_STYLES[0]),
+        "research_value_reserve_mode":buyback_mode==VALUE_RESERVE_MODE,
         "no_external_cash_for_reinvestment":True,
         "no_actual_IBIT_orders":True,
         "accounts":result,

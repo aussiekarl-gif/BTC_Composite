@@ -1,0 +1,42 @@
+name: Research Value Aware BTC Cycle Buyback With Protected Cash Reserve
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/live_cycle_self_financing_roundtrip.py'
+      - 'engines/research/value_aware_cash_reserve_buyback.py'
+      - 'tests/test_value_aware_cash_reserve_buyback.py'
+      - '.github/workflows/research_value_cash_reserve_buyback.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matched-funded-aftertax-cycle-buyback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install unchanged project research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile candidate and run old vs new strict-gate/reserve tests
+        run: |
+          python -m py_compile engines/research/value_aware_cash_reserve_buyback.py
+          python -m py_compile engines/research/live_cycle_self_financing_roundtrip.py
+          python -m unittest discover -s tests -p 'test_value_aware_cash_reserve_buyback.py' -v
+          python -m unittest discover -s tests -p 'test_finite_triggered_buyback_audit.py' -v
+          python -m unittest discover -s tests -p 'test_live_cycle_self_financing_roundtrip.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Match all SELL plans, original 2.5pct vs 24, 52, value 50/50 reserve and stresses
+        run: python -m engines.research.value_aware_cash_reserve_buyback --out artifacts/value_aware_buyback
+      - name: Archive exact tax lots, funded cash, BTC and stress outcomes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-cycle-50core-50reserve-below85pct-wma-audit
+          path: artifacts/value_aware_buyback/
+          if-no-files-found: ignore
