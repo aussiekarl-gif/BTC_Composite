@@ -4,7 +4,7 @@
 ## What this adds
 
 - A public REST read-only Kraken **XBT/USD** order-book adapter, requiring no exchange account or API key: `engines/research/btc_spot_depth_forward.py`.
-- Four possible **prospective six-hour UTC snapshots per day** (01:17/07:17/13:17/19:17 UTC) via `.github/workflows/research_btc_spot_depth_forward.yml`. This schedule is dormant on the draft PR; it only operates on default `main` after a reviewed merge. Pull requests run mock offline tests AND one read-only live Kraken API parse smoke test, with no data persistence and no market signal. If Kraken is unavailable, the smoke check fails visibly.
+- Four possible **prospective six-hour UTC snapshots per day** (01:17/07:17/13:17/19:17 UTC), plus an initial main-branch merge-triggered capture, via `.github/workflows/research_btc_spot_depth_forward.yml`. This schedule and the merge-triggered capture are dormant on the draft PR; they operate only on default `main` after a reviewed merge. Pull requests run mock offline tests AND one read-only live Kraken API parse smoke test, with no data persistence and no market signal. If Kraken is unavailable, the smoke check fails visibly.
 - An append-only, date-ordered, SHA256-chained CSV at `data/research_forward_validation/kraken_spot_depth_forward.csv`. No backfill, retrospective fabricated order book, historical rewrites, portfolio calls or alerts.
 - Per capture: pair/provider, client response-receipt UTC time, best bid/ask, spread in basis points, BTC and USD quantities **visible within 0.25% either side of midpoint**, and share of displayed near-mid bid liquidity.
 - If the returned 500 levels fail to span BOTH 0.25% price ranges, coverage is flagged incomplete and share remains **UNKNOWN**, not zero or a tradable estimate.
