@@ -46,6 +46,10 @@ HORIZONS = (7, 30, 90)
 MAX_OBSERVED_LAG_DAYS = 1
 GENESIS = "0" * 64
 STRATEGY_LABEL = "shared_cycle_trade_allocation_market_v1_not_historical_wallet"
+
+
+class UnfreshSourceClose(ValueError):
+    """The public BTC provider does not yet have yesterday's UTC close."""
 SIGNAL_COLUMNS = (
     "observation_date_utc", "captured_at_utc",
     "signal_input_last_prior_close_date_utc",
@@ -198,7 +202,7 @@ def build_snapshot(archive,public,fx,*,captured_at_utc,
         confirmed_halving_date=verified_halving_date)
     date=_day(market["asof_date"])
     if date>=today or (today-date).days != MAX_OBSERVED_LAG_DAYS:
-        raise ValueError(
+        raise UnfreshSourceClose(
             "Stale or incomplete BTC UTC daily price: no forward snapshot "
             "without the latest completed prior UTC close")
     if market["usd_aud_prior"] is None or not market["fx_source_date"]:
@@ -350,9 +354,23 @@ def run_once(*,out_dir=TARGET_DIR, now=None):
         instant.to_pydatetime()))
     verified_date=(halving["last_halving_date"]
                    if halving.get("halving_date_verified") else None)
-    new=build_snapshot(
-        archive,public,fx,captured_at_utc=instant,
-        verified_halving_date=verified_date)
+    try:
+        new=build_snapshot(
+            archive,public,fx,captured_at_utc=instant,
+            verified_halving_date=verified_date)
+    except UnfreshSourceClose as exc:
+        # This is an expected PROVIDER publication delay, not a reason to
+        # manufacture a forecast or spam GitHub failure notifications.
+        # Other failures (unverified halving/FX or provider disagreements)
+        # remain fail-closed with a visible failed action.
+        return {
+            "status":"skipped_provider_close_not_yesterday",
+            "captured_at_utc":instant.isoformat(),
+            "reason":str(exc),
+            "wrote_snapshot":False,
+            "wrote_outcomes":False,
+            "no_user_portfolio_or_ntfy_write":True,
+        }
     p_signals=out/SIGNAL_TAPE
     p_outcomes=out/OUTCOME_TAPE
     current=p_signals.read_text() if p_signals.exists() else ""
