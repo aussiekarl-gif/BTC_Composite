@@ -8,6 +8,7 @@ on:
       - 'cycle_trading_daily_ntfy.py'
       - 'engines/research/cycle_forward_signal_tape.py'
       - 'tests/test_shared_cycle_live_completed_utc.py'
+      - 'engines/research/cycle_corrected_live_source_smoke.py'
       - '.github/workflows/cycle_live_completed_close_safety.yml'
   workflow_dispatch:
 
@@ -40,6 +41,9 @@ jobs:
           python -m unittest discover -s tests -p 'test_cycle_forward_signal_tape.py' -v
           python -m unittest discover -s tests -p 'test_cycle_source_disagreement_audit.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trading_sensecheck.py' -v
+      - name: Check real public BTC providers on the corrected UTC-date convention (never notifies or trades)
+        run: |
+          python -m engines.research.cycle_corrected_live_source_smoke
       - name: Confirm no live trade or alert action in tests
         run: |
           git diff --exit-code -- data/ .github/notification_state/
