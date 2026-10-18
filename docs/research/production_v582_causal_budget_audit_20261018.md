@@ -28,4 +28,42 @@ No SELL strategy here because Production Smart DCA "Simple DCA Backtest" is accu
 
 Re-test true Production source-freshness and FX provenance, provide a **causal no-future-cash-allocation benchmark**, ensure first periods have full indicator warmup, compare actual 2026 cash cohorts and ASX:IBIT weekday pricing/spreads/tax. Fix any mechanical source errors under a distinct reviewed PR if needed; do not change V5.8.2 weights/percentages based on these already-inspected history windows alone.
 
-Result: PENDING verified CI, recorded when complete.
+Result: Initial matched audit completed; follow-up source-safety regression run below.
+
+
+## Numerical matched evidence — initial CI success 18 October 2026
+
+**[GitHub Actions run 39116666689](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39116666689) passed** (10 new Production research tests and 10 existing Cycle percent-allocation tests). Full dated per-BUY account transactions and cohort scores: [artifact 12133045686](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39116666689/artifacts/12133045686). Final new FX/backfill and indicator-warmup regressions follow in next run.
+
+**Figures below are differences in hypothetical terminal after-tax AUD value**, not realised investor gains, annual percentage returns or probabilities of future success. The 'causal' model is the DCA Today **remaining AUD cash / weeks to a FIXED calendar end × current multiplier** formula replayed with **strict prior-date risk**, not necessarily the user's existing target date or actual SMSF ledger. The legacy chart strategy is hindsight-normalised against future total weights, not a comparable executable strategy.
+
+| Full or incomplete cycle | Cash start halving+day | Causal production-style vs equal weekly | Hindsight chart vs equal weekly | Causal vs hindsight chart | Causal BTC held | Causal cash left |
+|---|---:|---:|---:|---:|---:|---:|
+| 2017 COMPLETE | 650 | **+9.739%** | +15.620% | −5.086% | 54.15235875 | 0% |
+| 2017 COMPLETE | 750 | **+13.509%** | +16.904% | −2.904% | 58.61190885 | 0% |
+| 2017 COMPLETE | 850 | **+22.643%** | +20.310% | **+1.940%** | 66.78535058 | 0.46% |
+| 2017 COMPLETE | 900 | **+27.670%** | +23.921% | **+3.025%** | 67.21894862 | 0% |
+| 2021 COMPLETE | 650 | **+0.886%** | +4.404% | −3.370% | 11.44524878 | 0.01% |
+| 2021 COMPLETE | 750 | **+5.382%** | +2.955% | **+2.357%** | 12.95565292 | 0% |
+| 2021 COMPLETE | 850 | **+9.207%** | +3.475% | **+5.539%** | 13.46881359 | 0% |
+| 2021 COMPLETE | 900 | **+12.121%** | +4.135% | **+7.669%** | 13.64083202 | 0% |
+| 2025/26 RIGHT-CENSORED | 650 | +0.965%* | +0.872%* | +0.092%* | 4.04037360 | 0% |
+| 2025/26 RIGHT-CENSORED | 750 | +3.142%* | +1.297%* | +1.821%* | 4.13864585 | 0% |
+| 2025/26 RIGHT-CENSORED | 850 | +3.459%* | +0.598%* | +2.844%* | 3.79935816 | 0% |
+
+*Only through Oct 5 2026, with no observed future low/end-of-cycle. Multiple cohorts in the same cycle heavily overlap and cannot be construed as 8 independent samples.*
+
+**Main result:** Causal Production-like weighting BEAT equal weekly cash DCA in ALL 8 retrospectively scored completed modern starts using this **partial Production composite proxy**, by +0.886% to +27.670% final aftertax AUD. The original omniscient chart comparator beat ordinary equal weekly by +2.955% to +23.921%; however, it beat the actual causal calculation in just 3 of 8 completed starts and LOST in 5 of 8. That shows the Production risk weighting has plausible value, while its existing advertised chart performance does not directly represent DCA Today trades.
+
+**Evidence limitation is material**: onchain MVRV-Z exported in Oct 2026 may have retrospective revisions, historic Fear & Greed was excluded, and the fixed deployment-end date is chosen here solely to match test horizons. Future live full-input score, next ASX:IBIT fills, safe FX handling and future-cycle robustness are not established. Do NOT retune Production weights or overclaim validated DCA Today 'alpha' from these rows.
+
+### Findings by priority
+
+- **High: Historical budget normalisation uses unknown future weights.** Need a separate labelled causal historical backtest with cash balance and fixed selected deployment target; never rewrite past funding based on a later data point.
+- **High: Historical FX interpolation / fallback allows unverifiable AUD results.** Future FX can be used for dates preceding the earliest quote via `.bfill()`, and missing FX defaults to USD0.70/AUD. For official backtests, fail closed instead, and for UI choose explicit stale/unavailable rather than present as verified result.
+- **Medium-high: Backtest selected start truncates indicator warmup before recomputation**; a long older series is fetched but thrown out before computing risk. An honest historical risk backtest must fully warm rolling features and prior percentile state before trimming to BUY dates.
+- **High: Retrospective indicator data vintage.** MVRV etc may have changed since each date. Prospective version-stamped provider input tapes (like new Cycle signal recorder) are necessary before a model revision claim.
+- **Medium: DCA Today shows a live spot price for display but uses prior completed UTC close for risk; keep this distinction and do not backfill weekend ASX orders at BTC closes.**
+- **Future: Revisit curve 2.75x at risk0, 0.05x at risk1 with independent cohorts, but only after apples-to-apples corrected causal backtest and live-executable AUD/IBIT fees/tax.** 3%/3.5% Cycle market BUY sizing result is a SEPARATE strategy and cannot be transplanted directly into Production's risk-weight multiplier.
+
+**Decision: preserve Production V5.8.2, data, ntfy and Streamlit unchanged; retain numerical audit and prioritise separate, narrowly scoped safety/parity fixes before optimizing weights.**
