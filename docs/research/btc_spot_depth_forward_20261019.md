@@ -22,11 +22,11 @@ and https://docs.kraken.com/api/docs/rest-api/get-order-book
 
 ## Verification
 
-Offline local tests: `python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v` — **21 passed**, using mocked venue payloads. Live read-only GitHub PR probe is pending. No stored real observation or scheduled runner operation is yet verified; no data feed is declared operational until a subsequent main workflow captures an authentic dated row. Failure must be visible in Actions, not silently substituted by a synthetic observation.
+Offline local tests: `python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v` — **21 passed**, using mocked venue payloads. **Live read-only GitHub PR probe PASSED** on run 39176551671 on 18 Oct 2026 23:27 UTC: Kraken XBT/USD response parsed, 25bp book coverage complete, spread 0.012221 bps, no persistence, no trade signals. A GitHub main-branch snapshot and long-running schedule remain unverified until the first authentic persisted row. Both offline test suites (14 consensus + 21 depth) must also pass before merge. Failure must be visible in Actions, not silently substituted by a synthetic observation.
 
 ## Next independent acceptance gates
 
-1. Check PR live provider smoke check, then first real GitHub Actions Kraken capture and provenance, including correct symbol, slot UTC time, spread and depth coverage.
+1. Verify both PR test suites, then first real scheduled GitHub Actions Kraken capture and provenance, including correct symbol, slot UTC time, spread and depth coverage.
 2. Establish independent spot-executed-trade flow and/or a second venue so one Kraken order-book snapshot is not misrepresented as independent market consensus.
 3. Freeze candidate evidence rules before forward scoring. Evaluate 7, 30 and 90-day out-of-sample BTC returns and false BUY/SELL rates with no survivor bias.
 4. Before proposing any live change, replay the actual Cycle Trading buy/sell state machine exactly, accounting for fees, costs, weekday ASX:IBIT order constraints, AUD FX, inventory, CGT reserve and execution delays. Compare buy-and-hold and equal DCA, including drawdown.
