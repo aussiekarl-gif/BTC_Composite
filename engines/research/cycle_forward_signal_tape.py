@@ -34,6 +34,9 @@ from engines.research.cycle_halving_countdown import (
 )
 from engines.research.top_signal_horse_race import read_exported_history
 from engines.research.verified_recent_price_bridge import fetch_public_series
+from engines.research.cycle_forward_kraken_bridge import (
+    fetch_completed_kraken_daily, append_verified_kraken_after_blockchain,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 TARGET_DIR = ROOT / "data" / "research_forward_validation"
@@ -189,7 +192,9 @@ def _code_hash():
 
 
 def build_snapshot(archive,public,fx,*,captured_at_utc,
-                   verified_halving_date,code_sha256=None):
+                   verified_halving_date,code_sha256=None,
+                   research_provider_label=None,
+                   extra_verified_price_diff_pct=0.):
     """Only verified, completed UTC daily prices; no future score fields."""
     instant=_utc_instant(captured_at_utc)
     today=instant.normalize()
@@ -213,6 +218,9 @@ def build_snapshot(archive,public,fx,*,captured_at_utc,
     signal=calculate_allocation_signal(
         market,buy_style="adaptive_recovery")
     vol=_prior_annual_volatility(market["price_history"],date)
+    if (not math.isfinite(float(extra_verified_price_diff_pct))
+            or not 0<=extra_verified_price_diff_pct<=100):
+        raise ValueError("Invalid independent cross-source difference")
     code_hash=code_sha256 if code_sha256 is not None else _code_hash()
     if (not isinstance(code_hash,str)
             or len(code_hash)!=64
@@ -244,9 +252,13 @@ def build_snapshot(archive,public,fx,*,captured_at_utc,
             signal["prior_90day_drawdown_pct"],4),
         "prior_50dma_declining":str(bool(signal["prior_sma50_declining"])),
         "lagged_30d_annualised_volatility_pct":number(vol,4),
-        "market_data_provider":"archived_BlockHorizon_plus_verified_Blockchain.com",
+        "market_data_provider":(
+            research_provider_label
+            if research_provider_label is not None
+            else "archived_BlockHorizon_plus_verified_Blockchain.com"),
         "source_crosscheck_max_diff_pct":number(
-            verified["max_overlap_difference_pct"],4),
+            max(verified["max_overlap_difference_pct"],
+                extra_verified_price_diff_pct),4),
         "model_name":STRATEGY_LABEL,
         "model_code_sha256":code_hash,
         "point_in_time_onchain_risk_status":"NOT_VERIFIED_NOT_INCLUDED",
@@ -354,23 +366,45 @@ def run_once(*,out_dir=TARGET_DIR, now=None):
         instant.to_pydatetime()))
     verified_date=(halving["last_halving_date"]
                    if halving.get("halving_date_verified") else None)
+    provider_label=None
+    fallback_bridge=None
     try:
         new=build_snapshot(
             archive,public,fx,captured_at_utc=instant,
             verified_halving_date=verified_date)
-    except UnfreshSourceClose as exc:
-        # This is an expected PROVIDER publication delay, not a reason to
-        # manufacture a forecast or spam GitHub failure notifications.
-        # Other failures (unverified halving/FX or provider disagreements)
-        # remain fail-closed with a visible failed action.
-        return {
-            "status":"skipped_provider_close_not_yesterday",
-            "captured_at_utc":instant.isoformat(),
-            "reason":str(exc),
-            "wrote_snapshot":False,
-            "wrote_outcomes":False,
-            "no_user_portfolio_or_ntfy_write":True,
-        }
+    except UnfreshSourceClose as original_age_error:
+        # The old Blockchain.com multi-exchange reference sometimes lags
+        # the last completed UTC daily candle. Only the RESEARCH recorder
+        # may bridge a short gap with Kraken spot BTC/USD daily candles.
+        # NEVER change the Streamlit/ntfy price source or earlier tape rows.
+        kraken=fetch_completed_kraken_daily(utc_today=instant)
+        try:
+            extended,fallback_bridge=append_verified_kraken_after_blockchain(
+                public,kraken,utc_today=instant)
+        except ValueError as bridge_error:
+            # A provider gap or missing yesterday's completed Kraken bar
+            # is an explicit skip; a price SOURCE DISAGREEMENT is a hard
+            # verification error, not a quiet skip.
+            if "conflicts" in str(bridge_error):
+                raise
+            return {
+                "status":"skipped_kraken_verified_bridge_unavailable",
+                "captured_at_utc":instant.isoformat(),
+                "original_reference_age_reason":str(original_age_error),
+                "fresh_source_reason":str(bridge_error),
+                "wrote_snapshot":False,
+                "wrote_outcomes":False,
+                "no_user_portfolio_or_ntfy_write":True,
+            }
+        provider_label=(
+            "archived_BlockHorizon_plus_Blockchain.com_"
+            "and_verified_completed_Kraken_XBTUSD_close")
+        new=build_snapshot(
+            archive,extended,fx,captured_at_utc=instant,
+            verified_halving_date=verified_date,
+            research_provider_label=provider_label,
+            extra_verified_price_diff_pct=fallback_bridge[
+                "kraken_blockchain_max_diff_pct"])
     p_signals=out/SIGNAL_TAPE
     p_outcomes=out/OUTCOME_TAPE
     current=p_signals.read_text() if p_signals.exists() else ""
@@ -392,6 +426,9 @@ def run_once(*,out_dir=TARGET_DIR, now=None):
         "sell_pct_holdings":new["sell_pct_of_current_holdings"],
         "new_matured_scores":number,
         "no_user_portfolio_or_ntfy_write":True,
+        "kraken_bridge_used":bool(fallback_bridge),
+        "research_provider_label":new["market_data_provider"],
+        "research_source_bridge":fallback_bridge,
     }
 
 
