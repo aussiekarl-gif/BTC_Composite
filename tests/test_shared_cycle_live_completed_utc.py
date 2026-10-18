@@ -75,7 +75,7 @@ class SharedCorrectedCycleCloseTests(unittest.TestCase):
         k.loc[pd.Timestamp("2026-10-18",tz="UTC"),"btc_usd"]=150.
         merged,report=merge_verified_live_cycle_prices(
             a,b,k,utc_today="2026-10-19")
-        self.assertEqual(merged.iloc[-1]["price_usd"],150.)
+        self.assertEqual(merged.iloc[-1],150.)
         m=build_dashboard_market(merged,fx,asof="2026-10-19",
                                   confirmed_halving_date="2024-04-20")
         self.assertEqual(m["previous_close_usd"],60.)
@@ -89,7 +89,7 @@ class SharedCorrectedCycleCloseTests(unittest.TestCase):
         k.loc[TODAY]=1000000.
         r,meta=merge_verified_live_cycle_prices(a,b,k,utc_today=TODAY)
         self.assertEqual(str(r.index[-1].date()),"2026-10-17")
-        self.assertEqual(r.iloc[-1]["price_usd"],100.)
+        self.assertEqual(r.iloc[-1],100.)
 
     def test_no_latest_completed_close_fails_closed_not_stale_hold(self):
         a,b,k,fx=fixtures(close_day="2026-10-16")
@@ -120,7 +120,7 @@ class SharedCorrectedCycleCloseTests(unittest.TestCase):
     def test_historical_archive_must_not_get_rewritten_by_public_chart(self):
         a,b,k,fx=fixtures()
         b.loc[pd.Timestamp("2026-09-28",tz="UTC"),"btc_usd"]=300.
-        with self.assertRaisesRegex(ValueError,"disagreement"):
+        with self.assertRaisesRegex(ValueError,"conflicts"):
             merge_verified_live_cycle_prices(a,b,k,utc_today=TODAY)
         pd.testing.assert_frame_equal(
             a,fixtures()[0])
