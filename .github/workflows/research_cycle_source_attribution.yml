@@ -1,0 +1,43 @@
+name: Research Attribute BTC Close Source Disagreement
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_source_disagreement_audit.py'
+      - 'tests/test_cycle_source_disagreement_audit.py'
+      - '.github/workflows/research_cycle_source_attribution.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  interpret-historical-vs-current-BTC-spot-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Ensure source discrepancy tooling is strictly read-only
+        run: |
+          python -m py_compile engines/research/cycle_source_disagreement_audit.py
+          python -m unittest discover -s tests -p 'test_cycle_source_disagreement_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_forward_kraken_bridge.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Probe real archive / Blockchain / Kraken exact daily UTC overlap
+        # Public APIs can rate limit; do not invent numeric outcome on failure.
+        # No changes to source URLs or live price conversion.
+        continue-on-error: true
+        run: python -m engines.research.cycle_source_disagreement_audit --out artifacts/cycle_oct2026_price_source_attribution.json
+      - name: Keep exact dated source comparisons and unrevised audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-oct2026-archive-blockchain-kraken-date-mismatch
+          path: artifacts/cycle_oct2026_price_source_attribution.json
+          if-no-files-found: ignore
