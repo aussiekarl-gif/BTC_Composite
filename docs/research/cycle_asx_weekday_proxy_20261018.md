@@ -27,4 +27,41 @@ Tests require unmodified original calendar proxy wallet parity, future price can
 
 Decision: keep BUY percentages unchanged; if 3% remains favorable under all weekday/expense hypotheses but still fails deep crash stress, flag as a *calibrated risk/reward candidate* not a proven improvement. Next: run genuine post-2025 IBIT historical quote comparisons **only if** verifiable multi-date NAV/market bid/ask and FX are available, and evaluate current remaining-unit-based SELL plan against historical seller separately.
 
-Result: to be filled with CI exact outcomes.
+
+## Results and decision — 18 October 2026
+
+**[GitHub Actions run 39117733548](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39117733548) succeeded: 29 tests passed** (8 new weekday/parity tests, 3 3% tests, 8 prior live-weekly tests, 10 current allocation regressions). All 190 results (11 historic+8 synthetic cohorts ×5 scenario assumptions ×2 tested 3%/3.5% candidates) and the original vs weekday trade dates/FX/CSV are [archived in artifact 12132953270](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39117733548/artifacts/12132953270). Every **calendar_optimistic** account exactly matched the original research weekly BUY engine on BUY count, BTC units, cash remaining and illustrative post-tax liquidation value.
+
+### Historic 3.0% vs current 2.5% of remaining cash (total aftertax AUD account change)
+
+| Historical cohort | Optimistic all-day | Weekday BTC-only 0 extra cost | Weekday + annual 0.39% NAV drag and 10bp per side | Weekday + 25bp per side | Weekday + 50bp per side |
+|---|---:|---:|---:|---:|---:|
+| 2017 complete +650/+750/+850 | +0.994% | **0.000% (ZERO BUYS)** | 0.000% | 0.000% | 0.000% |
+| 2017 complete +900 | 0% | 0% (no WMA gate) | 0% | 0% | 0% |
+| 2021 complete +650/+750 | +2.427% | +2.448% | +2.418% | +2.402% | +2.375% |
+| 2021 complete +850 | +2.600% | +2.600% | +2.574% | +2.557% | +2.528% |
+| 2021 complete +900 | +2.642% | +2.682% | +2.659% | +2.642% | +2.613% |
+| 2025/26 censored +650/+750 | +0.843% | +0.827% | +0.819% | +0.810% | +0.796% |
+| 2025/26 censored +850 | 0% | 0% | 0% | 0% | 0% |
+
+These in-sample results are **after-tax total account deltas**, not annual returns or actual ASX:IBIT performance. Extra fees reduce the *relative improvement* because the alternative invests more BTC exposure. They never turn 2.5% into a strategy capable of buying with no valid original gate.
+
+**Major new structural finding**: for 2017 +650/750/850 the one valid below-prior-200WMA fresh BUY opportunity was **a Sunday**. Original weekend-executable BTC proxy purchases ONE time, creating +0.994% extra aftertax portfolio value for 3.0% vs 2.5%; when weekday-only, the strict below-WMA gate clears before next weekday and **NEITHER model buys**. Identical 2017 completed historic baseline cash remains at A$400k. This is a missing-trade opportunity, not a sizing optimization problem. A weekday-only proxy also misses public market holidays (yet real IBIT has holiday exclusions) and may overstate actual execution opportunity.
+
+### Eight deliberate deep-crash counterfactuals — 3.0% vs 2.5%
+
+| Historic-prefix-and-crash stress | Optimistic every-day | Weekday BTC proxy no extra cost | Weekday + 0.39% NAV and 50bp/side |
+|---|---:|---:|---:|
+| Worst relative after-tax AUD of 8 paths | −3.689% | −3.669% | **−3.758%** |
+| Best relative after-tax AUD of 8 paths | +3.991% | +4.172% | +4.111% |
+| Number of losing scenarios | 3/8 | 3/8 | 3/8 |
+
+These are adversarial fake bear regimes (not future probabilities), with reference original 2.5% percent BUY rule, no historical personal portfolio sales or ETF quotes. The small 3.0% increase retains its observed benefits in **2021** and incomplete 2025/26 even with the assumed cost range, but incurs approximately 3.8% lower whole-account result than 2.5% in selected severe delayed declines. That is not robust free alpha.
+
+### Verdict and next specific research hypothesis (suggested AFTER seeing outcome)
+
+1. **Do not change current 2.5% BUY percentage based on this**; it is not shown to dominate both rebound and extended crash paths. Keep market WATCH unchanged.
+2. **PRIORITIZE weekend-to-next-ASX-day signal preservation with a no-chasing price cap** as a distinct, clearly *post-hoc* proposal. This addresses a demonstrated historical missed execution, unlike changing an amount that cannot trade on Sunday. Never automatically apply stale signals beyond a frozen maximum and retain weekday-only actual eligibility and 7-day executed-transaction cooldown.
+3. Actual ASX:IBIT was not listed until Nov14 2025. This study **did not** validate earlier historic IBIT fills and does not prove future returns. Exact live ETF bid/ask, ASX official holiday calendars, realistic limit-order execution and true SMSF tax lots remain necessary before any live rule is promoted.
+4. No live Portfolio, single ntfy alert, Production or Streamlit modification. Research-only data archived and merged if QA passes.
+
