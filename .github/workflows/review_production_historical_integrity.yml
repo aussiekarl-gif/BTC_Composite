@@ -1,0 +1,36 @@
+name: Review Only Production V5.8.2 Historical Backtest Data Integrity
+
+on:
+  pull_request:
+    paths:
+      - 'engines/production/production_model.py'
+      - 'engines/production/production_app.py'
+      - 'tests/test_production_causal_budget_audit.py'
+      - 'tests/test_production_historical_integrity_review.py'
+      - '.github/workflows/review_production_historical_integrity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-current-live-rules-and-historical-integrity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install same project dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile historical-only Production code and UI
+        run: |
+          python -m py_compile engines/production/production_model.py
+          python -m py_compile engines/production/production_app.py
+      - name: Run new Production historical dates, FX and indicator warmup tests
+        run: |
+          python -m unittest discover -s tests -p 'test_production_historical_integrity_review.py' -v
+          python -m unittest discover -s tests -p 'test_production_causal_budget_audit.py' -v
+      - name: Verify live Cycle Trading market allocation unchanged
+        run: python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
