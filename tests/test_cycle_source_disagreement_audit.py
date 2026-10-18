@@ -73,6 +73,24 @@ class SourceDisagreementAttributionTests(unittest.TestCase):
         self.assertTrue(r["local_gate_sensitivity_uses_archived_200wma_for_all_prices"])
         self.assertFalse(r["eligible_to_change_live_source_or_signal"])
 
+    def test_midnight_chart_day_shift_can_eliminate_false_daily_error(self):
+        a,b,k=sources()
+        for date in a.loc["2026-08-30":].index:
+            a.loc[date,"price_usd"]=100+(date-pd.Timestamp(
+                "2026-08-30",tz="UTC")).days
+        for date in b.index:
+            prior=date-pd.Timedelta(days=1)
+            if prior in a.index:
+                b.loc[date,"btc_usd"]=float(a.loc[prior,"price_usd"])
+        report=source_overlap_audit(a,b,asof=DATE)
+        raw=report["source_pairs"][0]
+        corrected=report[
+            "archive_vs_blockchain_if_chart_timestamp_marks_end_of_previous_day"]
+        self.assertGreater(raw["maximum_absolute_pct"],.5)
+        self.assertEqual(corrected["maximum_absolute_pct"],0.)
+        self.assertEqual(corrected["latest_pair_absolute_pct"],0.)
+        self.assertFalse(report["eligible_to_change_live_source_or_signal"])
+
     def test_post_archive_new_public_days_check_against_kraken(self):
         a,b,k=sources()
         b.loc["2026-10-14","btc_usd"]=110.
