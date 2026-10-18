@@ -1,0 +1,39 @@
+name: Research BTC Price-Only Breakdown 5pct Re-timing
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/price_only_breakdown_advance.py"
+      - "tests/test_price_only_breakdown_advance.py"
+      - ".github/workflows/price_only_breakdown_advance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  price-only-retiming:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install unchanged research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile and test exact original BTC sizing and causal warning
+        run: |
+          python -m py_compile engines/research/price_only_breakdown_advance.py
+          python -m unittest discover -s tests -p "test_price_only_breakdown_advance.py" -v
+          python -m unittest discover -s tests -p "test_shared_cycle_policy.py" -v
+          python -m unittest discover -s tests -p "test_cycle_chronological_wallet.py" -v
+      - name: Run matched 2017 2021 completed and censored 2025/26 wallets
+        run: python -m engines.research.price_only_breakdown_advance --out artifacts/price_only_breakdown_advance
+      - name: Archive auditable per-cycle wallet evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: price-only-breakdown-retiming-evidence
+          path: artifacts/price_only_breakdown_advance/
+          if-no-files-found: ignore
