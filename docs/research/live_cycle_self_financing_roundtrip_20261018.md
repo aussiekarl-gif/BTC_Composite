@@ -28,4 +28,69 @@ New tests must establish no purchase before any realised SELL, all five accounts
 
 Before suggesting implementation, inspect final BTC-equivalent INCLUDING retained cash, actually held BTC, and hypothetical liquidated after-tax AUD vs identical buy-and-hold. NEVER claim the historical staged seller's SELL-only gain as actual achieved BTC units. Check whether the **original live 2.5% residual cash buys back enough coins** before market recovers, and whether the experimental repeated SELL materially harms a sustained bull; evaluate controlled diversification/reserve, not merely past high-in-hindsight. This still does not reproduce actual IBIT fills or user's personal tax lots.
 
-Final numeric evidence: Pending CI review.
+
+## Verified CI findings — 18 Oct 2026
+
+[**GitHub Actions run 39120958535 SUCCESS**](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39120958535): 8 new self-financing/prefix/FX/weekday tests, 8 existing shared Cycle SELL-parity tests, and 10 live market-percent tests passed (**26 total**). [Full exact dated portfolio cash, lot, SELLS and BUYBACK records with real historical and stress CSVs (artifact 12134585580)](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39120958535/artifacts/12134585580).
+
+The matched **CURRENT live BUY** is 2.5% of **then-remaining actual realised after-tax cash only if previous BTC/USD close below strict 200WMA**, with >=7 calendar days between actual fills. No forced 24-week drawdown recovery deployment, no front-run of BUY signal. This is a DIFFERENT POLICY from prior backtests where 24 weekly purchases forcibly redeployed ALL sell proceeds. Year-end liquidation is a scoring thought experiment only: cash shown below is **unspent original fund cash**, not BTC already repurchased.
+
+### Completed historical day1150 — BTC daily close reference proxy INCLUDING WEEKENDS
+
+All after-tax % = final hypothetical liquidated AUD total account vs equal-start historical BTC buy-and-hold, not annual rates, not true ETF broker fills or current user's 2026 assets.
+
+| Historical cycle | Seller with common live BUYback | Actually held BTC after rebuy | Unspent AUD cash | BUYback fills | SELL fills | After-tax AUD vs hold | Marked BTC equivalent incl cash vs hold |
+|---|---|---:|---:|---:|---:|---:|---:|
+| 2017 | Live incl repeated late rollover | 126.012976 | 6,226,769 | 1 | 31 | −1.532% | −8.704% |
+| 2017 | Live conditional scheduled-only | 437.122091 | 3,187,411 | 1 | 2 | +14.643% | +10.973% |
+| 2017 | Historical staged 90% original BTC | **62.209629** | **9,606,265** | **1** | 10 | +29.116% | +18.055% |
+| 2017 | Historical staged 20%-pre560 holdback | 54.976951 | 9,558,943 | 1 | 9 | +27.286% | +16.279% |
+| 2017 | Buy and hold | 580.042354 | 0 | 0 | 0 | 0% | 0% |
+| 2021 | Live incl repeated late rollover | 49.854083 | 723,315 | 39 | 22 | +78.235% | +72.620% |
+| 2021 | Live conditional scheduled-only | 47.770013 | 429,363 | 39 | 3 | +53.545% | +50.211% |
+| 2021 | Historical staged 90% original BTC | **60.813748** | **1,064,397** | **39** | 9 | **+129.320%** | +121.057% |
+| 2021 | Historical staged 20%-pre560 holdback | 59.202819 | 1,044,046 | 39 | 8 | +123.759% | +115.653% |
+| 2021 | Buy and hold | 38.071425 | 0 | 0 | 0 | 0% | 0% |
+
+**Major correctness lesson:** BTC-equivalent *including retained cash* can be higher than hold while ACTUALLY OWNED BTC is dramatically lower. The research goal "maximise BTC quantity" requires separate measures of actual BTC, cash, after-tax AUD and opportunity cost. In 2017 the staged exit ends with 62 BTC actually held vs 580 BTC buy-hold, although its terminal AUD is +29% higher. **Do not represent the unused A$9.61m as BTC already bought**. Original 2.5% live BUY catches just ONE BTC/USD Sunday below200WMA opportunity in 2017, and never spends most of the exit cash.
+
+### Weekday-only BTC/AUD reference sensitivity (still NOT actual ASX:IBIT historical prices)
+
+| Cycle | Strategy | Weekday-only actual BUY fills | Weekday-only after-tax AUD vs hold | Weekday-only actual BTC held |
+|---|---|---:|---:|---:|
+| 2017 | Live incl experimental repeated rollover | **0** | **−25.208%** | 124.499574 |
+| 2017 | Live scheduled-only | 0 | −1.519% | 551.040236 |
+| 2017 | Historical staged original90 | 0 | −5.842% | 458.647776 |
+| 2017 | Buy and hold | 0 | 0% | 580.042354 |
+| 2021 | Live incl repeated rollover | 39 | +78.343% | 49.892676 |
+| 2021 | Live scheduled-only | 39 | +53.584% | 47.786521 |
+| 2021 | Historical staged original90 | 39 | +129.419% | 60.854666 |
+| 2021 | Buy and hold | 0 | 0% | 38.071425 |
+| 2025/26 incomplete | Live incl late rollover | 6 | +7.104%* | 3.379799 |
+| 2025/26 incomplete | Live scheduled-only | 0 | 0%* | 4.930747 |
+| 2025/26 incomplete | Historical staged original90 | 6 | +6.275%* | 4.067386 |
+| 2025/26 incomplete | Buy and hold | 0 | 0%* | 4.930747 |
+
+*Only through archived Oct5 2026, 898 days after 2024 halving. NOT final cycle; the user's 2026 portfolio has other actual acquisition dates and amounts.* 
+Strict weekday-only execution can MISS both weekend BUY and weekend SELL stages because no actual ASX exchange holiday/calendar or queued-order logic is implemented; differences from everyday Bitcoin fills are not solely a 'market prediction' effect.
+
+### Counterfactual (all weekday-only proxies, same single SELL+BUYBACK policy)
+
+Freeze actual historical price through halving+600; generate **continuing 2x and 4x rallies** until halving+1150. No 200WMA BUY follows any sale, so all strategies with significant original-BTC SELL incur unrealised opportunity loss vs HOLD. Actual ACCOUNT aftertax delta:
+
+- 2017 live incl repeated late rollover: −16.714% for 2x rally, **−21.595% for 4x**; historical staged 90%: −13.721% and −17.319%; scheduled-only: −3.337% / −4.167%.
+- 2021 live incl late rollover: −24.774% for 2x, **−39.095% for 4x**; historical staged 90%: **−41.013% for 2x, −69.760% for 4x**; scheduled-only: −15.160% / −26.756%.
+
+Conversely, synthetic additional BTC drawdowns after historical day900 to day1060 (50/70% lower followed by terminal at 55% of pre-shock):
+- 2017 live incl late rollover: +163.767% / +197.934% entire AUD vs HOLD; staged original90: +49.850% / +59.927%, current strict scheduled-only +11.328% / +13.652%.
+- 2021 live incl late rollover: +165.924% / +197.947%; staged original90: +257.513% / +304.626%; scheduled-only +106.651% / +125.653%.
+
+**These are deliberately engineered futures with zero probability claim, not genuine validation.** They establish that more SELLs hedge deep drawdowns while also exposing investor to potentially enormous opportunity cost if Bitcoin continues rallying and BUY-WATCH never reopens. Pure past-cycle fitted staged exits DO NOT dominate.
+
+### Immediate research conclusion
+
+1. **Keep current live BUY+SELL unchanged** until real market-session, personal portfolio and tax-lot guardrails are validated. The 2017 sole below-200WMA BUY happened on a weekend, and a real ETF cannot transact in the model's historical simulated close; research PR #148's weekend->first-session order carries remain a separate unproven hypothesis.
+2. **The PRIMARY current live BUYBACK bottleneck is documented**: 2.5%-of-remaining-cash with strict no-above-200WMA rule often leaves most sale proceeds unspent. In 2017 the full staged exit is cash-rich but BTC-poor at terminal. Compare an explicitly separately authorised and prospectively evaluable **finite recovery-phase buyback plan** (e.g. fixed 24 or 52 week redeployment AFTER the first below-WMA signal) against the exact existing BUY rule, with no earlier buy or hindsight low assumptions. This must include continued-bull opportunity cost and worst-case fresh drawdown, not merely replay past bottoms.
+3. Include real ASX calendar/IBIT bid-ask and cash/yield/ETF fees for decision-quality after-tax AUD. The SELL model original-vs-current denomination gap cannot be hidden by optimistic cash-in-BTC-equivalent marking; show BTC ACTUALLY HELD as a separate top-line KPI.
+4. Research source data through Oct5 2026 lacks verified contemporaneous MVRV vintages; the 2025/26 outcome right-censored. All conclusions should disclose small number of complete historical cycles, potential regime overfit and synthetic counterfactual fragility.
+
