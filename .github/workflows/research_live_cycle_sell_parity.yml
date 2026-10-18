@@ -1,0 +1,40 @@
+name: Research Live Cycle SELL Percent Denominator Parity
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/live_cycle_sell_parity_audit.py'
+      - 'tests/test_live_cycle_sell_parity_audit.py'
+      - '.github/workflows/research_live_cycle_sell_parity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-sell-vs-original-staged-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install current research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Check exact live SELL gate and percentage denominator
+        run: |
+          python -m py_compile engines/research/live_cycle_sell_parity_audit.py
+          python -m unittest discover -s tests -p 'test_live_cycle_sell_parity_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_sensecheck.py' -v
+      - name: Matched AUD, fees and FIFO tax SELL parity through 730/1150 days
+        run: |
+          python -m engines.research.live_cycle_sell_parity_audit --out artifacts/live_cycle_sell_parity
+      - name: Archive exact dated SELLs and comparable mark/aftertax account values
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-live-sell-market-parity-versus-staged-original-btc
+          path: artifacts/live_cycle_sell_parity/
+          if-no-files-found: ignore
