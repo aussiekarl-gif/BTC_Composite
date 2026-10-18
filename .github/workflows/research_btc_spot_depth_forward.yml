@@ -1,6 +1,12 @@
 name: Research BTC spot depth prospective snapshots (no alerts)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/research_btc_spot_depth_forward.yml'
+      - 'engines/research/btc_spot_depth_forward.py'
+      - 'tests/test_btc_spot_depth_forward.py'
   pull_request:
     paths:
       - 'engines/research/btc_spot_depth_forward.py'
