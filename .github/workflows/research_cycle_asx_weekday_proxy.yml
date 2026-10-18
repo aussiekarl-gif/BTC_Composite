@@ -1,0 +1,40 @@
+name: Research Cycle Weekday ASX IBIT Proxy Cost Sensitivity
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_asx_weekday_execution_proxy.py'
+      - 'tests/test_cycle_asx_weekday_execution_proxy.py'
+      - '.github/workflows/research_cycle_asx_weekday_proxy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matched-weekday-spread-proxy-research-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install current project research requirements
+        run: python -m pip install -r requirements.txt
+      - name: Validate 2.5/3/3.5pct live market parity and ASX-weekday proxy
+        run: |
+          python -m py_compile engines/research/cycle_asx_weekday_execution_proxy.py
+          python -m unittest discover -s tests -p 'test_cycle_asx_weekday_execution_proxy.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_three_percent_audit.py' -v
+          python -m unittest discover -s tests -p 'test_live_weekly_buy_parity.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Compute complete BTC history and delayed-bear stress at 0/10/25/50bps proxy cost
+        run: python -m engines.research.cycle_asx_weekday_execution_proxy --out artifacts/cycle_asx_weekday_proxy
+      - name: Preserve exact dated orders, CASH holdings, before-tax and estimated FIFO posttax
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-cycle-250-300-350-weekday-broker-cost-proxy-evidence
+          path: artifacts/cycle_asx_weekday_proxy/
+          if-no-files-found: ignore
