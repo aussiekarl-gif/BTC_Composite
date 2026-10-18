@@ -139,6 +139,17 @@ def source_overlap_audit(archive,blockchain,*,kraken=None,
     start=cutoff-pd.Timedelta(days=MAX_LOOKBACK_DAYS)
     pair_ab=_pair(a,b,start=start,end=cutoff,
                   name_a="archive",name_b="Blockchain")
+    # Alternative only; don't overwrite or redate the LIVE source here.
+    # Hypothesis: chart point at 00:00 UTC on D reflects BTC's
+    # close just before midnight, i.e. close of D-1. Reindex a
+    # COPY for experiment and compare against true dated exchange
+    # closes. A live parser change needs separate release approval.
+    b_at_previous_close_date=b.copy()
+    b_at_previous_close_date.index=(
+        b_at_previous_close_date.index-pd.Timedelta(days=1))
+    corrected_pair=_pair(
+        a,b_at_previous_close_date,start=start,end=cutoff,
+        name_a="archive",name_b="Blockchain_midnight_D_minus_1")
     if not pair_ab["available"] or pair_ab["overlap_days"]<3:
         raise ValueError("Not enough DATE-MATCHED archived/public BTC overlap")
     k=None
@@ -153,6 +164,7 @@ def source_overlap_audit(archive,blockchain,*,kraken=None,
                                name_a="Blockchain",name_b="Kraken"))
     post_archive=None
     daily_alignment=None
+    post_archive_shift_diagnostic=None
     if k is not None and len(k):
         post_archive=_pair(
             b,k,start=cutoff+pd.Timedelta(days=1),
@@ -160,6 +172,9 @@ def source_overlap_audit(archive,blockchain,*,kraken=None,
             name_a="Blockchain",name_b="Kraken")
         daily_alignment=shifted_daily_close_alignment(
             b,k,start=start,end=cutoff)
+        post_archive_shift_diagnostic=shifted_daily_close_alignment(
+            b,k,start=cutoff+pd.Timedelta(days=1),
+            end=today-pd.Timedelta(days=1))
     common=a.index.intersection(b.index)
     common=common[(common>=start)&(common<=cutoff)]
     samples=[]
@@ -242,7 +257,10 @@ def source_overlap_audit(archive,blockchain,*,kraken=None,
         "kraken_latest_completed_date":(
             str(k.index[-1].date()) if k is not None and len(k) else None),
         "source_pairs":pairs,
+        "archive_vs_blockchain_if_chart_timestamp_marks_end_of_previous_day":
+            corrected_pair,
         "post_archive_new_daily_Blockchain_vs_Kraken":post_archive,
+        "post_archive_date_shift_diagnostic":post_archive_shift_diagnostic,
         "prior_overlap_Blockchain_Kraken_date_shift_diagnostic":
             daily_alignment,
         "historical_6p29_crosscheck_is_NOT_last_BTC_spot_error":True,
@@ -285,8 +303,15 @@ def main(argv=None):
     print("WORST_DAY "+
           json.dumps(outcome["worst_blockchain_archive_overlap_day"],
                      sort_keys=True))
+    print("CORRECTED_ONE_DAY_PROVIDER_TIMESTAMP_AUDIT "+
+          json.dumps(outcome[
+              "archive_vs_blockchain_if_chart_timestamp_marks_end_of_previous_day"],
+                     sort_keys=True))
     print("POST_ARCHIVE_RECENT_BLOCKCHAIN_KRAKEN "+
           json.dumps(outcome["post_archive_new_daily_Blockchain_vs_Kraken"],
+                     sort_keys=True))
+    print("POST_ARCHIVE_SHIFT_CHECK "+
+          json.dumps(outcome["post_archive_date_shift_diagnostic"],
                      sort_keys=True))
     print("DAILY_TIMESTAMP_SHIFT_DIAGNOSTIC "+
           json.dumps(outcome[
