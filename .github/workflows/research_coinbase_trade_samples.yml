@@ -1,0 +1,73 @@
+name: Research Coinbase BTC executed trade samples (no alerts)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/coinbase_trade_samples.py'
+      - 'tests/test_coinbase_trade_samples.py'
+      - '.github/workflows/research_coinbase_trade_samples.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/coinbase_trade_samples.py'
+      - 'tests/test_coinbase_trade_samples.py'
+      - '.github/workflows/research_coinbase_trade_samples.yml'
+  workflow_dispatch:
+  schedule:
+    # 4 bounded snapshots each day, offset from Kraken order-book runs.
+    - cron: '19 1,7,13,19 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research-coinbase-public-trades
+  cancel-in-progress: false
+
+jobs:
+  sample-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install read-only HTTPS client
+        run: python -m pip install 'requests>=2.31,<3'
+      - name: Verify bounded-sample and provenance invariants
+        run: |
+          python -m py_compile engines/research/coinbase_trade_samples.py
+          python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
+          python -m engines.research.coinbase_trade_samples --self-check-only
+      - name: Read-only real provider probe (no persistence)
+        if: github.event_name == 'pull_request'
+        run: python -m engines.research.coinbase_trade_samples --probe-only
+      - name: Capture current bounded trade sample; NEVER infer six-hour volume
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: python -m engines.research.coinbase_trade_samples
+      - name: Preserve sample even if repository write fails
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-coinbase-recent-trades
+          path: data/research_forward_validation/coinbase_trade_samples_forward.csv
+          retention-days: 30
+          if-no-files-found: ignore
+      - name: Save only prospective immutable executed-trade sample
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          path='data/research_forward_validation/coinbase_trade_samples_forward.csv'
+          test -f "$path"
+          python -m engines.research.coinbase_trade_samples --self-check-only
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$path"
+          if git diff --cached --quiet; then
+            echo 'Coinbase sample slot already saved.'
+          else
+            git commit -m 'Research paper-only Coinbase executed trades sample [skip ci]'
+            git push origin HEAD:main
+          fi
