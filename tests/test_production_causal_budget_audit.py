@@ -137,7 +137,7 @@ class ProductionCausalAuditTests(unittest.TestCase):
                            fx,start=START,terminal=END)
 
 
-    def test_start_filter_discards_indicator_warmup_in_production_backtest(self):
+    def test_corrected_production_backtest_keeps_indicator_warmup(self):
         risk,fx=fixture()
         prices=risk["price"].copy()
         full=pd.DataFrame({
@@ -165,7 +165,7 @@ class ProductionCausalAuditTests(unittest.TestCase):
         warmed=float(full_risk.loc[first_day,"risk_score"])
         self.assertTrue(np.isfinite(displayed))
         self.assertTrue(np.isfinite(warmed))
-        self.assertGreater(abs(displayed-warmed),.01)
+        self.assertAlmostEqual(displayed,warmed,places=10)
 
     def test_fx_backfill_currently_uses_future_rate_on_older_btc_date(self):
         d=pd.date_range("2020-01-01","2020-01-04",tz="UTC",freq="D")
