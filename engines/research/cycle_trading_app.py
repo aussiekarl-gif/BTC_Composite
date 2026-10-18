@@ -13,8 +13,9 @@ from engines.research.cycle_trading_dashboard_model import (
 )
 from engines.research.day500_aftertax_reinvestment import fetch_fx_for_cycle
 from engines.research.top_signal_horse_race import HALVINGS,read_exported_history
-from engines.research.verified_recent_price_bridge import fetch_public_series
-from engines.research.cycle_market_feed import merge_verified_cycle_prices
+from engines.research.cycle_live_completed_utc_prices import (
+    fetch_cycle_live_sources,merge_verified_live_cycle_prices,
+)
 from engines.shared.portfolio_store import load_portfolio,save_portfolio
 from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
@@ -78,7 +79,7 @@ def historical_source():
 
 @st.cache_data(ttl=60*60,show_spinner=False)
 def public_source(asof):
-    return fetch_public_series(asof=asof)
+    return fetch_cycle_live_sources(asof=asof)
 
 
 @st.cache_data(ttl=60*60*24,show_spinner=False)
@@ -131,11 +132,11 @@ provider_error=None
 verification=None
 with st.spinner("Checking public BTC and AUD exchange-rate updates..."):
     try:
-        public_prices,public_fx=public_source(asof)
-        daily,verification=merge_verified_cycle_prices(
-            research_history,public_prices,utc_today=today)
+        public_prices,public_fx,completed_kraken=public_source(asof)
+        daily,verification=merge_verified_live_cycle_prices(
+            research_history,public_prices,completed_kraken,utc_today=today)
         fx=public_fx
-        source_label="BlockHorizon archive + cross-checked Blockchain.com public daily closes"
+        source_label="BlockHorizon archive + UTC-date-corrected Blockchain.com + verified completed Kraken" 
     except Exception as exc:
         provider_error=f"{type(exc).__name__}: {exc}"
 
@@ -145,7 +146,9 @@ verified_halving_date=(halving_countdown.get("last_halving_date")
                        if halving_countdown.get("halving_date_verified") else None)
 anchor_matches_close=bool(verified_halving_date and
     dt.date.fromisoformat(verified_halving_date)<=pd.Timestamp(daily.index[-1]).date())
-cycle_feed_verified=bool(anchor_matches_close)
+cycle_feed_verified=bool(anchor_matches_close and
+    provider_error is None and verification is not None and
+    verification.get("strict_close_date_verified"))
 try:
     market=build_dashboard_market(
         daily,fx,asof=asof,
@@ -161,12 +164,13 @@ except Exception as exc:
 last_day=pd.Timestamp(market["asof_date"]).date()
 staleness=(today-last_day).days
 if provider_error:
-    st.error("Current public BTC/FX refresh not verified: "+provider_error)
+    st.error("Current public BTC/FX close verification FAILED: "+provider_error+
+             " — current trade recommendations are disabled.")
 if not cycle_feed_verified:
     st.error("Last halving date not verified from the Bitcoin chain, or newer than "
              "the completed BTC price observation. Cycle-timed trade recommendations "
              "are disabled until automatic verification recovers.")
-if staleness>3:
+if staleness!=1:
     st.error(f"Prices are {staleness} days old ({last_day}). Current trade suggestions are disabled. Historical research remains accessible.")
 else:
     st.caption(f"BTC/USD source: {source_label}; last completed daily observation {last_day}. "
@@ -329,7 +333,7 @@ with tabs[0]:
         verified_current_ibit_units=current_units,
         already_traded_today=already_traded,
         feed_verified=(provider_error is None and verification is not None
-                       and staleness<=3 and cycle_feed_verified),
+                       and staleness==1 and cycle_feed_verified),
     )
     # The broker check is optional. Its confirmation is intentionally
     # ephemeral: changing the model or refreshing the page cannot retain
@@ -573,7 +577,7 @@ with tabs[0]:
                 saved_live_portfolio if not saved_live_error else None,
                 decision,
                 feed_verified=(provider_error is None and verification is not None
-                               and staleness<=3 and cycle_feed_verified),
+                               and staleness==1 and cycle_feed_verified),
             )
         except (ValueError,KeyError,TypeError,AssertionError) as exc:
             quick=None
@@ -713,7 +717,7 @@ with tabs[0]:
                         broker_current if broker_checked else None),
                     feed_verified=(
                         provider_error is None and verification is not None
-                        and staleness<=3 and cycle_feed_verified),
+                        and staleness==1 and cycle_feed_verified),
                 )
             except (ValueError,KeyError,TypeError,AssertionError) as exc:
                 st.error(
@@ -791,7 +795,7 @@ with tabs[0]:
     # lookup is unknown, NEVER falsely reported as 'all clear'.
     if (signal_valid and (buy_percent>0 or sell_percent>0)
             and provider_error is None and verification is not None
-            and staleness<=3 and cycle_feed_verified):
+            and staleness==1 and cycle_feed_verified):
         reference_risks=cached_cross_model_risks()
         major_flags=evaluate_major_red_flags(
             buy_pct_cash=buy_percent,sell_pct_held=sell_percent,
