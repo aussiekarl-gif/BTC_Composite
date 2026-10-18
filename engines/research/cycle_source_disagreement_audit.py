@@ -32,6 +32,12 @@ from engines.research.cycle_forward_kraken_bridge import (
 from engines.research.fresh_cash_200wma_matched_backtest import (
     _historical_wma,
 )
+from engines.research.cycle_market_feed import merge_verified_cycle_prices
+from engines.research.cycle_forward_kraken_bridge import (
+    append_verified_kraken_after_blockchain,
+)
+from engines.research.cycle_trading_dashboard_model import build_dashboard_market
+from engines.research.cycle_trade_allocation import calculate_allocation_signal
 
 MAX_LOOKBACK_DAYS=30
 CROSSCHECK_REVIEW_LEVEL_PCT=5.
@@ -275,6 +281,61 @@ def source_overlap_audit(archive,blockchain,*,kraken=None,
     }
 
 
+
+def shadow_live_feed_alignment(archive,blockchain,kraken,fx,*,asof):
+    """Read-only existing vs correctly daily-labelled Kraken-bridged signal.
+
+    This uses EXISTING shared market decision code, unchanged. We do not
+    claim corrected feed is independently approved; 2024 epoch is known
+    for this October 2026 investigation only, not a post-2028 solution.
+    """
+    now=_day(asof)
+    if now.year!=2026:
+        raise ValueError("This frozen historical audit is October 2026 only")
+    if kraken is None:
+        raise ValueError("No independently completed Kraken close for shadow")
+    archived,meta_old=merge_verified_cycle_prices(
+        archive,blockchain,utc_today=now)
+    shifted=blockchain.copy()
+    shifted.index=shifted.index-pd.Timedelta(days=1)
+    # Last Blockchain chart midnight sample D now labels
+    # the observed UTC CLOSE through D-1.
+    extended,bridge=append_verified_kraken_after_blockchain(
+        shifted,kraken,utc_today=now)
+    corrected,meta_corrected=merge_verified_cycle_prices(
+        archive,extended,utc_today=now)
+    def snapshot(series):
+        market=build_dashboard_market(
+            series,fx,asof=str(now.date()),
+            confirmed_halving_date="2024-04-20")
+        verdict=calculate_allocation_signal(
+            market,buy_style="adaptive_recovery")
+        return {
+            "observed_BTC_close_UTC_date":str(
+                pd.Timestamp(market["asof_date"]).date()),
+            "BTC_price_usd_observed_close":round(
+                float(market["btc_price_usd"]),3),
+            "prior_completed_close_usd":round(
+                float(market["previous_close_usd"]),3),
+            "prior_200week_average_usd":round(
+                float(market["prior_200wma_usd"]),3),
+            "signal_from_SHARED_UNCHANGED_market_code":verdict["signal"],
+            "BUY_pct_remaining_AUD_cash":verdict["buy_pct_cash"],
+            "SELL_pct_current_BTC_held":verdict["sell_pct_held"],
+            "market_signal_not_ASX_executable":True,
+        }
+    return {
+        "main_live_source_unmodified":snapshot(archived),
+        "corrected_chart_date_plus_completed_Kraken_SHADOW":snapshot(corrected),
+        "corrected_chart_as_archive_overlap_pct":
+            meta_corrected["max_overlap_difference_pct"],
+        "original_wrongly_labelled_chart_overlap_pct":
+            meta_old["max_overlap_difference_pct"],
+        "Kraken_last_completed_day_bridge":bridge,
+        "shadow_only_no_implemented_live_change":True,
+        "no_private_portfolio_or_daily_ntfy_changed":True,
+    }
+
 def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("--out",type=Path,default=Path(
@@ -296,6 +357,17 @@ def main(argv=None):
     outcome["Kraken_3rd_source_fetch_status"]=(
         "OK" if kraken is not None else "UNAVAILABLE")
     outcome["Kraken_fetch_error"]=kraken_error
+    try:
+        outcome["read_only_shared_model_corrected_vs_current"]=(
+            shadow_live_feed_alignment(
+                archive,price,kraken,fx,asof=today)
+            if kraken is not None else None)
+    except (ValueError,KeyError) as e:
+        outcome["read_only_shared_model_corrected_vs_current"]={
+            "available":False,
+            "reason":str(e),
+            "no_live_change":True,
+        }
     args.out.parent.mkdir(parents=True,exist_ok=True)
     args.out.write_text(json.dumps(outcome,indent=2,sort_keys=True)+"\n")
     for pair in outcome["source_pairs"]:
@@ -327,6 +399,9 @@ def main(argv=None):
             "manual_data_provenance_review_required":outcome[
                 "manual_data_provenance_review_required"],
           },sort_keys=True))
+    print("SHADOW_MARKET_MODEL_CORRECTED_VS_CURRENT "+
+          json.dumps(outcome["read_only_shared_model_corrected_vs_current"],
+                     sort_keys=True))
     print("RESEARCH ONLY. No live Cycle BUY/SELL, FX, ntfy or portfolio changes.")
 
 
