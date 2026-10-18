@@ -394,8 +394,7 @@ def run_once(*,out_dir=TARGET_DIR, now=None):
     # 200WMA and FX through the original shared model, with
     # independent original archive still authoritative.
     new=build_snapshot(
-        archive,verified_series.rename(
-            columns={"price_usd":"btc_usd"}),fx,
+        archive,pd.DataFrame({"btc_usd":verified_series}),fx,
         captured_at_utc=instant,
         verified_halving_date=verified_date,
         research_provider_label=quality["source_provenance"],
