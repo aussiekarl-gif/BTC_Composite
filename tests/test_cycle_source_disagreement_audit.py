@@ -73,6 +73,42 @@ class SourceDisagreementAttributionTests(unittest.TestCase):
         self.assertTrue(r["local_gate_sensitivity_uses_archived_200wma_for_all_prices"])
         self.assertFalse(r["eligible_to_change_live_source_or_signal"])
 
+    def test_post_archive_new_public_days_check_against_kraken(self):
+        a,b,k=sources()
+        b.loc["2026-10-14","btc_usd"]=110.
+        result=source_overlap_audit(a,b,kraken=k,asof=DATE)
+        newer=result["post_archive_new_daily_Blockchain_vs_Kraken"]
+        self.assertTrue(newer["available"])
+        self.assertEqual(newer["first_overlap_date"],"2026-10-06")
+        self.assertEqual(newer["last_overlap_date"],"2026-10-17")
+        self.assertEqual(newer["maximum_deviation_date_utc"],"2026-10-14")
+        self.assertEqual(newer["maximum_absolute_pct"],9.09091)
+        self.assertEqual(newer["latest_pair_absolute_pct"],0.)
+
+    def test_chart_daily_date_offset_triangulation_is_diagnostic_only(self):
+        a,b,k=sources()
+        idx=k.index
+        k["btc_usd"]=100+np.arange(len(idx),dtype=float)
+        b["btc_usd"]=k["btc_usd"].shift(1)
+        b.iloc[0,0]=float(k.iloc[0,0])
+        report=source_overlap_audit(a,b,kraken=k,asof=DATE)
+        shift=report["prior_overlap_Blockchain_Kraken_date_shift_diagnostic"]
+        self.assertTrue(shift["available"])
+        self.assertEqual(shift[
+            "lowest_median_absolute_deviation_offset_days"],-1)
+        self.assertTrue(shift[
+            "possible_different_daily_timestamp_convention"])
+        self.assertTrue(shift[
+            "diagnostic_only_never_changes_prices_or_trade_dates"])
+        self.assertFalse(report["prices_overwritten"])
+
+    def test_missing_independent_exchange_returns_missing_diagnostics(self):
+        a,b,k=sources(third=False)
+        r=source_overlap_audit(a,b,asof=DATE)
+        self.assertIsNone(r["post_archive_new_daily_Blockchain_vs_Kraken"])
+        self.assertIsNone(r[
+            "prior_overlap_Blockchain_Kraken_date_shift_diagnostic"])
+
     def test_future_current_day_candle_excluded(self):
         a,b,k=sources()
         b.loc[pd.Timestamp("2026-10-18",tz="UTC")]=999999.
