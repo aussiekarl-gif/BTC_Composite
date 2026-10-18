@@ -1,0 +1,37 @@
+name: Research Top Indicator First-Alert Sell Horse Race
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/sell_top_first_alert_horse_race.py"
+      - "tests/test_sell_top_first_alert_horse_race.py"
+      - ".github/workflows/top_indicator_first_alert_sell.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chronological-top-signal-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install analysis dependencies
+        run: pip install -r requirements.txt
+      - name: Compile first-alert research module
+        run: python -m py_compile engines/research/sell_top_first_alert_horse_race.py
+      - name: Test frozen baseline and first warning causality
+        run: python -m unittest discover -s tests -p "test_sell_top_first_alert_horse_race.py" -v
+      - name: Run same-wallet historical first-alert indicator horse race
+        run: python -m engines.research.sell_top_first_alert_horse_race --out artifacts/sell_top_first_alert
+      - name: Upload dated complete and censored per-cycle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: top-first-alert-sell-evidence
+          path: artifacts/sell_top_first_alert/
+          if-no-files-found: ignore
