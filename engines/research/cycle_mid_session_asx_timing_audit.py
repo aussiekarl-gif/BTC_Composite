@@ -142,12 +142,12 @@ def report(mid_csv:str,asx_csv:str,*,as_of_utc:dt.datetime)->dict:
         expected=day+dt.timedelta(days=1)
         while expected.weekday()>=5:
             expected+=dt.timedelta(days=1)
-        if next_day!=expected:
-            record["outcome_status"]="NEXT_BUSINESS_DAY_NOT_CONFIRMED_NO_BACKFILL"
-            records.append(record)
-            continue
         if days>MAX_NEXT_ASX_SESSION_GAP_DAYS:
             record["outcome_status"]="NEXT_SOURCE_DATE_TOO_FAR_OR_MISSING"
+            records.append(record)
+            continue
+        if next_day!=expected:
+            record["outcome_status"]="NEXT_BUSINESS_DAY_NOT_CONFIRMED_NO_BACKFILL"
             records.append(record)
             continue
         later_price,later_at,later_hash=sessions[next_day]
