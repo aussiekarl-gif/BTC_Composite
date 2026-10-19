@@ -11,6 +11,7 @@ on:
       - 'engines/research/forward_market_readiness.py'
       - 'engines/research/btc_unified_research_readiness.py'
       - 'engines/research/forward_ibit_matched_benchmark.py'
+      - 'engines/research/cycle_mid_session_asx_timing_audit.py'
       - '.github/workflows/research_forward_cycle_tape.yml'
   pull_request:
     paths:
@@ -22,6 +23,8 @@ on:
       - 'tests/test_btc_unified_research_readiness.py'
       - 'engines/research/forward_ibit_matched_benchmark.py'
       - 'tests/test_forward_ibit_matched_benchmark.py'
+      - 'engines/research/cycle_mid_session_asx_timing_audit.py'
+      - 'tests/test_cycle_mid_session_asx_timing_audit.py'
       - 'engines/research/btc_unified_research_readiness.py'
       - 'tests/test_cycle_forward_signal_tape.py'
       - '.github/workflows/research_forward_cycle_tape.yml'
@@ -61,6 +64,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_btc_unified_research_readiness.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_mid_session_asx_timing_audit.py' -v
       - name: Capture only last VERIFIED completed close and market-level Cycle signal
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: python -m engines.research.cycle_forward_signal_tape
@@ -89,6 +93,13 @@ jobs:
           if ! python -m engines.research.forward_ibit_matched_benchmark; then
             echo '::warning::Paper benchmark unavailable; protect independent immutable source publication.'
           fi
+      - name: Read-only prospective same-session vs next ASX close timing study
+        if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          if ! python -m engines.research.cycle_mid_session_asx_timing_audit; then
+            echo '::warning::Mid-session ASX timing study unavailable; preserve independent source tapes.'
+          fi
       - name: Preserve prospective source record even if repository write is blocked
         if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         uses: actions/upload-artifact@v4
@@ -99,6 +110,7 @@ jobs:
             artifacts/forward_readiness.json
             artifacts/btc_unified_research_readiness.json
             artifacts/forward_ibit_matched_benchmark.json
+            artifacts/cycle_mid_session_asx_timing_audit.json
           if-no-files-found: ignore
       - name: Save only new immutable research observation and matured scores
         # A failed test OR failed chained-data audit must NEVER publish
