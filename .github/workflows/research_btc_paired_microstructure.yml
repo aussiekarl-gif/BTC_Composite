@@ -1,0 +1,114 @@
+name: Research BTC coordinated two-venue snapshots (paper only)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/btc_coordinated_capture.py'
+      - 'tests/test_btc_coordinated_capture.py'
+      - 'engines/research/btc_spot_depth_forward.py'
+      - 'engines/research/coinbase_trade_samples.py'
+      - 'engines/research/btc_microstructure_forward_scorecard.py'
+      - '.github/workflows/research_btc_paired_microstructure.yml'
+      - '.github/workflows/research_btc_spot_depth_forward.yml'
+      - '.github/workflows/research_coinbase_trade_samples.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/btc_coordinated_capture.py'
+      - '.github/workflows/research_btc_paired_microstructure.yml'
+      - '.github/workflows/research_btc_spot_depth_forward.yml'
+      - '.github/workflows/research_coinbase_trade_samples.yml'
+  workflow_dispatch:
+  schedule:
+    # Four paired captures per UTC day, same runner, consecutive public calls.
+    - cron: '17 1,7,13,19 * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  # Manual legacy source-only fallbacks share the same lock.
+  group: research-btc-microstructure-source-collection
+  cancel-in-progress: false
+
+jobs:
+  capture-two-independent-public-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install public REST and research test dependencies
+        run: python -m pip install 'requests>=2.31,<3'
+      - name: Guard independent tapes and frozen research thresholds
+        run: |
+          python -m py_compile engines/research/btc_coordinated_capture.py engines/research/btc_spot_depth_forward.py engines/research/coinbase_trade_samples.py engines/research/btc_microstructure_forward_scorecard.py
+          python -m unittest discover -s tests -p 'test_btc_coordinated_capture.py' -v
+          python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v
+          python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
+          python -m unittest discover -s tests -p 'test_btc_microstructure_forward_scorecard.py' -v
+          python -m engines.research.btc_spot_depth_forward --self-check-only
+          python -m engines.research.coinbase_trade_samples --self-check-only
+      - name: Pull request only - test real public sources without saving observations
+        if: github.event_name == 'pull_request'
+        run: |
+          python -m engines.research.btc_spot_depth_forward --probe-only
+          python -m engines.research.coinbase_trade_samples --probe-only
+      - name: Prospectively capture public Kraken then Coinbase closely together
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: python -m engines.research.btc_coordinated_capture
+      - name: Compute optional read-only frozen forward scorecard
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          if ! python -m engines.research.btc_microstructure_forward_scorecard; then
+            echo '::warning::Optional scorecard unavailable; original immutable sources still require preservation.'
+          fi
+      - name: Upload research records and optional diagnostic even on provider errors
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coordinated-btc-public-microstructure-research
+          path: |
+            data/research_forward_validation/kraken_spot_depth_forward.csv
+            data/research_forward_validation/coinbase_trade_samples_forward.csv
+            artifacts/btc_microstructure_capture_status.json
+            artifacts/btc_microstructure_forward_scorecard.json
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Commit ONLY valid new immutable source records
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m engines.research.btc_spot_depth_forward --self-check-only
+          python -m engines.research.coinbase_trade_samples --self-check-only
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- data/research_forward_validation/kraken_spot_depth_forward.csv data/research_forward_validation/coinbase_trade_samples_forward.csv
+          if git diff --cached --quiet; then
+            echo 'Both immutable source slots already captured; no rewrite.'
+          else
+            git commit -m 'Research synchronized BTC book/trade samples [skip ci]'
+            git fetch origin main
+            # Fail closed if another capture modified the same source history.
+            git rebase origin/main
+            git push origin HEAD:main
+          fi
+      - name: Surface source outages AFTER saving any valid independent records
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && success()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path("artifacts/btc_microstructure_capture_status.json").read_text())
+          if not report["all_providers_ok"]:
+              raise SystemExit("Some public sources failed; other valid tapes were preserved: "
+                               + "; ".join(report["provider_capture_failures"]))
+          print("Both public source captures completed, or exact UTC slot was already stored.")
+          PY
