@@ -13,7 +13,7 @@ Independent append-only evidence: `data/research_forward_validation/cycle_mid_se
 Dedicated GitHub Actions: `.github/workflows/research_cycle_mid_session_watch.yml`
 
 - Begins **Tuesday, 20 October 2026, Sydney**, before the first eligible forward ASX matched benchmark session.
-- ONE weekday job at **01:30 UTC** (Brisbane 11:30 year-round, Sydney 12:30 daylight saving / 11:30 winter), but date and data quality are determined by the **actual successful public source receipt**, never by the intended cron schedule. If GitHub is early, delayed beyond 15:00 Sydney, or unable to reach a source, it fails closed without a snapshot.
+- TWO potential weekday GitHub starts at **01:30 and 02:30 UTC** (Brisbane 11:30 and 12:30 year-round, Sydney 12:30 and 13:30 in daylight saving / 11:30 and 12:30 in winter). The second is a reliability backup for a missed/delayed first run, **not a second observation or notification**. Existing append-only one-Sydney-date idempotence skips provider requests and avoids rewriting an already captured record. Actual successful public receipt time, never scheduled cron, determines eligibility. If both runs miss the 11:00–15:00 Sydney capture window or fail provider verification, that date stays missing, without backfilling.
 - Valid local capture between **11:00 and 15:00 Australia/Sydney**, only on eligible weekdays; weekends/holidays cannot be treated as confirmed trading dates. Holidays will have no matched ASX daily close outcome; we do not infer one.
 - Exact shared live Streamlit/daily ntfy public BTC sources: historical BlockHorizon, date-corrected public Blockchain.com (midnight D -> preceding UTC completed D-1 close), verified Kraken daily OHLC bridge, prior dated AUD FX and verified halving epoch.
 - Exact unchanged `calculate_allocation_signal` at DEFAULT buy style; store market WATCH, BUY percentage of remaining AUD cash, SELL percentage of remaining BTC/IBIT units, verified BTC completed close date, prior 200WMA, prior FX date, cross-source difference and the market rule code SHA256. No user brokerage data is read.
@@ -40,3 +40,11 @@ After future source records are actually collected:
 `python -m unittest discover -s tests -p 'test_cycle_mid_session_signal_tape.py' -v`
 
 The workflow also runs existing Cycle allocation and shared completed UTC close regression suites. In PRs it performs no live source requests; only scheduled or explicitly manually dispatched main runs capture. A new scheduled weekday research job adds small GitHub Actions usage, but adds no paid provider subscription or ChatGPT prompt expense. It should be disabled if data evidence remains too sparse to justify continued collection.
+
+## 20 October pre-start hardening (PR #180)
+
+Add `--probe-only` to the SAME source module, callable at any local hour. It fetches **actual current public BTC, AUD FX, Kraken and verified halving data**, checks yesterday's completed UTC close and original archived-price preservation, then computes the unchanged Cycle market WATCH without writing any research observation, user holdings, notification reservation, broker order or ntfy message. Its result has `mid_session_snapshot_recorded=false` and **must not** be used as a timestamped in-session market signal.
+
+The PR workflow calls this no-write live probe before activation, to catch public provider shape/time lag or stale FX problems in advance. Six additional offline tests exercise valid probe, before-window probe, stale BTC close, conflicting Kraken source, future FX and timezone fail-closed. The source tape hash chain and existing single-date write contract are unchanged.
+
+The extra scheduled GitHub job is one lightweight weekday backup. If repeated duplicates or usage become costly, it can be removed without affecting the daily ntfy schedule or historical records.
