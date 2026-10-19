@@ -26,7 +26,7 @@ def inputs(kind="two_depths"):
         px.loc[END]=50.
     elif kind=="deep_continues":
         px.loc["2020-02-01":]=75.
-        for day in pd.date_range("2020-02-02",END,tz="UTC",freq="D"):
+        for day in pd.date_range(pd.Timestamp("2020-02-02",tz="UTC"),END,freq="D"):
             px.loc[day]=max(10.,75.-.2*(day-pd.Timestamp(
                 "2020-02-02",tz="UTC")).days)
     else:raise ValueError("Wrong fixture")
@@ -177,7 +177,7 @@ class ConditionalWeeklyBuyTests(unittest.TestCase):
         baseline=next(r for r in rows if r["policy"]==BASELINE)
         self.assertEqual(baseline["vs_original_2p5_aftertax_pct"],0.)
         self.assertTrue(all(r["synthetic_delayed_bottom"] for r in rows))
-        self.assertTrue(all(r["cash_left_pct_initial"]<=100 for r in rows))
+        self.assertTrue(all(r["AUD_cash_remaining_pct"]<=100 for r in rows))
 
 
 if __name__=="__main__":
