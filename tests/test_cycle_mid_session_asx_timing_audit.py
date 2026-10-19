@@ -146,6 +146,14 @@ class MidSessionTimingTests(unittest.TestCase):
                          "NEXT_SOURCE_DATE_TOO_FAR_OR_MISSING")
         self.assertEqual(r["paired_non_hold_events"],0)
 
+    def test_missing_middle_weekday_not_passed_off_as_next_session(self):
+        r=report(mids(mid(signal="BUY WATCH")),
+                 closes(close(20),close(22,"21")),as_of_utc=NOW)
+        self.assertEqual(r["observations"][0]["outcome_status"],
+                         "NEXT_BUSINESS_DAY_NOT_CONFIRMED_NO_BACKFILL")
+        self.assertEqual(r["paired_non_hold_events"],0)
+        self.assertIsNone(r["mean_directional_close_delay_pct_exploratory"])
+
     def test_friday_to_monday_three_calendar_days_accepted(self):
         r=report(mids(mid(day=23,signal="BUY WATCH")),
                  closes(close(23),close(26,"21")),as_of_utc=NOW)
