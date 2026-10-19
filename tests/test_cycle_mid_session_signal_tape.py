@@ -8,7 +8,7 @@ import pandas as pd
 
 from engines.research.cycle_mid_session_signal_tape import (
     COLUMNS, SYDNEY, build_observation, capture_window, read_tape,
-    append, capture,
+    append, capture, probe_live_market,
 )
 
 UTC=dt.timezone.utc
@@ -175,6 +175,42 @@ class MidSessionCycleTests(unittest.TestCase):
             with self.assertRaises(ConnectionError):
                 capture(path=f,clock=lambda:AT,market_fetcher=fail)
             self.assertFalse(f.exists())
+
+    def test_live_provider_probe_validates_without_persisting(self):
+        result=probe_live_market(now=AT,market_fetcher=lambda _: (market(),verified()))
+        self.assertEqual(result["status"],"READ_ONLY_REAL_PUBLIC_MARKET_PROBE_NO_WRITE")
+        self.assertEqual(result["BTC_last_completed_utc_close"],"2026-10-19")
+        self.assertEqual(result["shared_market_signal"],"HOLD")
+        self.assertFalse(result["mid_session_snapshot_recorded"])
+        self.assertEqual(result["orders_placed"],0)
+        self.assertEqual(result["ntfy_sent"],0)
+
+    def test_probe_can_run_before_mid_session_without_implicitly_recording(self):
+        morning=dt.datetime(2026,10,19,20,0,tzinfo=UTC)
+        result=probe_live_market(now=morning,market_fetcher=lambda _: (
+            market(close_day="2026-10-18",fx_day="2026-10-16"),verified()))
+        self.assertEqual(result["BTC_last_completed_utc_close"],"2026-10-18")
+        self.assertFalse(result["mid_session_snapshot_recorded"])
+
+    def test_public_probe_rejects_stale_verified_daily_close(self):
+        with self.assertRaisesRegex(ValueError,"last completed"):
+            probe_live_market(now=AT,market_fetcher=lambda _: (
+                market(close_day="2026-10-18"),verified()))
+
+    def test_public_probe_rejects_unverified_cross_source_price(self):
+        bad=verified();bad["recent_kraken_blockchain_max_diff_pct"]=6.29
+        with self.assertRaisesRegex(ValueError,"diverge"):
+            probe_live_market(now=AT,market_fetcher=lambda _: (market(),bad))
+
+    def test_public_probe_refuses_missing_prior_aud_fx(self):
+        with self.assertRaisesRegex(ValueError,"FX unavailable"):
+            probe_live_market(now=AT,market_fetcher=lambda _: (
+                market(fx_day="2026-10-19"),verified()))
+
+    def test_public_probe_invalid_tz_refused(self):
+        with self.assertRaisesRegex(ValueError,"Timezone-aware"):
+            probe_live_market(now=AT.replace(tzinfo=None),
+                              market_fetcher=lambda _: (market(),verified()))
 
     def test_explicit_no_notification_or_orders_schema(self):
         row=observation()
