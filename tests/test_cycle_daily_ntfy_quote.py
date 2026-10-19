@@ -199,7 +199,7 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         app=(Path(__file__).resolve().parents[1]/"app.py").read_text(encoding="utf-8")
         self.assertIn(
             '["Cycle Trading — Research", "Production", "Research", '
-            '"Bottom Signal Timeline", "200WMA Trading Model"]',app)
+            '"Bottom Signal Timeline"]',app)
         self.assertIn('index=0,',app)
         self.assertIn('"Production": Path(__file__).parent',app)
         self.assertIn('"Research": Path(__file__).parent',app)
