@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'engines/research/cycle_daily_notification_readonly_preflight.py'
+      - 'engines/research/cycle_daily_market_diagnostic.py'
+      - 'tests/test_cycle_daily_market_diagnostic.py'
       - '.github/workflows/cycle_daily_notification_readonly_preflight.yml'
   workflow_dispatch:
 
@@ -24,8 +26,11 @@ jobs:
       - name: Run original Cycle and ntfy functionality assertions
         run: |
           python -m py_compile engines/research/cycle_daily_notification_readonly_preflight.py
+          python -m unittest discover -s tests -p 'test_cycle_daily_market_diagnostic.py' -v
           python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
           python -m unittest discover -s tests -p 'test_cycle_daily_ntfy_quote.py' -v
+      - name: Diagnose each REAL public BTC / AUD / Kraken / halving step without posting ntfy
+        run: python -m engines.research.cycle_daily_market_diagnostic
       - name: Full independent real public BTC date and DAILY MESSAGE render, NO notification
         run: python -m engines.research.cycle_daily_notification_readonly_preflight
       - name: Confirm no trading, market tape, or ntfy reservation changed
