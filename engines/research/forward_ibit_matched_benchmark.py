@@ -36,6 +36,11 @@ SPREAD_BPS=25.0  # explicit research sensitivity, NOT observed broker spread
 WEEKLY_DCA_WEEKS=20
 STALE_MARKET_MAX_DAYS=3
 MIN_SESSIONS_FOR_REVIEW=30
+# Locked to the actual original prospective Cycle model code fingerprint
+# in the 17/18-Oct saved market tape, BEFORE 20-Oct ASX comparison starts.
+# A later Cycle model improvement must be evaluated as a NEW named cohort,
+# not silently stitched into this 2026-10-20 forward experiment.
+FROZEN_CYCLE_MODEL_CODE_SHA256="0143723687ff676300734a4bcc9887cdc095c74b70b958852d9448412b7f08a7"
 OUTPUT=Path("artifacts/forward_ibit_matched_benchmark.json")
 
 
@@ -124,6 +129,7 @@ def grade(cycle_csv:str,ibit_csv:str,*,as_of_utc:dt.datetime):
     signals=_read_rows(cycle_csv,SIGNAL_COLUMNS,date_key="observation_date_utc")
     closes=_read_rows(ibit_csv,IBIT_COLUMNS,date_key="market_session_date_sydney")
     eligible=[]
+    prospective_seen=[]
     rejected={}
     def skip(reason):
         rejected[reason]=rejected.get(reason,0)+1
@@ -145,6 +151,13 @@ def grade(cycle_csv:str,ibit_csv:str,*,as_of_utc:dt.datetime):
             or row["trade_executable"]!="False"
             or row["point_in_time_onchain_risk_status"]!="NOT_VERIFIED_NOT_INCLUDED"):
             raise ValueError("BTC market signal scheme or execution claim changed")
+        # Keep the REAL latest pre-open prospectively observed source row,
+        # even if it fails a version/quality gate, so the replay does not
+        # fall back to an older favourable accepted BUY/SELL instruction.
+        prospective_seen.append({**row,"_captured":captured,"_date":day})
+        if row["model_code_sha256"]!=FROZEN_CYCLE_MODEL_CODE_SHA256:
+            skip("frozen_cycle_model_code_sha256_changed")
+            continue
         if _number(row["source_crosscheck_max_diff_pct"])>1.:
             skip("provider_crosscheck_over_one_pct")
             continue
@@ -193,6 +206,8 @@ def grade(cycle_csv:str,ibit_csv:str,*,as_of_utc:dt.datetime):
     dca_weeks=set()
     used_signals=[]
     journal=[]
+    source_failed_sessions=0
+    exposure_observed={name:[] for name in accounts}
     for session in observations:
         day=session["date"]
         ref=session["close"]
@@ -200,12 +215,19 @@ def grade(cycle_csv:str,ibit_csv:str,*,as_of_utc:dt.datetime):
         # Quotes are completed Yahoo daily candles observed after 17:00,
         # not a fill price that was known when hypothetical decision was made.
         open_utc=dt.datetime.combine(day,dt.time(10),SYDNEY).astimezone(dt.timezone.utc)
-        prior=[s for s in eligible if (s["_captured"]<open_utc
-             and 0<=(day-s["_date"]).days<=STALE_MARKET_MAX_DAYS)]
-        live=prior[-1] if prior else None
+        known=[s for s in prospective_seen if (s["_captured"]<open_utc
+              and 0<=(day-s["_date"]).days<=STALE_MARKET_MAX_DAYS)]
+        most_recent=max(known,key=lambda s:(s["_captured"],s["_date"])) if known else None
+        allowed={s["row_hash"] for s in eligible}
+        live=most_recent if most_recent and most_recent["row_hash"] in allowed else None
         if live:used_signals.append(live["row_hash"])
         cyc=accounts["Cycle_live_market_watch"]
         action="NO_FRESH_PREOPEN_SIGNAL"
+        if most_recent and not live:
+            # Important: never trade on an older eligible signal after
+            # a newer known bad-source or changed-code record exists.
+            action="LATEST_PREOPEN_SIGNAL_FAILED_QUALITY_OR_VERSION_GATE"
+            source_failed_sessions+=1
         if live and (cyc["last_trade"] is None
                      or (day-cyc["last_trade"]).days>=7):
             if live["signal"]=="BUY WATCH":
@@ -240,6 +262,16 @@ def grade(cycle_csv:str,ibit_csv:str,*,as_of_utc:dt.datetime):
                    budget_aud=INITIAL_AUD/WEEKLY_DCA_WEEKS)
             dca_weeks.add(week)
         marks={name:round(_mark(acc,ref),2) for name,acc in accounts.items()}
+        exposure={}
+        for name,acc in accounts.items():
+            mark_value=acc["cash"]+acc["units"]*ref
+            if mark_value<=0:
+                raise AssertionError("Paper account wealth must be positive")
+            invested_pct=100.0*(acc["units"]*ref)/mark_value
+            if not 0<=invested_pct<=100.001:
+                raise AssertionError("Impossible ETF capital exposure")
+            exposure[name]=round(invested_pct,4)
+            exposure_observed[name].append(invested_pct)
         journal.append({
             "session_date_sydney":day.isoformat(),
             "ASX_indicative_close_aud":round(ref,6),
@@ -248,6 +280,7 @@ def grade(cycle_csv:str,ibit_csv:str,*,as_of_utc:dt.datetime):
             "signal_source_hash":live["row_hash"] if live else None,
             "Cycle_shadow_action":action,
             "matched_before_tax_aud_marks":marks,
+            "matched_session_ETF_exposure_pct":exposure,
         })
     reports={}
     for name,acc in accounts.items():
@@ -263,6 +296,13 @@ def grade(cycle_csv:str,ibit_csv:str,*,as_of_utc:dt.datetime):
             "max_observed_drawdown_pct":
                 round(acc["max_drawdown_pct"],4) if observations else None,
             "paper_orders_count":len(acc["orders"]),
+            "mean_observed_session_ETF_exposure_pct":(
+                round(sum(exposure_observed[name])/len(exposure_observed[name]),4)
+                if exposure_observed[name] else None),
+            "last_observed_session_ETF_exposure_pct":(
+                round(exposure_observed[name][-1],4)
+                if exposure_observed[name] else None),
+            "observed_session_exposure_count":len(exposure_observed[name]),
             "paper_orders":acc["orders"],
         }
     enough=len(observations)>=MIN_SESSIONS_FOR_REVIEW
@@ -278,7 +318,10 @@ def grade(cycle_csv:str,ibit_csv:str,*,as_of_utc:dt.datetime):
         "policy_uses_only_pre_ASX_open_prospective_Cycle_signals":True,
         "ASX_close_proxy_NOT_available_as_guaranteed_preclose_execution":True,
         "market_source_single_provider_yahoo_not_broker_quote":True,
+        "frozen_cycle_model_code_sha256":FROZEN_CYCLE_MODEL_CODE_SHA256,
         "cycle_prior_dated_signals_available":len(eligible),
+        "matched_sessions_latest_known_source_failed_eligibility":source_failed_sessions,
+        "reported_ETF_exposure_is_not_risk_adjusted_outperformance":True,
         "cycle_excluded_signals":dict(sorted(rejected.items())),
         "verified_indicative_ASX_sessions":len(observations),
         "minimum_sessions_for_exploratory_review":MIN_SESSIONS_FOR_REVIEW,
