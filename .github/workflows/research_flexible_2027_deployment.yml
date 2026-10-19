@@ -1,0 +1,42 @@
+name: Research flexible BTC 2027 deployment objective (no live changes)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/flexible_2027_cash_deployment_envelope.py'
+      - 'tests/test_flexible_2027_cash_deployment_envelope.py'
+      - '.github/workflows/research_flexible_2027_deployment.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/flexible_2027_cash_deployment_envelope.py'
+      - 'tests/test_flexible_2027_cash_deployment_envelope.py'
+      - '.github/workflows/research_flexible_2027_deployment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conditional-deployment-envelope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify no compulsory Nov 2026 / 2027 cash sweep
+        run: |
+          python -m py_compile engines/research/flexible_2027_cash_deployment_envelope.py
+          python -m unittest discover -s tests -p 'test_flexible_2027_cash_deployment_envelope.py' -v
+          python -m engines.research.flexible_2027_cash_deployment_envelope
+      - name: Keep actual user data, production models and forward source tapes unchanged
+        run: git diff --exit-code -- data/research_forward_validation/
+      - name: Save conditional illustrative cash-only sensitivity
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-2027-cash-only-research-envelope
+          path: artifacts/research_flexible_btc_deployment_2027.json
+          retention-days: 30
+          if-no-files-found: error
