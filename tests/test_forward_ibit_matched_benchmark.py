@@ -165,7 +165,7 @@ class ForwardAUDPaperBenchmarkTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Modified"):
             grade(c,damaged,as_of_utc=NOW)
         with self.assertRaisesRegex(ValueError,"Modified"):
-            grade(c.replace("0.0500","6.2900"),a,as_of_utc=NOW)
+            grade(c.replace("0.05","6.29"),a,as_of_utc=NOW)
 
     def test_wrong_market_or_fabricated_broker_fill_refused(self):
         c=tape_signal(signal())
