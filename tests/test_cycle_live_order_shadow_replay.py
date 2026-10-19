@@ -132,6 +132,13 @@ class LiveOrderShadowParityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Stale or future FX"):
             run_shadow(initial(),[replace(s,market=m)])
 
+    def test_fx_after_market_snapshot_is_lookahead(self):
+        s=session()
+        m=market()
+        m["fx_source_date"]="2026-08-15"
+        with self.assertRaisesRegex(ValueError,"Stale or future FX"):
+            run_shadow(initial(),[replace(s,market=m)])
+
     def test_crossed_or_stale_quote_rejected(self):
         s=session()
         with self.assertRaisesRegex(ValueError,"Crossed"):
