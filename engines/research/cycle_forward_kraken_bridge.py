@@ -82,7 +82,7 @@ def fetch_completed_kraken_daily(*,utc_today,timeout=20):
         response.json(),utc_today=utc_today)
 
 
-def append_verified_kraken_after_blockchain(blockchain,kraken,*,utc_today):
+def append_verified_kraken_after_blockchain(blockchain,kraken,*,utc_today,max_publication_gap_days=MAX_PUBLICATION_GAP_DAYS):
     """Date-exact short bridge only, recent public-source overlap required.
 
     Old blockchain prices remain unchanged even when Kraken close differs.
@@ -111,7 +111,7 @@ def append_verified_kraken_after_blockchain(blockchain,kraken,*,utc_today):
     if known.index[-1]>=yesterday:
         raise ValueError("No delayed Blockchain.com gap to bridge")
     lag=(yesterday-known.index[-1]).days
-    if not 1<=lag<=MAX_PUBLICATION_GAP_DAYS:
+    if not 1<=lag<=max_publication_gap_days:
         raise ValueError("Delayed public reference exceeds short safe Kraken bridge")
     common=known.index.intersection(candles.index)
     common=common[common>=known.index[-1]-pd.Timedelta(days=RECENT_OVERLAP_DAYS-1)]
