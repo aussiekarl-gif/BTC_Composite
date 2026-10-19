@@ -170,6 +170,7 @@ class LiveOrderShadowParityTests(unittest.TestCase):
         m=market(asof="2026-08-13")
         r=run_shadow(initial(),[replace(s,market=m)])
         self.assertEqual(r["sessions"][0]["shared_live_rule_action"],"HOLD")
+        self.assertEqual(r["sessions"][0]["actual_live_market_signal"],"UNAVAILABLE")
         self.assertEqual(r["remaining_ibit_whole_units"],1000)
 
     def test_replay_prefix_is_invariant(self):
