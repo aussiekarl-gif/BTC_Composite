@@ -8,7 +8,7 @@ Authoritative source records inspected on 19 October around 02:43 UTC:
 - Cycle forward observations: **2** dated BTC market HOLD entries, 15 Oct and 17 Oct. The 15 Oct entry was not captured next UTC day, excluded from truly prospective scoring. No verified matured recorded 7/30/90-day return chain; missing 16 Oct not backfilled.
 - Genuine ASX:IBIT Sydney-day indicative close observations: **0** in authoritative prospective tape. At review, Monday 19 October ASX had not closed. A free Yahoo AUD candle is not an actual broker bid/ask.
 - Kraken: **2** point-in-time resting-book observations; Coinbase: **2** bounded 100-trade samples. Oct18 actual captures 7m27s apart, Oct19 ~33m apart: neither qualifies as a simultaneous five-minute paired observation. A coordinated collector was merged; does not rewrite the existing evidence.
-- **6.29% maximum historical BTC provider dispersion**, above 5% manual-review threshold. This is NOT evidence today's spot price is 6.29% wrong. Isolate dated offending provider and source before trusting affected historical risk inputs, without replacing or silently editing the archive.
+- **6.29% maximum historical BTC provider dispersion**, above 5% manual-review threshold. The root cause was already documented in docs/research/btc_close_timestamp_alignment_evidence_20261018.md: the Blockchain.com midnight point labelled calendar day D closely matches the prior UTC daily close D-1. The worst apparent date was **21 September 2026** (archived USD 86,586.52, same-date Kraken USD 86,593.80, raw labelled Blockchain USD 81,136.20). Properly matched daily close prices showed <0.053% maximum difference in the documented overlap; this is NOT a 6.29% spot-price error. The live source-date parser correction needs a separately tested, versioned approval and must NOT rewrite the historic archive.
 
 No tested model win can be inferred from successful CI, 2 historical cycles, two snapshots or a single-model backtest.
 
@@ -32,6 +32,6 @@ The optional report must NOT block valid immutable source tape publication if a 
 
 ## Quality and safety gates
 
-Escalate a review flag for: historical BTC source crosscheck >=5%; BTC forward close missing or more than 2 calendar days old; Kraken/Coinbase sample tape not observed for more than 9 hours; same Sydney day ASX:IBIT indicative close absent only on a weekday AFTER 17:00 local. ASX holidays and provider outages are not automatically fraud or failed strategy signals.
+Escalate a review flag for: historical BTC source crosscheck >=5% (the already diagnosed Blockchain date-label error remains unresolved in live input provenance); BTC forward close missing or more than 2 calendar days old; Kraken/Coinbase sample tape not observed for more than 9 hours; same Sydney day ASX:IBIT indicative close absent only on a weekday AFTER 17:00 local. ASX holidays and provider outages are not automatically fraud or failed strategy signals.
 
 Promotion blocked until exact candidate-vs-control executable backtest with no future information, same investment capital and accounting, real ASX timing, realistic AUD FX/fees/spread/lot taxes, and independent prospective follow-up. No investment orders, live BUY/SELL rule changes, portfolio, or ntfy changes result from the control-room report.
