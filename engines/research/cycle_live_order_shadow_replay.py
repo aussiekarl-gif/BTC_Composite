@@ -92,7 +92,7 @@ def _verify_session(s: Session, prior_date: dt.date | None):
     if not fx_date:
         raise ValueError("Date of prior FX rate required")
     fx = dt.date.fromisoformat(str(fx_date))
-    if fx >= day or (day-fx).days > 7:
+    if fx > market_date.date() or fx >= day or (day-fx).days > 7:
         raise ValueError("Stale or future FX price")
     if s.quote_provenance not in ("synthetic_research","archived_broker_bid_ask"):
         raise ValueError("Quote provenance must be auditable or explicit synthetic research")
