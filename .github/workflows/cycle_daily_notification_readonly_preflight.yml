@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - 'engines/research/cycle_daily_notification_readonly_preflight.py'
+      - 'engines/research/cycle_live_completed_utc_prices.py'
+      - 'engines/research/cycle_forward_kraken_bridge.py'
+      - 'tests/test_shared_cycle_live_completed_utc.py'
+      - 'tests/test_cycle_daily_ntfy_quote.py'
       - '.github/workflows/cycle_daily_notification_readonly_preflight.yml'
   workflow_dispatch:
 
