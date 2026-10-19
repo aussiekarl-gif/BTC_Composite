@@ -140,6 +140,9 @@ def build_corrected_source_candidate(archive: pd.DataFrame,
         aligned, completed_kraken, utc_today=today)
     combined, meta=merge_verified_cycle_prices(
         archive,with_kraken,utc_today=today)
+    # Pandas concat can drop the Series name when archive and public inputs
+    # have different provider column labels; preserve the priced BTC units.
+    combined=combined.rename("price_usd")
     if combined.index[-1]!=today-pd.Timedelta(days=1):
         raise ValueError("Source cannot provide most recent completed UTC close")
     if not combined.loc[archive.index].equals(
