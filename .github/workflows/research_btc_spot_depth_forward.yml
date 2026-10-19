@@ -1,28 +1,18 @@
 name: Research BTC spot depth prospective snapshots (no alerts)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/research_btc_spot_depth_forward.yml'
-      - 'engines/research/btc_spot_depth_forward.py'
-      - 'tests/test_btc_spot_depth_forward.py'
   pull_request:
     paths:
       - 'engines/research/btc_spot_depth_forward.py'
       - 'tests/test_btc_spot_depth_forward.py'
       - '.github/workflows/research_btc_spot_depth_forward.yml'
+  # Manual fallback only; the coordinated workflow owns the shared cron.
   workflow_dispatch:
-  schedule:
-    # Four snapshots daily at 01:17, 07:17, 13:17, 19:17 UTC.
-    # Scheduled collection starts only once the research PR is merged to main.
-    - cron: '17 1,7,13,19 * * *'
-
 permissions:
   contents: write
 
 concurrency:
-  group: research-btc-spot-depth-forward
+  group: research-btc-microstructure-source-collection
   cancel-in-progress: false
 
 jobs:
