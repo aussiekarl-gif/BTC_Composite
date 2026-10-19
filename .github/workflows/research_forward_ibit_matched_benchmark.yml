@@ -1,0 +1,41 @@
+name: Research forward ASX matched-BTC policy benchmarking (no orders)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/forward_ibit_matched_benchmark.py'
+      - 'tests/test_forward_ibit_matched_benchmark.py'
+      - '.github/workflows/research_forward_ibit_matched_benchmark.yml'
+      - '.github/workflows/research_forward_cycle_tape.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/forward_ibit_matched_benchmark.py'
+      - 'tests/test_forward_ibit_matched_benchmark.py'
+      - '.github/workflows/research_forward_ibit_matched_benchmark.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-frozen-forward-ASX-ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing BTC research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Validate source provenance and three cash-funded paper policies
+        run: |
+          python -m py_compile engines/research/forward_ibit_matched_benchmark.py
+          python -m unittest discover -s tests -p 'test_forward_ibit_matched_benchmark.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_ibit_asx_forward_close_tape.py' -v
+      - name: Preview authentic point-in-time comparison, without network/trading/writes
+        run: python -m engines.research.forward_ibit_matched_benchmark
+      - name: Keep immutable source records and scheduled jobs unchanged
+        run: git diff --exit-code -- data/research_forward_validation/
