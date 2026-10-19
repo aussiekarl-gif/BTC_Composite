@@ -182,6 +182,53 @@ def fetch_exact_live_market(now:dt.datetime)->tuple[dict,dict]:
     return market,meta
 
 
+def probe_live_market(*,now:dt.datetime,
+                      market_fetcher:Callable=fetch_exact_live_market)->dict:
+    """Read REAL shared public sources at ANY clock time; NEVER save a row.
+
+    Probing at e.g. 07:00 Brisbane can validate yesterday's UTC close
+    but it CANNOT retroactively create a mid-session observation.
+    """
+    observed=_instant(now)
+    market,meta=market_fetcher(observed)
+    if not isinstance(market,dict) or not isinstance(meta,dict):
+        raise ValueError("Verified public market source bundle required")
+    date=dt.date.fromisoformat(str(market["asof_date"]))
+    if date!=observed.date()-dt.timedelta(days=1):
+        raise ValueError("Public source not updated to last completed UTC BTC day")
+    if not meta.get("strict_close_date_verified") or not meta.get("archive_raw_prices_preserved"):
+        raise ValueError("Shared source verification or original archive missing")
+    spread=float(meta["recent_kraken_blockchain_max_diff_pct"])
+    if not math.isfinite(spread) or not 0<=spread<=1:
+        raise ValueError("Independent completed BTC closes diverge >1%")
+    fxday=dt.date.fromisoformat(str(market["fx_source_date"]))
+    if (market.get("usd_aud_prior") is None
+        or fxday>=date or (date-fxday).days>7):
+        raise ValueError("Prior-dated AUD FX unavailable")
+    vote=calculate_allocation_signal(market,buy_style=DEFAULT_BUY_STYLE)
+    if vote["signal"] not in ("BUY WATCH","SELL WATCH","HOLD"):
+        raise ValueError("Unknown shared Cycle market WATCH")
+    code_hash=_code_hash()
+    return {
+        "status":"READ_ONLY_REAL_PUBLIC_MARKET_PROBE_NO_WRITE",
+        "observed_utc":observed.isoformat(),
+        "BTC_last_completed_utc_close":date.isoformat(),
+        "BTC_USD_completed_close":round(float(market["btc_price_usd"]),2),
+        "prior_200WMA_USD":round(float(market["prior_200wma_usd"]),2),
+        "prior_AUD_FX_date_utc":fxday.isoformat(),
+        "Kraken_Blockchain_max_same_day_close_disagreement_pct":spread,
+        "shared_market_signal":vote["signal"],
+        "buy_pct_cash":vote["buy_pct_cash"],
+        "sell_pct_held":vote["sell_pct_held"],
+        "model_code_sha256":code_hash,
+        "realtime_notification_delivery_tested":False,
+        "mid_session_snapshot_recorded":False,
+        "portfolio_reads_or_writes":0,
+        "orders_placed":0,
+        "ntfy_sent":0,
+    }
+
+
 def capture(*,path:Path=OUTPUT,clock:Callable=lambda:dt.datetime.now(dt.timezone.utc),
             market_fetcher:Callable=fetch_exact_live_market)->dict:
     begun=_instant(clock())
@@ -212,10 +259,15 @@ def capture(*,path:Path=OUTPUT,clock:Callable=lambda:dt.datetime.now(dt.timezone
 
 def main():
     p=argparse.ArgumentParser(description="Mid-session public BTC market tape, independent of ntfy")
-    p.add_argument("--self-check-only",action="store_true")
+    opts=p.add_mutually_exclusive_group()
+    opts.add_argument("--self-check-only",action="store_true")
+    opts.add_argument("--probe-only",action="store_true",
+                      help="Fetch and validate real live BTC/FX/halving sources without persisting evidence")
     args=p.parse_args()
     if args.self_check_only:
         print(json.dumps({"status":"CHAIN_VALIDATED","observations":len(read_tape())}))
+    elif args.probe_only:
+        print(json.dumps(probe_live_market(now=dt.datetime.now(dt.timezone.utc)),sort_keys=True))
     else:
         print(json.dumps(capture(),sort_keys=True))
 
