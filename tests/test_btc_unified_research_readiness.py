@@ -86,6 +86,13 @@ class UnifiedResearchReadinessTests(unittest.TestCase):
         self.assertEqual(
             r["source_health"]["cycle_forward"]["max_historical_BTC_source_crosscheck_dispersion_pct"],6.29)
 
+    def test_flag_uses_documented_source_date_root_cause_not_spot_error(self):
+        r=self.audit()
+        flag=next(x for x in r["review_flags"]
+                  if x["code"]=="BTC_SOURCE_MAX_DISPERSION_GE_5PCT")
+        self.assertIn("PRECEDING UTC close", flag["detail"])
+        self.assertIn("not a current spot-price error", flag["detail"])
+
     def test_threshold_under_five_not_falsely_flagged(self):
         r=self.audit(btc=seed_btc(dispersion="4.99"))
         self.assertNotIn("BTC_SOURCE_MAX_DISPERSION_GE_5PCT",
