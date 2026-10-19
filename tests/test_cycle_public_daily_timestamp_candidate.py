@@ -18,6 +18,7 @@ DAY1=pd.Timestamp("2026-10-01",tz="UTC")
 
 def value(date):
     date=pd.Timestamp(date)
+    date=date.tz_localize("UTC") if date.tzinfo is None else date.tz_convert("UTC")
     return float(80000+(date-DAY1).days*100)
 
 
