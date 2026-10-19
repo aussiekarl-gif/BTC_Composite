@@ -160,7 +160,7 @@ class LiveOrderShadowParityTests(unittest.TestCase):
 
     def test_stale_market_is_hold_not_cash_consumption(self):
         s=session()
-        m=market(asof="2026-08-10")
+        m=market(asof="2026-08-13")
         r=run_shadow(initial(),[replace(s,market=m)])
         self.assertEqual(r["sessions"][0]["shared_live_rule_action"],"HOLD")
         self.assertEqual(r["remaining_ibit_whole_units"],1000)
