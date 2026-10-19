@@ -18,7 +18,7 @@ Require:
   * recent archive/public overlap, no rewriting any exported history
   * >=3 identical completed-day Blockchain/Kraken close references
     from past week, with strict <=1% maximum exchange deviation
-  * a contiguous gap through yesterday of <=3 days, filled with
+  * a contiguous gap through yesterday of <=7 days, filled with
     completed independent Kraken closes only after valid overlap
   * no trading recommendation if a single required day/provider is
     absent, disagreement high or yesterday not verified
@@ -41,6 +41,7 @@ RECENT_OVERLAP_DAYS=7
 MIN_RECENT_KRAKEN_OVERLAP=3
 MAX_RECENT_KRAKEN_SINGLE_DIFF_PCT=1.
 MAX_CORRECTED_ARCHIVE_OVERLAP_PCT=1.
+MAX_VERIFIED_PUBLICATION_LAG_DAYS=7
 
 
 def _today(value):
@@ -107,9 +108,15 @@ def merge_verified_live_cycle_prices(archive,raw_blockchain,kraken,*,utc_today):
         raise ValueError("Blockchain/Kraken daily-close source disagreement >1%")
     bridge=None
     extended=chart
+    lag_days=(yesterday-chart.index[-1]).days
+    if lag_days>MAX_VERIFIED_PUBLICATION_LAG_DAYS:
+        raise ValueError(f"Blockchain reference stale by {lag_days} days; maximum verified bridge is {MAX_VERIFIED_PUBLICATION_LAG_DAYS}")
     if chart.index[-1]<yesterday:
+        # Preserve the same date-exact, consecutive Kraken bridge and overlap
+        # checks; only extend its maximum length after strict <=1% verification.
         extended,bridge=append_verified_kraken_after_blockchain(
-            chart,candles,utc_today=today)
+            chart,candles,utc_today=today,
+            max_publication_gap_days=MAX_VERIFIED_PUBLICATION_LAG_DAYS)
     else:
         if chart.index[-1]>yesterday:
             raise ValueError("Future price not completed")

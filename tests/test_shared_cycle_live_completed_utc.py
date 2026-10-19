@@ -96,9 +96,15 @@ class SharedCorrectedCycleCloseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"yesterday"):
             merge_verified_live_cycle_prices(a,b,k,utc_today=TODAY)
 
-    def test_publication_gap_over_3_days_fails_closed(self):
+    def test_verified_five_day_publication_gap_is_bridged(self):
         a,b,k,fx=fixtures(last_raw_day="2026-10-12")
-        with self.assertRaisesRegex(ValueError,"short safe"):
+        merged,meta=merge_verified_live_cycle_prices(a,b,k,utc_today=TODAY)
+        self.assertEqual(str(merged.index[-1].date()),"2026-10-17")
+        self.assertEqual(len(meta["kraken_contiguous_completed_day_bridge"]),5)
+
+    def test_publication_gap_over_seven_days_fails_closed(self):
+        a,b,k,fx=fixtures(last_raw_day="2026-10-09")
+        with self.assertRaisesRegex(ValueError,"maximum verified bridge"):
             merge_verified_live_cycle_prices(a,b,k,utc_today=TODAY)
 
     def test_missing_consecutive_exchange_day_fails_closed(self):

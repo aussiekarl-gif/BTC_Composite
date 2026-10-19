@@ -7,6 +7,7 @@ read-only major-risk comparisons, not matched DCA percentages.
 """
 from __future__ import annotations
 import argparse
+import logging
 import datetime as dt
 import os
 import requests
@@ -31,6 +32,7 @@ from engines.research.cycle_trade_allocation import (
 )
 
 BRISBANE=ZoneInfo("Australia/Brisbane")
+LOG=logging.getLogger(__name__)
 
 def daily_message(*,now=None,quote=None,market=None,
                   reference_snapshot_fetcher=None):
@@ -40,6 +42,7 @@ def daily_message(*,now=None,quote=None,market=None,
     if quote is None:
         try:quote=fetch_ibit_quote(now=now)
         except Exception:quote=None
+    market_error=None
     if market is None:
         try:
             history=read_exported_history()["price_usd"]
@@ -58,8 +61,11 @@ def daily_message(*,now=None,quote=None,market=None,
                                           confirmed_halving_date=confirmed)
             age=(now.date()-pd.Timestamp(market["asof_date"]).date()).days
             if age!=1 or market["usd_aud_prior"] is None:
-                market=None
-        except Exception:market=None
+                raise ValueError(f"Market freshness/FX validation failed: age={age}, FX available={market['usd_aud_prior'] is not None}")
+        except Exception as exc:
+            market=None
+            market_error=f"{type(exc).__name__}: {exc}"
+            LOG.exception("Cycle Trading market validation failed")
     lines=[f"Cycle Trading daily | {today} Brisbane"]
     baselines={}
     allocation=None
@@ -126,6 +132,8 @@ def daily_message(*,now=None,quote=None,market=None,
     else:
         lines.append("Cycle signal: DATA UNAVAILABLE — no trade recommendation")
         lines.append("BUY allocation: unavailable | SELL allocation: unavailable")
+        if market_error:
+            lines.append(f"Data diagnostic: {market_error[:240]}")
     lines.append(f"Production: {agreement[MODELS[0]]}")
     lines.append(f"Research: {agreement[MODELS[1]]}")
     lines.append("Market-only % per eligible tranche; no Google Sheets/broker access; not a broker order.")
@@ -153,6 +161,7 @@ def format_mobile_notification(lines):
         "Halving day:":"halving",
         "Production:":"production",
         "Research:":"research",
+        "Data diagnostic:":"diagnostic",
         "Historical original-BTC EXIT research review:":"review",
         "Market-only % per eligible tranche;":"market_note",
         "Research only:":"research_note",
@@ -213,6 +222,8 @@ def format_mobile_notification(lines):
         line=fields.get(key)
         if line:
             out.append("- "+line)
+    if fields.get("diagnostic"):
+        extras.append(fields["diagnostic"])
     if fields.get("review"):
         extras.append(fields["review"])
     if extras:
@@ -244,6 +255,7 @@ def send_ntfy(body,*,topic):
     result.raise_for_status()
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     ap=argparse.ArgumentParser()
     ap.add_argument("--prepare",action="store_true")
     ap.add_argument("--send",action="store_true")
