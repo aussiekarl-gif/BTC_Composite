@@ -18,7 +18,7 @@ Require:
   * recent archive/public overlap, no rewriting any exported history
   * >=3 identical completed-day Blockchain/Kraken close references
     from past week, with strict <=1% maximum exchange deviation
-  * a contiguous gap through yesterday of <=3 days, filled with
+  * a contiguous gap through yesterday of <=7 days (only in this live source path), filled with
     completed independent Kraken closes only after valid overlap
   * no trading recommendation if a single required day/provider is
     absent, disagreement high or yesterday not verified
@@ -37,6 +37,8 @@ from engines.research.cycle_forward_kraken_bridge import (
 from engines.research.verified_recent_price_bridge import fetch_public_series
 
 LAST_CLOSE_MAX_AGE_DAYS=1
+MAX_LIVE_KRAKEN_GAP_DAYS=7
+MAX_LIVE_BLOCKCHAIN_REFERENCE_AGE_DAYS=7
 RECENT_OVERLAP_DAYS=7
 MIN_RECENT_KRAKEN_OVERLAP=3
 MAX_RECENT_KRAKEN_SINGLE_DIFF_PCT=1.
@@ -91,6 +93,11 @@ def merge_verified_live_cycle_prices(archive,raw_blockchain,kraken,*,utc_today):
                 kraken.index.tz_convert("UTC").normalize())):
         raise ValueError("Malformed independent Kraken BTC/USD daily closes")
     candles=kraken.loc[kraken.index<today,["btc_usd"]]
+    # The previous public chart may lag behind the completed Kraken OHLC.
+    # Allow a bounded outage ONLY with independent verified completed closes.
+    # A >7-calendar-day chart source delay must remain UNAVAILABLE.
+    if (today-chart.index[-1]).days>MAX_LIVE_BLOCKCHAIN_REFERENCE_AGE_DAYS:
+        raise ValueError("Blockchain reference too old for live independent Kraken bridge")
     if yesterday not in candles.index:
         raise ValueError("Missing independently completed yesterday Kraken close")
     values=candles["btc_usd"].to_numpy(dtype=float)
@@ -109,7 +116,8 @@ def merge_verified_live_cycle_prices(archive,raw_blockchain,kraken,*,utc_today):
     extended=chart
     if chart.index[-1]<yesterday:
         extended,bridge=append_verified_kraken_after_blockchain(
-            chart,candles,utc_today=today)
+            chart,candles,utc_today=today,
+            max_publication_gap_days=MAX_LIVE_KRAKEN_GAP_DAYS)
     else:
         if chart.index[-1]>yesterday:
             raise ValueError("Future price not completed")
@@ -146,6 +154,8 @@ def merge_verified_live_cycle_prices(archive,raw_blockchain,kraken,*,utc_today):
             float(deviation.median()),4),
         "kraken_contiguous_completed_day_bridge":(
             bridge["appended_dates"] if bridge else []),
+        "blockchain_chart_completed_day_age":int((today-chart.index[-1]).days),
+        "live_kraken_max_bridge_days":MAX_LIVE_KRAKEN_GAP_DAYS,
         "archive_raw_prices_preserved":True,
         "live_trading_allocations_unchanged":True,
         "source_provenance":"BlockHorizon archived BTC/USD + date-aligned Blockchain.com + independently verified completed Kraken XBTUSD OHLC",
