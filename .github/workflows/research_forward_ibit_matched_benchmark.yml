@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'engines/research/forward_ibit_matched_benchmark.py'
+      - 'engines/research/ibit_asx_public_probe.py'
+      - 'tests/test_ibit_asx_public_probe.py'
       - 'tests/test_forward_ibit_matched_benchmark.py'
       - '.github/workflows/research_forward_ibit_matched_benchmark.yml'
       - '.github/workflows/research_forward_cycle_tape.yml'
@@ -33,8 +35,11 @@ jobs:
         run: |
           python -m py_compile engines/research/forward_ibit_matched_benchmark.py
           python -m unittest discover -s tests -p 'test_forward_ibit_matched_benchmark.py' -v
+          python -m unittest discover -s tests -p 'test_ibit_asx_public_probe.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_ibit_asx_forward_close_tape.py' -v
+      - name: Check actual Yahoo AUD IBIT daily-candle schema (READ-ONLY no tape writes)
+        run: python -m engines.research.ibit_asx_public_probe
       - name: Preview authentic point-in-time comparison, without network/trading/writes
         run: python -m engines.research.forward_ibit_matched_benchmark
       - name: Keep immutable source records and scheduled jobs unchanged
