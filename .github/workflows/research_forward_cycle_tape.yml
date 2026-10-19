@@ -9,6 +9,7 @@ on:
       - 'engines/research/cycle_forward_kraken_bridge.py'
       - 'engines/research/ibit_asx_forward_close_tape.py'
       - 'engines/research/forward_market_readiness.py'
+      - 'engines/research/btc_unified_research_readiness.py'
       - '.github/workflows/research_forward_cycle_tape.yml'
   pull_request:
     paths:
@@ -17,6 +18,8 @@ on:
       - 'tests/test_cycle_forward_kraken_bridge.py'
       - 'tests/test_ibit_asx_forward_close_tape.py'
       - 'tests/test_forward_market_readiness.py'
+      - 'tests/test_btc_unified_research_readiness.py'
+      - 'engines/research/btc_unified_research_readiness.py'
       - 'tests/test_cycle_forward_signal_tape.py'
       - '.github/workflows/research_forward_cycle_tape.yml'
   workflow_dispatch:
@@ -52,6 +55,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_cycle_forward_kraken_bridge.py' -v
           python -m unittest discover -s tests -p 'test_ibit_asx_forward_close_tape.py' -v
           python -m unittest discover -s tests -p 'test_forward_market_readiness.py' -v
+          python -m unittest discover -s tests -p 'test_btc_unified_research_readiness.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
       - name: Capture only last VERIFIED completed close and market-level Cycle signal
@@ -68,6 +72,13 @@ jobs:
         id: readiness
         if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         run: python -m engines.research.forward_market_readiness
+      - name: Build unified read-only BTC research readiness (optional artifact)
+        if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          if ! python -m engines.research.btc_unified_research_readiness; then
+            echo '::warning::Unified research status could not be generated; immutable BTC and ASX source publishing stays governed by the independent readiness audit.'
+          fi
       - name: Preserve prospective source record even if repository write is blocked
         if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         uses: actions/upload-artifact@v4
@@ -76,6 +87,7 @@ jobs:
           path: |
             data/research_forward_validation/
             artifacts/forward_readiness.json
+            artifacts/btc_unified_research_readiness.json
           if-no-files-found: ignore
       - name: Save only new immutable research observation and matured scores
         # A failed test OR failed chained-data audit must NEVER publish
