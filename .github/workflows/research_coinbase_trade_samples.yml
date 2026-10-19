@@ -5,6 +5,8 @@ on:
     paths:
       - 'engines/research/coinbase_trade_samples.py'
       - 'tests/test_coinbase_trade_samples.py'
+      - 'engines/research/btc_microstructure_forward_scorecard.py'
+      - 'tests/test_btc_microstructure_forward_scorecard.py'
       - '.github/workflows/research_coinbase_trade_samples.yml'
   push:
     branches: [main]
@@ -39,6 +41,7 @@ jobs:
         run: |
           python -m py_compile engines/research/coinbase_trade_samples.py
           python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
+          python -m unittest discover -s tests -p 'test_btc_microstructure_forward_scorecard.py' -v
           python -m engines.research.coinbase_trade_samples --self-check-only
       - name: Read-only real provider probe (no persistence)
         if: github.event_name == 'pull_request'
@@ -46,12 +49,22 @@ jobs:
       - name: Capture current bounded trade sample; NEVER infer six-hour volume
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: python -m engines.research.coinbase_trade_samples
+      - name: Read-only forward microstructure scorecard (optional diagnostic)
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !cancelled()
+        # Do not let an auxiliary scorecard failure block the Coinbase source record.
+        shell: bash
+        run: |
+          if ! python -m engines.research.btc_microstructure_forward_scorecard; then
+            echo '::warning::Forward scorecard unavailable; immutable source collection proceeds independently.'
+          fi
       - name: Preserve sample even if repository write fails
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && !cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: research-coinbase-recent-trades
-          path: data/research_forward_validation/coinbase_trade_samples_forward.csv
+          path: |
+            data/research_forward_validation/coinbase_trade_samples_forward.csv
+            artifacts/btc_microstructure_forward_scorecard.json
           retention-days: 30
           if-no-files-found: ignore
       - name: Save only prospective immutable executed-trade sample
