@@ -1,0 +1,77 @@
+name: Research Cycle mid-session market WATCH capture (NO ntfy)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_mid_session_signal_tape.py'
+      - 'tests/test_cycle_mid_session_signal_tape.py'
+      - '.github/workflows/research_cycle_mid_session_watch.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/cycle_mid_session_signal_tape.py'
+      - 'tests/test_cycle_mid_session_signal_tape.py'
+      - '.github/workflows/research_cycle_mid_session_watch.yml'
+  workflow_dispatch:
+  schedule:
+    # Weekdays 01:30 UTC = 11:30 Brisbane; Sydney 12:30 DST / 11:30 standard.
+    # Actual capture must still pass the 11:00-15:00 Sydney time window.
+    - cron: '30 1 * * 1-5'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research-cycle-mid-session-watch-source
+  cancel-in-progress: false
+
+jobs:
+  collect-public-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install verified existing research requirements
+        run: python -m pip install -r requirements.txt
+      - name: Validate shared Cycle allocation, source date and immutable tape
+        run: |
+          python -m py_compile engines/research/cycle_mid_session_signal_tape.py
+          python -m unittest discover -s tests -p 'test_cycle_mid_session_signal_tape.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
+          python -m engines.research.cycle_mid_session_signal_tape --self-check-only
+      - name: Capture a NEW actual verified mid-session market WATCH (research only)
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        run: python -m engines.research.cycle_mid_session_signal_tape
+      - name: Preserve research evidence even if GitHub push is blocked
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && !cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prospective-cycle-mid-session-market-watch
+          path: data/research_forward_validation/cycle_mid_session_market_watch.csv
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Save only new immutable research source row, no portfolio or ntfy
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m engines.research.cycle_mid_session_signal_tape --self-check-only
+          path='data/research_forward_validation/cycle_mid_session_market_watch.csv'
+          test -f "$path"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$path"
+          if git diff --cached --quiet; then
+            echo 'Research Sydney date already captured; original evidence left unchanged.'
+          else
+            git commit -m 'Research prospective Cycle mid-session market WATCH [skip ci]'
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          fi
