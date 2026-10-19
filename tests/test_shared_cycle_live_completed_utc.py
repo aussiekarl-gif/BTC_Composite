@@ -96,10 +96,38 @@ class SharedCorrectedCycleCloseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"yesterday"):
             merge_verified_live_cycle_prices(a,b,k,utc_today=TODAY)
 
-    def test_publication_gap_over_3_days_fails_closed(self):
-        a,b,k,fx=fixtures(last_raw_day="2026-10-12")
-        with self.assertRaisesRegex(ValueError,"short safe"):
-            merge_verified_live_cycle_prices(a,b,k,utc_today=TODAY)
+    def test_live_four_day_gap_is_verified_by_complete_kraken_only(self):
+        a,b,k,fx=fixtures(close_day="2026-10-18",
+                           last_raw_day="2026-10-15")
+        original=a.copy(deep=True)
+        combined,meta=merge_verified_live_cycle_prices(
+            a,b,k,utc_today="2026-10-19")
+        self.assertEqual(str(combined.index[-1].date()),"2026-10-18")
+        self.assertEqual(meta["kraken_contiguous_completed_day_bridge"],[
+            "2026-10-15","2026-10-16","2026-10-17","2026-10-18"])
+        self.assertEqual(meta["blockchain_chart_completed_day_age"],5)
+        pd.testing.assert_frame_equal(a,original)
+
+    def test_publication_gap_over_seven_days_fails_closed(self):
+        a,b,k,fx=fixtures(close_day="2026-10-18",
+                           last_raw_day="2026-10-10")
+        with self.assertRaisesRegex(ValueError,"too old"):
+            merge_verified_live_cycle_prices(a,b,k,utc_today="2026-10-19")
+
+    def test_four_day_bridge_missing_exchange_candle_refuses_trading(self):
+        a,b,k,fx=fixtures(close_day="2026-10-18",
+                           last_raw_day="2026-10-15")
+        k=k.drop(pd.Timestamp("2026-10-17",tz="UTC"))
+        with self.assertRaisesRegex(ValueError,"consecutive"):
+            merge_verified_live_cycle_prices(a,b,k,utc_today="2026-10-19")
+
+    def test_four_day_bridge_conflicting_old_source_is_refused(self):
+        a,b,k,fx=fixtures(close_day="2026-10-18",
+                           last_raw_day="2026-10-15")
+        k.loc[pd.Timestamp("2026-10-12",tz="UTC"),"btc_usd"]=200.
+        with self.assertRaisesRegex(ValueError,"disagreement"):
+            merge_verified_live_cycle_prices(a,b,k,utc_today="2026-10-19")
+
 
     def test_missing_consecutive_exchange_day_fails_closed(self):
         a,b,k,fx=fixtures()
