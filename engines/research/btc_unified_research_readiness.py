@@ -82,7 +82,7 @@ def build_control_room(
         flags.append({
             "severity": "REVIEW",
             "code": "BTC_SOURCE_MAX_DISPERSION_GE_5PCT",
-            "detail": "The historical BTC source crosscheck exceeds 5%; isolate dated source discrepancies before using it for an investment decision. This is not necessarily today's spot-price error.",
+            "detail": "The archived BTC source crosscheck exceeds 5%. Independent research traced the worst historical 6.29% mismatch to Blockchain.com midnight chart dates referring to the PRECEDING UTC close (audit 2026-10-18). This is not a current spot-price error; live parser date-alignment release remains unapproved.",
         })
     btc_age = cycle["BTC_close_age_calendar_days"]
     if btc_age is None or btc_age < 0 or btc_age > FRESH_DAILY_BTC_MAX_AGE_DAYS:
@@ -159,7 +159,7 @@ def build_control_room(
         "SMSF fund phase, parcel-specific capital gains, FX and fee/slippage scenarios must be verified before personal after-tax comparison.",
     ]
     if flags:
-        blockers.append("One or more source health/reconciliation review flags remain open.")
+        blockers.append("One or more source health/reconciliation flags remain open, including the historical Blockchain.com daily timestamp semantics where applicable.")
 
     return {
         "kind": "BTC_RESEARCH_DATA_HEALTH_AND_RELEASE_READINESS_NOT_INVESTMENT_ADVICE",
@@ -167,7 +167,7 @@ def build_control_room(
         "model_leader_declared": False,
         "comparative_return_winner": None,
         "research_priorities": [
-            "Investigate and date-localise the historical BTC source dispersion above 5% without overwriting immutable provider files.",
+            "Use the confirmed Blockchain.com previous-day-close date-alignment audit to prepare and verify a versioned live-source correctness release candidate, requiring explicit approval before any Streamlit/ntfy signal-input change; never overwrite prior research records.",
             "Accumulate verified prospective ASX:IBIT quotes and BTC Cycle snapshots; investigate feed failures only when a completed eligible date was missed.",
             "Keep cash/inventory/execution parity pilot matched to the existing Streamlit decision function; no synthetic historical ASX fills.",
             "Measure frozen microstructure hypotheses only on later actual timestamps; retain neutral and missing outcomes.",
