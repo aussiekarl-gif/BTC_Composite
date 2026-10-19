@@ -1,0 +1,2 @@
+market_session_date_sydney,captured_at_utc,provider_daily_candle_timestamp_utc,symbol,currency,reported_close_aud,daily_low_aud,daily_high_aud,daily_volume,provider,single_provider_unverified_execution,is_confirmed_broker_fill,prior_row_hash,row_hash
+2026-10-19,2026-10-19T07:05:49.337097+00:00,2026-10-19T05:10:10+00:00,ASX:IBIT,AUD,22.469999,22.320000,22.860001,3140,Yahoo_Finance_IBIT.AX_daily_candle_indicative,True,False,0000000000000000000000000000000000000000000000000000000000000000,a6534c65db6beed6efd91dbf95320e966ee4df20efa2f63c13b5dc0b10d83450
