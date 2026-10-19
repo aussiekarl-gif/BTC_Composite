@@ -6,6 +6,7 @@ on:
       - 'engines/research/cycle_daily_notification_readonly_preflight.py'
       - 'engines/research/cycle_live_feed_release_acceptance.py'
       - 'tests/test_cycle_live_feed_release_acceptance.py'
+      - 'tests/test_cycle_trading_pct_allocation.py'
       - 'engines/research/cycle_live_completed_utc_prices.py'
       - 'engines/research/cycle_forward_kraken_bridge.py'
       - 'tests/test_shared_cycle_live_completed_utc.py'
@@ -31,6 +32,7 @@ jobs:
         run: |
           python -m py_compile engines/research/cycle_daily_notification_readonly_preflight.py
           python -m unittest discover -s tests -p 'test_cycle_live_feed_release_acceptance.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
           python -m unittest discover -s tests -p 'test_cycle_daily_ntfy_quote.py' -v
       - name: Full independent real public BTC date and DAILY MESSAGE render, NO notification
