@@ -16,7 +16,9 @@ on:
   schedule:
     # Weekdays 01:30 UTC = 11:30 Brisbane; Sydney 12:30 DST / 11:30 standard.
     # Actual capture must still pass the 11:00-15:00 Sydney time window.
-    - cron: '30 1 * * 1-5'
+    # One backup attempt at 02:30 UTC (12:30 Brisbane, 13:30 Sydney DST).
+    # Already-saved Sydney dates are NOT refreshed or duplicated.
+    - cron: '30 1,2 * * 1-5'
 
 permissions:
   contents: write
@@ -45,6 +47,9 @@ jobs:
           python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
           python -m engines.research.cycle_mid_session_signal_tape --self-check-only
+      - name: Read-only probe ACTUAL public BTC and FX source before first scheduled run
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: python -m engines.research.cycle_mid_session_signal_tape --probe-only
       - name: Capture a NEW actual verified mid-session market WATCH (research only)
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         run: python -m engines.research.cycle_mid_session_signal_tape
