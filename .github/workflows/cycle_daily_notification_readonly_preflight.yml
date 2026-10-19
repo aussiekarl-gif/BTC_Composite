@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'engines/research/cycle_daily_notification_readonly_preflight.py'
+      - 'engines/research/cycle_live_feed_release_acceptance.py'
+      - 'tests/test_cycle_live_feed_release_acceptance.py'
       - 'engines/research/cycle_live_completed_utc_prices.py'
       - 'engines/research/cycle_forward_kraken_bridge.py'
       - 'tests/test_shared_cycle_live_completed_utc.py'
@@ -28,9 +30,20 @@ jobs:
       - name: Run original Cycle and ntfy functionality assertions
         run: |
           python -m py_compile engines/research/cycle_daily_notification_readonly_preflight.py
+          python -m unittest discover -s tests -p 'test_cycle_live_feed_release_acceptance.py' -v
           python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
           python -m unittest discover -s tests -p 'test_cycle_daily_ntfy_quote.py' -v
       - name: Full independent real public BTC date and DAILY MESSAGE render, NO notification
         run: python -m engines.research.cycle_daily_notification_readonly_preflight
+      - name: Actual public provider acceptance, shared default WATCH parity and dry-run rollback (NO delivery)
+        run: python -m engines.research.cycle_live_feed_release_acceptance
+      - name: Save dated public-source acceptance and rollback proof
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-btc-live-source-acceptance-rollback
+          path: artifacts/cycle_live_feed_acceptance_rollback.json
+          retention-days: 30
+          if-no-files-found: ignore
       - name: Confirm no trading, market tape, or ntfy reservation changed
         run: git diff --exit-code -- data/ .github/notification_state/
