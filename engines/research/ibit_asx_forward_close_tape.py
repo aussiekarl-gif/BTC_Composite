@@ -206,6 +206,14 @@ def main(argv=None):
         record={"status":"skipped_source_or_schema_error",
                 "reason":str(exc),"wrote_close":False}
     print(json.dumps(record,sort_keys=True))
+    # GitHub workflow should not silently report success when the
+    # *optional* ASX daily candle was not available after a weekday close.
+    # Warn rather than fail: the separately validated BTC Cycle source
+    # observation must still be saved.
+    if record["status"] in ("skipped_source_or_schema_error",
+                            "skipped_no_same_day_verified_aud_candle"):
+        print("::warning::ASX:IBIT indicative same-Sydney-date AUD close was not captured. "
+              "Do not infer a valid ASX benchmark fill; BTC tape preservation continues.")
     print("READ ONLY research: never an IBIT broker quote or ntfy signal")
 
 
