@@ -119,6 +119,9 @@ def run_shadow(
     portfolio = copy.deepcopy(initial_portfolio)
     if not isinstance(portfolio, dict) or not portfolio.get("rows"):
         raise ValueError("Explicit starting portfolio with dated original executed lots required")
+    # Make a pre-inception/weekend/unverified session fail with its OWN
+    # safety diagnosis, even when the supplied synthetic seed is later.
+    _verify_session(sessions[0], None)
     opening = portfolio_positions(portfolio)
     first = sessions[0].trading_date_sydney
     for entry in list(portfolio.get("rows", [])) + list(portfolio.get("sales", [])):
@@ -149,7 +152,11 @@ def run_shadow(
             feed_verified=True,
         )
         if decision["market_signal"] != market_vote["signal"]:
-            raise AssertionError("Streamlit sizing and market signal disagree")
+            # The live engine intentionally short-circuits to UNAVAILABLE
+            # on stale prices or other account-safety vetoes. This is not
+            # signal disagreement; it MUST yield HOLD, never a fake fill.
+            if decision["market_signal"] != "UNAVAILABLE" or decision["action"] != "HOLD":
+                raise AssertionError("Streamlit sizing and market signal disagree")
         action=decision["action"]
         qty=int(decision["suggested_ibit_units"])
         if action in ("BUY","SELL"):
@@ -179,6 +186,8 @@ def run_shadow(
             "session_sydney":session.trading_date_sydney.isoformat(),
             "market_asof_date_utc":str(session.market["asof_date"]),
             "market_signal":market_vote["signal"],
+            "actual_live_market_signal":decision["market_signal"],
+            "live_decision_data_ok":bool(decision["data_ok"]),
             "shared_live_rule_action":action,
             "hypothetical_ibit_units_executed":qty if action in ("BUY","SELL") else 0,
             "hypothetical_ibit_unit_price_aud":(
