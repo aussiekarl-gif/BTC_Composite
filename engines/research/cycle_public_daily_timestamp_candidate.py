@@ -142,7 +142,7 @@ def build_corrected_source_candidate(archive: pd.DataFrame,
         archive,with_kraken,utc_today=today)
     if combined.index[-1]!=today-pd.Timedelta(days=1):
         raise ValueError("Source cannot provide most recent completed UTC close")
-    if not combined.loc[archive.index,"price_usd"].equals(
+    if not combined.loc[archive.index].equals(
         archive["price_usd"].sort_index()):
         raise AssertionError("Correction attempted to revise historical archive prices")
     return {
