@@ -114,10 +114,9 @@ def merge_verified_live_cycle_prices(archive,raw_blockchain,kraken,*,utc_today):
     if chart.index[-1]<yesterday:
         # Preserve the same date-exact, consecutive Kraken bridge and overlap
         # checks; only extend its maximum length after strict <=1% verification.
-        from unittest.mock import patch
-        with patch("engines.research.cycle_forward_kraken_bridge.MAX_PUBLICATION_GAP_DAYS", MAX_VERIFIED_PUBLICATION_LAG_DAYS):
-            extended,bridge=append_verified_kraken_after_blockchain(
-                chart,candles,utc_today=today)
+        extended,bridge=append_verified_kraken_after_blockchain(
+            chart,candles,utc_today=today,
+            max_publication_gap_days=MAX_VERIFIED_PUBLICATION_LAG_DAYS)
     else:
         if chart.index[-1]>yesterday:
             raise ValueError("Future price not completed")
