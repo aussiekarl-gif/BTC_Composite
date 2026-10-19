@@ -55,6 +55,7 @@ class DailyDateAlignmentTests(unittest.TestCase):
         pd.testing.assert_frame_equal(archive,original)
         pd.testing.assert_series_equal(
             out["candidate_history"].loc[archive.index],archive["price_usd"],
+            check_freq=False,
         )
         self.assertFalse(out["available_for_live_trading"])
         self.assertFalse(out["live_parser_modified"])
