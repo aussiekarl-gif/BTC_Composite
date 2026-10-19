@@ -8,22 +8,13 @@ on:
       - 'engines/research/btc_microstructure_forward_scorecard.py'
       - 'tests/test_btc_microstructure_forward_scorecard.py'
       - '.github/workflows/research_coinbase_trade_samples.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'engines/research/coinbase_trade_samples.py'
-      - 'tests/test_coinbase_trade_samples.py'
-      - '.github/workflows/research_coinbase_trade_samples.yml'
+  # Manual fallback only; the coordinated workflow owns the shared cron.
   workflow_dispatch:
-  schedule:
-    # 4 bounded snapshots each day, offset from Kraken order-book runs.
-    - cron: '19 1,7,13,19 * * *'
-
 permissions:
   contents: write
 
 concurrency:
-  group: research-coinbase-public-trades
+  group: research-btc-microstructure-source-collection
   cancel-in-progress: false
 
 jobs:
