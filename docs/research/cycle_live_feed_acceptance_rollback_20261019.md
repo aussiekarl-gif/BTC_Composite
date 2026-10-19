@@ -34,7 +34,7 @@ A green test cannot guarantee all future API availability. Checks verify **share
 ### Acceptance conditions for this PR
 
 PR may be merged only if:
-- new offline regression suite and both original shared source / ntfy suites pass;
+- all 51 offline regressions pass: 12 release/rollback, 10 original market BUY/HOLD/SELL parity, 17 shared completed-close source, and 12 ntfy quote/schedule safety tests;
 - real public daily preflight succeeds and reports latest verified completed BTC date, actual BTC price and 200WMA, default WATCH/pct parity;
 - new rollback rehearsal reports correct previous 3-day behaviour without changing live source module or any provider records;
 - original no-send workflow remains isolated from `secrets.NTFY_TOPIC`, scheduled notification code, portfolio and market master; and
