@@ -9,7 +9,7 @@ from engines.research.ibit_asx_forward_close_tape import (
     COLUMNS as IBIT_COLUMNS, PROVIDER, append_market_observation,
 )
 from engines.research.forward_ibit_matched_benchmark import (
-    grade, EPOCH, INITIAL_AUD,
+    grade, EPOCH, INITIAL_AUD, FROZEN_CYCLE_MODEL_CODE_SHA256,
 )
 
 UTC=dt.timezone.utc
@@ -23,7 +23,9 @@ def signal(day="2026-10-18",captured="2026-10-19T03:00:00+00:00",
        if k not in ("prior_row_hash","row_hash")}
     r.update({
         "observation_date_utc":day,"captured_at_utc":captured,
-        "model_name":STRATEGY_LABEL,"trade_executable":"False",
+        "model_name":STRATEGY_LABEL,
+        "model_code_sha256":FROZEN_CYCLE_MODEL_CODE_SHA256,
+        "trade_executable":"False",
         "point_in_time_onchain_risk_status":"NOT_VERIFIED_NOT_INCLUDED",
         "source_crosscheck_max_diff_pct":diff,"signal":kind,
         "buy_pct_of_remaining_available_cash":buy,
@@ -82,6 +84,7 @@ class ForwardAUDPaperBenchmarkTests(unittest.TestCase):
         self.assertIsNone(r["comparative_live_strategy_winner"])
         self.assertFalse(r["after_cost_and_tax_outperformance_proven"])
         self.assertFalse(r["approved_for_model_change"])
+        self.assertIsNone(r["policies"]["initial_buy_and_hold"]["mean_observed_session_ETF_exposure_pct"])
 
     def test_matched_three_account_capital_and_buy_gate(self):
         c=tape_signal(signal(kind="BUY WATCH",buy="2.5000"))
@@ -94,10 +97,64 @@ class ForwardAUDPaperBenchmarkTests(unittest.TestCase):
         self.assertEqual(accounts["initial_buy_and_hold"]["IBIT_whole_units"],4987)
         self.assertEqual(accounts["fixed_weekly_20wk_AUD_DCA"]["IBIT_whole_units"],249)
         self.assertTrue(all(x["initial_cash_aud"]==INITIAL_AUD for x in accounts.values()))
+        self.assertEqual(r["frozen_cycle_model_code_sha256"],FROZEN_CYCLE_MODEL_CODE_SHA256)
+        self.assertGreater(accounts["initial_buy_and_hold"]["mean_observed_session_ETF_exposure_pct"],99.0)
+        self.assertGreater(accounts["Cycle_live_market_watch"]["mean_observed_session_ETF_exposure_pct"],2.0)
+        self.assertLess(accounts["Cycle_live_market_watch"]["mean_observed_session_ETF_exposure_pct"],3.0)
+        self.assertGreater(accounts["fixed_weekly_20wk_AUD_DCA"]["mean_observed_session_ETF_exposure_pct"],4.0)
+        self.assertLess(accounts["fixed_weekly_20wk_AUD_DCA"]["mean_observed_session_ETF_exposure_pct"],6.0)
+        self.assertTrue(r["reported_ETF_exposure_is_not_risk_adjusted_outperformance"])
         self.assertEqual(r["matched_sessions"][0]["Cycle_shadow_action"],"PAPER_BUY")
         self.assertEqual(r["real_orders_placed"],0)
         self.assertEqual(r["portfolio_writes"],0)
         self.assertEqual(r["new_ntfy_messages"],0)
+
+    def test_changed_code_version_is_excluded_not_mixed_in_original_cohort(self):
+        changed=signal(kind="BUY WATCH",buy="2.5000")
+        changed["model_code_sha256"]="f"*64
+        r=grade(tape_signal(changed),tape_asx(quote()),as_of_utc=NOW)
+        self.assertEqual(r["cycle_excluded_signals"]
+                         ["frozen_cycle_model_code_sha256_changed"],1)
+        self.assertEqual(r["matched_sessions_latest_known_source_failed_eligibility"],1)
+        self.assertEqual(r["matched_sessions"][0]["Cycle_shadow_action"],
+                         "LATEST_PREOPEN_SIGNAL_FAILED_QUALITY_OR_VERSION_GATE")
+        self.assertEqual(r["policies"]["Cycle_live_market_watch"]["paper_orders_count"],0)
+
+    def test_newer_changed_version_prevents_old_buy_signal_fallback(self):
+        first=signal(kind="BUY WATCH",buy="2.5000")
+        changed=signal(day="2026-10-19",
+                       captured="2026-10-20T03:00:00+00:00",
+                       kind="HOLD")
+        changed["model_code_sha256"]="f"*64
+        r=grade(tape_signal(first,changed),
+                tape_asx(quote("2026-10-21")),as_of_utc=NOW)
+        self.assertEqual(r["cycle_prior_dated_signals_available"],1)
+        self.assertEqual(r["matched_sessions_latest_known_source_failed_eligibility"],1)
+        self.assertEqual(r["matched_sessions"][0]["Cycle_shadow_action"],
+                         "LATEST_PREOPEN_SIGNAL_FAILED_QUALITY_OR_VERSION_GATE")
+        self.assertEqual(r["policies"]["Cycle_live_market_watch"]["IBIT_whole_units"],0)
+
+    def test_newer_high_provider_difference_prevents_old_buy_fallback(self):
+        first=signal(kind="BUY WATCH",buy="2.5000")
+        conflicting=signal(day="2026-10-19",
+                            captured="2026-10-20T03:00:00+00:00",
+                            diff="6.29",kind="HOLD")
+        r=grade(tape_signal(first,conflicting),
+                tape_asx(quote("2026-10-21")),as_of_utc=NOW)
+        self.assertEqual(r["cycle_excluded_signals"]["provider_crosscheck_over_one_pct"],1)
+        self.assertEqual(r["matched_sessions_latest_known_source_failed_eligibility"],1)
+        self.assertEqual(r["policies"]["Cycle_live_market_watch"]["IBIT_whole_units"],0)
+
+    def test_exposure_does_not_fabricate_profit_or_risk_adjusted_alpha(self):
+        r=grade(tape_signal(signal()),tape_asx(quote()),as_of_utc=NOW)
+        self.assertEqual(r["policies"]["Cycle_live_market_watch"]
+                         ["mean_observed_session_ETF_exposure_pct"],0.0)
+        self.assertGreater(r["policies"]["initial_buy_and_hold"]
+                           ["last_observed_session_ETF_exposure_pct"],99.0)
+        self.assertEqual(r["policies"]["fixed_weekly_20wk_AUD_DCA"]
+                         ["observed_session_exposure_count"],1)
+        self.assertFalse(r["after_cost_and_tax_outperformance_proven"])
+        self.assertIsNone(r["comparative_live_strategy_winner"])
 
     def test_late_captured_signal_cannot_trade_in_earlier_asx_session(self):
         c=tape_signal(signal(day="2026-10-19",
