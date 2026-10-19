@@ -1,0 +1,50 @@
+name: Research Conditional Deep-Value 200WMA BTC Weekly BUY Sizing (no trading)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_conditional_deep_value_buy_audit.py'
+      - 'tests/test_cycle_conditional_deep_value_buy_audit.py'
+      - '.github/workflows/research_cycle_conditional_deep_value_buy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/cycle_conditional_deep_value_buy_audit.py'
+      - 'tests/test_cycle_conditional_deep_value_buy_audit.py'
+      - '.github/workflows/research_cycle_conditional_deep_value_buy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-only-paper-causal-buy-sizing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install current research requirements
+        run: python -m pip install -r requirements.txt
+      - name: Verify live sizing baseline, seven-day cooldown and no hindsight
+        run: |
+          python -m py_compile engines/research/cycle_conditional_deep_value_buy_audit.py
+          python -m unittest discover -s tests -p 'test_cycle_conditional_deep_value_buy_audit.py' -v
+          python -m unittest discover -s tests -p 'test_live_weekly_buy_parity.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_three_percent_audit.py' -v
+      - name: Replay historical 2017/2021 plus right-censored 2025/26 and synthetic 50/70pct decline
+        run: python -m engines.research.cycle_conditional_deep_value_buy_audit --out artifacts/research_conditional_deep_value_weekly_buy
+      - name: Preserve full paper evidence and dated account summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-conditional-deep-value-200wma-weekly-buy-paper-only
+          path: artifacts/research_conditional_deep_value_weekly_buy/
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Verify untouched immutable forward tapes, live models and ntfy
+        run: |
+          git diff --exit-code -- data/research_forward_validation/ cycle_trading_daily_ntfy.py engines/production/ engines/research/cycle_trade_allocation.py
