@@ -73,16 +73,27 @@ class PermanentReserveResearchTests(unittest.TestCase):
         px,fx=fixture()
         run=replay_reserves(px,fx,start=START,terminal=END,
                             capital_aud=CAP,policy_map=FROZEN_CASES)
-        baseline=run["accounts"][REFERENCE]
+        bound_at_least_once=False
         for name,plan in ORIGINAL_CASH_FLOORS.items():
             expected=(.15 if "15pct" in name else .25)*CAP
             account=run["accounts"][name]
+            same_sizing_control=(REFERENCE if name.startswith("live_2p5_")
+                                 else "tiered_3p5_5p0_no_reserve")
+            original=run["accounts"][same_sizing_control]
             self.assertGreaterEqual(account["cash_left_AUD"],expected-0.01)
-            self.assertGreater(account["cash_left_AUD"],baseline["cash_left_AUD"])
-            self.assertLess(account["BTC_held"],run["accounts"][
-                "tiered_3p5_5p0_no_reserve"]["BTC_held"])
+            # A reserve that never becomes binding MUST NOT pretend to
+            # help performance or change the exact original trade path.
+            self.assertGreaterEqual(account["cash_left_AUD"],
+                                    original["cash_left_AUD"]-.01)
+            self.assertLessEqual(account["BTC_held"],original["BTC_held"]+1e-8)
+            if original["cash_left_AUD"]<expected-.01:
+                bound_at_least_once=True
+                self.assertGreater(account["cash_left_AUD"],
+                                   original["cash_left_AUD"])
             self.assertTrue(all(o["cash_after_AUD"]>=expected-.01
                                 for o in account["orders"]))
+        self.assertTrue(bound_at_least_once,
+                        "Test fixture must cause a REAL binding cash floor")
         self.assertFalse(run["terminal_cash_sweep_or_forced_date"])
 
     def test_floor_preserves_cash_even_in_very_deep_extra_decline(self):
