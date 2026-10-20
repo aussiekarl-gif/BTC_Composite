@@ -62,16 +62,17 @@ CHECKPOINT_PAPER_ONLY="NO_MANDATORY_BUY_IN_2026_OR_2027"
 OUTPUT=Path("artifacts/research_cycle_200wma_cash_reserve")
 
 def requested_fraction_and_reserve(policy:str, prior_close_over_wma:float,
-                                  initial_cash:float)->tuple[float,float]:
+                                  initial_cash:float,*,policy_map=None)->tuple[float,float]:
     """Exactly zero discretionary buying above WMA; no forward prices read."""
-    if policy not in RESERVE_POLICIES:
+    policies=RESERVE_POLICIES if policy_map is None else policy_map
+    if policy not in policies:
         raise ValueError("Unknown locked cash reserve candidate")
     if (not math.isfinite(float(prior_close_over_wma))
         or prior_close_over_wma<=0 or prior_close_over_wma>=1):
         raise ValueError("Only for eligible previous-close below-200WMA")
     if not math.isfinite(float(initial_cash)) or initial_cash<=0:
         raise ValueError("Invalid original AUD cash")
-    plan=RESERVE_POLICIES[policy]
+    plan=policies[policy]
     pct=_allocation(plan["size"],prior_close_over_wma)
     for threshold,floor in plan["floors"]:
         if prior_close_over_wma<=threshold:
@@ -80,7 +81,7 @@ def requested_fraction_and_reserve(policy:str, prior_close_over_wma:float,
 
 
 def replay_reserves(prices:pd.Series,fx:pd.DataFrame,*,start,terminal,
-                    capital_aud=BUDGET_AUD,policies=tuple(RESERVE_POLICIES)):
+                    capital_aud=BUDGET_AUD,policies=None,policy_map=None):
     began,end=utcday(start),utcday(terminal)
     if (not isinstance(prices,pd.Series) or not isinstance(prices.index,pd.DatetimeIndex)
         or prices.index.tz is None or not prices.index.is_monotonic_increasing
@@ -96,9 +97,11 @@ def replay_reserves(prices:pd.Series,fx:pd.DataFrame,*,start,terminal,
     if (not isinstance(fx,pd.DataFrame) or not isinstance(fx.index,pd.DatetimeIndex)
         or fx.index.tz is None):
         raise ValueError("Verified timezone-aware prior AUD FX required")
+    available=RESERVE_POLICIES if policy_map is None else policy_map
+    if policies is None: policies=tuple(available)
     if (not math.isfinite(float(capital_aud)) or capital_aud<=MIN_ORDER_AUD
         or not policies or len(set(policies))!=len(policies)
-        or any(k not in RESERVE_POLICIES for k in policies)):
+        or any(k not in available for k in policies)):
         raise ValueError("Invalid original cash or reserve policies")
     accounts={p:AuditSmsfAccount(float(capital_aud),fee=FEE_AUD,tax=True) for p in policies}
     orders={p:[] for p in policies}
@@ -129,7 +132,7 @@ def replay_reserves(prices:pd.Series,fx:pd.DataFrame,*,start,terminal,
             due=last[policy] is None or (day-last[policy]).days>=TRADE_COOLDOWN_DAYS
             if cheap and due:
                 fraction,protect=requested_fraction_and_reserve(
-                    policy,ratio,capital_aud)
+                    policy,ratio,capital_aud,policy_map=available)
                 # Fixed minimum original AUD cash floor. Never borrow or
                 # spend protected cash, even at threshold boundaries.
                 gross=min(account.cash*fraction,
@@ -215,7 +218,8 @@ def compare(replay,*,cycle:str,day:int,synthetic:bool=False,
     return rows
 
 
-def audit(history,*,fx_fetcher=fetch_fx_for_cycle):
+def audit(history,*,fx_fetcher=fetch_fx_for_cycle,policy_map=None):
+    available=RESERVE_POLICIES if policy_map is None else policy_map
     px=history["price_usd"].dropna().sort_index().loc[:FROZEN_HISTORY_CUTOFF]
     real=[];stresses=[]
     for label,item in PRIMARY.items():
@@ -225,7 +229,7 @@ def audit(history,*,fx_fetcher=fetch_fx_for_cycle):
         for offset in START_DAYS:
             start=halving+pd.Timedelta(days=int(offset))
             if start>=terminal:continue
-            run=replay_reserves(px,fx,start=start,terminal=terminal)
+            run=replay_reserves(px,fx,start=start,terminal=terminal,policy_map=available)
             real.extend(compare(run,cycle=label,day=int(offset),
                                 completed=terminal==halving+pd.Timedelta(days=SCORE_DAYS)))
         for label_stress,offset,shock_at in SHOCK_CASES:
@@ -239,7 +243,7 @@ def audit(history,*,fx_fetcher=fetch_fx_for_cycle):
                         loss_fraction=decline,terminal_price_fraction=recovery,
                         trough_day=SHOCK_TROUGH_DAY)
                     run=replay_reserves(shocked,fx,start=halving+pd.Timedelta(days=offset),
-                                        terminal=terminal)
+                                        terminal=terminal,policy_map=available)
                     stresses.extend(compare(
                         run,cycle=label,day=offset,synthetic=True,
                         drop=decline,recovery=recovery,completed=True))
@@ -248,7 +252,7 @@ def audit(history,*,fx_fetcher=fetch_fx_for_cycle):
     return {
         "kind":"RESEARCH_ONLY_200WMA_CASH_RESERVE_FLOORS_DEEPER_BUY_STRESS",
         "user_deployment_deadline":"FLEXIBLE_THROUGH_2027_NO_MANDATORY_BUY",
-        "fixed_sizing_and_original_AUD_reserve_policies":RESERVE_POLICIES,
+        "fixed_sizing_and_original_AUD_reserve_policies":available,
         "price_cutoff_UTC":str(FROZEN_HISTORY_CUTOFF.date()),
         "cash_control_original_2p5_market_and_7day_ledger_parity_required":True,
         "different_cohort_dates_in_same_cycle_are_not_independent_cycles":True,
