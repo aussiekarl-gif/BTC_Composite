@@ -28,6 +28,7 @@ on:
       - 'engines/research/cycle_mid_session_capture_health.py'
       - 'tests/test_cycle_mid_session_asx_timing_audit.py'
       - 'tests/test_cycle_mid_session_capture_health.py'
+      - 'tests/test_cycle_independent_nightly_workflow.py'
       - 'engines/research/btc_unified_research_readiness.py'
       - 'tests/test_cycle_forward_signal_tape.py'
       - '.github/workflows/research_forward_cycle_tape.yml'
@@ -87,6 +88,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
           python -m unittest discover -s tests -p 'test_cycle_mid_session_asx_timing_audit.py' -v
           python -m unittest discover -s tests -p 'test_cycle_mid_session_capture_health.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_independent_nightly_workflow.py' -v
       - name: Capture only last VERIFIED completed close and market-level Cycle signal
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: python -m engines.research.cycle_forward_signal_tape
