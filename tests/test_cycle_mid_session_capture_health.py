@@ -6,7 +6,7 @@ import unittest
 from zoneinfo import ZoneInfo
 
 from engines.research.cycle_mid_session_capture_health import (
-    audit_status, read_only_check,
+    audit_status, read_only_check, latest_completed_sydney_weekday,
 )
 SYD=ZoneInfo("Australia/Sydney")
 
@@ -71,6 +71,59 @@ class NightlyIndependentDetectionTests(unittest.TestCase):
     def test_invalid_naive_time_rejected(self):
         with self.assertRaisesRegex(ValueError,"Timezone-aware"):
             audit_status(now=at(20).replace(tzinfo=None),rows=[])
+
+    def test_day_after_midnight_still_audits_previous_Tuesday(self):
+        # Wednesday 00:30 Sydney: old wall-clock-only monitor silently
+        # checked Wednesday and forgot Tuesday's missed collection.
+        x=audit_status(now=at(21,0,30),rows=[])
+        self.assertEqual(x["audited_sydney_date"],"2026-10-21")
+        self.assertEqual(x["latest_completed_sydney_weekday_checked"],"2026-10-20")
+        self.assertEqual(x["latest_completed_weekday_status"],
+                         "MISSING_COMPLETED_WEEKDAY_DO_NOT_BACKFILL")
+        self.assertEqual(x["status"],"PENDING_CAPTURE_WINDOW_NOT_YET_CLOSED")
+
+    def test_midnight_after_actual_valid_source_detects_previous_day(self):
+        x=audit_status(now=at(21,0,30),rows=[row(20)])
+        self.assertEqual(x["latest_completed_sydney_weekday_checked"],"2026-10-20")
+        self.assertEqual(x["latest_completed_weekday_status"],
+                         "VERIFIED_COMPLETED_WEEKDAY_SOURCE_IN_CHECKOUT")
+        self.assertEqual(x["latest_completed_weekday_source_row_hash"],"1"*64)
+
+    def test_delayed_overnight_on_Saturday_checks_Friday(self):
+        x=audit_status(now=at(24,1,5),rows=[])
+        self.assertEqual(x["status"],"NO_WEEKDAY_RESEARCH_SESSION_EXPECTED")
+        self.assertEqual(x["latest_completed_sydney_weekday_checked"],"2026-10-23")
+        self.assertEqual(x["latest_completed_weekday_status"],
+                         "MISSING_COMPLETED_WEEKDAY_DO_NOT_BACKFILL")
+
+    def test_Monday_morning_still_checks_Friday_not_future_Monday(self):
+        x=audit_status(now=at(26,8,20),rows=[row(23)])
+        self.assertEqual(x["latest_completed_sydney_weekday_checked"],"2026-10-23")
+        self.assertEqual(x["latest_completed_weekday_status"],
+                         "VERIFIED_COMPLETED_WEEKDAY_SOURCE_IN_CHECKOUT")
+        self.assertEqual(x["status"],"PENDING_CAPTURE_WINDOW_NOT_YET_CLOSED")
+
+    def test_current_weekday_after_3pm_keeps_same_day_audit(self):
+        x=audit_status(now=at(21,16,2),rows=[row(20)])
+        self.assertEqual(x["latest_completed_sydney_weekday_checked"],"2026-10-21")
+        self.assertEqual(x["latest_completed_weekday_status"],
+                         "MISSING_COMPLETED_WEEKDAY_DO_NOT_BACKFILL")
+
+    def test_before_first_enrolment_returns_no_expected_completed_session(self):
+        x=audit_status(now=at(20,11,35),rows=[])
+        self.assertIsNone(x["latest_completed_sydney_weekday_checked"])
+        self.assertEqual(x["latest_completed_weekday_status"],
+                         "NO_COMPLETED_WEEKDAY_SINCE_ENROLMENT")
+
+    def test_bad_completed_prior_day_capture_is_refused(self):
+        stale=row(20)
+        stale["captured_at_utc"]=at(19,12,31).astimezone(dt.timezone.utc).isoformat()
+        with self.assertRaisesRegex(ValueError,"backdated"):
+            audit_status(now=at(21,0,30),rows=[stale])
+
+    def test_latest_completed_weekday_helper_rejects_naive(self):
+        with self.assertRaisesRegex(ValueError,"Timezone-aware"):
+            latest_completed_sydney_weekday(at(21).replace(tzinfo=None))
 
     def test_date_prior_enrollment_not_expected(self):
         x=audit_status(now=at(19,23),rows=[])
