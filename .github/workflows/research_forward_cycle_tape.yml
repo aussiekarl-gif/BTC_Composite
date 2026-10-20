@@ -56,6 +56,24 @@ jobs:
           python-version: '3.12'
       - name: Install same research dependencies as Streamlit
         run: python -m pip install -r requirements.txt
+      - name: Independent Sydney mid-session missing-source diagnostic (not blocked by BTC tests)
+        # Run BEFORE BTC model/unit validation. If the market-data tests fail,
+        # the completed Sydney weekday capture-health alert must still exist.
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        id: independent_mid_session_health
+        shell: bash
+        run: |
+          if ! python -m engines.research.cycle_mid_session_capture_health; then
+            echo '::warning::Independent read-only mid-session monitor failed; do not backfill or infer successful capture.'
+          fi
+      - name: Preserve independent capture-health result even if BTC market validation fails
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-independent-mid-session-capture-health
+          path: artifacts/research_mid_session_capture_health.json
+          if-no-files-found: warn
+          retention-days: 30
       - name: Check frozen model equality, capture invariants and future-only grades
         id: capture_validation
         run: |
@@ -103,13 +121,6 @@ jobs:
         run: |
           if ! python -m engines.research.cycle_mid_session_asx_timing_audit; then
             echo '::warning::Mid-session ASX timing study unavailable; preserve independent source tapes.'
-          fi
-      - name: Independently audit today's mid-session source at Sydney NIGHT, never backfill
-        if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-        shell: bash
-        run: |
-          if ! python -m engines.research.cycle_mid_session_capture_health; then
-            echo '::warning::Read-only independent mid-session capture-health report could not run.'
           fi
       - name: Preserve prospective source record even if repository write is blocked
         if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
