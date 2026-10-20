@@ -1,0 +1,49 @@
+name: Streamlit BTC dashboard offline interaction smoke
+
+on:
+  pull_request:
+    paths:
+      - 'tests/test_streamlit_offline_ui_smoke.py'
+      - 'app.py'
+      - 'engines/research/cycle_trading_app.py'
+      - 'engines/research/cycle_trade_decision.py'
+      - 'engines/research/cycle_single_screen_brief.py'
+      - 'engines/shared/model_settings_store.py'
+      - 'engines/production/production_app.py'
+      - 'engines/research/research_app.py'
+      - '.github/workflows/streamlit_offline_dashboard_smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-launcher-ui-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      BTC_PORTFOLIO_BACKEND: sqlite
+      BTC_PORTFOLIO_DB_PATH: /tmp/btc_offline_actions_only.sqlite3
+      NTFY_TOPIC: ''
+      GOOGLE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install existing Streamlit dependencies only
+        run: python -m pip install -r requirements.txt
+      - name: Compile unchanged launcher, UI and safety logic
+        run: |
+          python -m py_compile app.py engines/research/cycle_trading_app.py
+          python -m py_compile engines/production/production_app.py engines/research/research_app.py
+          python -m py_compile tests/test_streamlit_offline_ui_smoke.py
+      - name: Run REAL launcher AppTest with synthetic BTC and offline personal ledger
+        run: python -m unittest discover -s tests -p 'test_streamlit_offline_ui_smoke.py' -v
+      - name: Protect actual date widgets, model decisions and notification agreement
+        run: |
+          python -m unittest discover -s tests -p 'test_dca_target_date_persistence.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trade_decision.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Confirm no real portfolio, source data, notification marker or strategy files changed
+        run: git diff --exit-code -- data/ .github/notification_state/ engines/production/production_model.py engines/research/research_model.py engines/research/cycle_trade_allocation.py cycle_trading_daily_ntfy.py
