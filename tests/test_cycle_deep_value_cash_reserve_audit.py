@@ -28,6 +28,10 @@ def series(kind="low"):
         px.loc["2020-02-15":"2020-03-01"]=75.
         px.loc["2020-03-02":"2020-05-15"]=65.
         px.loc["2020-05-16":]=125.
+    elif kind=="persistent_moderate_discount":
+        # >55 consecutive eligible 7-day spaced opportunities can
+        # actually exhaust an unreserved wallet below a 25% floor.
+        px.loc["2020-02-01":]=85.
     elif kind=="no_cross":
         pass
     elif kind=="last_day_only":
@@ -81,14 +85,17 @@ class CashReserveGatingTests(unittest.TestCase):
         self.assertEqual(requested_fraction_and_reserve(
             "tiered_hold_40pct_25pct_10pct",.69,CAPITAL)[1],0)
 
-    def test_two_deeper_discount_thresholds_unfreeze_cash_without_final_sweep(self):
-        px,fx=series("very_low")
-        x=replay_reserves(px,fx,start=START,terminal=END,capital_aud=CAPITAL)
+    def test_prolonged_15pct_discount_triggers_25pct_original_cash_reserve_floor(self):
+        px,fx=series("persistent_moderate_discount")
+        end=pd.Timestamp("2021-03-15",tz="UTC")
+        x=replay_reserves(px,fx,start=START,terminal=end,capital_aud=CAPITAL)
         self.assertFalse(x["terminal_cash_sweep_or_forced_date"])
         reserved=x["accounts"]["tiered_hold_40pct_25pct_10pct"]
         uncovered=x["accounts"]["tiered_3p5_5p0_no_reserve"]
         self.assertGreater(reserved["cash_left_AUD"],uncovered["cash_left_AUD"])
+        self.assertGreaterEqual(reserved["cash_left_AUD"],.25*CAPITAL-0.01)
         self.assertLess(reserved["BTC_held"],uncovered["BTC_held"])
+        self.assertLess(uncovered["cash_left_AUD"],.25*CAPITAL)
         self.assertGreater(reserved["cash_left_AUD"],0)
         for o in reserved["orders"]:
             self.assertGreaterEqual(o["cash_after_AUD"],
