@@ -69,7 +69,7 @@ def first_actual_session(cycle_csv:str,asx_csv:str,*,as_of_utc:dt.datetime)->dic
             cash=round(float(fill["cash_after_aud"]),2)
             if fill["NOT_ACTUALLY_EXECUTED"] is not True:
                 raise ValueError("First ASX paper fill misrepresented as real order")
-            if fill["source_capture_utc"] is not None and _instant(fill["source_capture_utc"])>=open_at:
+            if fill["signal_capture_utc"] is not None and _instant(fill["signal_capture_utc"])>=open_at:
                 raise AssertionError("Forward BUY or SELL used after-open source")
         else:
             units=0
