@@ -53,6 +53,29 @@ jobs:
       - name: Capture a NEW actual verified mid-session market WATCH (research only)
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         run: python -m engines.research.cycle_mid_session_signal_tape
+      - name: Diagnose missed or unavailable mid-session source without backfill
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !cancelled()
+        shell: bash
+        run: |
+          # If actual scheduled capture failed, record a visible Actions
+          # warning, not a fake timestamp or a retroactive BUY/SELL.
+          python - <<'PY'
+          import datetime as dt
+          from zoneinfo import ZoneInfo
+          from engines.research.cycle_mid_session_signal_tape import read_tape
+          sydney_now=dt.datetime.now(dt.timezone.utc).astimezone(ZoneInfo("Australia/Sydney"))
+          today=sydney_now.date().isoformat()
+          rows=read_tape()
+          if rows and rows[-1]["research_sydney_date"]==today:
+              print(f"::notice::Verified prospective Cycle mid-session source recorded for {today}: "+
+                    rows[-1]["captured_at_utc"])
+          else:
+              print(f"::warning::No valid prospective Cycle mid-session row for Sydney {today}; "+
+                    "do NOT backfill; inspect preceding capture-stage errors and GitHub scheduler.")
+          PY
+          if ! python -m engines.research.cycle_mid_session_signal_tape --probe-only; then
+            echo '::warning::Current public BTC, FX or halving source FAILED passive probe; no research tape changes.'
+          fi
       - name: Preserve research evidence even if GitHub push is blocked
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && !cancelled()
         uses: actions/upload-artifact@v4
