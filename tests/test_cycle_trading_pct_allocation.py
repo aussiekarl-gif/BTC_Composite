@@ -130,6 +130,29 @@ class UnifiedCycleAllocations(unittest.TestCase):
         self.assertNotIn("A$500,000",msg)
         self.assertNotIn("9000 units",msg)
 
+    def test_dashboard_market_watch_matches_daily_ntfy_even_if_portfolio_offline(self):
+        # ntfy is a public MARKET summary, not a Google Sheets account
+        # check. Dashboard must retain the same verified BUY/SELL % on
+        # a temporary portfolio outage, but must NOT propose an order.
+        for market in (set_buy(fixture()),set_sell(fixture(),525)):
+            expected=calculate_allocation_signal(market)
+            dashboard=make_current_decision(
+                market,None,today=NOW.date(),ibit_price_aud=20.,
+                feed_verified=True,verified_current_ibit_units=9000.)
+            _,message=daily_message(
+                now=NOW,
+                quote={"price_aud":22.,"timestamp_utc":"2026-10-16T05:00:00+00:00"},
+                market=market)
+            self.assertEqual(dashboard["market_signal"],expected["signal"])
+            self.assertEqual(dashboard["buy_pct_total_cash"],expected["buy_pct_cash"])
+            self.assertEqual(dashboard["sell_pct_total_holdings"],expected["sell_pct_held"])
+            self.assertIn(f"Cycle signal: {expected['signal']}",message)
+            self.assertIn(f"BUY allocation: {expected['buy_pct_cash']:.2f}%",message)
+            self.assertIn(f"SELL allocation: {expected['sell_pct_held']:.2f}%",message)
+            self.assertEqual(dashboard["action"],"HOLD")
+            self.assertEqual(dashboard["action_aud"],0.)
+            self.assertFalse(dashboard["place_order"])
+
     def test_sell_watch_notification_is_not_actual_order(self):
         m=set_sell(fixture(),525)
         date,msg=daily_message(now=NOW,
