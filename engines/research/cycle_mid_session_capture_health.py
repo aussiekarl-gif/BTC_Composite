@@ -24,6 +24,22 @@ from engines.research.cycle_mid_session_signal_tape import (
 SYDNEY = ZoneInfo("Australia/Sydney")
 REPORT = Path("artifacts/research_mid_session_capture_health.json")
 
+def latest_completed_sydney_weekday(local:dt.datetime) -> dt.date | None:
+    """Use completed CAPTURE WINDOW, not runner wall-clock calendar date.
+
+    A GitHub nightly 23:25 Sydney run can be delayed to 00:25 Wednesday
+    or Saturday. It must still check Tuesday or Friday, respectively.
+    """
+    if (not isinstance(local,dt.datetime) or local.tzinfo is None
+        or local.utcoffset() is None):
+        raise ValueError("Timezone-aware Sydney audit timestamp required")
+    local=local.astimezone(SYDNEY)
+    candidate=(local.date() if local.time()>=WINDOW_END
+               else local.date()-dt.timedelta(days=1))
+    while candidate.weekday()>=5:
+        candidate-=dt.timedelta(days=1)
+    return candidate if candidate>=FIRST_ELIGIBLE_DATE else None
+
 
 def audit_status(*, now:dt.datetime, rows:list[dict],
                  run_id:str="", workflow:str="", event:str="") -> dict:
@@ -48,12 +64,36 @@ def audit_status(*, now:dt.datetime, rows:list[dict],
         status="PENDING_CAPTURE_WINDOW_NOT_YET_CLOSED"
     else:
         status="MISSING_AFTER_WINDOW_ENDED_DO_NOT_BACKFILL"
+    completed=latest_completed_sydney_weekday(local)
+    completed_rows=([r for r in rows
+                     if r["research_sydney_date"]==completed.isoformat()]
+                    if completed is not None else [])
+    if len(completed_rows)>1:
+        raise ValueError("Duplicate most-recent completed Sydney weekday source")
+    if completed_rows:
+        stamp=dt.datetime.fromisoformat(completed_rows[0]["captured_at_utc"])
+        if stamp.tzinfo is None or stamp.utcoffset() is None:
+            raise ValueError("Completed source timestamp has no timezone")
+        if stamp.astimezone(SYDNEY).date()!=completed:
+            raise ValueError("Most recent completed source timestamp backdated")
+    completed_status=(
+        "NO_COMPLETED_WEEKDAY_SINCE_ENROLMENT" if completed is None
+        else "VERIFIED_COMPLETED_WEEKDAY_SOURCE_IN_CHECKOUT" if completed_rows
+        else "MISSING_COMPLETED_WEEKDAY_DO_NOT_BACKFILL"
+    )
     return {
         "kind":"RESEARCH_MID_SESSION_CAPTURE_HEALTH_READ_ONLY",
         "audited_at_utc":now.astimezone(dt.timezone.utc).isoformat(),
         "audited_sydney_date":day.isoformat(),
         "audited_sydney_local_time":local.isoformat(),
         "expected_capture_window_end_sydney":WINDOW_END.isoformat(),
+        "latest_completed_sydney_weekday_checked":(
+            completed.isoformat() if completed is not None else None),
+        "latest_completed_weekday_status":completed_status,
+        "latest_completed_weekday_source_row_hash":(
+            completed_rows[0]["row_hash"] if completed_rows else None),
+        "latest_completed_weekday_source_captured_at_utc":(
+            completed_rows[0]["captured_at_utc"] if completed_rows else None),
         "status":status,
         "verified_rows_in_existing_tape":len(rows),
         "current_date_source_capture_at_utc":(
@@ -90,10 +130,10 @@ def main(argv=None):
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf-8")
     print("MID_SESSION_CAPTURE_HEALTH "+json.dumps(result,sort_keys=True))
-    if result["status"]=="MISSING_AFTER_WINDOW_ENDED_DO_NOT_BACKFILL":
-        print("::warning::Scheduled BTC Cycle mid-session capture missing for "+
-              result["audited_sydney_date"]+
-              ". No backfill. Check actual scheduled Actions workflow runs / capture and git push logs.")
+    if result["latest_completed_weekday_status"]=="MISSING_COMPLETED_WEEKDAY_DO_NOT_BACKFILL":
+        print("::warning::Scheduled BTC Cycle mid-session capture missing for completed Sydney weekday "+
+              result["latest_completed_sydney_weekday_checked"]+
+              ". No backfill. Check original scheduled Actions workflow run / source and push logs.")
 
 
 if __name__=="__main__":
