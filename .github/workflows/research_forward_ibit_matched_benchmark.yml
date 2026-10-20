@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'engines/research/forward_ibit_matched_benchmark.py'
+      - 'engines/research/forward_ibit_first_session_acceptance.py'
+      - 'tests/test_forward_ibit_first_session_acceptance.py'
       - 'engines/research/ibit_asx_public_probe.py'
       - 'tests/test_ibit_asx_public_probe.py'
       - 'tests/test_forward_ibit_matched_benchmark.py'
@@ -13,6 +15,8 @@ on:
     branches: [main]
     paths:
       - 'engines/research/forward_ibit_matched_benchmark.py'
+      - 'engines/research/forward_ibit_first_session_acceptance.py'
+      - 'tests/test_forward_ibit_first_session_acceptance.py'
       - 'tests/test_forward_ibit_matched_benchmark.py'
       - '.github/workflows/research_forward_ibit_matched_benchmark.yml'
   workflow_dispatch:
@@ -35,6 +39,7 @@ jobs:
         run: |
           python -m py_compile engines/research/forward_ibit_matched_benchmark.py
           python -m unittest discover -s tests -p 'test_forward_ibit_matched_benchmark.py' -v
+          python -m unittest discover -s tests -p 'test_forward_ibit_first_session_acceptance.py' -v
           python -m unittest discover -s tests -p 'test_ibit_asx_public_probe.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_ibit_asx_forward_close_tape.py' -v
@@ -42,5 +47,14 @@ jobs:
         run: python -m engines.research.ibit_asx_public_probe
       - name: Preview authentic point-in-time comparison, without network/trading/writes
         run: python -m engines.research.forward_ibit_matched_benchmark
+      - name: Reconcile first genuine 2026-10-20 ASX matched-capital paper session, NO LIVE ORDER
+        run: python -m engines.research.forward_ibit_first_session_acceptance
+      - name: Retain read-only first-session equal-AUD evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: forward-ibit-first-session-causal-paper-acceptance
+          path: artifacts/forward_ibit_first_actual_session.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Keep immutable source records and scheduled jobs unchanged
         run: git diff --exit-code -- data/research_forward_validation/
