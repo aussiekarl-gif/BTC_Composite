@@ -1,0 +1,54 @@
+name: Research BTC permanent 15-25pct cash floor (paper only)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_permanent_cash_reserve_audit.py'
+      - 'engines/research/cycle_deep_value_cash_reserve_audit.py'
+      - 'tests/test_cycle_permanent_cash_reserve_audit.py'
+      - '.github/workflows/research_cycle_permanent_cash_floor.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/cycle_permanent_cash_reserve_audit.py'
+      - 'engines/research/cycle_deep_value_cash_reserve_audit.py'
+      - 'tests/test_cycle_permanent_cash_reserve_audit.py'
+      - '.github/workflows/research_cycle_permanent_cash_floor.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  permanent-reserve-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install established research requirements
+        run: python -m pip install -r requirements.txt
+      - name: Validate permanent floor, unchanged 2p5, previous tiered rules and no hindsight
+        run: |
+          python -m py_compile engines/research/cycle_permanent_cash_reserve_audit.py
+          python -m unittest discover -s tests -p 'test_cycle_permanent_cash_reserve_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_deep_value_cash_reserve_audit.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_conditional_deep_value_buy_audit.py' -v
+          python -m unittest discover -s tests -p 'test_live_weekly_buy_parity.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+      - name: Compare matched historical and completed 50/70pct deeper-bear stress
+        run: |
+          python -m engines.research.cycle_permanent_cash_reserve_audit --out artifacts/research_cycle_permanent_cash_floor
+      - name: Retain paper-only matched capital and risk evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-permanent-cash-15-25pct-paper-research
+          path: artifacts/research_cycle_permanent_cash_floor/
+          retention-days: 30
+          if-no-files-found: ignore
+      - name: Assert real portfolios, source tapes, ntfy and models untouched
+        run: |
+          git diff --exit-code -- data/research_forward_validation/ engines/production/ engines/research/cycle_trade_allocation.py cycle_trading_daily_ntfy.py
