@@ -110,24 +110,12 @@ def make_current_decision(
             _nonnegative_number(market.get("usd_aud_prior")) in (None,0)):
         base["why"].append("No validated preceding USD/AUD exchange rate.")
         return base
-    portfolio=portfolio_snapshot(saved_portfolio)
-    if not portfolio.get("valid") or portfolio.get("rows",0)<1:
-        base["why"].append("Saved My Portfolio purchases are missing; no balance assumed.")
-        return base
-    if portfolio["unpriced_or_unknown_rows"]:
-        base["why"].append("Some portfolio rows lack valid BTC prices or asset types; reconcile before sizing.")
-        return base
-    # Saved cash already nets all purchases, fees AND executed SELL proceeds.
-    # Do not wrongly reject a valid reinvestment after selling BTC or IBIT.
-    base["data_ok"]=True
-    base["portfolio_cash_remaining_aud"]=portfolio["cash_remaining_aud"]
-    base["recorded_ibit_units_net"]=portfolio["ibit_units"]
-    base["recorded_direct_btc_net"]=portfolio["direct_btc"]
-    quote=_nonnegative_number(ibit_price_aud)
-    if quote is not None and quote>0:
-        base["quote_aud"]=quote
-    else:
-        base["warnings"].append("Enter a current broker ASX:IBIT unit quote to estimate tradeable whole units.")
+    # Compute the VERIFIED market-only WATCH before attempting to size a
+    # user's optional, sometimes unavailable, saved portfolio. The original
+    # shared Cycle signal is independent of account balances; if the ledger
+    # is absent/malformed we must still show BUY WATCH / SELL WATCH / HOLD,
+    # while keeping action HOLD and every trade quantity at zero. Never
+    # promote unverified BTC/FX inputs to a current market WATCH.
     try:
         model_signal=calculate_allocation_signal(market,buy_style=buy_style)
     except (ValueError,KeyError,TypeError):
@@ -149,6 +137,24 @@ def make_current_decision(
         "prior_90day_drawdown_pct","prior_price_over_200wma",
         "prior_sma50_declining"
     )})
+    portfolio=portfolio_snapshot(saved_portfolio)
+    if not portfolio.get("valid") or portfolio.get("rows",0)<1:
+        base["why"].append("Saved My Portfolio purchases are missing; no balance assumed.")
+        return base
+    if portfolio["unpriced_or_unknown_rows"]:
+        base["why"].append("Some portfolio rows lack valid BTC prices or asset types; reconcile before sizing.")
+        return base
+    # Saved cash already nets all purchases, fees AND executed SELL proceeds.
+    # Do not wrongly reject a valid reinvestment after selling BTC or IBIT.
+    base["data_ok"]=True
+    base["portfolio_cash_remaining_aud"]=portfolio["cash_remaining_aud"]
+    base["recorded_ibit_units_net"]=portfolio["ibit_units"]
+    base["recorded_direct_btc_net"]=portfolio["direct_btc"]
+    quote=_nonnegative_number(ibit_price_aud)
+    if quote is not None and quote>0:
+        base["quote_aud"]=quote
+    else:
+        base["warnings"].append("Enter a current broker ASX:IBIT unit quote to estimate tradeable whole units.")
     # Daily market observations are not daily DCA orders. A weekly tranche
     # requires no already-recorded BUY or SELL in the past seven days.
     # Still show the market WATCH percentage even when trading is blocked.

@@ -106,6 +106,54 @@ class CurrentResearchDecisionTests(unittest.TestCase):
         d=self.evaluate(self.undervalued(),portfolio=None)
         self.assertEqual(d["action"],"HOLD")
 
+    def test_verified_market_watch_survives_missing_portfolio_without_order(self):
+        # User may have no Google Sheets access or no uploaded trades.
+        # Market-only WATCH is computed from verified BTC, not holdings.
+        for market,expected,pct_buy,pct_sell in (
+            (self.undervalued(),"BUY WATCH",2.5,0.),
+            (self.topped(500),"SELL WATCH",0.,5.),
+            (self.topped(910),"HOLD",0.,0.),
+        ):
+            for ledger in (None,{}):
+                with self.subTest(expected=expected,ledger=ledger):
+                    decision=self.evaluate(market,portfolio=ledger,
+                        verified_current_ibit_units=9000.,
+                        ibit_price_aud=30.)
+                    self.assertEqual(decision["market_signal"],expected)
+                    self.assertEqual(decision["buy_pct_total_cash"],pct_buy)
+                    self.assertEqual(decision["sell_pct_total_holdings"],pct_sell)
+                    self.assertEqual(decision["action"],"HOLD")
+                    self.assertEqual(decision["action_aud"],0.)
+                    self.assertEqual(decision["suggested_ibit_units"],0)
+                    self.assertFalse(decision["data_ok"])
+                    self.assertFalse(decision["place_order"])
+                    self.assertTrue(any("Portfolio" in reason
+                        for reason in decision["why"]))
+                    self.assertNotIn("portfolio_cash_remaining_aud",decision)
+
+    def test_failed_or_stale_public_sources_never_show_current_market_watch(self):
+        m=self.undervalued()
+        for kw in (
+            {"feed_verified":False},
+            {"today":self.today+pd.Timedelta(days=5)},
+        ):
+            with self.subTest(kw=kw):
+                d=self.evaluate(m,portfolio=None,**kw)
+                self.assertEqual(d["market_signal"],"UNAVAILABLE")
+                self.assertEqual(d["action"],"HOLD")
+                self.assertEqual(d["buy_pct_total_cash"],0.)
+                self.assertEqual(d["sell_pct_total_holdings"],0.)
+                self.assertEqual(d["action_aud"],0.)
+                self.assertFalse(d["data_ok"])
+
+    def test_invalid_allocation_cannot_be_rescued_by_missing_ledger(self):
+        m=self.undervalued()
+        m["previous_close_below_200wma"]=False
+        d=self.evaluate(m,portfolio=None)
+        self.assertEqual(d["market_signal"],"UNAVAILABLE")
+        self.assertEqual(d["action"],"HOLD")
+        self.assertTrue(any("inconsistent" in reason for reason in d["why"]))
+
     def test_duplicate_signal_checkbox_blocks_buy_and_sell(self):
         for m in (self.undervalued(),self.topped()):
             d=self.evaluate(m,already_traded_today=True,
