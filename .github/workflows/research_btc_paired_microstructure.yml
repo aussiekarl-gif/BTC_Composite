@@ -124,7 +124,7 @@ jobs:
         # within 11:00-15:00 Sydney may create a new research observation.
         # It executes AFTER the original BTC book/trade publication; any
         # provider failure must not suppress or change those tapes.
-        if: \${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
         shell: bash
         run: |
           set -u
@@ -193,7 +193,7 @@ jobs:
           fi
           echo '::notice::Prospective Cycle research source saved once at actual timestamp. No ntfy or broker trades.'
       - name: Retain independent timing and provider diagnostics without altering BTC microstructure
-        if: \${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
         uses: actions/upload-artifact@v4
         with:
           name: optional-cycle-mid-session-from-paired-source-schedule
