@@ -11,3 +11,14 @@ This update adds observable evidence to the existing scheduled/read-only workflo
 - no backfill, revised trading rule, new schedule or added market data subscription. One daily ntfy remains separate and unchanged.
 
 If future scheduled runs still produce no mid-session record despite valid public source probes, inspect GitHub Actions schedule enablement and repository `contents: write` permission / `git push origin HEAD:main` failures via exact run job logs. Do not claim any specific root cause until supported by those actual logs. If the collector executes outside its restricted window, treat the day as missing rather than widening the window after observing data.
+
+## Live read-only verification on 20 October after the missed collection window
+
+[PR #184 GitHub CI run 39379786756](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/39379786756) passed 51 original offline tests (24 mid-session, 10 Cycle, 17 verified BTC-source tests). At **2026-10-20T06:20:37Z** (17:20 Sydney / 16:20 Brisbane), the passive no-send/no-write provider probe independently returned:
+- most recent verified completed UTC BTC close date **2026-10-19**, BTC/USD **81,843.70**;
+- prior 200WMA **66,842.39** USD; independent Kraken/Blockchain maximum same-date discrepancy **0.0181%**;
+- historical AUD FX on **2026-10-16**; original shared Cycle market WATCH **HOLD**, BUY/SELL **0%/0%**;
+- unchanged Cycle market model SHA **0143723687ff676300734a4bcc9887cdc095c74b70b958852d9448412b7f08a7**;
+- `mid_session_snapshot_recorded=false`, `ntfy_sent=0`, `orders_placed=0` and existing immutable tape still 0 records.
+
+Therefore the CURRENT provider chain is healthy, but that does **not establish the provider chain's state at the 01:30 or 02:30 UTC scheduled capture times** or whether those GitHub jobs ran/pushed. Original capture is missing and must remain missing for October 20. Future scheduled runs have visible warnings and passive source status even on source-capture failures, enabling a more precise root-cause determination.
