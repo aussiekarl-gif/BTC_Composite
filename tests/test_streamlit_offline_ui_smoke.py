@@ -86,9 +86,10 @@ class StreamlitOfflineSmoke(unittest.TestCase):
         def portfolio():
             counts["portfolio"]+=1
             return {}, "Simulated offline Google Sheets connection; no account access"
+        health={"verified":True}
         def verified_merge(*args,**kwargs):
             return history["price_usd"],{
-                "strict_close_date_verified":True,
+                "strict_close_date_verified":health["verified"],
                 "overlap_days":5,"max_overlap_difference_pct":0.02,
             }
         def quote(*args,**kwargs):
@@ -144,6 +145,30 @@ class StreamlitOfflineSmoke(unittest.TestCase):
                           [(x.label,str(x.value)) for x in page.metric])
             self.assertFalse(any("Verified BUY research budget"==x.label
                                  or "Verified SELL research units"==x.label
+                                 for x in page.metric))
+            # Reuse the SAME actual launcher, not a simulated helper page:
+            # a new verified price discount should change MARKET WATCH,
+            # but NO holdings/cash means absolutely no executable BUY.
+            history["price_usd"].iloc[-35:]=30000.0
+            page=next(b for b in page.button
+                      if b.key=="cycle_research_refresh").click().run()
+            self.assertFalse(page.exception,repr([x.message for x in page.exception]))
+            self.assertIn(("Current research market signal","BUY WATCH"),
+                          [(x.label,str(x.value)) for x in page.metric])
+            self.assertIn(("Spendable trade amount","Not verified"),
+                          [(x.label,str(x.value)) for x in page.metric])
+            self.assertFalse(any(x.label=="Verified BUY research budget"
+                                 for x in page.metric))
+            # If independent public-close verification fails, a new
+            # BUY WATCH must immediately become UNAVAILABLE, not be
+            # cached as a fresh tradeable market recommendation.
+            health["verified"]=False
+            page=next(b for b in page.button
+                      if b.key=="cycle_research_refresh").click().run()
+            self.assertFalse(page.exception,repr([x.message for x in page.exception]))
+            self.assertIn(("Current research market signal","UNAVAILABLE"),
+                          [(x.label,str(x.value)) for x in page.metric])
+            self.assertFalse(any(x.label=="Verified BUY research budget"
                                  for x in page.metric))
 
     def test_streamlit_date_widget_persists_across_sessions_without_portfolio_write(self):
