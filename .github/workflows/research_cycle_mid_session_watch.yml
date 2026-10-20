@@ -5,12 +5,16 @@ on:
     paths:
       - 'engines/research/cycle_mid_session_signal_tape.py'
       - 'tests/test_cycle_mid_session_signal_tape.py'
+      - 'engines/research/cycle_mid_session_capture_health.py'
+      - 'tests/test_cycle_mid_session_capture_health.py'
       - '.github/workflows/research_cycle_mid_session_watch.yml'
   push:
     branches: [main]
     paths:
       - 'engines/research/cycle_mid_session_signal_tape.py'
       - 'tests/test_cycle_mid_session_signal_tape.py'
+      - 'engines/research/cycle_mid_session_capture_health.py'
+      - 'tests/test_cycle_mid_session_capture_health.py'
       - '.github/workflows/research_cycle_mid_session_watch.yml'
   workflow_dispatch:
   schedule:
@@ -44,6 +48,7 @@ jobs:
         run: |
           python -m py_compile engines/research/cycle_mid_session_signal_tape.py
           python -m unittest discover -s tests -p 'test_cycle_mid_session_signal_tape.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_mid_session_capture_health.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
           python -m engines.research.cycle_mid_session_signal_tape --self-check-only
@@ -51,8 +56,40 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'push'
         run: python -m engines.research.cycle_mid_session_signal_tape --probe-only
       - name: Capture a NEW actual verified mid-session market WATCH (research only)
+        id: prospective_capture
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
-        run: python -m engines.research.cycle_mid_session_signal_tape
+        shell: bash
+        run: |
+          # Actual scheduled-run evidence is archived even if BTC provider
+          # verification or source serialization fails. This is NOT a
+          # backfill, a trading alert, or a second observation.
+          mkdir -p artifacts/mid_session_capture
+          python - <<'PY' > artifacts/mid_session_capture/run_context.json
+          import datetime as dt, json, os
+          from zoneinfo import ZoneInfo
+          now=dt.datetime.now(dt.timezone.utc)
+          print(json.dumps({
+            "kind":"MID_SESSION_SCHEDULED_CAPTURE_RUN_START",
+            "started_utc":now.isoformat(),
+            "sydney_local_time":now.astimezone(ZoneInfo("Australia/Sydney")).isoformat(),
+            "github_run_id":os.environ.get("GITHUB_RUN_ID"),
+            "github_run_attempt":os.environ.get("GITHUB_RUN_ATTEMPT"),
+            "github_event":os.environ.get("GITHUB_EVENT_NAME"),
+            "historical_backfills_allowed":False,
+            "ntfy_posted":False,
+            "orders_placed":0,
+          },sort_keys=True))
+          PY
+          set +e
+          python -m engines.research.cycle_mid_session_signal_tape > artifacts/mid_session_capture/capture_transcript.txt 2>&1
+          result=$?
+          set -e
+          cat artifacts/mid_session_capture/capture_transcript.txt
+          printf '{"capture_exit_code":%s}\n' "$result" > artifacts/mid_session_capture/capture_exit.json
+          if [ "$result" -ne 0 ]; then
+            echo "::error::Actual prospective mid-session capture failed; no substitute price or backfill."
+          fi
+          exit "$result"
       - name: Diagnose missed or unavailable mid-session source without backfill
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !cancelled()
         shell: bash
@@ -76,12 +113,14 @@ jobs:
           if ! python -m engines.research.cycle_mid_session_signal_tape --probe-only; then
             echo '::warning::Current public BTC, FX or halving source FAILED passive probe; no research tape changes.'
           fi
-      - name: Preserve research evidence even if GitHub push is blocked
+      - name: Preserve ACTUAL run transcript and immutable source evidence, including failures
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && !cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: prospective-cycle-mid-session-market-watch
-          path: data/research_forward_validation/cycle_mid_session_market_watch.csv
+          path: |
+            artifacts/mid_session_capture/
+            data/research_forward_validation/cycle_mid_session_market_watch.csv
           if-no-files-found: ignore
           retention-days: 30
       - name: Save only new immutable research source row, no portfolio or ntfy
