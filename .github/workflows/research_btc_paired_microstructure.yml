@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'engines/research/btc_coordinated_capture.py'
+      - 'engines/research/cycle_microstructure_mid_session_backup.py'
+      - 'tests/test_cycle_microstructure_mid_session_backup.py'
       - 'tests/test_btc_coordinated_capture.py'
       - 'engines/research/btc_spot_depth_forward.py'
       - 'engines/research/coinbase_trade_samples.py'
@@ -15,6 +17,8 @@ on:
     branches: [main]
     paths:
       - 'engines/research/btc_coordinated_capture.py'
+      - 'engines/research/cycle_microstructure_mid_session_backup.py'
+      - 'tests/test_cycle_microstructure_mid_session_backup.py'
       - '.github/workflows/research_btc_paired_microstructure.yml'
       - '.github/workflows/research_btc_spot_depth_forward.yml'
       - '.github/workflows/research_coinbase_trade_samples.yml'
@@ -51,6 +55,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v
           python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
           python -m unittest discover -s tests -p 'test_btc_microstructure_forward_scorecard.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_microstructure_mid_session_backup.py' -v
           python -m engines.research.btc_spot_depth_forward --self-check-only
           python -m engines.research.coinbase_trade_samples --self-check-only
       - name: Pull request only - test real public sources without saving observations
@@ -112,3 +117,86 @@ jobs:
                                + "; ".join(report["provider_capture_failures"]))
           print("Both public source captures completed, or exact UTC slot was already stored.")
           PY
+
+      - name: Best-effort strictly TIMESTAMPED Cycle mid-session research fallback (zero ntfy)
+        # This is on the EXISTING 01:17/07:17/13:17/19:17 UTC paired
+        # schedule. GitHub may run it hours late. Only ACTUAL time
+        # within 11:00-15:00 Sydney may create a new research observation.
+        # It executes AFTER the original BTC book/trade publication; any
+        # provider failure must not suppress or change those tapes.
+        if: \${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+        shell: bash
+        run: |
+          set -u
+          mkdir -p artifacts/cycle_mid_session_microstructure_fallback
+          out='artifacts/cycle_mid_session_microstructure_fallback'
+          python -m engines.research.cycle_microstructure_mid_session_backup > "$out/actual_time_gate.json"
+          if ! python -m engines.research.cycle_microstructure_mid_session_backup --is-window > "$out/actual_time_gate_at_attempt.json"; then
+            echo 'Outside actual eligible Sydney 11:00-15:00: no market provider fetch or source write.'
+            exit 0
+          fi
+          # Full provider dependencies only when ACTUAL Sydney clock eligible.
+          if ! python -m pip install -r requirements.txt > "$out/dependencies.log" 2>&1; then
+            echo '::warning::Optional Cycle research source dependencies unavailable; paired microstructure source records untouched.'
+            exit 0
+          fi
+          # ORIGINAL module checks time AGAIN at provider receipt.
+          if ! python -m engines.research.cycle_mid_session_signal_tape > "$out/capture.json_or_error.txt" 2>&1; then
+            cat "$out/capture.json_or_error.txt"
+            echo '::warning::Optional mid-session research attempt unavailable; no inferred BUY/SELL or backfill.'
+            exit 0
+          fi
+          cat "$out/capture.json_or_error.txt"
+          if ! python -m engines.research.cycle_mid_session_signal_tape --self-check-only > "$out/source_integrity.json" 2>&1; then
+            echo '::warning::Optional Cycle source chain invalid; no publication.'
+            exit 0
+          fi
+          path='data/research_forward_validation/cycle_mid_session_market_watch.csv'
+          if [ ! -f "$path" ]; then
+            echo '::warning::Optional Cycle source not saved; do not fabricate a row.'
+            exit 0
+          fi
+          # If the dedicated research workflow already published this date
+          # since checkout, do NOT overwrite or append a second observation.
+          if ! git show "HEAD:$path" > "$out/checkout_source.csv" 2>/dev/null; then
+            : > "$out/checkout_source.csv"
+          fi
+          if ! git fetch origin main > "$out/git_fetch.log" 2>&1; then
+            echo '::warning::Optional Cycle push skipped: cannot inspect latest source.'
+            exit 0
+          fi
+          if ! git show "origin/main:$path" > "$out/latest_remote_source.csv" 2>/dev/null; then
+            : > "$out/latest_remote_source.csv"
+          fi
+          if ! cmp -s "$out/checkout_source.csv" "$out/latest_remote_source.csv"; then
+            echo '::notice::Original Cycle tape changed remotely; no overwrite. Preserve capture artifact only.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$path"
+          if git diff --cached --quiet; then
+            echo '::notice::Sydney date already saved. No changes.'
+            exit 0
+          fi
+          if ! git commit -m 'Research optional actual-time Cycle mid-session sample [skip ci]' > "$out/git_commit.log" 2>&1; then
+            echo '::warning::Optional Cycle commit unsuccessful; paired sources unaffected.'
+            exit 0
+          fi
+          if ! git rebase origin/main > "$out/git_rebase.log" 2>&1; then
+            echo '::warning::Remote changed during optional Cycle publication; no overwrite.'
+            exit 0
+          fi
+          if ! git push origin HEAD:main > "$out/git_push.log" 2>&1; then
+            echo '::warning::Optional Cycle publication incomplete; no overwrite.'
+            exit 0
+          fi
+          echo '::notice::Prospective Cycle research source saved once at actual timestamp. No ntfy or broker trades.'
+      - name: Retain independent timing and provider diagnostics without altering BTC microstructure
+        if: \${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: optional-cycle-mid-session-from-paired-source-schedule
+          path: artifacts/cycle_mid_session_microstructure_fallback/
+          if-no-files-found: warn
+          retention-days: 30
