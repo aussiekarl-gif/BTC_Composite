@@ -100,6 +100,18 @@ jobs:
             echo "::error::Actual prospective mid-session capture failed; no substitute price or backfill."
           fi
           exit "$result"
+      - name: PR/push only - prove fast path imports with minimal public provider packages
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: |
+          python -m pip install 'numpy>=1.26' 'pandas>=2' 'requests>=2.31'
+          python - <<'PY'
+          from engines.research.cycle_mid_session_signal_tape import capture_window, read_tape
+          from engines.research.cycle_microstructure_mid_session_backup import eligibility
+          import datetime as dt
+          assert callable(capture_window) and callable(read_tape)
+          assert eligibility(dt.datetime(2026,10,22,2,0,tzinfo=dt.timezone.utc))['eligible']
+          print('Verified minimal actual-time public source capture imports')
+          PY
       - name: Install complete dependencies for regression validation
         if: github.event_name == 'pull_request' || github.event_name == 'push' || steps.prospective_capture.outcome == 'success'
         run: python -m pip install -r requirements.txt
