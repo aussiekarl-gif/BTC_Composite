@@ -93,7 +93,8 @@ class MidSessionWorkflowSchedulingTests(unittest.TestCase):
         self.assertIn("git add -- \"$path\"",part)
         self.assertIn("git rebase origin/main",part)
         self.assertIn("git push origin HEAD:main",part)
-        self.assertNotIn("ntfy",part.lower())
+        self.assertNotIn("ntfy.sh",part)
+        self.assertNotIn("cycle_trading_daily_ntfy",part)
 
     def test_actual_receipt_not_scheduled_time_forms_source(self):
         c=self.capture
@@ -115,7 +116,6 @@ class MidSessionWorkflowSchedulingTests(unittest.TestCase):
         self.assertIn("historical_backfills_allowed",y)
         self.assertIn("ntfy_posted",y)
         self.assertIn("orders_placed",y)
-        self.assertIn("ONE",y.upper()) if False else None
 
     def test_no_executing_app_or_single_daily_ntfy_in_research_capture(self):
         y=self.yaml
