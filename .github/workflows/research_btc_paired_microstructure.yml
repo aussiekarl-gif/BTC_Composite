@@ -5,7 +5,9 @@ on:
     paths:
       - 'engines/research/btc_coordinated_capture.py'
       - 'engines/research/cycle_microstructure_mid_session_backup.py'
+      - 'engines/research/asx_ibit_postclose_paired_backup.py'
       - 'tests/test_cycle_microstructure_mid_session_backup.py'
+      - 'tests/test_asx_ibit_postclose_paired_backup.py'
       - 'tests/test_btc_coordinated_capture.py'
       - 'engines/research/btc_spot_depth_forward.py'
       - 'engines/research/coinbase_trade_samples.py'
@@ -18,7 +20,9 @@ on:
     paths:
       - 'engines/research/btc_coordinated_capture.py'
       - 'engines/research/cycle_microstructure_mid_session_backup.py'
+      - 'engines/research/asx_ibit_postclose_paired_backup.py'
       - 'tests/test_cycle_microstructure_mid_session_backup.py'
+      - 'tests/test_asx_ibit_postclose_paired_backup.py'
       - '.github/workflows/research_btc_paired_microstructure.yml'
       - '.github/workflows/research_btc_spot_depth_forward.yml'
       - '.github/workflows/research_coinbase_trade_samples.yml'
@@ -58,6 +62,12 @@ jobs:
           python -m unittest discover -s tests -p 'test_cycle_microstructure_mid_session_backup.py' -v
           python -m engines.research.btc_spot_depth_forward --self-check-only
           python -m engines.research.coinbase_trade_samples --self-check-only
+      - name: PR only - verify original ASX daily-candle safety and same-session fallback
+        if: github.event_name == 'pull_request'
+        run: |
+          python -m pip install -r requirements.txt
+          python -m unittest discover -s tests -p 'test_asx_ibit_postclose_paired_backup.py' -v
+          python -m unittest discover -s tests -p 'test_ibit_asx_forward_close_tape.py' -v
       - name: Pull request only - test real public sources without saving observations
         if: github.event_name == 'pull_request'
         run: |
@@ -198,5 +208,88 @@ jobs:
         with:
           name: optional-cycle-mid-session-from-paired-source-schedule
           path: artifacts/cycle_mid_session_microstructure_fallback/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Best-effort strictly POSTCLOSE Sydney ASX:IBIT paper price on existing paired BTC schedule
+        # No extra cron. Only a TRUE same-Sydney-day completed IBIT.AX AUD
+        # daily candle retrieved AFTER 17:00 Sydney on a weekday qualifies.
+        # All later UTC/Sydney rollovers are skipped; no missing-day backfill.
+        # Runs after the original paired BTC source and mid-session steps.
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+        shell: bash
+        run: |
+          set -u
+          out='artifacts/asx_ibit_postclose_paired'
+          mkdir -p "$out"
+          if ! python -m engines.research.asx_ibit_postclose_paired_backup --is-window > "$out/actual_time_gate.json"; then
+            echo '::notice::No actual completed same-day ASX session now; no Yahoo request or price rewrite.'
+            exit 0
+          fi
+          if ! python -m pip install -r requirements.txt > "$out/dependencies.log" 2>&1; then
+            echo '::warning::Optional after-close ASX research dependencies unavailable; no price record.'
+            exit 0
+          fi
+          # The backup itself rechecks the wall-clock AFTER Yahoo replies
+          # and calls the ORIGINAL ASX OHLC/FX-free AUD source validator.
+          if ! python -m engines.research.asx_ibit_postclose_paired_backup --report "$out/capture_status.json" > "$out/capture_log.txt" 2>&1; then
+            cat "$out/capture_log.txt"
+            echo '::warning::Same-session Yahoo ASX research close unavailable; no trade or backfill.'
+            exit 0
+          fi
+          cat "$out/capture_log.txt"
+          if ! python - "$out/capture_status.json" <<'PY'
+          import json,sys
+          r=json.load(open(sys.argv[1],encoding='utf-8'))
+          if not r.get("wrote_close"):
+              print("No new completed actual Sydney ASX bar. Do not publish.")
+              raise SystemExit(1)
+          if r.get("broker_orders") or r.get("ntfy_sent") or r.get("portfolio_writes"):
+              raise SystemExit("Unsafe research-only side effect")
+          PY
+          then
+            exit 0
+          fi
+          path='data/research_forward_validation/asx_ibit_closes_forward.csv'
+          if ! git show "HEAD:$path" > "$out/checkout_source.csv" 2>/dev/null; then
+            : > "$out/checkout_source.csv"
+          fi
+          if ! git fetch origin main > "$out/git_fetch.log" 2>&1; then
+            echo '::warning::Could not verify latest immutable ASX source before optional publication.'
+            exit 0
+          fi
+          if ! git show "origin/main:$path" > "$out/latest_remote_source.csv" 2>/dev/null; then
+            : > "$out/latest_remote_source.csv"
+          fi
+          if ! cmp -s "$out/checkout_source.csv" "$out/latest_remote_source.csv"; then
+            echo '::notice::Another ASX collector already published new data. Preserve its first record, never overwrite.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "$path"
+          if git diff --cached --quiet; then
+            echo '::notice::Nothing new to publish for this Sydney ASX session.'
+            exit 0
+          fi
+          if ! git commit -m 'Research verified same-session ASX:IBIT AUD close from existing capture [skip ci]' > "$out/git_commit.log" 2>&1; then
+            echo '::warning::Optional ASX git commit unsuccessful; independent BTC source unaffected.'
+            exit 0
+          fi
+          if ! git rebase origin/main > "$out/git_rebase.log" 2>&1; then
+            echo '::warning::Repository changed during ASX close publication; skip rather than overwrite.'
+            exit 0
+          fi
+          if ! git push origin HEAD:main > "$out/git_push.log" 2>&1; then
+            echo '::warning::ASX forward paper quote not published; no executable fill inferred.'
+            exit 0
+          fi
+          echo '::notice::Genuine same-Sydney-session ASX:IBIT AUD indicative close safely published.'
+      - name: Save research-only ASX capture attempt diagnostics
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: optional-actual-sydney-postclose-ibit-aud-from-paired-btc
+          path: artifacts/asx_ibit_postclose_paired/
           if-no-files-found: warn
           retention-days: 30
