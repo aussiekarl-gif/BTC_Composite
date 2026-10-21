@@ -17,9 +17,11 @@ import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from engines.research.ibit_asx_forward_close_tape import (
-    OUTPUT, capture_once, fetch_yahoo_asx_daily_candle,
-)
+# Keep the --is-window decision independent of heavy pandas/numpy and
+# any public-provider dependency. Only load ASX tools AFTER the real
+# wall clock says a new Sydney session can actually be observed.
+ROOT=Path(__file__).resolve().parents[2]
+OUTPUT=ROOT/"data"/"research_forward_validation"/"asx_ibit_closes_forward.csv"
 
 UTC=dt.timezone.utc
 SYDNEY=ZoneInfo("Australia/Sydney")
@@ -49,7 +51,7 @@ def eligibility(now:dt.datetime)->dict:
 
 
 def attempt(*,clock=lambda:dt.datetime.now(UTC),
-            fetcher=fetch_yahoo_asx_daily_candle,
+            fetcher=None,
             path=OUTPUT)->dict:
     begin=clock()
     gate=eligibility(begin)
@@ -57,9 +59,13 @@ def attempt(*,clock=lambda:dt.datetime.now(UTC),
         return {"status":"skipped_actual_time_outside_session","gate":gate,
                 "provider_requested":False,"wrote_close":False,
                 "broker_orders":0,"ntfy_sent":0}
+    # Import only after pure Sydney-time gate allows an attempt.
+    from engines.research.ibit_asx_forward_close_tape import (
+        capture_once, fetch_yahoo_asx_daily_candle,
+    )
     # Fetch once; the actual receipt, not GitHub's scheduled date or
     # beginning of the request, must determine the source-vintage clock.
-    payload=fetcher()
+    payload=(fetcher or fetch_yahoo_asx_daily_candle)()
     received=clock()
     end_gate=eligibility(received)
     if (not end_gate["eligible"]
