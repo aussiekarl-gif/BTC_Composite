@@ -7,6 +7,7 @@ on:
       - 'tests/test_cycle_mid_session_signal_tape.py'
       - 'engines/research/cycle_mid_session_capture_health.py'
       - 'tests/test_cycle_mid_session_capture_health.py'
+      - 'tests/test_cycle_mid_session_capture_workflow_priority.py'
       - '.github/workflows/research_cycle_mid_session_watch.yml'
   push:
     branches: [main]
@@ -15,6 +16,7 @@ on:
       - 'tests/test_cycle_mid_session_signal_tape.py'
       - 'engines/research/cycle_mid_session_capture_health.py'
       - 'tests/test_cycle_mid_session_capture_health.py'
+      - 'tests/test_cycle_mid_session_capture_workflow_priority.py'
       - '.github/workflows/research_cycle_mid_session_watch.yml'
   workflow_dispatch:
   schedule:
@@ -22,6 +24,11 @@ on:
     # Actual capture must still pass the 11:00-15:00 Sydney time window.
     # One backup attempt at 02:30 UTC (12:30 Brisbane, 13:30 Sydney DST).
     # Already-saved Sydney dates are NOT refreshed or duplicated.
+    # Delay hedge: 23:15 UTC Sunday-Thursday is 10:15 Sydney AEDT
+    # / 09:15 Sydney AEST on the NEXT Sydney weekday. If GitHub starts
+    # promptly, skip before the 11am actual-time window with NO feed call.
+    # If GitHub queues for several hours, this may land 11am-3pm.
+    - cron: '15 23 * * 0-4'
     - cron: '30 1,2 * * 1-5'
 
 permissions:
@@ -42,22 +49,25 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install verified existing research requirements
-        run: python -m pip install -r requirements.txt
-      - name: Validate shared Cycle allocation, source date and immutable tape
+      - name: Check ACTUAL Sydney collection window before public feed or expensive tests
+        id: capture_window
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        shell: bash
         run: |
-          python -m py_compile engines/research/cycle_mid_session_signal_tape.py
-          python -m unittest discover -s tests -p 'test_cycle_mid_session_signal_tape.py' -v
-          python -m unittest discover -s tests -p 'test_cycle_mid_session_capture_health.py' -v
-          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
-          python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
-          python -m engines.research.cycle_mid_session_signal_tape --self-check-only
-      - name: Read-only probe ACTUAL public BTC and FX source before first scheduled run
-        if: github.event_name == 'pull_request' || github.event_name == 'push'
-        run: python -m engines.research.cycle_mid_session_signal_tape --probe-only
+          mkdir -p artifacts/mid_session_capture
+          # stdlib-only time check, no external BTC provider or pandas.
+          if python -m engines.research.cycle_microstructure_mid_session_backup --is-window > artifacts/mid_session_capture/actual_window_gate.json; then
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::GitHub capture started outside the real Sydney 11:00-15:00 window. No BTC data request, no fabricated record."
+          fi
+      - name: Install only public-source capture dependencies when ACTUALLY in window
+        if: steps.capture_window.outputs.eligible == 'true'
+        run: python -m pip install 'numpy>=1.26' 'pandas>=2' 'requests>=2.31'
       - name: Capture a NEW actual verified mid-session market WATCH (research only)
         id: prospective_capture
-        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.capture_window.outputs.eligible == 'true'
         shell: bash
         run: |
           # Actual scheduled-run evidence is archived even if BTC provider
@@ -90,8 +100,25 @@ jobs:
             echo "::error::Actual prospective mid-session capture failed; no substitute price or backfill."
           fi
           exit "$result"
+      - name: Install complete dependencies for regression validation
+        if: github.event_name == 'pull_request' || github.event_name == 'push' || steps.prospective_capture.outcome == 'success'
+        run: python -m pip install -r requirements.txt
+      - name: Validate shared Cycle allocation, source date and immutable tape AFTER capture
+        id: full_validation
+        if: github.event_name == 'pull_request' || github.event_name == 'push' || steps.prospective_capture.outcome == 'success'
+        run: |
+          python -m unittest discover -s tests -p 'test_cycle_mid_session_capture_workflow_priority.py' -v
+          python -m py_compile engines/research/cycle_mid_session_signal_tape.py
+          python -m unittest discover -s tests -p 'test_cycle_mid_session_signal_tape.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_mid_session_capture_health.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
+          python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
+          python -m engines.research.cycle_mid_session_signal_tape --self-check-only
+      - name: Read-only probe ACTUAL public BTC and FX source before first scheduled run
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        run: python -m engines.research.cycle_mid_session_signal_tape --probe-only
       - name: Diagnose missed or unavailable mid-session source without backfill
-        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !cancelled()
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && steps.capture_window.outputs.eligible == 'true' && !cancelled()
         shell: bash
         run: |
           # If actual scheduled capture failed, record a visible Actions
@@ -123,8 +150,11 @@ jobs:
             data/research_forward_validation/cycle_mid_session_market_watch.csv
           if-no-files-found: ignore
           retention-days: 30
+    # Capture may be attempted ASAP; every published observation still
+    # REQUIRES the identical full original regression suite to PASS.
+    # No data is trusted solely because the fast capture step succeeded.
       - name: Save only new immutable research source row, no portfolio or ntfy
-        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && success()
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && steps.prospective_capture.outcome == 'success' && steps.full_validation.outcome == 'success' && success()
         shell: bash
         run: |
           set -euo pipefail
