@@ -19,6 +19,7 @@ from engines.research.cycle_live_completed_utc_prices import (
 from engines.shared.portfolio_store import load_portfolio,save_portfolio
 from engines.research.cycle_portfolio_editor import show_portfolio_editor
 from engines.research.cycle_trade_decision import make_current_decision
+from engines.research.cycle_trade_allocation import DEFAULT_BUY_STYLE
 from engines.research.cycle_broker_cash_review import (
     fifo_sales_and_inventory, broker_reconciled_trade_preview,
 )
@@ -264,12 +265,17 @@ with tabs[0]:
     )
     left,right=st.columns(2)
     with left:
-        chosen_style=st.selectbox(
-            "Dynamic DCA-in sizing",
-            ["adaptive_recovery","adaptive_value"],
-            format_func=lambda x:("200WMA staged accumulation (2.5%)" if x=="adaptive_recovery"
-                                  else "Value weighted below 200WMA"),
-            key="cycle_decision_buy_style",
+        # The CURRENT decision must be identical to the single daily ntfy
+        # market WATCH, which always uses DEFAULT_BUY_STYLE (2.5% cash BUY).
+        # Alternative `adaptive_value` (3.5% / 10%) remains selectable ONLY
+        # in the separate historical research comparison below.
+        chosen_style=DEFAULT_BUY_STYLE
+        st.caption(
+            "Current Cycle Trading BUY sizing: 2.5% of remaining AUD cash "
+            "when the prior-close 200WMA gate is eligible. This is the SAME "
+            "market allocation as the one daily ntfy. Historical alternative "
+            "sizing is available under Historical sell & buyback, not as "
+            "today's Cycle Trading recommendation."
         )
         st.metric("Recorded AUD cash (including sale proceeds)",
                   f"A${starting_cash_default:,.2f}")

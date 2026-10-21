@@ -80,6 +80,21 @@ class StreamlitOfflineSmoke(unittest.TestCase):
     def test_actual_cycle_launcher_missing_portfolio_still_shows_market_hold_and_refresh(self):
         history,fx=frozen_synthetic_history()
         counts={"public":0,"portfolio":0}
+        # Capture the ACTUAL buy style passed by the real Streamlit
+        # launcher to the unchanged allocation engine. Captions are
+        # stored differently by Streamlit versions, so don't infer
+        # recommendation parity from a markdown display collection.
+        from engines.research.cycle_trade_decision import (
+            make_current_decision as original_decision,
+        )
+        seen_current_styles=[]
+        def capture_decision(*args,**kwargs):
+            result=original_decision(*args,**kwargs)
+            seen_current_styles.append((
+                kwargs.get("buy_style"),result["market_signal"],
+                result["buy_pct_total_cash"],result["action_aud"],
+            ))
+            return result
         def public_prices(*args,**kwargs):
             counts["public"]+=1
             return history["price_usd"],fx,history["price_usd"]
@@ -109,6 +124,8 @@ class StreamlitOfflineSmoke(unittest.TestCase):
                 ("engines.research.cycle_live_completed_utc_prices.merge_verified_live_cycle_prices",
                  verified_merge),
                 ("engines.shared.portfolio_store.load_portfolio",portfolio),
+                ("engines.research.cycle_trade_decision.make_current_decision",
+                 capture_decision),
                 ("engines.shared.portfolio_store.save_portfolio",
                  lambda *a,**k:(_ for _ in ()).throw(AssertionError(
                      "Smoke test must never write user portfolio"))),
@@ -132,6 +149,12 @@ class StreamlitOfflineSmoke(unittest.TestCase):
             widgets=[(x.label,str(x.value)) for x in page.metric]
             self.assertIn(("Current research market signal","HOLD"),widgets)
             self.assertIn(("Spendable trade amount","Not verified"),widgets)
+            self.assertFalse(any(
+                x.key=="cycle_decision_buy_style" for x in page.selectbox
+            ),"Current live panel must not provide different BUY % than ntfy")
+            self.assertTrue(any(
+                x.key=="cycle_research_buyer" for x in page.selectbox
+            ),"Existing historical research alternatives remain accessible")
             self.assertTrue(any(x.label=="Recorded portfolio" and x.value=="Unavailable"
                                 for x in page.metric))
             self.assertTrue(any(b.key=="cycle_research_refresh" for b in page.button))
@@ -150,11 +173,21 @@ class StreamlitOfflineSmoke(unittest.TestCase):
             # a new verified price discount should change MARKET WATCH,
             # but NO holdings/cash means absolutely no executable BUY.
             history["price_usd"].iloc[-35:]=30000.0
+            # A saved old browser session value selecting the RESEARCH
+            # 10% value-weighted style cannot override current ntfy's
+            # only approved 2.5%-remaining-cash market sizing.
+            page.session_state["cycle_decision_buy_style"]="adaptive_value"
             page=next(b for b in page.button
                       if b.key=="cycle_research_refresh").click().run()
             self.assertFalse(page.exception,repr([x.message for x in page.exception]))
             self.assertIn(("Current research market signal","BUY WATCH"),
                           [(x.label,str(x.value)) for x in page.metric])
+            self.assertTrue(seen_current_styles)
+            self.assertEqual(
+                seen_current_styles[-1],
+                ("adaptive_recovery","BUY WATCH",2.5,0.),
+                "Stale adaptive_value browser key cannot change the REAL current BUY %",
+            )
             self.assertIn(("Spendable trade amount","Not verified"),
                           [(x.label,str(x.value)) for x in page.metric])
             self.assertFalse(any(x.label=="Verified BUY research budget"
