@@ -132,6 +132,12 @@ class StreamlitOfflineSmoke(unittest.TestCase):
             widgets=[(x.label,str(x.value)) for x in page.metric]
             self.assertIn(("Current research market signal","HOLD"),widgets)
             self.assertIn(("Spendable trade amount","Not verified"),widgets)
+            self.assertFalse(any(
+                x.key=="cycle_decision_buy_style" for x in page.selectbox
+            ),"Current live panel must not provide different BUY % than ntfy")
+            self.assertTrue(any(
+                x.key=="cycle_research_buyer" for x in page.selectbox
+            ),"Existing historical research alternatives remain accessible")
             self.assertTrue(any(x.label=="Recorded portfolio" and x.value=="Unavailable"
                                 for x in page.metric))
             self.assertTrue(any(b.key=="cycle_research_refresh" for b in page.button))
@@ -150,11 +156,19 @@ class StreamlitOfflineSmoke(unittest.TestCase):
             # a new verified price discount should change MARKET WATCH,
             # but NO holdings/cash means absolutely no executable BUY.
             history["price_usd"].iloc[-35:]=30000.0
+            # A saved old browser session value selecting the RESEARCH
+            # 10% value-weighted style cannot override current ntfy's
+            # only approved 2.5%-remaining-cash market sizing.
+            page.session_state["cycle_decision_buy_style"]="adaptive_value"
             page=next(b for b in page.button
                       if b.key=="cycle_research_refresh").click().run()
             self.assertFalse(page.exception,repr([x.message for x in page.exception]))
             self.assertIn(("Current research market signal","BUY WATCH"),
                           [(x.label,str(x.value)) for x in page.metric])
+            self.assertTrue(any(
+                "Daily model: BUY 2.50% of REMAINING" in str(x.value)
+                for x in page.markdown
+            ),"Stale adaptive_value browser key must never become today's BUY %")
             self.assertIn(("Spendable trade amount","Not verified"),
                           [(x.label,str(x.value)) for x in page.metric])
             self.assertFalse(any(x.label=="Verified BUY research budget"
