@@ -1,0 +1,38 @@
+name: Paper-only BTC post-signal quote causality audit (PR only)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/btc_post_signal_causal_quote_audit.py'
+      - 'tests/test_btc_post_signal_causal_quote_audit.py'
+      - '.github/workflows/research_btc_post_signal_causal_quote_audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-no-lookahead:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test original frozen scorecard and new causal audit
+        run: |
+          python -m py_compile engines/research/btc_post_signal_causal_quote_audit.py
+          python -m unittest discover -s tests -p 'test_btc_microstructure_forward_scorecard.py' -v
+          python -m unittest discover -s tests -p 'test_btc_post_signal_causal_quote_audit.py' -v
+      - name: Run read-only report against original SHA-validated tapes
+        run: python -m engines.research.btc_post_signal_causal_quote_audit
+      - name: Confirm no source, dashboard, notification or trading file changes
+        run: git diff --exit-code
+      - name: Keep optional research-only diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: btc-causal-postsignal-quote-coverage-paper-only
+          path: artifacts/btc_post_signal_causal_quote_audit.json
+          if-no-files-found: error
+          retention-days: 30
