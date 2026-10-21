@@ -80,6 +80,21 @@ class StreamlitOfflineSmoke(unittest.TestCase):
     def test_actual_cycle_launcher_missing_portfolio_still_shows_market_hold_and_refresh(self):
         history,fx=frozen_synthetic_history()
         counts={"public":0,"portfolio":0}
+        # Capture the ACTUAL buy style passed by the real Streamlit
+        # launcher to the unchanged allocation engine. Captions are
+        # stored differently by Streamlit versions, so don't infer
+        # recommendation parity from a markdown display collection.
+        from engines.research.cycle_trade_decision import (
+            make_current_decision as original_decision,
+        )
+        seen_current_styles=[]
+        def capture_decision(*args,**kwargs):
+            result=original_decision(*args,**kwargs)
+            seen_current_styles.append((
+                kwargs.get("buy_style"),result["market_signal"],
+                result["buy_pct_total_cash"],result["action_aud"],
+            ))
+            return result
         def public_prices(*args,**kwargs):
             counts["public"]+=1
             return history["price_usd"],fx,history["price_usd"]
@@ -109,6 +124,8 @@ class StreamlitOfflineSmoke(unittest.TestCase):
                 ("engines.research.cycle_live_completed_utc_prices.merge_verified_live_cycle_prices",
                  verified_merge),
                 ("engines.shared.portfolio_store.load_portfolio",portfolio),
+                ("engines.research.cycle_trade_decision.make_current_decision",
+                 capture_decision),
                 ("engines.shared.portfolio_store.save_portfolio",
                  lambda *a,**k:(_ for _ in ()).throw(AssertionError(
                      "Smoke test must never write user portfolio"))),
@@ -165,10 +182,12 @@ class StreamlitOfflineSmoke(unittest.TestCase):
             self.assertFalse(page.exception,repr([x.message for x in page.exception]))
             self.assertIn(("Current research market signal","BUY WATCH"),
                           [(x.label,str(x.value)) for x in page.metric])
-            self.assertTrue(any(
-                "Daily model: BUY 2.50% of REMAINING" in str(x.value)
-                for x in page.markdown
-            ),"Stale adaptive_value browser key must never become today's BUY %")
+            self.assertTrue(seen_current_styles)
+            self.assertEqual(
+                seen_current_styles[-1],
+                ("adaptive_recovery","BUY WATCH",2.5,0.),
+                "Stale adaptive_value browser key cannot change the REAL current BUY %",
+            )
             self.assertIn(("Spendable trade amount","Not verified"),
                           [(x.label,str(x.value)) for x in page.metric])
             self.assertFalse(any(x.label=="Verified BUY research budget"
