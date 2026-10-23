@@ -8,6 +8,7 @@ on:
       - 'engines/research/asx_ibit_postclose_paired_backup.py'
       - 'tests/test_cycle_microstructure_mid_session_backup.py'
       - 'tests/test_asx_ibit_postclose_paired_backup.py'
+      - 'tests/test_cycle_postclose_published_timing_report.py'
       - 'tests/test_btc_coordinated_capture.py'
       - 'engines/research/btc_spot_depth_forward.py'
       - 'engines/research/coinbase_trade_samples.py'
@@ -23,6 +24,7 @@ on:
       - 'engines/research/asx_ibit_postclose_paired_backup.py'
       - 'tests/test_cycle_microstructure_mid_session_backup.py'
       - 'tests/test_asx_ibit_postclose_paired_backup.py'
+      - 'tests/test_cycle_postclose_published_timing_report.py'
       - '.github/workflows/research_btc_paired_microstructure.yml'
       - '.github/workflows/research_btc_spot_depth_forward.yml'
       - '.github/workflows/research_coinbase_trade_samples.yml'
@@ -68,6 +70,7 @@ jobs:
           python -m pip install -r requirements.txt
           python -m unittest discover -s tests -p 'test_asx_ibit_postclose_paired_backup.py' -v
           python -m unittest discover -s tests -p 'test_ibit_asx_forward_close_tape.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_postclose_published_timing_report.py' -v
       - name: Pull request only - test real public sources without saving observations
         if: github.event_name == 'pull_request'
         run: |
