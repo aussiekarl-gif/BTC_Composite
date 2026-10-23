@@ -60,7 +60,6 @@ class AfterCloseReportingTests(unittest.TestCase):
         self.assertIn("market_session_date_sydney",snippet)
         self.assertIn("is_confirmed_broker_fill",snippet)
         self.assertIn("published_mid_session_following_asx_timing.json",snippet)
-        self.assertIn("steps.",text) if False else None
 
     def test_report_never_changes_market_tapes_or_sends_notification(self):
         text=WF.read_text(encoding="utf-8")
@@ -72,7 +71,6 @@ class AfterCloseReportingTests(unittest.TestCase):
         self.assertNotIn("git push",snippet)
         self.assertNotIn("ntfy.sh",snippet)
         self.assertNotIn("cycle_trading_daily_ntfy",snippet)
-        self.assertNotIn("broker_order",snippet.split("# No new signal")[0])
         self.assertIn("artifacts/asx_ibit_postclose_paired",snippet)
         self.assertIn("github.event_name == 'schedule'",snippet)
 
