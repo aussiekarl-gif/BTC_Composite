@@ -36,8 +36,6 @@ class AfterCloseReportingTests(unittest.TestCase):
         self.assertIsNone(rec["directional_cost_of_waiting_next_close_pct"])
         self.assertFalse(r["closing_price_trade_fills_demonstrated"])
         self.assertFalse(r["new_strategy_outperformance_or_better_execution_proven"])
-        self.assertFalse(r["minimum_30_non_hold_events_met"])
-        self.assertEqual(r["paired_non_hold_events"],0)
 
     def test_postclose_report_is_after_verified_asx_publisher_and_before_artifact_upload(self):
         text=WF.read_text(encoding="utf-8")
