@@ -285,6 +285,73 @@ jobs:
             exit 0
           fi
           echo '::notice::Genuine same-Sydney-session ASX:IBIT AUD indicative close safely published.'
+      - name: Read-only matching of TWO remotely published BTC and ASX research tapes
+        # Only AFTER a NEW same-day ASX source was published. Re-fetch
+        # origin/main rather than claiming the local checkout's old data
+        # is committed to the prospective source ledger. No new signal,
+        # no broker order, no portfolio, no additional ntfy or cron.
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+        shell: bash
+        run: |
+          set -u
+          out='artifacts/asx_ibit_postclose_paired'
+          report="$out/published_mid_session_following_asx_timing.json"
+          mkdir -p "$out"
+          if [ ! -f "$out/capture_status.json" ]; then
+            echo '::notice::No same-session ASX provider receipt in this attempt; no report.'
+            exit 0
+          fi
+          # Require the new first-writer ASX source attempt; do NOT score
+          # a skipped duplicate, failed provider or synthetic historical bar.
+          if ! python - "$out/capture_status.json" <<'PY'
+          import json,sys
+          r=json.load(open(sys.argv[1],encoding='utf-8'))
+          if not (r.get('status')=='captured' and r.get('wrote_close') is True
+                  and r.get('not_broker_executable') is True
+                  and r.get('ntfy_sent')==0 and r.get('broker_orders')==0):
+              print('No new prospective current-Sydney-session ASX source to grade.')
+              raise SystemExit(1)
+          PY
+          then
+            exit 0
+          fi
+          scratch=$(mktemp -d)
+          mkdir -p "$scratch/data"
+          if ! git fetch origin main > "$out/report_git_fetch.log" 2>&1; then
+            echo '::warning::Cannot prove actual remotely PUBLISHED same-session source; no report.'
+            exit 0
+          fi
+          for name in cycle_mid_session_market_watch.csv asx_ibit_closes_forward.csv; do
+            if ! git show "origin/main:data/research_forward_validation/$name" > "$scratch/data/$name" 2>/dev/null; then
+              echo "::warning::No published, hash-verified $name tape; no observational timing claim."
+              exit 0
+            fi
+          done
+          # Check that origin/main actually has the ASX source for the
+          # SAME Sydney date just captured by this runner.
+          if ! python - "$out/capture_status.json" "$scratch/data/asx_ibit_closes_forward.csv" <<'PY'
+          import csv,json,sys
+          source=json.load(open(sys.argv[1],encoding='utf-8'))
+          with open(sys.argv[2],encoding='utf-8',newline='') as handle:
+              rows=list(csv.DictReader(handle))
+          same=source.get('observation_date_sydney')
+          if not rows or rows[-1].get('market_session_date_sydney')!=same:
+              raise SystemExit('Cannot verify the just-captured Sydney date in published ASX source')
+          if rows[-1].get('is_confirmed_broker_fill')!='False':
+              raise SystemExit('Do not infer broker-executable market price')
+          PY
+          then
+            echo '::warning::ASX close may not have published; reject potentially stale score.'
+            exit 0
+          fi
+          if ! python -m engines.research.cycle_mid_session_asx_timing_audit \
+                   --data-dir "$scratch/data" --output "$report" > "$out/timing_summary.log" 2>&1; then
+            cat "$out/timing_summary.log"
+            echo '::warning::Current remote immutable research tapes were not eligible for timing audit.'
+            exit 0
+          fi
+          cat "$out/timing_summary.log"
+          echo '::notice::Prospective same/next ASX CLOSE comparison computed from remotely published SHA-chained data; HOLD is NOT a trading result.'
       - name: Save research-only ASX capture attempt diagnostics
         if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
         uses: actions/upload-artifact@v4
