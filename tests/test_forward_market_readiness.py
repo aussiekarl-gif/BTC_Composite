@@ -77,6 +77,40 @@ class ForwardReadinessTest(unittest.TestCase):
         self.assertIsNone(r["ASX_session_close_age_calendar_days"])
         self.assertFalse(r["eligible_for_automatic_live_rule_promotion"])
 
+    def test_recent_five_source_crosschecks_separate_from_legacy_max(self):
+        a,b=fixture()
+        for day in range(18,24):
+            d=dt.date(2026,10,day)
+            capture=d+dt.timedelta(days=1)
+            row=btc_record(d.isoformat(),capture.isoformat()+"T02:00:00+00:00",
+                           dispersion="0.0500")
+            a,_=append_snapshot(a,row)
+        r=inspect_forward_tapes(a,b,now=dt.datetime(2026,10,25,9,tzinfo=UTC))
+        self.assertEqual(r["max_historical_BTC_source_crosscheck_dispersion_pct"],6.29)
+        self.assertEqual(r["latest_saved_BTC_source_crosscheck_dispersion_pct"],0.05)
+        self.assertEqual(r["last_five_saved_BTC_source_crosscheck_max_dispersion_pct"],0.05)
+        self.assertEqual(r["last_five_saved_BTC_source_dates_utc"],[
+            "2026-10-19","2026-10-20","2026-10-21",
+            "2026-10-22","2026-10-23"])
+        self.assertTrue(r["last_five_saved_BTC_sources_all_prospective"])
+        self.assertTrue(r["historical_source_crosscheck_peak_outside_last_five"])
+        self.assertTrue(r["public_provider_dispersion_requires_review"])
+        self.assertFalse(r["eligible_for_automatic_live_rule_promotion"])
+
+    def test_recent_crosscheck_is_not_called_valid_without_five_prospective_rows(self):
+        a,b=fixture()
+        r=inspect_forward_tapes(a,b,now=NOW)
+        self.assertEqual(r["last_five_saved_BTC_source_dates_utc"],[
+            "2026-10-15","2026-10-17"])
+        self.assertFalse(r["last_five_saved_BTC_sources_all_prospective"])
+        self.assertEqual(r["last_five_saved_BTC_source_crosscheck_max_dispersion_pct"],6.29)
+        self.assertFalse(r["historical_source_crosscheck_peak_outside_last_five"])
+        empty=inspect_forward_tapes("","",now=NOW)
+        self.assertIsNone(empty["latest_saved_BTC_source_crosscheck_dispersion_pct"])
+        self.assertIsNone(empty["last_five_saved_BTC_source_crosscheck_max_dispersion_pct"])
+        self.assertEqual(empty["last_five_saved_BTC_source_dates_utc"],[])
+        self.assertFalse(empty["last_five_saved_BTC_sources_all_prospective"])
+
     def test_hash_chain_tamper_raises_not_quietly_corrects(self):
         a,b=fixture()
         with self.assertRaisesRegex(ValueError,"Modified"):
