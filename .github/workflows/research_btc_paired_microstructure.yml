@@ -13,6 +13,8 @@ on:
       - 'engines/research/btc_spot_depth_forward.py'
       - 'engines/research/coinbase_trade_samples.py'
       - 'engines/research/btc_microstructure_forward_scorecard.py'
+      - 'engines/research/btc_post_signal_forward.py'
+      - 'tests/test_btc_post_signal_forward.py'
       - '.github/workflows/research_btc_paired_microstructure.yml'
       - '.github/workflows/research_btc_spot_depth_forward.yml'
       - '.github/workflows/research_coinbase_trade_samples.yml'
@@ -61,6 +63,8 @@ jobs:
           python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v
           python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
           python -m unittest discover -s tests -p 'test_btc_microstructure_forward_scorecard.py' -v
+          python -m unittest discover -s tests -p 'test_btc_post_signal_forward.py' -v
+          python -m engines.research.btc_post_signal_forward --self-check-only
           python -m unittest discover -s tests -p 'test_cycle_microstructure_mid_session_backup.py' -v
           python -m engines.research.btc_spot_depth_forward --self-check-only
           python -m engines.research.coinbase_trade_samples --self-check-only
@@ -79,6 +83,15 @@ jobs:
       - name: Prospectively capture public Kraken then Coinbase closely together
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: python -m engines.research.btc_coordinated_capture
+      - name: Optional prospective POST-SIGNAL Kraken quote on SAME existing paired-source schedule
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          # This is best-effort and independent. Never hold original research
+          # source tapes hostage to an unavailable second public quote.
+          if ! python -m engines.research.btc_post_signal_forward; then
+            echo '::warning::Research-only post-signal quote unavailable; original independent source tapes remain first priority.'
+          fi
       - name: Compute optional read-only frozen forward scorecard
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         shell: bash
@@ -96,6 +109,8 @@ jobs:
             data/research_forward_validation/coinbase_trade_samples_forward.csv
             artifacts/btc_microstructure_capture_status.json
             artifacts/btc_microstructure_forward_scorecard.json
+            data/research_forward_validation/kraken_post_signal_quotes_forward.csv
+            artifacts/btc_post_signal_forward_scorecard.json
           if-no-files-found: ignore
           retention-days: 30
       - name: Commit ONLY valid new immutable source records
@@ -105,9 +120,13 @@ jobs:
           set -euo pipefail
           python -m engines.research.btc_spot_depth_forward --self-check-only
           python -m engines.research.coinbase_trade_samples --self-check-only
+          python -m engines.research.btc_post_signal_forward --self-check-only
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- data/research_forward_validation/kraken_spot_depth_forward.csv data/research_forward_validation/coinbase_trade_samples_forward.csv
+          if test -f data/research_forward_validation/kraken_post_signal_quotes_forward.csv; then
+            git add -- data/research_forward_validation/kraken_post_signal_quotes_forward.csv
+          fi
           if git diff --cached --quiet; then
             echo 'Both immutable source slots already captured; no rewrite.'
           else
