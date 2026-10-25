@@ -86,6 +86,19 @@ def inspect_forward_tapes(btc_text,ibit_text,outcome_text="",*,now):
             raise ValueError("Unparseable BTC source crosscheck diagnostic")
         if not 0<=max_diff<=100:
             raise ValueError("Invalid public BTC source crosscheck diagnostic")
+    # Do not mistake the immutable 15/17-Oct legacy 6.29% date-alignment
+    # audit for the quality of the most recently SAVED prospective data.
+    # This is a subset of preserved tape rows, NOT an unrecorded spot tick
+    # or a broker executable quote. Retain original all-history warning.
+    last_five=btc[-5:]
+    latest_saved_diff=(float(btc[-1]["source_crosscheck_max_diff_pct"])
+                       if btc else None)
+    last_five_max=(max(float(row["source_crosscheck_max_diff_pct"])
+                       for row in last_five) if last_five else None)
+    recent_window_all_prospective=bool(last_five) and all(
+        _was_captured_prospectively(row) for row in last_five
+    )
+    last_five_dates=[row["observation_date_utc"] for row in last_five]
     freshness=(t.date()-btc_days[-1]).days if btc_days else None
     asx_freshness=(t.astimezone(SYDNEY).date()-asx_days[-1]).days if asx_days else None
     return {
@@ -105,6 +118,14 @@ def inspect_forward_tapes(btc_text,ibit_text,outcome_text="",*,now):
         "ASX_session_close_age_calendar_days":asx_freshness,
         "ASX_close_is_executable_broker_quote":False,
         "max_historical_BTC_source_crosscheck_dispersion_pct":max_diff,
+        "latest_saved_BTC_source_crosscheck_dispersion_pct":latest_saved_diff,
+        "last_five_saved_BTC_source_crosscheck_max_dispersion_pct":last_five_max,
+        "last_five_saved_BTC_source_dates_utc":last_five_dates,
+        "last_five_saved_BTC_sources_all_prospective":recent_window_all_prospective,
+        "historical_source_crosscheck_peak_outside_last_five":(
+            max_diff is not None and last_five_max is not None
+            and max_diff>last_five_max
+        ),
         "public_provider_dispersion_requires_review":(
             max_diff is not None and
             max_diff>=BTC_CROSSCHECK_MANUAL_REVIEW_THRESHOLD_PCT),
