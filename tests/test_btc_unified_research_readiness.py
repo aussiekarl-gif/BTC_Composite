@@ -93,6 +93,46 @@ class UnifiedResearchReadinessTests(unittest.TestCase):
         self.assertIn("PRECEDING UTC close", flag["detail"])
         self.assertIn("not a current spot-price error", flag["detail"])
 
+    def test_historical_disagreement_cannot_masquerade_as_live_market_failure(self):
+        source=seed_btc()
+        for day in range(18,24):
+            d=dt.date(2026,10,day)
+            row={key:"test_fixture" for key in SIGNAL_COLUMNS
+                 if key not in ("prior_row_hash","row_hash")}
+            row.update({
+                "observation_date_utc":d.isoformat(),
+                "captured_at_utc":(d+dt.timedelta(days=1)).isoformat()+
+                    "T02:00:00+00:00",
+                "signal":"HOLD",
+                "source_crosscheck_max_diff_pct":"0.0500",
+            })
+            source,_=append_snapshot(source,row)
+        now=dt.datetime(2026,10,25,9,tzinfo=UTC)
+        result=self.audit(now=now,btc=source,books=[],flows=[])
+        health=result["source_health"]["btc_crosscheck_provenance"]
+        self.assertEqual(health["all_saved_dates_peak_pct"],6.29)
+        self.assertEqual(health["latest_saved_dated_close_pct"],0.05)
+        self.assertEqual(health["latest_five_dated_closes_peak_pct"],0.05)
+        self.assertEqual(len(health["latest_five_dated_source_days_utc"]),5)
+        self.assertTrue(health["latest_five_all_prospective"])
+        self.assertTrue(health["latest_five_below_historical_review_threshold"])
+        self.assertTrue(health["all_time_historical_audit_still_open"])
+        self.assertTrue(health["does_not_verify_live_broker_or_spot_execution"])
+        f=next(x for x in result["review_flags"]
+               if x["code"]=="BTC_SOURCE_MAX_DISPERSION_GE_5PCT")
+        self.assertIn("PRECEDING UTC close",f["detail"])
+        self.assertIn("latest five prospectively saved",f["detail"])
+        self.assertIn("0.0500%",f["detail"])
+        self.assertFalse(result["approved_for_live_investment_use"])
+        self.assertEqual(result["new_notifications"],0)
+
+    def test_less_than_five_saved_rows_never_claim_full_recent_five_cohort(self):
+        result=self.audit()
+        health=result["source_health"]["btc_crosscheck_provenance"]
+        self.assertFalse(health["latest_five_below_historical_review_threshold"])
+        self.assertFalse(health["latest_five_all_prospective"])
+        self.assertTrue(health["all_time_historical_audit_still_open"])
+
     def test_threshold_under_five_not_falsely_flagged(self):
         r=self.audit(btc=seed_btc(dispersion="4.99"))
         self.assertNotIn("BTC_SOURCE_MAX_DISPERSION_GE_5PCT",
