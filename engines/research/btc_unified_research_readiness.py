@@ -78,11 +78,33 @@ def build_control_room(
     kraken_health = _freshness(now, kraken_verified)
     coinbase_health = _freshness(now, coinbase_verified)
     flags = []
+    # The all-history peak is an immutable provenance issue. It must NOT
+    # be relabeled as current source failure merely because it stays in
+    # the hash-chained tape forever. Newest saved rows remain separate.
+    last_five_peak = cycle["last_five_saved_BTC_source_crosscheck_max_dispersion_pct"]
+    is_recent_window_good = (
+        last_five_peak is not None
+        and cycle["last_five_saved_BTC_sources_all_prospective"]
+        and len(cycle["last_five_saved_BTC_source_dates_utc"]) == 5
+        and last_five_peak < 5.0
+    )
     if cycle["public_provider_dispersion_requires_review"]:
+        historical_detail = (
+            "The archived BTC source crosscheck exceeds 5%. Independent research traced the worst historical 6.29% mismatch to Blockchain.com midnight chart dates referring to the PRECEDING UTC close (audit 2026-10-18). This is not a current spot-price error; live parser date-alignment release remains unapproved."
+        )
+        if is_recent_window_good:
+            historical_detail += (
+                " The latest five prospectively saved BTC source diagnostics"
+                f" have a maximum {last_five_peak:.4f}% disagreement,"
+                " below the 5% historical review threshold."
+                " This narrower sample does not certify an executable"
+                " live price, but does separate the legacy audit issue"
+                " from recent saved evidence."
+            )
         flags.append({
             "severity": "REVIEW",
             "code": "BTC_SOURCE_MAX_DISPERSION_GE_5PCT",
-            "detail": "The archived BTC source crosscheck exceeds 5%. Independent research traced the worst historical 6.29% mismatch to Blockchain.com midnight chart dates referring to the PRECEDING UTC close (audit 2026-10-18). This is not a current spot-price error; live parser date-alignment release remains unapproved.",
+            "detail": historical_detail,
         })
     btc_age = cycle["BTC_close_age_calendar_days"]
     if btc_age is None or btc_age < 0 or btc_age > FRESH_DAILY_BTC_MAX_AGE_DAYS:
@@ -175,6 +197,16 @@ def build_control_room(
         ],
         "source_health": {
             "cycle_forward": cycle,
+            "btc_crosscheck_provenance": {
+                "all_saved_dates_peak_pct": cycle["max_historical_BTC_source_crosscheck_dispersion_pct"],
+                "latest_saved_dated_close_pct": cycle["latest_saved_BTC_source_crosscheck_dispersion_pct"],
+                "latest_five_dated_closes_peak_pct": last_five_peak,
+                "latest_five_dated_source_days_utc": cycle["last_five_saved_BTC_source_dates_utc"],
+                "latest_five_all_prospective": cycle["last_five_saved_BTC_sources_all_prospective"],
+                "latest_five_below_historical_review_threshold": is_recent_window_good,
+                "all_time_historical_audit_still_open": cycle["public_provider_dispersion_requires_review"],
+                "does_not_verify_live_broker_or_spot_execution": True,
+            },
             "kraken": kraken_health,
             "coinbase": coinbase_health,
             "microstructure_exclusions": micro["pair_exclusion_reasons"],
@@ -222,6 +254,8 @@ def main(argv=None):
         "kind": result["kind"],
         "models": list(result["model_scoreboard"]),
         "market_source_flags": [x["code"] for x in result["review_flags"]],
+        "crosscheck_all_dates_max_pct": result["source_health"]["btc_crosscheck_provenance"]["all_saved_dates_peak_pct"],
+        "crosscheck_latest_five_dated_rows_max_pct": result["source_health"]["btc_crosscheck_provenance"]["latest_five_dated_closes_peak_pct"],
         "strict_microstructure_pairs": result["model_scoreboard"]["BTC Microstructure v1"]["strict_capture_time_paired_rows"],
         "live_policy_changes": False,
     }, sort_keys=True))
