@@ -28,7 +28,7 @@ from engines.research.coinbase_trade_samples import (
     OUTPUT as TRADES_PATH, read_tape as read_coinbase,
 )
 from engines.research.btc_microstructure_forward_scorecard import (
-    build_report as frozen_scorecard,
+    build_report as frozen_scorecard, policy_sha256 as frozen_policy_hash,
 )
 
 UTC = dt.timezone.utc
@@ -119,6 +119,25 @@ def read_tape(path: Path = OUTPUT):
     return rows
 
 
+
+def verify_source_links(rows, depth, trades):
+    """Require independent original SHA-validated tapes to support every saved quote."""
+    by_book = {x["slot_utc"]: x for x in depth}
+    by_trade = {x["slot_utc"]: x for x in trades}
+    frozen_hash = frozen_policy_hash()
+    for quote in rows:
+        b = by_book.get(quote["slot_utc"])
+        c = by_trade.get(quote["slot_utc"])
+        if (b is None or c is None or
+                quote["baseline_kraken_row_hash"] != b["row_hash"] or
+                quote["coinbase_row_hash"] != c["row_hash"] or
+                quote["baseline_kraken_receipt_utc"] != b["captured_at_utc"] or
+                quote["coinbase_receipt_utc"] != c["captured_at_utc"] or
+                quote["frozen_policy_sha256"] != frozen_hash):
+            raise ValueError("Post-signal quote source provenance no longer matches immutable originals")
+    return len(rows)
+
+
 def append(path: Path, observation: dict):
     if set(observation) != set(FIELDS) - {"previous_row_hash", "row_hash"}:
         raise ValueError("Unexpected post-signal quote fields")
@@ -151,15 +170,18 @@ def collect(*, depth_path=BASE_PATH, coinbase_path=TRADES_PATH,
             output=OUTPUT, status: dict, fetcher: Callable = fetch_kraken_book,
             clock: Callable = lambda: dt.datetime.now(UTC)):
     """ONLY two newly saved original receipts from the same runner qualify."""
-    read_tape(output)  # abort on prior tampering BEFORE live HTTP
+    prior = read_tape(output)  # abort on prior tampering BEFORE live HTTP
     if (status.get("kraken_status") != "NEW_SNAPSHOT"
             or status.get("coinbase_status") != "NEW_SNAPSHOT"):
         return {"status": "SKIP_NO_TWO_NEW_ORIGINAL_SOURCE_RECEIPTS", "appended": False}
     depth = read_kraken(depth_path)
     trades = read_coinbase(coinbase_path)
+    verify_source_links(prior, depth, trades)
     if not depth or not trades or depth[-1]["slot_utc"] != trades[-1]["slot_utc"]:
         return {"status": "SKIP_UNPAIRED_ORIGINAL_SOURCES", "appended": False}
     book, trade = depth[-1], trades[-1]
+    if prior and prior[-1]["slot_utc"] >= book["slot_utc"]:
+        return {"status": "SKIP_QUOTE_SLOT_ALREADY_RECORDED", "appended": False}
     b_time, c_time = instant(book["captured_at_utc"]), instant(trade["captured_at_utc"])
     start = utc(clock())
     if (not b_time < c_time <= start
@@ -227,7 +249,11 @@ def score(rows, *, as_of: dt.datetime):
                      <= target + MAX_HORIZON_LAG
                      and instant(r["post_kraken_receipt_utc"]) > entry]
             if not later:
-                outcomes[key] = {"status": "NO_TIMELY_LATER_OBSERVED_QUOTE"}
+                outcomes[key] = {
+                    "status": ("AWAITING_POSSIBLE_LATER_QUOTE"
+                               if now <= target + MAX_HORIZON_LAG
+                               else "NO_TIMELY_LATER_OBSERVED_QUOTE")
+                }
                 continue
             exit_quote = later[0]
             details = {"status": "OBSERVED_REST_QUOTES_NOT_EXECUTABLE",
@@ -272,6 +298,8 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, default=REPORT)
     args = parser.parse_args(argv)
     prior = read_tape()
+    if prior:
+        verify_source_links(prior, read_kraken(BASE_PATH), read_coinbase(TRADES_PATH))
     if args.self_check_only:
         print(json.dumps({"validated_paper_quote_rows": len(prior),
                           "no_source_writes": True}))
