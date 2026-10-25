@@ -39,8 +39,8 @@ class ReadOnlyCausalProbeTests(unittest.TestCase):
         def c():
             seen.append("coinbase")
             return {"marker": "coinbase"}
-        with patch.object(probe, "summarize_book", side_effect=book), \\
-             patch.object(probe, "summarize_trades", side_effect=trades):
+        with (patch.object(probe, "summarize_book", side_effect=book),
+              patch.object(probe, "summarize_trades", side_effect=trades)):
             report = probe.collect_probe(
                 kraken_fetcher=kraken or k,
                 coinbase_fetcher=coinbase or c,
@@ -92,9 +92,7 @@ class ReadOnlyCausalProbeTests(unittest.TestCase):
 
     def test_missing_timezone_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "UTC-aware"):
-            self.check(kraken=lambda: {"marker": "baseline"},
-                       times=(0, 1, 2, 3, 4, 5)) if False else probe._utc(
-                           dt.datetime(2026, 10, 25, 7, 0))
+            probe._utc(dt.datetime(2026, 10, 25, 7, 0))
 
     def test_reverse_receipt_time_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "HTTP receipt timing"):
