@@ -160,5 +160,36 @@ class PostQuoteForwardTests(unittest.TestCase):
             self.assertEqual(r["market_trade_recommendation"],"NONE")
 
 
+    def test_source_provenance_must_link_to_original_immutable_tapes(self):
+        original = make_observation()
+        original["frozen_policy_sha256"] = m.frozen_policy_hash()
+        b = {"slot_utc": original["slot_utc"],
+             "row_hash": original["baseline_kraken_row_hash"],
+             "captured_at_utc": original["baseline_kraken_receipt_utc"]}
+        c = {"slot_utc": original["slot_utc"],
+             "row_hash": original["coinbase_row_hash"],
+             "captured_at_utc": original["coinbase_receipt_utc"]}
+        self.assertEqual(m.verify_source_links([original], [b], [c]), 1)
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            m.verify_source_links([original], [dict(b,row_hash="z"*64)], [c])
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            m.verify_source_links([original], [b], [])
+        old_policy = dict(original, frozen_policy_sha256="x"*64)
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            m.verify_source_links([old_policy], [b], [c])
+
+    def test_unexpired_future_quote_window_is_waiting_not_missing(self):
+        with tempfile.TemporaryDirectory() as work:
+            p=Path(work)/"quotes.csv"
+            m.append(p, make_observation())
+            r=m.score(m.read_tape(p), as_of=T+dt.timedelta(hours=6,minutes=20))
+            self.assertEqual(r["observations"][0]["horizons"]["6"]["status"],
+                             "AWAITING_POSSIBLE_LATER_QUOTE")
+            after=m.score(m.read_tape(p),as_of=T+dt.timedelta(hours=9))
+            self.assertEqual(after["observations"][0]["horizons"]["6"]["status"],
+                             "NO_TIMELY_LATER_OBSERVED_QUOTE")
+
+
+
 if __name__ == "__main__":
     unittest.main()
