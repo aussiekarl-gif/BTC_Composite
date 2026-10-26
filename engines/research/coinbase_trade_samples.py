@@ -115,10 +115,11 @@ def summarize(payload: dict[str, Any], *, captured_at_utc: dt.datetime) -> dict[
                      minute=0,second=0,microsecond=0)
     payload_sha=hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(",", ":"),
                                          allow_nan=False).encode("utf-8")).hexdigest()
+    # Keep actual HTTP receipt subsecond order relative to Kraken baseline.
+    # Rounded whole seconds made independent sequential receipts look equal.
+    # Existing legacy second-only rows remain valid and are never rewritten.
     return {
-       "slot_utc": slot.isoformat(),# Keep the actual HTTP receipt's subsecond order relative to the
-       # Kraken baseline. Previously both source receipts were rounded to
-       # whole seconds, making a causal POST-SIGNAL quote unprovable.
+       "slot_utc": slot.isoformat(),
        "captured_at_utc":now.isoformat(timespec="microseconds"),
        "provider":PROVIDER,"pair":PAIR,
        "trade_side_semantics":"MAKER_SIDE_INVERTED_FOR_AGGRESSOR",
