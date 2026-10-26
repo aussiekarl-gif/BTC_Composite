@@ -110,7 +110,11 @@ def summarize_book(payload: dict[str, Any], *, captured_at_utc: dt.datetime) -> 
         raise ValueError("No two-sided depth within band")
     raw_hash = hashlib.sha256(json.dumps(payload, sort_keys=True,
                        separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
-    captured = now.isoformat(timespec="seconds")
+    # Preserve the actual HTTP receipt's subsecond ordering. Rounding to
+    # whole seconds made sequential Kraken/Coinbase requests appear simultaneous,
+    # blocking the independent post-signal quote collector. Legacy second-only
+    # rows remain valid and must NEVER be rewritten or backfilled.
+    captured = now.isoformat(timespec="microseconds")
     slot = now.replace(hour=(now.hour//SLOT_HOURS)*SLOT_HOURS,
                        minute=0, second=0, microsecond=0)
     return {
