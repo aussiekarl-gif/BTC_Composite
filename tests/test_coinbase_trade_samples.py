@@ -32,6 +32,28 @@ class CoinbaseTradesTests(unittest.TestCase):
         self.assertEqual(row["research_signal"],"OBSERVATION_ONLY_NO_TRADE")
         self.assertEqual(row["sample_only_not_continuous"],"True")
         self.assertEqual(row["slot_utc"],"2026-10-19T00:00:00+00:00")
+    def test_subsecond_receipt_and_legacy_seconds_append_only(self):
+        precise = NOW.replace(microsecond=654321)
+        observation = summarize(sample(), captured_at_utc=precise)
+        self.assertEqual(observation["captured_at_utc"],
+                         precise.isoformat(timespec="microseconds"))
+        with TemporaryDirectory() as folder:
+            file = Path(folder)/"tape.csv"
+            old = summarize(sample(), captured_at_utc=NOW)
+            old["captured_at_utc"] = NOW.isoformat(timespec="seconds")
+            self.assertTrue(append(file, old))
+            old_hash = read_tape(file)[0]["row_hash"]
+            later = NOW + dt.timedelta(hours=6, microseconds=654321)
+            self.assertTrue(append(
+                file, summarize(sample(now=later), captured_at_utc=later)))
+            rows = read_tape(file)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["captured_at_utc"], NOW.isoformat(timespec="seconds"))
+            self.assertEqual(rows[0]["row_hash"], old_hash)
+            self.assertEqual(rows[1]["captured_at_utc"],
+                             later.isoformat(timespec="microseconds"))
+            self.assertEqual(rows[1]["previous_row_hash"], old_hash)
+
     def test_freshness(self):
         with self.assertRaisesRegex(ValueError,"stale"):
             summarize(sample(now=NOW-dt.timedelta(minutes=9)),captured_at_utc=NOW)
