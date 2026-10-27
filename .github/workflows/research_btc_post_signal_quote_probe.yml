@@ -1,0 +1,43 @@
+name: Paper-only causal post-Coinbase Kraken REST quote pilot (PR only)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/btc_post_signal_quote_probe.py'
+      - 'tests/test_btc_post_signal_quote_probe.py'
+      - '.github/workflows/research_btc_post_signal_quote_probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  one-off-read-only-source-observation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install public REST client only
+        run: python -m pip install 'requests>=2.31,<3'
+      - name: Validate independent quote sequencing and existing source parsers
+        run: |
+          python -m py_compile engines/research/btc_post_signal_quote_probe.py tests/test_btc_post_signal_quote_probe.py
+          python -m unittest discover -s tests -p 'test_btc_post_signal_quote_probe.py' -v
+          python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v
+          python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
+      - name: PR ONLY - genuinely new Kraken REST quote after Coinbase receipt
+        if: github.event_name == 'pull_request'
+        run: python -m engines.research.btc_post_signal_quote_probe
+      - name: Confirm no original source tapes, notifications, portfolio or models edited
+        run: git diff --exit-code
+      - name: Retain ephemeral paper-only raw receipt evidence
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: read-only-post-coinbase-kraken-receipt-PROBE
+          path: artifacts/btc_post_signal_quote_probe_readonly.json
+          retention-days: 30
+          if-no-files-found: warn
