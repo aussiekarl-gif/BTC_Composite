@@ -788,7 +788,7 @@ def build_free_indicator_cache(start_date, end_date):
     # series. Unavailable metrics are skipped independently. Raw series are retained
     # with a cm__ prefix so future research can use them without another download.
     cm_metrics = (
-        "PriceUSD", "RevNtv", "FeeTotNtv", "SplyCur",
+        "PriceUSD", "IssTotUSD", "RevNtv", "FeeTotNtv", "SplyCur",
         "CapMrktCurUSD", "CapRealUSD", "TxTfrValAdjUSD", "RevAllTimeUSD",
         "HashRate", "AdrActCnt", "TxCnt", "FeeTotUSD", "FeeMeanUSD",
         "IssContNtv", "IssTotNtv", "TxTfrCnt", "TxTfrValAdjNtv",
@@ -805,7 +805,11 @@ def build_free_indicator_cache(start_date, end_date):
     if len(idx) == 0:
         return pd.DataFrame(), status_rows
 
-    raw = pd.DataFrame(index=idx.sort_values())
+    # Normalize to one calendar-day row per UTC date before rolling indicators.
+    # Otherwise a missing day could make a 365-row window span more than 365 days.
+    idx = pd.DatetimeIndex(idx).normalize().unique().sort_values()
+    idx = pd.date_range(start=idx.min(), end=idx.max(), freq="D", tz=idx.tz)
+    raw = pd.DataFrame(index=idx)
     for k, x in cm.items():
         if x is not None and not x.empty:
             raw[k] = x.reindex(raw.index)
@@ -816,26 +820,41 @@ def build_free_indicator_cache(start_date, end_date):
     for c in raw.columns:
         out[f"cm__{c}"] = pd.to_numeric(raw[c], errors="coerce")
 
-    # Puell Multiple: actual native issuance * price, divided by its trailing 365-day mean.
-    issuance = pd.Series(np.nan, index=raw.index, dtype=float)
-    issuance_source = None
-    # Coin Metrics defines RevNtv as miner revenue = newly issued BTC + transaction fees.
-    # Therefore RevNtv - FeeTotNtv isolates actual daily native issuance.
-    if {"RevNtv", "FeeTotNtv"}.issubset(raw.columns):
-        x = (pd.to_numeric(raw["RevNtv"], errors="coerce") - pd.to_numeric(raw["FeeTotNtv"], errors="coerce")).clip(lower=0)
+    # Puell Multiple: daily issuance value in USD divided by its trailing 365-day mean.
+    # Prefer Coin Metrics' direct USD issuance series to avoid price/unit alignment differences.
+    # Fall back to native issuance * PriceUSD, preferring the dedicated issuance metric.
+    issuance_usd = pd.Series(np.nan, index=raw.index, dtype=float)
+    issuance_usd_source = None
+    if "IssTotUSD" in raw.columns:
+        x = pd.to_numeric(raw["IssTotUSD"], errors="coerce").clip(lower=0)
         if x.notna().sum() >= 365:
-            issuance = x
-            issuance_source = "RevNtv - FeeTotNtv"
-    if issuance_source is None and "SplyCur" in raw:
-        x = pd.to_numeric(raw["SplyCur"], errors="coerce").diff().clip(lower=0)
-        if x.notna().sum() >= 365:
-            issuance = x
-            issuance_source = "SplyCur.diff() proxy"
+            issuance_usd = x
+            issuance_usd_source = "IssTotUSD"
+    if issuance_usd_source is None:
+        issuance = pd.Series(np.nan, index=raw.index, dtype=float)
+        issuance_source = None
+        if "IssTotNtv" in raw.columns:
+            x = pd.to_numeric(raw["IssTotNtv"], errors="coerce").clip(lower=0)
+            if x.notna().sum() >= 365:
+                issuance = x
+                issuance_source = "IssTotNtv"
+        if issuance_source is None and {"RevNtv", "FeeTotNtv"}.issubset(raw.columns):
+            x = (pd.to_numeric(raw["RevNtv"], errors="coerce") - pd.to_numeric(raw["FeeTotNtv"], errors="coerce")).clip(lower=0)
+            if x.notna().sum() >= 365:
+                issuance = x
+                issuance_source = "RevNtv - FeeTotNtv fallback"
+        if issuance_source is None and "SplyCur" in raw:
+            x = pd.to_numeric(raw["SplyCur"], errors="coerce").diff().clip(lower=0)
+            if x.notna().sum() >= 365:
+                issuance = x
+                issuance_source = "SplyCur.diff() proxy fallback"
+        if issuance_source is not None and "PriceUSD" in raw:
+            issuance_usd = issuance * pd.to_numeric(raw["PriceUSD"], errors="coerce")
+            issuance_usd_source = f"{issuance_source} * PriceUSD"
 
-    if issuance_source is not None and "PriceUSD" in raw:
-        issuance_usd = issuance * pd.to_numeric(raw["PriceUSD"], errors="coerce")
+    if issuance_usd_source is not None:
         out["Puell Multiple"] = issuance_usd / issuance_usd.rolling(365, min_periods=365).mean()
-        status_rows.append({"Free input": "Puell Multiple", "Status": f"CALCULATED locally from {issuance_source} + PriceUSD"})
+        status_rows.append({"Free input": "Puell Multiple", "Status": f"CALCULATED locally from {issuance_usd_source}"})
     else:
         status_rows.append({"Free input": "Puell Multiple", "Status": "Could not calculate — issuance/price inputs unavailable"})
 
