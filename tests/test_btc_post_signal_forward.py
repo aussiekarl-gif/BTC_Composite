@@ -97,6 +97,62 @@ class PostQuoteForwardTests(unittest.TestCase):
             self.assertEqual(r["broker_orders"], 0)
             self.assertEqual(r["original_source_tape_writes"], 0)
 
+    def test_same_whole_second_but_true_microsecond_order_is_causal(self):
+        # The real Oct 25/26 tapes repeatedly rounded BOTH HTTP receipts
+        # to the same second, making this strict gate reject fresh pairs.
+        book_receipt = T + dt.timedelta(seconds=1, microseconds=100000)
+        coinbase_receipt = T + dt.timedelta(seconds=1, microseconds=200000)
+        request_start = T + dt.timedelta(seconds=1, microseconds=300000)
+        quote_receipt = T + dt.timedelta(seconds=1, microseconds=400000)
+        self.assertEqual(book_receipt.isoformat(timespec="seconds"),
+                         coinbase_receipt.isoformat(timespec="seconds"))
+        book = {"slot_utc": T.isoformat(),
+                "captured_at_utc": book_receipt.isoformat(timespec="microseconds"),
+                "row_hash": "b"*64}
+        coinbase = {"slot_utc": T.isoformat(),
+                    "captured_at_utc": coinbase_receipt.isoformat(timespec="microseconds"),
+                    "row_hash": "c"*64}
+        frozen = {"policy_sha256": "d"*64, "observations": [{
+            "slot_utc": T.isoformat(), "kraken_source_hash": "b"*64,
+            "coinbase_source_hash": "c"*64, "hypothesis": "PAPER_NEUTRAL"
+        }]}
+        quote = {"best_bid_usd": "99.000000", "best_ask_usd": "100.000000",
+                 "provider_payload_sha256": "e"*64}
+        with tempfile.TemporaryDirectory() as work:
+            p = Path(work)/"quotes.csv"
+            with patch.object(m, "read_kraken", return_value=[book]), \
+                 patch.object(m, "read_coinbase", return_value=[coinbase]), \
+                 patch.object(m, "frozen_scorecard", return_value=frozen), \
+                 patch.object(m, "summarize_book", return_value=quote):
+                r = m.collect(output=p,
+                    status={"kraken_status": "NEW_SNAPSHOT",
+                            "coinbase_status": "NEW_SNAPSHOT"},
+                    fetcher=lambda: {"synthetic_offline_test": True},
+                    clock=iter([request_start, quote_receipt]).__next__)
+            self.assertTrue(r["appended"])
+            self.assertEqual(r["frozen_hypothesis"], "PAPER_NEUTRAL")
+            row = m.read_tape(p)[0]
+            self.assertLess(m.instant(row["baseline_kraken_receipt_utc"]),
+                            m.instant(row["coinbase_receipt_utc"]))
+            self.assertLess(m.instant(row["coinbase_receipt_utc"]),
+                            m.instant(row["post_kraken_request_started_utc"]))
+            self.assertFalse(m.score([row], as_of=quote_receipt)[
+                "after_cost_ASX_IBIT_AUD_outperformance_validated"])
+
+    def test_equal_second_legacy_receipts_still_fail_closed_no_fake_quote(self):
+        same = (T + dt.timedelta(seconds=1)).isoformat(timespec="seconds")
+        book = {"slot_utc": T.isoformat(), "captured_at_utc": same}
+        coinbase = {"slot_utc": T.isoformat(), "captured_at_utc": same}
+        with patch.object(m, "read_kraken", return_value=[book]), \
+             patch.object(m, "read_coinbase", return_value=[coinbase]):
+            r = m.collect(output=Path("/nonexistent/legacy-quote-tape.csv"),
+                status={"kraken_status": "NEW_SNAPSHOT",
+                        "coinbase_status": "NEW_SNAPSHOT"},
+                fetcher=lambda: self.fail("Never infer strict order from rounded receipts"),
+                clock=lambda: T + dt.timedelta(seconds=1, microseconds=300000))
+        self.assertFalse(r["appended"])
+        self.assertEqual(r["status"], "SKIP_STALE_ORIGINAL_PAIR")
+
     def test_stale_pair_never_fetches(self):
         original_book = {"slot_utc": T.isoformat(),
             "captured_at_utc": (T+dt.timedelta(seconds=1)).isoformat()}

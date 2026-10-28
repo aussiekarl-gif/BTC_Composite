@@ -39,6 +39,28 @@ class KrakenDepthTests(unittest.TestCase):
         self.assertLess(float(r["bid_depth_share_pct_25bps"]), 50.0)
         self.assertEqual(r["slot_utc"], "2026-10-19T00:00:00+00:00")
 
+    def test_subsecond_receipt_and_legacy_seconds_append_only(self):
+        precise = NOW.replace(microsecond=123456)
+        observation = summarize_book(sample_book(), captured_at_utc=precise)
+        self.assertEqual(observation["captured_at_utc"],
+                         precise.isoformat(timespec="microseconds"))
+        with TemporaryDirectory() as folder:
+            file = Path(folder)/"tape.csv"
+            old = summarize_book(sample_book(), captured_at_utc=NOW)
+            old["captured_at_utc"] = NOW.isoformat(timespec="seconds")
+            self.assertTrue(append_snapshot(file, old))
+            old_hash = read_verified_tape(file)[0]["row_hash"]
+            later = NOW + dt.timedelta(hours=6, microseconds=123456)
+            self.assertTrue(append_snapshot(
+                file, summarize_book(sample_book(later), captured_at_utc=later)))
+            rows = read_verified_tape(file)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["captured_at_utc"], NOW.isoformat(timespec="seconds"))
+            self.assertEqual(rows[0]["row_hash"], old_hash)
+            self.assertEqual(rows[1]["captured_at_utc"],
+                             later.isoformat(timespec="microseconds"))
+            self.assertEqual(rows[1]["previous_row_hash"], old_hash)
+
     def test_stale_top_quote_rejected(self):
         p=sample_book()
         p["result"]["XXBTZUSD"]["bids"][0][2]=NOW.timestamp()-3600
