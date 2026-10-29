@@ -1,0 +1,26 @@
+name: VBTC v2 offline research checks
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'engines/research/*200wma_v2.py'
+      - 'research_forward/200wma_v2/**'
+      - '.github/workflows/vbtc_v2_offline_checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Offline prospective-observation integrity tests
+        run: python -m engines.research.test_forward_paper_200wma_v2
+      - name: Validator smoke test
+        run: python -m engines.research.forward_paper_200wma_v2

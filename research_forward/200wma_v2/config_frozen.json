@@ -1,0 +1,9 @@
+{
+  "schema": "btc-200wma-paper-v2",
+  "policy": "Research-only validation; no collector, scheduled workflow or trades",
+  "earliest_first_completed_week_utc": "2026-11-02",
+  "inception_note": "Provisional future Monday; must re-freeze to a later date if deployment is delayed",
+  "reference_model": "research_forward/200wma_v1/config_frozen.json",
+  "observations_append_only": true,
+  "allow_backfill": false
+}
