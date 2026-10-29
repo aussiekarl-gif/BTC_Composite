@@ -50,14 +50,18 @@ def validate_observation(row, config, now):
         value = float(row[field])
         if not 0 < value < float("inf"):
             raise ValueError("Invalid price")
-    if len(row["vbtc_issuer_workbook_sha256"]) != 64:
-        raise ValueError("Missing issuer workbook digest")
+    digest = row["vbtc_issuer_workbook_sha256"]
+    if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest.lower()):
+        raise ValueError("Invalid issuer workbook digest")
     return True
 
 def validate_append(existing, candidate, config, now):
     validate_observation(candidate, config, now)
     if existing:
-        last = datetime.fromisoformat(existing[-1]["week_end"]).date()
+        dates = [datetime.fromisoformat(item["week_end"]).date() for item in existing]
+        if any(b != a + timedelta(days=7) for a, b in zip(dates, dates[1:])):
+            raise ValueError("Existing journal has gaps or duplicate weeks")
+        last = dates[-1]
         current = datetime.fromisoformat(candidate["week_end"]).date()
         if current != last + timedelta(days=7):
             raise ValueError("Duplicate or missing week")
