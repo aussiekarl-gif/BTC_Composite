@@ -33,11 +33,11 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertEqual(ast.literal_eval(named["key"]),
                          "combined_app_section_selector")
 
-    def test_independent_tier_page_not_linked_or_removed_from_repo(self):
+    def test_retired_tier_page_not_linked_or_present(self):
         source=APP.read_text(encoding="utf-8")
         self.assertNotIn('"200WMA Trading Model"',source)
         self.assertNotIn("wma_tier_app.py",source)
-        self.assertTrue((ROOT/"engines"/"research"/"wma_tier_app.py").exists())
+        self.assertFalse((ROOT/"engines"/"research"/"wma_tier_app.py").exists())
 
     def test_all_four_launch_targets_remain_available(self):
         expected=[
