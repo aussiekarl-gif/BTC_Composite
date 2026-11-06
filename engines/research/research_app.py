@@ -1957,6 +1957,37 @@ elif mode == "My Portfolio":
             except Exception as exc:
                 st.error(f"Could not read portfolio CSV: {exc}")
 
+    # Display-only historical BTC/USD reference. Never persist inferred prices
+    # in the executed-trade ledger or use them as broker execution prices.
+    portfolio_display = portfolio_df.copy()
+    portfolio_display["BTC Price (USD)"] = pd.Series(np.nan, index=portfolio_display.index, dtype=float)
+    if not portfolio_display.empty:
+        def _display_purchase_date(value):
+            for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
+                try:
+                    return dt.datetime.strptime(str(value).strip(), fmt).date()
+                except (TypeError, ValueError):
+                    continue
+            return None
+
+        purchase_dates = portfolio_display["Date"].map(_display_purchase_date)
+        valid_dates = [d for d in purchase_dates if d is not None and d <= dt.date.today()]
+        if valid_dates:
+            try:
+                history = fetch_btc_history(min(valid_dates) - dt.timedelta(days=7), max(valid_dates))
+                if history is not None and not history.empty:
+                    dated = history[["price"]].copy()
+                    dated.index = pd.to_datetime(dated.index, utc=True).tz_convert(None).normalize()
+                    daily_usd = dated.groupby(level=0)["price"].last().sort_index()
+                    for idx, purchase_date in purchase_dates.items():
+                        if purchase_date is None or purchase_date > dt.date.today():
+                            continue
+                        earlier = daily_usd.loc[:pd.Timestamp(purchase_date)].dropna()
+                        if not earlier.empty:
+                            portfolio_display.at[idx, "BTC Price (USD)"] = float(earlier.iloc[-1])
+            except Exception as exc:
+                st.caption(f"Historical BTC/USD reference unavailable: {exc}")
+
     st.subheader("Purchases")
     st.caption(
         "For ASX:IBIT enter the purchase date as DD/MM/YY, units bought and total AUD trade value. "
@@ -2021,7 +2052,7 @@ elif mode == "My Portfolio":
         )
 
         edited_portfolio = st.data_editor(
-            portfolio_df,
+            portfolio_display,
             num_rows="dynamic",
             width="stretch",
             hide_index=True,
@@ -2044,6 +2075,10 @@ elif mode == "My Portfolio":
                 "Units / BTC Received": st.column_config.NumberColumn(
                     "Units / BTC Received", min_value=0.0, format="%.8f"
                 ),
+                "BTC Price (USD)": st.column_config.NumberColumn(
+                    "BTC Price (USD)", format="US$%.2f", disabled=True,
+                    help="Historical BTC/USD daily reference on or before the purchase date; not an executed trade price.",
+                ),
             },
             column_order=[
                 "Date",
@@ -2051,6 +2086,7 @@ elif mode == "My Portfolio":
                 "AUD Spent",
                 "Brokerage / Fee AUD",
                 "Units / BTC Received",
+                "BTC Price (USD)",
             ],
             key="portfolio_editor_form",
         )
