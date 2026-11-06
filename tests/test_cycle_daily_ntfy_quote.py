@@ -145,9 +145,7 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
     def test_retired_ntfy_files_have_no_scheduled_legacy_sender(self):
         from pathlib import Path
         root=Path(__file__).resolve().parents[1]
-        retired=(root/".github/workflows/dca_model_compare_notify.yml").read_text()
-        self.assertNotIn("cron:",retired)
-        self.assertNotIn("NTFY_TOPIC",retired)
+        self.assertFalse((root/".github/workflows/dca_model_compare_notify.yml").exists())
         validation=(root/".github/workflows/validation_research_tuning.yml").read_text()
         self.assertNotIn("NTFY_TOPIC",validation)
         daily=(root/".github/workflows/cycle_trading_daily_ntfy.yml").read_text()
