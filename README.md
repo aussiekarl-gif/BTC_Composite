@@ -11,7 +11,7 @@ Primary Streamlit application for the Bitcoin Dynamic DCA project.
 - `engines/research/research_app.py` — Research Streamlit UI
 - `engines/audit/public_model_audit.py` — Public Model Audit and historical data collector
 - `engines/shared/central_data.py` — read-only client for the central BTC research-data repository
-- `cycle_trading_daily_ntfy.py` — the sole scheduled Cycle Trading ntfy summary (08:00 Brisbane time, at most one per local day).
+- `cycle_trading_daily_ntfy.py` — the sole scheduled Cycle Trading ntfy summary (10:00 Brisbane primary, 10:15 and 10:35 backup triggers; at most one per Brisbane calendar day).
 - `dca_model_compare_notify.py` — retired; historical comparison calculations are still importable by validation, but the old sender is permanently disabled.
 
 ## Data
