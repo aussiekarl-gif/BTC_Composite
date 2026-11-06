@@ -1300,7 +1300,25 @@ with tabs[1]:
             rows=portfolio.get("rows",[])
             cols=["Date","Asset","AUD Spent","Brokerage / Fee AUD",
                   "Units / BTC Received","BTC AUD Price"]
-            st.dataframe(pd.DataFrame(rows).reindex(columns=cols),
+            transaction_table=pd.DataFrame(rows).reindex(columns=cols)
+            # Compact, vertically readable transaction inspection on narrow phones.
+            # The full editable/source table remains directly below.
+            if not transaction_table.empty:
+                with st.expander("Mobile-friendly transaction details", expanded=False):
+                    transaction_options=list(range(len(transaction_table)))
+                    selected_transaction=st.selectbox(
+                        "Choose recorded transaction",
+                        transaction_options,
+                        format_func=lambda i: (
+                            f"{transaction_table.iloc[i]['Date']} · "
+                            f"{transaction_table.iloc[i]['Asset']} · "
+                            f"row {i+1}"
+                        ),
+                        key="cycle_mobile_transaction_inspector",
+                    )
+                    for field,value in transaction_table.iloc[selected_transaction].items():
+                        st.text(f"{field}: {value}")
+            st.dataframe(transaction_table,
                          hide_index=True,use_container_width=True)
     st.divider()
     show_portfolio_editor(

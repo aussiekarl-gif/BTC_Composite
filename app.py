@@ -126,6 +126,59 @@ button[data-testid="stSidebarCollapseButton"] {
     pointer-events: auto !important;
 }
 
+/* Phone layout for all four dashboards. Desktop columns remain unchanged.
+   Avoid forcing full desktop-width KPI rows on a narrow Android viewport. */
+@media (max-width: 767px) {
+  html, body, #root, .stApp, [data-testid="stAppViewContainer"],
+  [data-testid="stMain"], [data-testid="stMainBlockContainer"],
+  [data-testid="stAppViewBlockContainer"] {
+    max-width: 100% !important;
+    overflow-x: clip !important;
+  }
+  [data-testid="stMainBlockContainer"], [data-testid="stAppViewBlockContainer"],
+  .main .block-container, .block-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-left: .7rem !important;
+    padding-right: .7rem !important;
+  }
+  /* Streamlit's horizontal columns must stack on phones. */
+  [data-testid="stHorizontalBlock"] {
+    flex-wrap: wrap !important;
+    gap: .65rem !important;
+    min-width: 0 !important;
+  }
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  [data-testid="stMetric"], [data-testid="stMetric"] > div {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  [data-testid="stMetricValue"] {
+    font-size: clamp(1.45rem, 7vw, 2rem) !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+  }
+  [data-testid="stMetricLabel"] {
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+  /* Tables retain horizontal scroll INSIDE their own container. */
+  [data-testid="stDataFrame"], [data-testid="stTable"],
+  [data-testid="stPlotlyChart"], [data-testid="stVegaLiteChart"] {
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  [data-testid="stTable"] { overflow-x: auto !important; }
+  h1 { font-size: clamp(1.55rem, 7vw, 2rem) !important; overflow-wrap: anywhere; }
+  h2 { font-size: clamp(1.3rem, 6vw, 1.65rem) !important; overflow-wrap: anywhere; }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
