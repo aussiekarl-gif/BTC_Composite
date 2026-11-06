@@ -2442,13 +2442,15 @@ elif mode == "My Portfolio":
         )
 
     st.subheader("Calculated Transactions")
+    # Display-only purchase-date BTC/USD; do not alter saved ledger or calculations.
+    clean["BTC Price (USD)"] = portfolio_display["BTC Price (USD)"].reindex(clean.index)
     clean["Date"] = clean["_purchase_date"].apply(
         lambda x: x.strftime("%d/%m/%y") if pd.notna(x) else ""
     )
     display_cols = [
         "Date", "Asset", "AUD Spent", "Brokerage / Fee AUD",
         "Units / BTC Received", "ETF Unit Price AUD", "BTC AUD Price",
-        "BTC Eq / ETF Unit", "BTC Equivalent", "Entry Error vs Bottom %"
+        "BTC Price (USD)", "BTC Eq / ETF Unit", "BTC Equivalent", "Entry Error vs Bottom %"
     ]
     clean["Entry Error vs Bottom %"] = portfolio_accuracy["per_transaction_error_pct"]
     transaction_column_config = {
@@ -2457,6 +2459,7 @@ elif mode == "My Portfolio":
         "Units / BTC Received": st.column_config.NumberColumn(format="%.8g"),
         "ETF Unit Price AUD": st.column_config.NumberColumn(format="dollar"),
         "BTC AUD Price": st.column_config.NumberColumn(format="dollar"),
+        "BTC Price (USD)": st.column_config.NumberColumn(format="US$%.2f", help="Historical daily BTC/USD reference on or before purchase date; not an ETF execution price."),
         "BTC Eq / ETF Unit": st.column_config.NumberColumn(format="%.4f"),
         "BTC Equivalent": st.column_config.NumberColumn(format="%.4f"),
         "Entry Error vs Bottom %": st.column_config.NumberColumn(
