@@ -179,6 +179,53 @@ button[data-testid="stSidebarCollapseButton"] {
   h2 { font-size: clamp(1.3rem, 6vw, 1.65rem) !important; overflow-wrap: anywhere; }
 }
 
+/* Streamlit may expose a ~980px layout viewport on Android when the browser
+   requests desktop rendering. Handle that viewport too, and never ellipsize
+   financial KPI numbers. These rules are presentation-only. */
+@media (max-width: 1100px) {
+  [data-testid="stHorizontalBlock"] {
+    flex-wrap: wrap !important;
+    align-items: stretch !important;
+  }
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+  [data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+    flex: 1 1 100% !important;
+    flex-grow: 1 !important;
+    flex-shrink: 1 !important;
+    flex-basis: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+  [data-testid="stMetric"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+  }
+  [data-testid="stMetricLabel"],
+  [data-testid="stMetricLabel"] *,
+  [data-testid="stMetricValue"],
+  [data-testid="stMetricValue"] *,
+  [data-testid="stMetricDelta"],
+  [data-testid="stMetricDelta"] * {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+    max-width: 100% !important;
+  }
+  [data-testid="stMetricValue"] {
+    font-size: clamp(1.35rem, 3vw, 2rem) !important;
+    line-height: 1.3 !important;
+  }
+  [data-testid="stMainBlockContainer"], .block-container {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
