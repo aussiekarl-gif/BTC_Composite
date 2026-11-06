@@ -111,8 +111,14 @@ class SharedCorrectedCycleCloseTests(unittest.TestCase):
     def test_publication_gap_over_seven_days_fails_closed(self):
         a,b,k,fx=fixtures(close_day="2026-10-18",
                            last_raw_day="2026-10-10")
-        with self.assertRaisesRegex(ValueError,"too old"):
+        with self.assertRaisesRegex(ValueError,"too old") as error:
             merge_verified_live_cycle_prices(a,b,k,utc_today="2026-10-19")
+        detail=str(error.exception)
+        self.assertIn("latest_aligned_utc=2026-10-09",detail)
+        self.assertIn("asof_utc=2026-10-19",detail)
+        self.assertIn("age_days=10",detail)
+        self.assertIn("maximum_days=7",detail)
+        self.assertIn("latest_kraken_completed_utc=2026-10-18",detail)
 
     def test_four_day_bridge_missing_exchange_candle_refuses_trading(self):
         a,b,k,fx=fixtures(close_day="2026-10-18",
