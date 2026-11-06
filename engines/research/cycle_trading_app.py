@@ -171,7 +171,7 @@ if market["usd_aud_prior"] is None or market["fx_source_date"] is None:
 if provider_error:
     st.error("Current public BTC/FX close verification FAILED: "+provider_error+
              " — current trade recommendations are disabled.")
-if not cycle_feed_verified:
+if not anchor_matches_close:
     st.error("Last halving date not verified from the Bitcoin chain, or newer than "
              "the completed BTC price observation. Cycle-timed trade recommendations "
              "are disabled until automatic verification recovers.")
