@@ -53,6 +53,8 @@ class AdaptiveCeilingComparisonTests(unittest.TestCase):
         self.assertEqual(set(results), {"fixed_5", "adaptive_7_5", "adaptive_10"})
         self.assertGreaterEqual(results["adaptive_10"]["invested_aud"],
                                 results["fixed_5"]["invested_aud"])
+        self.assertGreaterEqual(results["fixed_5"]["weeks_ceiling_binding"],
+                                results["adaptive_10"]["weeks_ceiling_binding"])
         for result in results.values():
             self.assertGreaterEqual(result["cash_aud"], 20000)
             self.assertGreaterEqual(result["btc_held"], 0)
