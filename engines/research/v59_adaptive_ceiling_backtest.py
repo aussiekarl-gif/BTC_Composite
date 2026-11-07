@@ -9,7 +9,7 @@ import csv
 import json
 from datetime import date
 from pathlib import Path
-from engines.research.v59_dynamic_risk_policy import replay_dynamic_dca
+from engines.research.v59_dynamic_risk_policy import replay_dynamic_dca, risk_buy_multiplier, risk_weekly_ceiling
 
 SCENARIOS = ("fixed_5", "adaptive_7_5", "adaptive_10")
 
@@ -43,6 +43,16 @@ def compare(rows, *, capital_aud, reserve_aud, review_date, fee_pct=0, slippage_
             review_date=review_date, fee_pct=fee_pct, slippage_pct=slippage_pct,
             ceiling_scenario=scenario)
         orders = result["orders"]
+        binding_weeks = 0
+        cash_before = float(capital_aud)
+        for row, order in zip(rows, orders):
+            available = max(0.0, cash_before - reserve_aud)
+            weeks_left = max((review_date - row["date"]).days / 7.0, 1.0)
+            uncapped = min(available, available / weeks_left * risk_buy_multiplier(row["risk_score"]))
+            cap = capital_aud * risk_weekly_ceiling(row["risk_score"], scenario)
+            if uncapped > cap + 1e-6:
+                binding_weeks += 1
+            cash_before = order["cash_aud"]
         peak = float(capital_aud)
         drawdown = 0.0
         for order in orders:
@@ -56,6 +66,7 @@ def compare(rows, *, capital_aud, reserve_aud, review_date, fee_pct=0, slippage_
             "worst_drawdown_pct": drawdown * 100,
             "first_buy_date": next((o["date"] for o in orders if o["buy_aud"] > 0), None),
             "weeks_with_buys": sum(o["buy_aud"] > 0 for o in orders),
+            "weeks_ceiling_binding": binding_weeks,
             "cash_at_reserve_date": next((o["date"] for o in orders if o["cash_aud"] <= reserve_aud + 1e-6), None),
         }
     return results
