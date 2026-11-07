@@ -82,6 +82,15 @@ class PublicationGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(PublicationBlocked, "Unexpected publication paths"):
             publish(repo=self.worker, verify=lambda: None, retry_delay=0)
 
+    def test_extra_staged_research_file_is_not_published(self):
+        self.commit(self.worker, self.data_path, "new paper record\\n")
+        self.commit(self.worker, "data/research_forward_validation/unexpected.csv",
+                    "unexpected\\n")
+        with self.assertRaisesRegex(PublicationBlocked, "Unexpected publication paths"):
+            publish(repo=self.worker, verify=lambda: None, retry_delay=0)
+        remote = git(self.worker, "ls-remote", "origin", "refs/heads/main").split()[0]
+        self.assertEqual(remote, git(self.worker, "rev-parse", "origin/main"))
+
     def test_already_published_is_idempotent(self):
         self.commit(self.worker, self.data_path, "new record\n")
         self.assertEqual(publish(repo=self.worker, verify=lambda: None, retry_delay=0),
