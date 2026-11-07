@@ -10,7 +10,8 @@ import pandas as pd
 from engines.shared.central_data import load_master
 from engines.research.run_point_in_time_risk_comparison import causal_power_law
 from engines.research.fixed_sell_sensitivity import fixed_threshold_matrix
-from engines.research.sell_threshold_walkforward import expanding_walk_forward, _simulate
+from engines.research.sell_threshold_walkforward import expanding_walk_forward, _simulate, fixed_dca_benchmark
+from engines.research.cycle_backtest import simulate_buy_and_hold_benchmark
 
 
 def compare(master):
@@ -41,7 +42,34 @@ def compare(master):
                 {"threshold": t, "result": _simulate(data, 500_000, t, cost)}
                 for t in (0.55, 0.60, 0.65, 0.70, 0.75)
             ]
-        output[name] = {"full_window_descriptive_not_holdout": full_window,
+        # Pre-declared fixed calendar eras; no optimization on these outcomes.
+        eras = [("2017-2019", "2017-01-01", "2019-12-31"),
+                ("2020-2022", "2020-01-01", "2022-12-31"),
+                ("2023-2026", "2023-01-01", "2026-08-31")]
+        era_results = []
+        for label, begin, end in eras:
+            segment = data.loc[begin:end]
+            if len(segment) < 30:
+                era_results.append({"era": label, "status": "INSUFFICIENT_ROWS", "rows": len(segment)})
+                continue
+            for cost in (0.001, 0.003, 0.006):
+                baseline = _simulate(segment, 500_000, 0.75, cost)
+                hold = simulate_buy_and_hold_benchmark(segment[["btc_price_aud"]], 500_000, fee_pct=cost)
+                dca = fixed_dca_benchmark(segment, 500_000, fee_pct=cost)
+                for threshold in (0.55, 0.60, 0.65, 0.70, 0.75):
+                    candidate = _simulate(segment, 500_000, threshold, cost)
+                    era_results.append({"era": label, "status": "DESCRIPTIVE_NOT_OUT_OF_SAMPLE",
+                                        "rows": len(segment), "cost": cost, "threshold": threshold,
+                                        "sell_count": candidate["sell_count"],
+                                        "buy_count": candidate["buy_count"],
+                                        "equity_aud": candidate["ending_equity_aud"],
+                                        "cash_aud": candidate["cash_remaining_aud"],
+                                        "btc_held": candidate["btc_held"],
+                                        "edge_vs_075_aud": candidate["ending_equity_aud"] - baseline["ending_equity_aud"],
+                                        "edge_vs_hold_aud": candidate["ending_equity_aud"] - hold["ending_equity_aud"],
+                                        "edge_vs_dca_aud": candidate["ending_equity_aud"] - dca["ending_equity_aud"]})
+        output[name] = {"calendar_era_diagnostics_not_out_of_sample": era_results,
+                        "full_window_descriptive_not_holdout": full_window,
                         "sell_event_coverage": {
             "selected_baseline_folds_with_sells": sum(x["candidate_sell_count"] > 0 for x in selected),
             "selected_baseline_total_sells": sum(x["candidate_sell_count"] for x in selected),
