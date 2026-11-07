@@ -1,6 +1,6 @@
 """Research-only comparison of fixed and adaptive weekly BTC DCA ceilings.
 
-Input weekly CSV columns: date, btc_price_aud, risk_score.
+Input weekly CSV columns: date, btc_price_aud, risk_score, signal_date.
 Risk scores MUST be calculated with data available on the observation date.
 No production-equivalence or predictive performance claim is implied.
 """
@@ -17,14 +17,17 @@ SCENARIOS = ("fixed_5", "adaptive_7_5", "adaptive_10")
 def load_rows(path):
     with open(path, newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
-        required = {"date", "btc_price_aud", "risk_score"}
+        required = {"date", "btc_price_aud", "risk_score", "signal_date"}
         if not required.issubset(reader.fieldnames or []):
             raise ValueError("Missing required columns: " + ", ".join(sorted(required - set(reader.fieldnames or []))))
         rows = [dict(date=date.fromisoformat(row["date"]),
+                     signal_date=date.fromisoformat(row["signal_date"]),
                      btc_price_aud=float(row["btc_price_aud"]),
                      risk_score=float(row["risk_score"])) for row in reader]
     if not rows:
         raise ValueError("Historical dataset is empty")
+    if any(row["signal_date"] >= row["date"] for row in rows):
+        raise ValueError("Signal date must precede execution date; same-day signals are not permitted")
     return rows
 
 
@@ -77,7 +80,7 @@ def main():
         "risk_provenance": ("USER_ATTESTED_NOT_INDEPENDENTLY_VERIFIED_BY_SCRIPT" if args.risk_provenance_verified
                             else "UNVERIFIED_DO_NOT_INTERPRET_AS_TRADABLE"),
         "weekly_ceiling_basis": "INITIAL_CAPITAL",
-        "execution_lag": "NOT ENFORCED: supply pre-lagged risk_score values for execution dates",
+        "execution_lag": "signal_date strictly precedes execution date; publication timestamp still requires independent verification",
         "results": compare(rows, capital_aud=args.capital, reserve_aud=args.reserve,
                            review_date=args.review_date, fee_pct=args.fee_pct,
                            slippage_pct=args.slippage_pct),
