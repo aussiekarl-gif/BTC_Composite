@@ -51,6 +51,18 @@ class PuellCalendarTests(unittest.TestCase):
         self.assertAlmostEqual(float(out["Puell Multiple"].dropna().iloc[-1]), 1.)
         self.assertTrue(any("RevNtv - FeeTotNtv fallback" in x["Status"] for x in statuses))
 
+    def test_zero_issuance_does_not_create_infinite_puell(self):
+        idx = pd.date_range("2024-01-01", periods=365, tz="UTC")
+        out, _ = self.compute({"IssTotUSD": pd.Series(0., index=idx)})
+        self.assertTrue(out["Puell Multiple"].dropna().empty)
+
+    def test_misaligned_native_price_dates_never_create_false_window(self):
+        idx = pd.date_range("2024-01-01", periods=365, tz="UTC")
+        native = pd.Series(2., index=idx)
+        price = pd.Series(50., index=idx + pd.Timedelta(days=1))
+        out, _ = self.compute({"IssTotNtv": native, "PriceUSD": price})
+        self.assertTrue(out["Puell Multiple"].dropna().empty)
+
     def test_incomplete_all_sources_do_not_invent_puell(self):
         idx = pd.date_range("2024-01-01", periods=200, tz="UTC")
         out, statuses = self.compute({"IssTotUSD": pd.Series(100., index=idx)})
