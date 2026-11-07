@@ -9,7 +9,7 @@ import math
 
 # (risk ceiling, ordinary weekly buy multiplier); upper bound inclusive.
 BUY_BANDS = ((0.10, 3.0), (0.20, 2.0), (0.40, 1.5),
-             (0.60, 1.0), (0.80, 0.5), (1.0, 0.0))
+             (0.50, 1.0), (1.0, 0.0))
 # Selling is disabled by default until independently validated.
 SELL_BANDS = ((0.90, 0.02), (1.0, 0.05))
 
