@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - 'engines/research/cycle_forward_signal_tape.py'
+      - 'engines/research/cycle_forward_publish_guard.py'
+      - 'tests/test_cycle_forward_publish_guard.py'
+      - 'engines/research/cycle_forward_publish_guard.py'
+      - 'tests/test_cycle_forward_publish_guard.py'
       - 'engines/research/cycle_forward_kraken_bridge.py'
       - 'engines/research/ibit_asx_forward_close_tape.py'
       - 'engines/research/forward_market_readiness.py'
@@ -80,6 +84,7 @@ jobs:
         run: |
           python -m py_compile engines/research/cycle_forward_signal_tape.py engines/research/cycle_forward_kraken_bridge.py engines/research/ibit_asx_forward_close_tape.py engines/research/forward_market_readiness.py
           python -m unittest discover -s tests -p 'test_cycle_forward_signal_tape.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_forward_publish_guard.py' -v
           python -m unittest discover -s tests -p 'test_cycle_forward_kraken_bridge.py' -v
           python -m unittest discover -s tests -p 'test_ibit_asx_forward_close_tape.py' -v
           python -m unittest discover -s tests -p 'test_forward_market_readiness.py' -v
@@ -149,5 +154,5 @@ jobs:
             echo 'No new verified BTC close or matured horizon to record.'
           else
             git commit -m 'Research forward BTC Cycle signal tape: completed-close capture [skip ci]'
-            git push origin HEAD:main
+            python -m engines.research.cycle_forward_publish_guard
           fi
