@@ -22,9 +22,15 @@ class DynamicRiskPolicyTests(unittest.TestCase):
         self.assertGreater(low["btc_held"], high["btc_held"])
 
     def test_expensive_market_pauses(self):
-        x = replay_dynamic_dca(self.rows([0.95]), **self.opts)
+        x = replay_dynamic_dca(self.rows([0.51]), **self.opts)
         self.assertEqual(x["btc_held"], 0)
         self.assertEqual(x["cash_aud"], 500000)
+
+    def test_exact_050_buys_but_above_050_pauses(self):
+        at = replay_dynamic_dca(self.rows([0.50]), **self.opts)
+        above = replay_dynamic_dca(self.rows([0.50001]), **self.opts)
+        self.assertGreater(at["btc_held"], 0)
+        self.assertEqual(above["btc_held"], 0)
 
     def test_reserve_protected(self):
         x = replay_dynamic_dca(self.rows([0.01]*60), **self.opts)
