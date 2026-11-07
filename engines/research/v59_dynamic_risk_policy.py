@@ -44,7 +44,8 @@ def risk_weekly_ceiling(risk, scenario="fixed_5"):
 
 def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
                        fee_pct=0.0, slippage_pct=0.0, enable_selling=False,
-                       sell_confirmation_weeks=2, max_weekly_fraction=0.05,\n                       ceiling_scenario=None):
+                       sell_confirmation_weeks=2, max_weekly_fraction=0.05,
+                       ceiling_scenario=None):
     """Replay ordered weekly observations, spending only available unreserved cash.
 
     Selling requires consecutive high-risk weekly readings; each sell is a
@@ -52,7 +53,9 @@ def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
     """
     if not isinstance(review_date, date) or capital_aud < 0 or not 0 <= reserve_aud <= capital_aud:
         raise ValueError("Invalid capital, reserve or review date")
-    if ceiling_scenario is not None:\n        risk_weekly_ceiling(0.5, ceiling_scenario)\n    if not 0 < max_weekly_fraction <= 1:
+    if ceiling_scenario is not None:
+        risk_weekly_ceiling(0.5, ceiling_scenario)
+    if not 0 < max_weekly_fraction <= 1:
         raise ValueError("Invalid weekly budget ceiling")
     if not 0 <= fee_pct < 1 or not 0 <= slippage_pct < 1 or sell_confirmation_weeks < 1:
         raise ValueError("Invalid costs or sell confirmation")
