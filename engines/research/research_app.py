@@ -1379,6 +1379,7 @@ elif mode == "DCA Today":
               <div class="v59-mult">{challenger_weight:.2f}×</div>
               <div class="v59-sub"><b>Base Monday DCA</b></div>
               <div class="v59-base">A$ {normal_weekly_allowance:,.0f}</div>
+              <div class="v59-sub">Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}</div>
             </div>
             <div>
               <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Ordinary sizing cannot exceed the paced allowance. Only a newly staged Exceptional Bottom event can front-load capital.">?</span></div>
