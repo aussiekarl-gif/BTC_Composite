@@ -10,6 +10,7 @@ if str(_REPO_ROOT) not in _sys.path:
 from engines.research import research_model as _model
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
 from engines.shared.ibit_dca_display import show_ibit_dca_equivalent
+from engines.shared.btc_ibit_comparison import show_btc_ibit_comparison
 from engines.shared.model_settings_store import (
     load_dca_target_date,save_dca_target_date,choose_target_date,
 )
@@ -1741,6 +1742,7 @@ elif mode == "DCA Today":
 
     st.markdown("**ASX:IBIT equivalent — Three-Pillar recommendation**")
     show_ibit_dca_equivalent(challenger_recommended_buy, label="Three-Pillar DCA")
+    show_btc_ibit_comparison()
     with st.expander("Frozen R2 equivalent in ASX:IBIT"):
         show_ibit_dca_equivalent(recommended_buy, label="Frozen R2 DCA")
 
