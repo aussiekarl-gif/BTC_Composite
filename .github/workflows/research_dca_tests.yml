@@ -1,6 +1,12 @@
 name: Research DCA regression tests
 
 on:
+  pull_request:
+    paths:
+      - "engines/research/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".github/workflows/research_dca_tests.yml"
   push:
     branches: [main]
     paths:
