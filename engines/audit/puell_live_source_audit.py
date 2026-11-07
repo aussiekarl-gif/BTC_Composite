@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import urllib.error
 from pathlib import Path
 import urllib.parse
 import urllib.request
 
 BASE = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics"
-METRICS = ("IssTotUSD", "IssTotNtv", "PriceUSD", "RevNtv", "FeeTotNtv")
+METRICS = ("IssTotUSD", "IssTotNtv", "PriceUSD", "RevNtv", "FeeTotNtv", "RevUSD", "IssContUSD")
 
 
 def fetch(metric: str, start: str, end: str) -> dict[str, float]:
@@ -43,7 +44,8 @@ def report() -> dict:
         except Exception as exc:
             series[metric] = {}
             result["metrics"][metric] = {"rows": 0, "status": "FETCH_FAILED",
-                                         "error_type": type(exc).__name__}
+                                         "error_type": type(exc).__name__,
+                                         "http_status": exc.code if isinstance(exc, urllib.error.HTTPError) else None}
     direct = series["IssTotUSD"]
     native = series["IssTotNtv"]
     price = series["PriceUSD"]
@@ -54,6 +56,33 @@ def report() -> dict:
         result["comparison"] = {"paired_days": len(common), "max_relative_difference": max(relative_errors),
                                 "mean_relative_difference": sum(relative_errors) / len(relative_errors),
                                 "definition": "IssTotUSD versus IssTotNtv * PriceUSD; NOT an independent Puell variant"}
+    # Recompute exact rolling calendar-year Puell ratios on actual provider rows.
+    # Do not call the RevUSD/IssContUSD variants equivalent to IssTotUSD.
+    for name in ("IssTotUSD", "RevUSD", "IssContUSD"):
+        values = series[name]
+        if not values:
+            continue
+        ordered_days = [dt.date.fromisoformat(d) for d in sorted(values)]
+        daily = {dt.date.fromisoformat(d): v for d, v in values.items()}
+        latest = ordered_days[-1]
+        window = [latest - dt.timedelta(days=i) for i in range(364, -1, -1)]
+        if all(d in daily for d in window):
+            average = sum(daily[d] for d in window) / 365
+            result.setdefault("puell_variants", {})[name] = {
+                "date": latest.isoformat(),
+                "value": daily[latest] / average if average > 0 else None,
+                "complete_365_calendar_days": True,
+                "note": "Derived from source observations; not independent published Puell series"}
+        else:
+            result.setdefault("puell_variants", {})[name] = {
+                "date": latest.isoformat(), "complete_365_calendar_days": False}
+    result["primary_source_healthy"] = (
+        result["metrics"]["IssTotUSD"]["status"] == "OK"
+        and result["metrics"]["IssTotNtv"]["status"] == "OK"
+        and result["metrics"]["PriceUSD"]["status"] == "OK"
+        and result["comparison"].get("paired_days", 0) >= 365
+        and result["comparison"].get("max_relative_difference", 1) < 1e-8
+        and result.get("puell_variants", {}).get("IssTotUSD", {}).get("complete_365_calendar_days") is True)
     result["ready_for_merge"] = False
     result["independent_matching_puell_series_verified"] = False
     return result
@@ -65,3 +94,5 @@ if __name__ == "__main__":
     data = report()
     destination.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(data, sort_keys=True))
+    if not data["primary_source_healthy"]:
+        raise SystemExit("Coin Metrics primary Puell source audit FAILED; report artifact retained")
