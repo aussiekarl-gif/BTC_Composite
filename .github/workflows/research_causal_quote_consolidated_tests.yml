@@ -1,0 +1,24 @@
+name: Research causal quote audit and one-off probe (no live trading)
+on:
+  pull_request:
+    paths:
+      - 'engines/research/btc_post_signal_causal_quote_audit.py'
+      - 'engines/research/btc_post_signal_quote_probe.py'
+      - 'tests/test_btc_post_signal_causal_quote_audit.py'
+      - 'tests/test_btc_post_signal_quote_probe.py'
+      - '.github/workflows/research_causal_quote_consolidated_tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-causal-quote-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -p 'test_btc_post_signal_causal_quote_audit.py' -v
+      - run: python -m unittest discover -s tests -p 'test_btc_post_signal_quote_probe.py' -v
+      - run: python -m unittest discover -s tests -p 'test_btc_post_signal_forward.py' -v
