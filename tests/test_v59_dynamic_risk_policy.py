@@ -1,7 +1,7 @@
 import unittest
 from datetime import date, timedelta
 from engines.research.v59_dynamic_risk_policy import (
-    risk_buy_multiplier, risk_sell_fraction, replay_dynamic_dca
+    risk_buy_multiplier, risk_sell_fraction, risk_weekly_ceiling, replay_dynamic_dca
 )
 
 
@@ -44,6 +44,28 @@ class DynamicRiskPolicyTests(unittest.TestCase):
     def test_invalid_ceiling_rejected(self):
         with self.assertRaises(ValueError):
             replay_dynamic_dca(self.rows([0.01]), max_weekly_fraction=0, **self.opts)
+
+    def test_adaptive_scenarios_expand_only_low_risk_ceiling(self):
+        self.assertEqual(risk_weekly_ceiling(0.05, "fixed_5"), 0.05)
+        self.assertEqual(risk_weekly_ceiling(0.05, "adaptive_7_5"), 0.075)
+        self.assertEqual(risk_weekly_ceiling(0.05, "adaptive_10"), 0.10)
+        for scenario in ("fixed_5", "adaptive_7_5", "adaptive_10"):
+            self.assertEqual(risk_weekly_ceiling(0.49, scenario), 0.05)
+            self.assertGreaterEqual(risk_weekly_ceiling(0.05, scenario),
+                                    risk_weekly_ceiling(0.30, scenario))
+
+    def test_adaptive_spend_never_exceeds_ceiling_or_reserve(self):
+        for scenario in ("fixed_5", "adaptive_7_5", "adaptive_10"):
+            x = replay_dynamic_dca(self.rows([0.01] * 60),
+                                   ceiling_scenario=scenario, **self.opts)
+            self.assertGreaterEqual(x["cash_aud"], self.opts["reserve_aud"])
+            for order in x["orders"]:
+                cap = self.opts["capital_aud"] * risk_weekly_ceiling(order["risk_score"], scenario)
+                self.assertLessEqual(order["buy_aud"], cap + 1e-8)
+
+    def test_unknown_scenario_rejected(self):
+        with self.assertRaises(ValueError):
+            replay_dynamic_dca(self.rows([0.01]), ceiling_scenario="unknown", **self.opts)
 
     def test_reserve_protected(self):
         x = replay_dynamic_dca(self.rows([0.01]*60), **self.opts)
