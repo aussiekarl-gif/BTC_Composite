@@ -10,7 +10,7 @@ import pandas as pd
 from engines.shared.central_data import load_master
 from engines.research.run_point_in_time_risk_comparison import causal_power_law
 from engines.research.fixed_sell_sensitivity import fixed_threshold_matrix
-from engines.research.sell_threshold_walkforward import expanding_walk_forward
+from engines.research.sell_threshold_walkforward import expanding_walk_forward, _simulate
 
 
 def compare(master):
@@ -35,7 +35,14 @@ def compare(master):
         fixed = fixed_threshold_matrix(data)
         selected = [x for x in wf["folds"] if x["cost_per_side"] == 0.003]
         fixed_rows = fixed["results"]
-        output[name] = {"sell_event_coverage": {
+        full_window = {}
+        for cost in (0.001, 0.003, 0.006):
+            full_window[str(cost)] = [
+                {"threshold": t, "result": _simulate(data, 500_000, t, cost)}
+                for t in (0.55, 0.60, 0.65, 0.70, 0.75)
+            ]
+        output[name] = {"full_window_descriptive_not_holdout": full_window,
+                        "sell_event_coverage": {
             "selected_baseline_folds_with_sells": sum(x["candidate_sell_count"] > 0 for x in selected),
             "selected_baseline_total_sells": sum(x["candidate_sell_count"] for x in selected),
             "fixed_threshold_sells_by_threshold": {
