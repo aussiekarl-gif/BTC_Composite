@@ -84,9 +84,9 @@ def report() -> dict:
         and result["metrics"]["IssTotNtv"]["status"] == "OK"
         and result["metrics"]["PriceUSD"]["status"] == "OK"
         and result["comparison"].get("paired_days", 0) >= 365
-        and all(d in series["IssTotNtv"] and d in series["PriceUSD"]
-                for d in ((today - dt.timedelta(days=2)) - dt.timedelta(days=i)).isoformat()
-                for i in range(364, -1, -1))
+        and all(((today - dt.timedelta(days=2+i)).isoformat() in series["IssTotNtv"])
+                and ((today - dt.timedelta(days=2+i)).isoformat() in series["PriceUSD"])
+                for i in range(365))
         and result["comparison"].get("max_relative_difference", 1) < 1e-8
         and result.get("puell_variants", {}).get("IssTotUSD", {}).get("complete_365_calendar_days") is True)
     result["ready_for_merge"] = False
