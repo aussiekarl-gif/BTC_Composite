@@ -1,0 +1,29 @@
+name: Research Independent BTC Close Acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'engines/research/cycle_coinbase_daily_reference.py'
+      - 'engines/research/cycle_independent_close_probe.py'
+      - 'tests/test_cycle_coinbase_daily_reference.py'
+      - '.github/workflows/research_independent_btc_close.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-live-provider-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install application dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Deterministic completed UTC close tests
+        run: python -m unittest discover -s tests -p 'test_cycle_coinbase_daily_reference.py' -v
+      - name: Compare actual Coinbase and Kraken completed BTC closes (no trades or ntfy)
+        run: python -m engines.research.cycle_independent_close_probe
