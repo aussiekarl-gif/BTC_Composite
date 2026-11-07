@@ -6,6 +6,7 @@ on:
       - "engines/research/cycle_backtest.py"
       - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
+      - "tests/test_cycle_invariance.py"
       - ".github/workflows/cycle-backtest-tests.yml"
   push:
     branches:
@@ -15,6 +16,7 @@ on:
       - "engines/research/cycle_backtest.py"
       - "engines/research/research_app.py"
       - "tests/test_cycle_backtest.py"
+      - "tests/test_cycle_invariance.py"
       - ".github/workflows/cycle-backtest-tests.yml"
 
 jobs:
@@ -32,4 +34,6 @@ jobs:
       - name: Compile Research code
         run: python -m py_compile engines/research/research_app.py engines/research/cycle_backtest.py
       - name: Run deterministic cycle backtest tests
-        run: python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
+        run: |
+          python -m unittest discover -s tests -p "test_cycle_backtest.py" -v
+          python -m unittest discover -s tests -p "test_cycle_invariance.py" -v
