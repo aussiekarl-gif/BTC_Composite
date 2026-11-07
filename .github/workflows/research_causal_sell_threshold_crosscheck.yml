@@ -1,0 +1,35 @@
+name: Research causal sell threshold crosscheck (PR only)
+on:
+  pull_request:
+    paths:
+      - 'engines/research/run_causal_sell_threshold_crosscheck.py'
+      - 'engines/research/run_point_in_time_risk_comparison.py'
+      - 'engines/research/sell_threshold_walkforward.py'
+      - 'engines/research/sell_threshold_robustness.py'
+      - 'engines/research/fixed_sell_sensitivity.py'
+      - '.github/workflows/research_causal_sell_threshold_crosscheck.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  causal-sell-crosscheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pandas numpy requests
+      - run: python -m py_compile engines/research/run_causal_sell_threshold_crosscheck.py
+      - name: Run private historical master comparison, read only
+        env:
+          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN || secrets.BTC_CENTRAL_DATA_TOKEN }}
+        run: |
+          test -n "$AUDIT_GITHUB_TOKEN"
+          python -m engines.research.run_causal_sell_threshold_crosscheck > causal-sell-results.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: causal-sell-threshold-comparison
+          path: causal-sell-results.json
+          if-no-files-found: error
