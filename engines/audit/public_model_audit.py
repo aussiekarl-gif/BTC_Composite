@@ -827,7 +827,7 @@ def build_free_indicator_cache(start_date, end_date):
     issuance_usd_source = None
     if "IssTotUSD" in raw.columns:
         x = pd.to_numeric(raw["IssTotUSD"], errors="coerce").clip(lower=0)
-        if x.notna().sum() >= 365:
+        if x.notna().rolling(365, min_periods=365).sum().eq(365).any():
             issuance_usd = x
             issuance_usd_source = "IssTotUSD"
     if issuance_usd_source is None:
@@ -835,17 +835,17 @@ def build_free_indicator_cache(start_date, end_date):
         issuance_source = None
         if "IssTotNtv" in raw.columns:
             x = pd.to_numeric(raw["IssTotNtv"], errors="coerce").clip(lower=0)
-            if x.notna().sum() >= 365:
+            if x.notna().rolling(365, min_periods=365).sum().eq(365).any():
                 issuance = x
                 issuance_source = "IssTotNtv"
         if issuance_source is None and {"RevNtv", "FeeTotNtv"}.issubset(raw.columns):
             x = (pd.to_numeric(raw["RevNtv"], errors="coerce") - pd.to_numeric(raw["FeeTotNtv"], errors="coerce")).clip(lower=0)
-            if x.notna().sum() >= 365:
+            if x.notna().rolling(365, min_periods=365).sum().eq(365).any():
                 issuance = x
                 issuance_source = "RevNtv - FeeTotNtv fallback"
         if issuance_source is None and "SplyCur" in raw:
             x = pd.to_numeric(raw["SplyCur"], errors="coerce").diff().clip(lower=0)
-            if x.notna().sum() >= 365:
+            if x.notna().rolling(365, min_periods=365).sum().eq(365).any():
                 issuance = x
                 issuance_source = "SplyCur.diff() proxy fallback"
         if issuance_source is not None and "PriceUSD" in raw:
