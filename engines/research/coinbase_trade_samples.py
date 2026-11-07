@@ -116,7 +116,7 @@ def summarize(payload: dict[str, Any], *, captured_at_utc: dt.datetime) -> dict[
     payload_sha=hashlib.sha256(json.dumps(payload,sort_keys=True,separators=(",", ":"),
                                          allow_nan=False).encode("utf-8")).hexdigest()
     return {
-       "slot_utc": slot.isoformat(),"captured_at_utc":now.isoformat(timespec="seconds"),
+       "slot_utc": slot.isoformat(),"captured_at_utc":now.isoformat(timespec="microseconds"),
        "provider":PROVIDER,"pair":PAIR,
        "trade_side_semantics":"MAKER_SIDE_INVERTED_FOR_AGGRESSOR",
        "sample_only_not_continuous":"True","requested_limit":str(LIMIT),

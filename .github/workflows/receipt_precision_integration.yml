@@ -1,0 +1,24 @@
+name: Subsecond receipt integration tests
+on:
+  pull_request:
+    paths:
+      - 'engines/research/btc_spot_depth_forward.py'
+      - 'engines/research/coinbase_trade_samples.py'
+      - 'tests/test_receipt_precision_integration.py'
+      - '.github/workflows/receipt_precision_integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  receipt-precision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pandas numpy
+      - run: python -m unittest discover -s tests -p 'test_receipt_precision_integration.py' -v
+      - run: python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v
+      - run: python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
+      - run: python -m unittest discover -s tests -p 'test_btc_post_signal_forward.py' -v
