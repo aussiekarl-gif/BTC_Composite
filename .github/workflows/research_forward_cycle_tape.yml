@@ -8,8 +8,6 @@ on:
       - 'engines/research/cycle_forward_signal_tape.py'
       - 'engines/research/cycle_forward_publish_guard.py'
       - 'tests/test_cycle_forward_publish_guard.py'
-      - 'engines/research/cycle_forward_publish_guard.py'
-      - 'tests/test_cycle_forward_publish_guard.py'
       - 'engines/research/cycle_forward_kraken_bridge.py'
       - 'engines/research/ibit_asx_forward_close_tape.py'
       - 'engines/research/forward_market_readiness.py'
