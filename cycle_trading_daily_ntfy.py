@@ -7,6 +7,7 @@ read-only major-risk comparisons, not matched DCA percentages.
 """
 from __future__ import annotations
 import argparse
+import logging
 import datetime as dt
 import os
 import requests
@@ -31,6 +32,7 @@ from engines.research.cycle_trade_allocation import (
 )
 
 BRISBANE=ZoneInfo("Australia/Brisbane")
+LOG=logging.getLogger(__name__)
 
 def daily_message(*,now=None,quote=None,market=None,
                   reference_snapshot_fetcher=None):
@@ -58,8 +60,11 @@ def daily_message(*,now=None,quote=None,market=None,
                                           confirmed_halving_date=confirmed)
             age=(now.date()-pd.Timestamp(market["asof_date"]).date()).days
             if age!=1 or market["usd_aud_prior"] is None:
+                LOG.warning("Cycle market refused: completed_close_age_days=%s fx_available=%s",age,market["usd_aud_prior"] is not None)
                 market=None
-        except Exception:market=None
+        except Exception:
+            LOG.exception("Cycle market unavailable; no recommendation generated")
+            market=None
     lines=[f"Cycle Trading daily | {today} Brisbane"]
     baselines={}
     allocation=None
