@@ -38,7 +38,9 @@ def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
     """
     if not isinstance(review_date, date) or capital_aud < 0 or not 0 <= reserve_aud <= capital_aud:
         raise ValueError("Invalid capital, reserve or review date")
-    if not 0 < max_weekly_fraction <= 1:\n        raise ValueError("Invalid weekly budget ceiling")\n    if not 0 <= fee_pct < 1 or not 0 <= slippage_pct < 1 or sell_confirmation_weeks < 1:
+    if not 0 < max_weekly_fraction <= 1:
+        raise ValueError("Invalid weekly budget ceiling")
+    if not 0 <= fee_pct < 1 or not 0 <= slippage_pct < 1 or sell_confirmation_weeks < 1:
         raise ValueError("Invalid costs or sell confirmation")
     cash, btc, orders = float(capital_aud), 0.0, []
     prev, high_risk_weeks = None, 0
