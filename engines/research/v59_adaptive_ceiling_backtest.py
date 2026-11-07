@@ -28,6 +28,10 @@ def load_rows(path):
         raise ValueError("Historical dataset is empty")
     if any(row["signal_date"] >= row["date"] for row in rows):
         raise ValueError("Signal date must precede execution date; same-day signals are not permitted")
+    if any(a["date"] >= b["date"] for a, b in zip(rows, rows[1:])):
+        raise ValueError("Execution dates must be strictly increasing and unique")
+    if any(row["btc_price_aud"] <= 0 for row in rows):
+        raise ValueError("BTC execution prices must be positive")
     return rows
 
 
