@@ -33,6 +33,24 @@ class PuellCalendarTests(unittest.TestCase):
         self.assertAlmostEqual(float(out["Puell Multiple"].dropna().iloc[-1]), 1.)
         self.assertTrue(any("IssTotNtv * PriceUSD" in x["Status"] for x in statuses))
 
+    def test_direct_missing_day_with_no_fallback_stays_unavailable(self):
+        idx = pd.date_range("2024-01-01", periods=365, tz="UTC")
+        direct = pd.Series(100., index=idx).drop(idx[100])
+        out, statuses = self.compute({"IssTotUSD": direct})
+        self.assertNotIn("Puell Multiple", out.columns)
+        self.assertTrue(any("Could not calculate" in x["Status"] for x in statuses))
+
+    def test_native_missing_day_falls_back_to_revenue_minus_fees(self):
+        idx = pd.date_range("2024-01-01", periods=365, tz="UTC")
+        native = pd.Series(2., index=idx).drop(idx[180])
+        revenue = pd.Series(2.5, index=idx)
+        fees = pd.Series(0.5, index=idx)
+        price = pd.Series(50., index=idx)
+        out, statuses = self.compute({"IssTotNtv": native, "RevNtv": revenue,
+                                      "FeeTotNtv": fees, "PriceUSD": price})
+        self.assertAlmostEqual(float(out["Puell Multiple"].dropna().iloc[-1]), 1.)
+        self.assertTrue(any("RevNtv - FeeTotNtv fallback" in x["Status"] for x in statuses))
+
     def test_incomplete_all_sources_do_not_invent_puell(self):
         idx = pd.date_range("2024-01-01", periods=200, tz="UTC")
         out, statuses = self.compute({"IssTotUSD": pd.Series(100., index=idx)})
