@@ -9,6 +9,7 @@ on:
       - 'tests/test_cycle_coinbase_daily_reference.py'
       - 'engines/research/cycle_exchange_history_continuity.py'
       - 'engines/research/cycle_exchange_shadow_market.py'
+      - 'tests/test_cycle_exchange_shadow_parity.py'
       - 'tests/test_cycle_exchange_history_continuity.py'
       - '.github/workflows/research_independent_btc_close.yml'
 
@@ -34,3 +35,5 @@ jobs:
         run: python -m engines.research.cycle_exchange_history_continuity
       - name: Shadow Cycle market from independently checked exchange closes (read only)
         run: python -m engines.research.cycle_exchange_shadow_market
+      - name: Deterministic exchange shadow / in-memory notification parity
+        run: python -m unittest discover -s tests -p 'test_cycle_exchange_shadow_parity.py' -v
