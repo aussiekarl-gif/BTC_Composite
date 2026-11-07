@@ -4,6 +4,8 @@ on:
     paths:
       - 'engines/research/v59_runway_cap_replay.py'
       - 'tests/test_v59_runway_cap_replay.py'
+      - 'engines/research/v59_dynamic_risk_policy.py'
+      - 'tests/test_v59_dynamic_risk_policy.py'
       - '.github/workflows/v59_runway_cap_research_tests.yml'
   workflow_dispatch:
 permissions:
@@ -17,3 +19,4 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m unittest discover -s tests -p 'test_v59_runway_cap_replay.py' -v
+      - run: python -m unittest discover -s tests -p 'test_v59_dynamic_risk_policy.py' -v
