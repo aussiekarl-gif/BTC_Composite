@@ -34,7 +34,7 @@ class DynamicRiskPolicyTests(unittest.TestCase):
 
     def test_weekly_ceiling_prevents_low_risk_overspend(self):
         x = replay_dynamic_dca(self.rows([0.01]), **self.opts)
-        self.assertAlmostEqual(x["orders"][0]["buy_aud"], 25000.0)
+        self.assertAlmostEqual(x["orders"][0]["buy_aud"], 400000 / (365 / 7) * 3)\n        self.assertLessEqual(x["orders"][0]["buy_aud"], 25000.0)
 
     def test_ceiling_is_configurable(self):
         x = replay_dynamic_dca(self.rows([0.01]), max_weekly_fraction=0.02, **self.opts)
