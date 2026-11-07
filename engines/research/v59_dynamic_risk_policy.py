@@ -28,9 +28,24 @@ def risk_sell_fraction(risk):
     return next((fraction for ceiling, fraction in SELL_BANDS if risk <= ceiling), 0.0)
 
 
+def risk_weekly_ceiling(risk, scenario="fixed_5"):
+    """Research hypotheses, not calibrated trading limits; fraction of initial capital."""
+    risk_buy_multiplier(risk)  # Validate finite range.
+    scenarios = {
+        "fixed_5": (0.05, 0.05, 0.05, 0.05),
+        "adaptive_7_5": (0.075, 0.06, 0.05, 0.05),
+        "adaptive_10": (0.10, 0.075, 0.06, 0.05),
+    }
+    if scenario not in scenarios:
+        raise ValueError("Unknown weekly ceiling scenario")
+    limits = scenarios[scenario]
+    return limits[0] if risk <= 0.10 else limits[1] if risk <= 0.20 else limits[2] if risk <= 0.40 else limits[3]
+
+
 def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
                        fee_pct=0.0, slippage_pct=0.0, enable_selling=False,
-                       sell_confirmation_weeks=2, max_weekly_fraction=0.05):
+                       sell_confirmation_weeks=2, max_weekly_fraction=0.05,
+                       ceiling_scenario=None):
     """Replay ordered weekly observations, spending only available unreserved cash.
 
     Selling requires consecutive high-risk weekly readings; each sell is a
@@ -38,6 +53,8 @@ def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
     """
     if not isinstance(review_date, date) or capital_aud < 0 or not 0 <= reserve_aud <= capital_aud:
         raise ValueError("Invalid capital, reserve or review date")
+    if ceiling_scenario is not None:
+        risk_weekly_ceiling(0.5, ceiling_scenario)
     if not 0 < max_weekly_fraction <= 1:
         raise ValueError("Invalid weekly budget ceiling")
     if not 0 <= fee_pct < 1 or not 0 <= slippage_pct < 1 or sell_confirmation_weeks < 1:
@@ -62,7 +79,7 @@ def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
             cash += sell_btc * price * (1-slippage_pct) * (1-fee_pct)
         else:
             available = max(0.0, cash-reserve_aud)
-            buy = min(available, available/weeks_left * mult, capital_aud * max_weekly_fraction)
+            buy = min(available, available/weeks_left * mult, capital_aud * (risk_weekly_ceiling(risk, ceiling_scenario) if ceiling_scenario is not None else max_weekly_fraction))
             cash -= buy
             btc += buy * (1-fee_pct) / (price*(1+slippage_pct))
         orders.append(dict(date=day.isoformat(), risk_score=risk,
