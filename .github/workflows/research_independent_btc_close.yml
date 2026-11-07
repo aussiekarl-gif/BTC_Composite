@@ -8,6 +8,7 @@ on:
       - 'engines/research/cycle_independent_close_probe.py'
       - 'tests/test_cycle_coinbase_daily_reference.py'
       - 'engines/research/cycle_exchange_history_continuity.py'
+      - 'engines/research/cycle_exchange_shadow_market.py'
       - 'tests/test_cycle_exchange_history_continuity.py'
       - '.github/workflows/research_independent_btc_close.yml'
 
@@ -31,3 +32,5 @@ jobs:
         run: python -m engines.research.cycle_independent_close_probe
       - name: Audit archive-to-exchange continuity (read only, no fallback)
         run: python -m engines.research.cycle_exchange_history_continuity
+      - name: Shadow Cycle market from independently checked exchange closes (read only)
+        run: python -m engines.research.cycle_exchange_shadow_market
