@@ -9,6 +9,7 @@ on:
       - 'tests/test_cycle_coinbase_daily_reference.py'
       - 'engines/research/cycle_exchange_history_continuity.py'
       - 'engines/research/cycle_exchange_shadow_market.py'
+      - 'tests/test_cycle_exchange_shadow_parity.py'
       - 'tests/test_cycle_exchange_history_continuity.py'
       - '.github/workflows/research_independent_btc_close.yml'
 
