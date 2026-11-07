@@ -58,7 +58,9 @@ def parse_completed_coinbase_daily(payload, *, utc_today):
 def fetch_completed_coinbase_daily(*,utc_today,timeout=20):
     """Public read-only endpoint, bounded response, no credentials."""
     today=_day(utc_today)
-    start=today-pd.Timedelta(days=15)
+    # Coinbase Exchange supports at most 300 candles per request.
+    # Fetch enough genuine completed daily closes to cover an older archive cutoff.
+    start=today-pd.Timedelta(days=45)
     response=requests.get(
         URL,
         params={"granularity":86400,
