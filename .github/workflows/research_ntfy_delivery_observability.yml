@@ -1,0 +1,19 @@
+name: Research notification delivery observability
+on:
+  pull_request:
+    paths:
+      - 'engines/research/ntfy_delivery_observability.py'
+      - 'tests/test_ntfy_delivery_observability.py'
+      - '.github/workflows/research_ntfy_delivery_observability.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_ntfy_delivery_observability.py' -v
