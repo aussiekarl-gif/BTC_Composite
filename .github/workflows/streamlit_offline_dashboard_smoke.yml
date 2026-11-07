@@ -1,6 +1,17 @@
 name: Streamlit BTC dashboard offline interaction smoke
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/streamlit_offline_dashboard_smoke.yml'
+      - 'app.py'
+      - 'engines/research/cycle_trading_app.py'
+      - 'engines/research/cycle_trade_decision.py'
+      - 'engines/research/cycle_single_screen_brief.py'
+      - 'engines/shared/model_settings_store.py'
+      - 'engines/production/production_app.py'
+      - 'engines/research/research_app.py'
   pull_request:
     paths:
       - 'tests/test_streamlit_offline_ui_smoke.py'
