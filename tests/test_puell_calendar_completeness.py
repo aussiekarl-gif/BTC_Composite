@@ -63,6 +63,14 @@ class PuellCalendarTests(unittest.TestCase):
         out, _ = self.compute({"IssTotNtv": native, "PriceUSD": price})
         self.assertTrue(out["Puell Multiple"].dropna().empty)
 
+    def test_sparse_price_blocks_native_source_selection(self):
+        idx = pd.date_range("2024-01-01", periods=400, tz="UTC")
+        native = pd.Series(2., index=idx)
+        price = pd.Series(50., index=idx).drop(idx[200])
+        out, statuses = self.compute({"IssTotNtv": native, "PriceUSD": price})
+        self.assertNotIn("Puell Multiple", out.columns)
+        self.assertTrue(any("Could not calculate" in x["Status"] for x in statuses))
+
     def test_incomplete_all_sources_do_not_invent_puell(self):
         idx = pd.date_range("2024-01-01", periods=200, tz="UTC")
         out, statuses = self.compute({"IssTotUSD": pd.Series(100., index=idx)})
