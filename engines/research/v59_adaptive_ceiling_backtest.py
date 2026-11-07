@@ -63,16 +63,21 @@ def main():
     parser.add_argument("--fee-pct", type=float, default=0)
     parser.add_argument("--slippage-pct", type=float, default=0)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--risk-provenance-verified", action="store_true",
+                        help="Assert externally audited point-in-time publication and revision provenance")
     args = parser.parse_args()
     rows = load_rows(args.csv)
     report = {
-        "status": "RESEARCH_ONLY_UNVALIDATED_HISTORICAL_RISK",
+        "status": ("RESEARCH_ONLY_USER_ATTESTED_RISK_PROVENANCE" if args.risk_provenance_verified
+                   else "RESEARCH_ONLY_UNVALIDATED_HISTORICAL_RISK"),
         "source_csv": str(args.csv),
         "first_date": rows[0]["date"].isoformat(),
         "last_date": rows[-1]["date"].isoformat(),
         "observations": len(rows),
-        "risk_provenance": "MUST VERIFY POINT-IN-TIME BEFORE DRAWING CONCLUSIONS",
+        "risk_provenance": ("USER_ATTESTED_NOT_INDEPENDENTLY_VERIFIED_BY_SCRIPT" if args.risk_provenance_verified
+                            else "UNVERIFIED_DO_NOT_INTERPRET_AS_TRADABLE"),
         "weekly_ceiling_basis": "INITIAL_CAPITAL",
+        "execution_lag": "NOT ENFORCED: supply pre-lagged risk_score values for execution dates",
         "results": compare(rows, capital_aud=args.capital, reserve_aud=args.reserve,
                            review_date=args.review_date, fee_pct=args.fee_pct,
                            slippage_pct=args.slippage_pct),
