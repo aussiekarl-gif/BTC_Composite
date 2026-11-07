@@ -36,6 +36,7 @@ from engines.research.cycle_forward_cash_dca import (
     CONFIG_KEY, enrol_with_stale_guard, forward_cash_dca_status,
 )
 from engines.research.ibit_quote import fetch_ibit_quote,format_ibit_units_for_display
+from engines.shared.btc_ibit_comparison import show_btc_ibit_comparison
 from engines.research.cycle_halving_countdown import (
     fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
     normalise_halving_epoch_metadata,
@@ -47,6 +48,7 @@ from engines.research.cycle_model_redflags import (
 
 
 st.title("Cycle Trading — Research")
+show_btc_ibit_comparison()
 st.caption("Day-500 Dynamic DCA-out + 200WMA Dynamic DCA-in • Personal portfolio reference • Historical comparisons")
 st.warning(
     "Research only — no automatic broker orders or Production strategy changes. "
