@@ -61,7 +61,7 @@ class PuellCalendarTests(unittest.TestCase):
         native = pd.Series(2., index=idx)
         price = pd.Series(50., index=idx + pd.Timedelta(days=1))
         out, _ = self.compute({"IssTotNtv": native, "PriceUSD": price})
-        self.assertTrue(out["Puell Multiple"].dropna().empty)
+        self.assertNotIn("Puell Multiple", out.columns)
 
     def test_sparse_price_blocks_native_source_selection(self):
         idx = pd.date_range("2024-01-01", periods=400, tz="UTC")
