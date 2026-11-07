@@ -1,0 +1,21 @@
+name: Research ntfy delivery-state audit
+on:
+  pull_request:
+    paths:
+      - 'engines/research/ntfy_delivery_state_audit.py'
+      - 'tests/test_ntfy_delivery_state_audit.py'
+      - '.github/workflows/research_ntfy_delivery_state_audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-delivery-state:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s tests -p 'test_ntfy_delivery_state_audit.py' -v
+      - name: Assert live sender untouched
+        run: git diff --exit-code -- cycle_trading_daily_ntfy.py .github/workflows/cycle_trading_daily_ntfy.yml .github/notification_state/
