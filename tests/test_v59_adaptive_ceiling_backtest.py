@@ -25,6 +25,21 @@ class AdaptiveCeilingComparisonTests(unittest.TestCase):
                                      btc_price_aud=100000, risk_score=0.1))
             self.assertEqual(len(load_rows(path)), 1)
 
+    def test_rejects_unsorted_duplicate_dates_and_nonpositive_prices(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "signals.csv"
+            for dates, prices in [(["2026-01-19", "2026-01-12"], [100000, 100000]),
+                                  (["2026-01-12", "2026-01-12"], [100000, 100000]),
+                                  (["2026-01-12"], [0])]:
+                with path.open("w", newline="") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=["date", "signal_date", "btc_price_aud", "risk_score"])
+                    writer.writeheader()
+                    for day, price in zip(dates, prices):
+                        writer.writerow(dict(date=day, signal_date="2026-01-11",
+                                             btc_price_aud=price, risk_score=0.1))
+                with self.assertRaises(ValueError):
+                    load_rows(path)
+
     def test_scenarios_share_inputs_and_preserve_cash(self):
         start = date(2026, 1, 5)
         rows = [
