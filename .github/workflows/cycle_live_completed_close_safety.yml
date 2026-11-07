@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'engines/research/cycle_live_completed_utc_prices.py'
+      - 'engines/research/cycle_coinbase_daily_reference.py'
+      - 'tests/test_cycle_coinbase_daily_reference.py'
       - 'engines/research/cycle_trading_app.py'
       - 'cycle_trading_daily_ntfy.py'
       - 'engines/research/cycle_forward_signal_tape.py'
@@ -35,6 +37,7 @@ jobs:
       - name: Cross-source date shift, strictly complete UTC closes, market BUY/SELL and unavailable
         run: |
           python -m unittest discover -s tests -p 'test_shared_cycle_live_completed_utc.py' -v
+          python -m unittest discover -s tests -p 'test_cycle_coinbase_daily_reference.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_cycle_market_feed.py' -v
           python -m unittest discover -s tests -p 'test_cycle_forward_kraken_bridge.py' -v
