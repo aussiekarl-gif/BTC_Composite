@@ -1,0 +1,35 @@
+name: Research BTC six-hour slot coverage audit (PR only)
+
+on:
+  pull_request:
+    paths:
+      - 'engines/research/btc_microstructure_capture_coverage.py'
+      - 'tests/test_btc_microstructure_capture_coverage.py'
+      - '.github/workflows/btc_microstructure_capture_coverage.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install public-source reader dependency only
+        run: python -m pip install 'requests>=2.31,<3'
+      - name: Run synthetic timing and gap tests
+        run: |
+          python -m py_compile engines/research/btc_microstructure_capture_coverage.py
+          python -m unittest discover -s tests -p 'test_btc_microstructure_capture_coverage.py' -v
+      - name: Read immutable source tapes and report coverage (no writes)
+        run: python -m engines.research.btc_microstructure_capture_coverage --output /tmp/btc_slot_coverage.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paper-only-btc-slot-coverage
+          path: /tmp/btc_slot_coverage.json
+          retention-days: 14
