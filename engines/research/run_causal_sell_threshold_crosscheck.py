@@ -68,7 +68,38 @@ def compare(master):
                                         "edge_vs_075_aud": candidate["ending_equity_aud"] - baseline["ending_equity_aud"],
                                         "edge_vs_hold_aud": candidate["ending_equity_aud"] - hold["ending_equity_aud"],
                                         "edge_vs_dca_aud": candidate["ending_equity_aud"] - dca["ending_equity_aud"]})
-        output[name] = {"calendar_era_diagnostics_not_out_of_sample": era_results,
+        # Pre-registered calendar-forward selection: threshold selected on earlier
+        # eras only, then frozen on the next unseen era. This is a diagnostic
+        # OOS split, not proof of point-in-time input publication.
+        calendar_forward = []
+        for train_end, test_start, test_end in (
+            ("2019-12-31", "2020-01-01", "2022-12-31"),
+            ("2022-12-31", "2023-01-01", "2026-08-31")):
+            train = data.loc[:train_end]
+            test = data.loc[test_start:test_end]
+            if len(train) < 30 or len(test) < 30:
+                calendar_forward.append({"test_start": test_start, "status": "INSUFFICIENT_ROWS"})
+                continue
+            train_scores = [(_simulate(train, 500_000, t, 0.003)["ending_equity_aud"], t)
+                            for t in (0.55, 0.60, 0.65, 0.70, 0.75)]
+            # Stable ties prefer 0.75, avoiding needless earlier selling.
+            chosen = max(train_scores, key=lambda pair: (pair[0], pair[1]))[1]
+            for cost in (0.001, 0.003, 0.006):
+                chosen_result = _simulate(test, 500_000, chosen, cost)
+                baseline_result = _simulate(test, 500_000, 0.75, cost)
+                hold_result = simulate_buy_and_hold_benchmark(test[["btc_price_aud"]], 500_000, fee_pct=cost)
+                calendar_forward.append({
+                    "train_end": train_end, "test_start": test_start, "test_end": test_end,
+                    "train_rows": len(train), "test_rows": len(test),
+                    "selected_on_train_only": chosen, "cost_per_side": cost,
+                    "selected_sell_count": chosen_result["sell_count"],
+                    "baseline_sell_count": baseline_result["sell_count"],
+                    "selected_equity_aud": chosen_result["ending_equity_aud"],
+                    "edge_vs_075_aud": chosen_result["ending_equity_aud"] - baseline_result["ending_equity_aud"],
+                    "edge_vs_hold_aud": chosen_result["ending_equity_aud"] - hold_result["ending_equity_aud"],
+                    "warning": "Test era held out from threshold selection, but score provenance not proven"})
+        output[name] = {"calendar_forward_selection": calendar_forward,
+                        "calendar_era_diagnostics_not_out_of_sample": era_results,
                         "full_window_descriptive_not_holdout": full_window,
                         "sell_event_coverage": {
             "selected_baseline_folds_with_sells": sum(x["candidate_sell_count"] > 0 for x in selected),
