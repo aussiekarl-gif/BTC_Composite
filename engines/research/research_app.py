@@ -1856,12 +1856,14 @@ elif mode == "DCA Today":
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
             "Normal weekly allowance = capital remaining ÷ weeks remaining. "
-            "That allowance is multiplied only by the fixed Smart DCA weight from today's Risk Score, "
-            "then capped at remaining capital."
+            "The raw Risk Score weight is capped at 1.00x for ordinary weekly purchases. "
+            "Only an eligible newly confirmed Exceptional Bottom event may raise that cap. "
+            "The final purchase is capped at deployable capital."
         )
         st.write(
             f"(A${remaining_capital_aud:,.0f} − A${preserved_capital_aud:,.0f} protected) ÷ {weeks_remaining:.1f} weeks "
-            f"× {risk_weight:.2f} Risk Score weight "
+            f"× {paced_risk_weight:.2f} effective ordinary multiplier "
+            f"(raw risk weight {risk_weight:.2f}x; capped at 1.00x) "
             f"= A${recommended_buy:,.0f}"
         )
         if np.isfinite(rarity["percentile"]):
