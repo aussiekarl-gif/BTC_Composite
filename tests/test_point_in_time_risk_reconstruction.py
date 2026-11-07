@@ -29,7 +29,9 @@ class PointInTimePowerLawTests(unittest.TestCase):
             result = causal_power_law(prices)
 
         self.assertTrue(fits, "Expected a fit after 52 observed weeks")
-        expected_last = np.log10((fridays[-1] - GENESIS).days)
+        expected_last = np.log10((fridays[-2] - GENESIS).days)
+        # First eligible fit happens on the last Friday, excluding that
+        # decision timestamp itself. The 91-day refit cadence then reuses it.
         self.assertAlmostEqual(fits[-1][-1], expected_last, places=10)
         self.assertLess(fits[-1][-1], np.log10((sunday - GENESIS).days))
         self.assertTrue(np.isfinite(result.loc[sunday]))
