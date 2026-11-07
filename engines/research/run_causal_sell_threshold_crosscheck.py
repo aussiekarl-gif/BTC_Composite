@@ -33,7 +33,18 @@ def compare(master):
     for name, data in (("stored", base), ("reconstructed", alternate)):
         wf = expanding_walk_forward(data)
         fixed = fixed_threshold_matrix(data)
-        output[name] = {"selected_thresholds": [
+        selected = [x for x in wf["folds"] if x["cost_per_side"] == 0.003]
+        fixed_rows = fixed["results"]
+        output[name] = {"sell_event_coverage": {
+            "selected_baseline_folds_with_sells": sum(x["candidate_sell_count"] > 0 for x in selected),
+            "selected_baseline_total_sells": sum(x["candidate_sell_count"] for x in selected),
+            "fixed_threshold_sells_by_threshold": {
+                str(t): sum(x["sell_count"] for x in fixed_rows
+                            if x["cost_per_side"] == 0.003 and x["sell_threshold"] == t)
+                for t in (0.55, 0.60, 0.65, 0.70, 0.75)
+            },
+            "warning": "Zero-event thresholds and folds cannot identify an optimal sell policy"
+        }, "selected_thresholds": [
             {"fold": x["fold"], "threshold": x["sell_threshold"],
              "test_start": x["test_start"], "test_end": x["test_end"],
              "candidate_minus_hold_aud": x["candidate_minus_hold_aud"],
