@@ -32,6 +32,19 @@ class DynamicRiskPolicyTests(unittest.TestCase):
         self.assertGreater(at["btc_held"], 0)
         self.assertEqual(above["btc_held"], 0)
 
+    def test_weekly_ceiling_prevents_low_risk_overspend(self):
+        x = replay_dynamic_dca(self.rows([0.01]), **self.opts)
+        self.assertAlmostEqual(x["orders"][0]["buy_aud"], 400000 / (365 / 7) * 3)
+        self.assertLessEqual(x["orders"][0]["buy_aud"], 25000.0)
+
+    def test_ceiling_is_configurable(self):
+        x = replay_dynamic_dca(self.rows([0.01]), max_weekly_fraction=0.02, **self.opts)
+        self.assertAlmostEqual(x["orders"][0]["buy_aud"], 10000.0)
+
+    def test_invalid_ceiling_rejected(self):
+        with self.assertRaises(ValueError):
+            replay_dynamic_dca(self.rows([0.01]), max_weekly_fraction=0, **self.opts)
+
     def test_reserve_protected(self):
         x = replay_dynamic_dca(self.rows([0.01]*60), **self.opts)
         self.assertGreaterEqual(x["cash_aud"], 100000)
