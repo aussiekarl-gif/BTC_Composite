@@ -9,6 +9,7 @@ if str(_REPO_ROOT) not in _sys.path:
 
 from engines.research import research_model as _model
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
+from engines.shared.ibit_dca_display import show_ibit_dca_equivalent
 from engines.shared.model_settings_store import (
     load_dca_target_date,save_dca_target_date,choose_target_date,
 )
@@ -1737,6 +1738,11 @@ elif mode == "DCA Today":
         delta=(f"A${challenger_recommended_buy-recommended_buy:+,.0f} vs R2" if challenger_recommended_buy != recommended_buy else "same as R2"),
         help=f"{challenger_weight:.2f}× normal weekly allowance; halving context does not size, staged bottom events may override"
     )
+
+    st.markdown("**ASX:IBIT equivalent — Three-Pillar recommendation**")
+    show_ibit_dca_equivalent(challenger_recommended_buy, label="Three-Pillar DCA")
+    with st.expander("Frozen R2 equivalent in ASX:IBIT"):
+        show_ibit_dca_equivalent(recommended_buy, label="Frozen R2 DCA")
 
     x1, x2, x3 = st.columns(3)
     x1.metric("Normal Monday DCA", f"A${normal_weekly_allowance:,.0f}", help="Deployable capital divided by weeks to the Strategy Review Date")
