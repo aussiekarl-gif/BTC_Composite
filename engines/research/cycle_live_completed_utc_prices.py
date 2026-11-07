@@ -97,7 +97,14 @@ def merge_verified_live_cycle_prices(archive,raw_blockchain,kraken,*,utc_today):
     # Allow a bounded outage ONLY with independent verified completed closes.
     # A >7-calendar-day chart source delay must remain UNAVAILABLE.
     if (today-chart.index[-1]).days>MAX_LIVE_BLOCKCHAIN_REFERENCE_AGE_DAYS:
-        raise ValueError("Blockchain reference too old for live independent Kraken bridge")
+        raise ValueError(
+            "Blockchain reference too old for live independent Kraken bridge: "
+            f"latest_aligned_utc={chart.index[-1].date()}, "
+            f"asof_utc={today.date()}, "
+            f"age_days={(today-chart.index[-1]).days}, "
+            f"maximum_days={MAX_LIVE_BLOCKCHAIN_REFERENCE_AGE_DAYS}, "
+            f"latest_kraken_completed_utc={candles.index[-1].date() if not candles.empty else 'none'}"
+        )
     if yesterday not in candles.index:
         raise ValueError("Missing independently completed yesterday Kraken close")
     values=candles["btc_usd"].to_numpy(dtype=float)
