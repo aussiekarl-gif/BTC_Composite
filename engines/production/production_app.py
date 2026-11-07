@@ -10,6 +10,7 @@ if str(_REPO_ROOT) not in _sys.path:
 from engines.production import production_model as _model
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
 from engines.shared.ibit_dca_display import show_ibit_dca_equivalent
+from engines.shared.btc_ibit_comparison import show_btc_ibit_comparison
 from engines.shared.model_settings_store import (
     load_dca_target_date,save_dca_target_date,choose_target_date,
 )
@@ -1231,6 +1232,7 @@ elif mode == "DCA Today":
     st.subheader("SMART DCA THIS WEEK")
     st.metric("Recommended DCA This Week", f"A${recommended_buy:,.0f}")
     show_ibit_dca_equivalent(recommended_buy)
+    show_btc_ibit_comparison()
 
     x1, x2, x3 = st.columns(3)
     x1.metric("Normal Weekly Allowance", f"A${normal_weekly_allowance:,.0f}")
