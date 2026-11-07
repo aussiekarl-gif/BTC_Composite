@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import urllib.error
 from pathlib import Path
 import urllib.parse
@@ -23,7 +24,9 @@ def fetch(metric: str, start: str, end: str) -> dict[str, float]:
         for row in payload.get("data", []):
             try:
                 day = dt.datetime.fromisoformat(row["time"].replace("Z", "+00:00")).date().isoformat()
-                values[day] = float(row[metric])
+                value = float(row[metric])
+                if math.isfinite(value) and value >= 0:
+                    values[day] = value
             except (KeyError, TypeError, ValueError):
                 continue
         url = payload.get("next_page_url")
@@ -81,6 +84,9 @@ def report() -> dict:
         and result["metrics"]["IssTotNtv"]["status"] == "OK"
         and result["metrics"]["PriceUSD"]["status"] == "OK"
         and result["comparison"].get("paired_days", 0) >= 365
+        and all(d in series["IssTotNtv"] and d in series["PriceUSD"]
+                for d in ((today - dt.timedelta(days=2)) - dt.timedelta(days=i)).isoformat()
+                for i in range(364, -1, -1))
         and result["comparison"].get("max_relative_difference", 1) < 1e-8
         and result.get("puell_variants", {}).get("IssTotUSD", {}).get("complete_365_calendar_days") is True)
     result["ready_for_merge"] = False
