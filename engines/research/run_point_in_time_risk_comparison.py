@@ -31,7 +31,9 @@ def causal_power_law(prices: pd.Series) -> pd.Series:
     for ts in prices.index:
         if last_fit is None or (ts - last_fit).days >= 91:
             hist = prices.loc[prices.index < ts].dropna()
-            weekly = hist.resample("W-MON").last().dropna()
+            weekly = hist.groupby(pd.Grouper(freq="W-MON")).tail(1).dropna()
+            # Keep each actual observed timestamp; resample().last() labels a
+            # partial week with its future Monday and misdates the regression x.
             days = np.array([(x - GENESIS).days for x in weekly.index], dtype=float)
             vals = weekly.to_numpy(float)
             ok = (days > 0) & np.isfinite(vals) & (vals > 0)
