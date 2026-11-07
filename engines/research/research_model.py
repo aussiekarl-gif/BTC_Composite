@@ -447,25 +447,33 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
 
 
 def risk_occurrence_table(risk_series):
-    """Return simple weekly risk buckets for the DCA Today visibility chart."""
+    """Descriptive weekly risk distribution with mutually exclusive buckets.
+
+    Exact clipped endpoints are shown separately; invalid out-of-range values
+    are counted rather than silently disappearing from the denominator.
+    """
     s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
-    bins = [
-        (0.00, 0.01, "0.00–0.01"),
-        (0.01, 0.02, "0.01–0.02"),
-        (0.02, 0.05, "0.02–0.05"),
-        (0.05, 0.10, "0.05–0.10"),
-        (0.10, 0.20, "0.10–0.20"),
-        (0.20, 0.40, "0.20–0.40"),
-        (0.40, 0.60, "0.40–0.60"),
-        (0.60, 0.80, "0.60–0.80"),
-        (0.80, 1.000001, "0.80–1.00"),
+    n = len(s)
+    masks = [
+        ("<0.00 (invalid)", s < 0),
+        ("0.000 (floor)", s == 0),
+        ("(0.00, 0.01)", (s > 0) & (s < 0.01)),
+        ("0.01–0.02", (s >= 0.01) & (s < 0.02)),
+        ("0.02–0.05", (s >= 0.02) & (s < 0.05)),
+        ("0.05–0.10", (s >= 0.05) & (s < 0.10)),
+        ("0.10–0.20", (s >= 0.10) & (s < 0.20)),
+        ("0.20–0.40", (s >= 0.20) & (s < 0.40)),
+        ("0.40–0.60", (s >= 0.40) & (s < 0.60)),
+        ("0.60–0.80", (s >= 0.60) & (s < 0.80)),
+        ("0.80–1.00", (s >= 0.80) & (s < 1.0)),
+        ("1.000 (cap)", s == 1.0),
+        (">1.00 (invalid)", s > 1.0),
     ]
-    rows = []
-    total = max(len(s), 1)
-    for lo, hi, label in bins:
-        count = int(((s >= lo) & (s < hi)).sum())
-        rows.append({"Risk range": label, "Weeks": count, "Percent": 100.0 * count / total})
-    return pd.DataFrame(rows)
+    return pd.DataFrame([
+        {"Risk range": label, "Weeks": int(mask.sum()),
+         "Percent": 100.0 * int(mask.sum()) / n if n else 0.0}
+        for label, mask in masks
+    ])
 
 
 # ================================================================
