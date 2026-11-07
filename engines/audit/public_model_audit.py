@@ -849,8 +849,12 @@ def build_free_indicator_cache(start_date, end_date):
                 issuance = x
                 issuance_source = "SplyCur.diff() proxy fallback"
         if issuance_source is not None and "PriceUSD" in raw:
-            issuance_usd = issuance * pd.to_numeric(raw["PriceUSD"], errors="coerce")
-            issuance_usd_source = f"{issuance_source} * PriceUSD"
+            candidate_usd = issuance * pd.to_numeric(raw["PriceUSD"], errors="coerce")
+            # The combined USD series, not just native issuance, must have a
+            # complete calendar-year window before a Puell value is advertised.
+            if candidate_usd.notna().rolling(365, min_periods=365).sum().eq(365).any():
+                issuance_usd = candidate_usd
+                issuance_usd_source = f"{issuance_source} * PriceUSD"
 
     if issuance_usd_source is not None:
         out["Puell Multiple"] = issuance_usd / issuance_usd.rolling(365, min_periods=365).mean()
