@@ -1,0 +1,20 @@
+name: Puell calendar completeness tests
+on:
+  pull_request:
+    paths:
+      - 'engines/audit/public_model_audit.py'
+      - 'tests/test_puell_calendar_completeness.py'
+      - '.github/workflows/puell_calendar_tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test-puell-calendar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install numpy pandas
+      - run: python -m unittest discover -s tests -p 'test_puell_calendar_completeness.py' -v
