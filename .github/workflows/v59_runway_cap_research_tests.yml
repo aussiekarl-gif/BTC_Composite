@@ -8,6 +8,8 @@ on:
       - 'engines/research/v59_adaptive_ceiling_backtest.py'
       - 'tests/test_v59_adaptive_ceiling_backtest.py'
       - 'tests/test_v59_dynamic_risk_policy.py'
+      - 'engines/research/v59_disjoint_risk_band_proxy.py'
+      - 'tests/test_v59_disjoint_risk_band_proxy.py'
       - '.github/workflows/v59_runway_cap_research_tests.yml'
   workflow_dispatch:
 permissions:
@@ -23,3 +25,4 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_v59_runway_cap_replay.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_dynamic_risk_policy.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_adaptive_ceiling_backtest.py' -v
+      - run: python -m unittest discover -s tests -p 'test_v59_disjoint_risk_band_proxy.py' -v
