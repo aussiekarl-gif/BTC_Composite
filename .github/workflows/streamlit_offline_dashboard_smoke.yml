@@ -12,6 +12,7 @@ on:
       - 'engines/shared/model_settings_store.py'
       - 'engines/production/production_app.py'
       - 'engines/research/research_app.py'
+      - 'tests/test_v59_risk_ui_acceptance.py'
   pull_request:
     paths:
       - 'tests/test_streamlit_offline_ui_smoke.py'
@@ -22,6 +23,7 @@ on:
       - 'engines/shared/model_settings_store.py'
       - 'engines/production/production_app.py'
       - 'engines/research/research_app.py'
+      - 'tests/test_v59_risk_ui_acceptance.py'
       - '.github/workflows/streamlit_offline_dashboard_smoke.yml'
   workflow_dispatch:
 
@@ -51,6 +53,8 @@ jobs:
           python -m py_compile tests/test_streamlit_offline_ui_smoke.py
       - name: Run REAL launcher AppTest with synthetic BTC and offline personal ledger
         run: python -m unittest discover -s tests -p 'test_streamlit_offline_ui_smoke.py' -v
+      - name: Test REAL V5.9 Research page with synthetic price and missing private ledger
+        run: python -m unittest discover -s tests -p 'test_v59_risk_ui_acceptance.py' -v
       - name: Protect actual date widgets, model decisions and notification agreement
         run: |
           python -m unittest discover -s tests -p 'test_dca_target_date_persistence.py' -v
