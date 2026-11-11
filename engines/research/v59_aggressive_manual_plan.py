@@ -11,7 +11,7 @@ from datetime import datetime, date, timezone, timedelta
 import hashlib
 import json
 import math
-from decimal import Decimal, ROUND_DOWN, ROUND_FLOOR, ROUND_UP
+from decimal import Decimal, DivisionByZero, InvalidOperation, ROUND_DOWN, ROUND_FLOOR, ROUND_UP
 from zoneinfo import ZoneInfo
 
 from engines.shared.portfolio_transactions import portfolio_positions, parse_date
@@ -190,15 +190,20 @@ def manual_ibit_plan(*, saved_portfolio: dict, risk_snapshot: dict,
     # that may fill higher than the currently observed ask. Decimal arithmetic
     # rounds the allowed programme spend DOWN, and limit price/fee UP to cents,
     # protecting the 5% weekly and free-cash ceilings at whole-share precision.
-    cent = Decimal("0.01")
-    limit_price = Decimal(str(ask)).quantize(cent, rounding=ROUND_UP)
-    fixed_fee = Decimal(str(fee)).quantize(cent, rounding=ROUND_UP)
-    max_spend = Decimal(str(proposed)).quantize(cent, rounding=ROUND_DOWN)
-    units = (
-        max(0, int(((max_spend - fixed_fee) / limit_price).to_integral_value(rounding=ROUND_FLOOR)))
-        if max_spend > fixed_fee else 0
-    )
-    worst_case_total = units * limit_price + fixed_fee if units else Decimal("0.00")
+    try:
+        cent = Decimal("0.01")
+        limit_price = Decimal(str(ask)).quantize(cent, rounding=ROUND_UP)
+        fixed_fee = Decimal(str(fee)).quantize(cent, rounding=ROUND_UP)
+        max_spend = Decimal(str(proposed)).quantize(cent, rounding=ROUND_DOWN)
+        units = (
+            max(0, int(((max_spend - fixed_fee) / limit_price).to_integral_value(rounding=ROUND_FLOOR)))
+            if max_spend > fixed_fee else 0
+        )
+        worst_case_total = units * limit_price + fixed_fee if units else Decimal("0.00")
+    except (InvalidOperation, DivisionByZero, OverflowError, ValueError):
+        return {"ready": False, "status": "INVALID_ORDER_PRICE_OR_BUDGET",
+                "blockers": ["Quote, fee or cash amount cannot be safely represented as an AUD cents limit order"],
+                "order_sent": False}
     if units <= 0:
         blocked.append("NO_AFFORDABLE_WHOLE_IBIT_SHARES_WITHIN_WEEKLY_BUDGET")
     result = {
