@@ -19,6 +19,50 @@ from engines.research.v59_dynamic_risk_policy import risk_buy_multiplier
 _ASX_TZ = ZoneInfo("Australia/Sydney")
 _MAX_QUOTE_AGE = timedelta(minutes=15)
 _FIXED_FEE_DEFAULT_AUD = 3.00
+_MAX_RISK_AGE_DAYS = 3
+_MAX_SNAPSHOT_CAPTURE_AGE = timedelta(minutes=15)
+
+
+def risk_snapshot_blockers(risk_snapshot: dict, now: datetime) -> list[str]:
+    """Independently validate snapshot dates, not just self-reported freshness flags.
+
+    This protects against an old cached or manually assembled snapshot that
+    accidentally retains risk_and_fx_fresh=True and a low 0.000 sizing score.
+    """
+    issues = []
+    if risk_snapshot.get("risk_model") != "Research WF Power Law":
+        issues.append("RISK_MODEL_NOT_LIVE_V59_R2")
+    if risk_snapshot.get("status") != "RESEARCH_SIGNAL_SNAPSHOT_READY":
+        issues.append("RISK_SOURCE_ACCEPTANCE_NOT_READY")
+    try:
+        observed = datetime.fromisoformat(str(risk_snapshot["closed_risk_observation_utc"]))
+        observed = observed.astimezone(timezone.utc) if observed.tzinfo else None
+        if observed is None or observed.time().hour != 0 or observed.minute != 0 or observed.second != 0:
+            raise ValueError
+        elapsed = (now.date() - observed.date()).days
+        if not 1 <= elapsed <= _MAX_RISK_AGE_DAYS:
+            issues.append("R2_COMPLETED_DAILY_OBSERVATION_STALE_OR_FUTURE")
+        recorded_age = risk_snapshot.get("closed_risk_age_days")
+        if recorded_age is None or int(recorded_age) != elapsed:
+            issues.append("R2_OBSERVATION_DATE_AGE_MISMATCH")
+    except (ValueError, TypeError, KeyError, OverflowError):
+        issues.append("R2_OBSERVATION_TIMESTAMP_UNVERIFIED")
+    try:
+        captured = datetime.fromisoformat(str(risk_snapshot["captured_at_utc"]))
+        if captured.tzinfo is None:
+            raise ValueError
+        age = now - captured.astimezone(timezone.utc)
+        if not timedelta(0) <= age <= _MAX_SNAPSHOT_CAPTURE_AGE:
+            issues.append("R2_SNAPSHOT_CAPTURE_NOT_RECENT")
+    except (ValueError, TypeError, KeyError):
+        issues.append("R2_SNAPSHOT_CAPTURE_TIMESTAMP_UNVERIFIED")
+    try:
+        fx_date = date.fromisoformat(str(risk_snapshot["fx_observation_date_utc"]))
+        if not 0 <= (now.date() - fx_date).days <= 5:
+            issues.append("AUD_FX_OBSERVATION_DATE_STALE_OR_FUTURE")
+    except (ValueError, TypeError, KeyError):
+        issues.append("AUD_FX_DATE_UNVERIFIED")
+    return issues
 
 
 def broker_fields_fingerprint(*, ledger: dict, cash: float, ibit_units: int,
@@ -75,6 +119,7 @@ def manual_ibit_plan(*, saved_portfolio: dict, risk_snapshot: dict,
         return {"ready": False, "status": "INVALID_BROKER_INPUT",
                 "blockers": ["Broker cash, whole IBIT units, quote and fees must be finite and valid"],
                 "order_sent": False}
+    blocked.extend(risk_snapshot_blockers(risk_snapshot, now))
     if not risk_snapshot.get("risk_and_fx_fresh", False):
         blocked.append("RISK_AND_AUD_FX_NOT_VERIFIED_FRESH")
     if risk_snapshot.get("risk_score_source") != "Walk-forward Power Law":
