@@ -97,5 +97,67 @@ class ResearchRealPageAcceptance(unittest.TestCase):
             ))
 
 
+    def test_saved_portfolio_shows_broker_form_but_requires_explicit_confirmation(self):
+        """Real DCA Today screen with mock ledger; never a fake live broker order."""
+        prices = synthetic_history()
+        fx = pd.Series(.69, index=prices.index)
+        ledger = {
+            "starting_capital_aud": 500_000.0,
+            "capital_remaining_aud": 495_997.0,
+            "rows": [{
+                "Date": "01/10/2026", "Asset": "ASX:IBIT",
+                "Units / BTC Received": 200,
+                "AUD Spent": 4000.0,
+                "Brokerage / Fee AUD": 3.0,
+                "BTC AUD Price": 100_000.0,
+            }],
+            "sales": [],
+        }
+        def no_writes(*args, **kwargs):
+            raise AssertionError("Never write portfolio/notification in offline UI test")
+        with ExitStack() as stack:
+            for target, replacement in [
+                ("engines.research.research_model.fetch_btc_history", lambda *a,**k:prices.copy()),
+                ("engines.research.research_model.fetch_aud_usd_rates", lambda *a,**k:fx.copy()),
+                ("engines.research.research_model.fetch_live_btc_aud", lambda *a,**k:float("nan")),
+                ("engines.research.research_model.add_risk_indicators", synthetic_risk),
+                ("engines.shared.portfolio_store.load_portfolio", lambda: (ledger.copy(), None)),
+                ("engines.shared.portfolio_store.save_portfolio", no_writes),
+                ("engines.shared.model_settings_store.load_dca_target_date",
+                 lambda *_: ("2027-12-31",None)),
+                ("engines.shared.model_settings_store.save_dca_target_date", no_writes),
+            ]:
+                stack.enter_context(patch(target, replacement))
+            stack.enter_context(patch("engines.research.research_model.LOCAL_STORAGE_AVAILABLE",False))
+            st.cache_data.clear()
+            page = AppTest.from_file(str(APP),default_timeout=75).run()
+            self.assertFalse(page.exception,repr([x.message for x in page.exception]))
+            labels = [x.label for x in page.number_input]
+            self.assertIn("Stake available-to-trade AUD cash (not total account value)",labels)
+            self.assertIn("Actual ASX:IBIT whole shares shown by Stake",labels)
+            self.assertIn("Fresh Stake ASX:IBIT ask price per share in AUD",labels)
+            self.assertTrue(any(
+                x.label == "Verify and calculate manual order plan" for x in page.button
+            ))
+            self.assertFalse(any(
+                "Manual IBIT plan only:" in str(x.proto) for x in page.success
+            ))
+            # Enter plausible broker data but deliberately DO NOT tick the
+            # personal confirmation checkbox. A form submission must stay
+            # blocked even if all synthetic valuation and cash inputs look good.
+            next(x for x in page.number_input if x.label.startswith("Stake available-to-trade")).set_value(495_997.0)
+            next(x for x in page.number_input if x.label.startswith("Actual ASX:IBIT")).set_value(200)
+            next(x for x in page.number_input if x.label.startswith("Fresh Stake ASX:IBIT")).set_value(20.0)
+            page = next(x for x in page.button if x.label == "Verify and calculate manual order plan").click().run()
+            self.assertFalse(page.exception,repr([x.message for x in page.exception]))
+            self.assertTrue(any(
+                "STAKE_BROKER_FIELDS_NOT_RECENTLY_CONFIRMED" in str(x.proto)
+                for x in page.warning
+            ),[str(x.proto) for x in page.warning])
+            self.assertFalse(any(
+                "Manual IBIT plan only:" in str(x.proto) for x in page.success
+            ))
+
+
 if __name__ == "__main__":
     unittest.main()
