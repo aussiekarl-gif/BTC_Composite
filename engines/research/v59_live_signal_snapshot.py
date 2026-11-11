@@ -76,7 +76,7 @@ def snapshot_from_scored(scored: pd.DataFrame, *, now_utc: datetime, params: dic
     market_ready = risk_ready and fx_valid and fx_age_ok
     preview_multiplier = risk_buy_multiplier(score) if risk_ready else None
     fingerprint = hashlib.sha256(
-        (json.dumps(params, sort_keys=True)+"|"+str(stamp)+"|"+
+        (json.dumps(params, sort_keys=True, default=str)+"|"+str(stamp)+"|"+
          str(spot_usd)+"|"+str(score)+"|"+source).encode("utf-8")
     ).hexdigest()
     return {
