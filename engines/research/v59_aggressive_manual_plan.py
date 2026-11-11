@@ -25,9 +25,9 @@ def broker_fields_fingerprint(*, ledger: dict, cash: float, ibit_units: int,
                               ibit_ask: float, brokerage_fee: float,
                               protected_aud: float, target: date) -> str:
     payload = {
-        "portfolio": ledger, "cash": cash, "ibit_units": ibit_units,
-        "ibit_ask": ibit_ask, "brokerage_fee": brokerage_fee,
-        "protected_aud": protected_aud, "target": target.isoformat(),
+        "portfolio": ledger, "cash": float(cash), "ibit_units": int(ibit_units),
+        "ibit_ask": float(ibit_ask), "brokerage_fee": float(brokerage_fee),
+        "protected_aud": float(protected_aud), "target": target.isoformat(),
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
