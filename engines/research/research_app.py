@@ -1590,16 +1590,20 @@ elif mode == "DCA Today":
             )
             if _plan["ready"]:
                 st.success(
-                    f"Manual IBIT plan only: {int(_plan['indicative_whole_ibit_units']):,} whole "
-                    f"shares at a user-verified A${_ask_input:,.2f} ask, "
-                    f"estimated total including fee A${_plan['indicative_order_total_inc_fee_aud']:,.2f}. "
+                    f"Manual IBIT plan only — BUY LIMIT (not MARKET): "
+                    f"{int(_plan['indicative_whole_ibit_units']):,} whole shares, "
+                    f"maximum limit A${_plan['maximum_buy_limit_price_aud']:,.2f} per share; "
+                    f"worst-case cost including fee A${_plan['indicative_order_total_inc_fee_aud']:,.2f}. "
                     f"Risk {current_risk:.3f} → {_plan['multiplier']:.2f}×; "
                     f"weekly cap A${_plan['weekly_cap_aud']:,.0f}. No order placed."
                 )
                 st.caption(
-                    "Double-check live executable price, account cash, any ASX holidays, "
-                    "fund costs and whole-share rounding again when placing your OWN order. "
-                    "The 15-minute attestation expires automatically."
+                    "This is an indicative manual BUY LIMIT plan, not an executable quote. "
+                    "A market order could exceed the cash and weekly cap; never convert "
+                    "this quantity into an uncapped MARKET order. Confirm the live Stake "
+                    "ask, brokerage, pending orders, available cash and any ASX holiday "
+                    "before entering a limit order yourself. If the ask rises above the "
+                    "limit, the order might not fill. The 15-minute confirmation expires automatically."
                 )
             else:
                 st.warning("Not ready for a manual IBIT purchase: " + ", ".join(_plan["blockers"]))
