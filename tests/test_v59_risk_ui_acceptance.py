@@ -133,7 +133,7 @@ class ResearchRealPageAcceptance(unittest.TestCase):
             page = AppTest.from_file(str(APP),default_timeout=75).run()
             self.assertFalse(page.exception,repr([x.message for x in page.exception]))
             labels = [x.label for x in page.number_input]
-            self.assertIn("Stake available-to-trade AUD cash (not total account value)",labels)
+            self.assertIn("Stake available-to-trade AUD cash (not total account value)",labels, [str(w.proto) for w in page.warning])
             self.assertIn("Actual ASX:IBIT whole shares shown by Stake",labels)
             self.assertIn("Fresh Stake ASX:IBIT ask price per share in AUD",labels)
             self.assertTrue(any(
