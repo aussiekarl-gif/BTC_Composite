@@ -12,6 +12,9 @@ on:
       - 'engines/research/v59_input_readiness.py'
       - 'tests/test_v59_disjoint_risk_band_proxy.py'
       - 'tests/test_v59_input_readiness.py'
+      - 'engines/research/v59_risk_visibility.py'
+      - 'tests/test_v59_risk_visibility.py'
+      - 'engines/research/research_app.py'
       - '.github/workflows/v59_runway_cap_research_tests.yml'
   workflow_dispatch:
 permissions:
@@ -29,3 +32,5 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_v59_adaptive_ceiling_backtest.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_disjoint_risk_band_proxy.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_input_readiness.py' -v
+      - run: python -m unittest discover -s tests -p 'test_v59_risk_visibility.py' -v
+      - run: python -m py_compile engines/research/research_app.py engines/research/v59_risk_visibility.py
