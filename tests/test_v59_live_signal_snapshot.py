@@ -31,6 +31,19 @@ class ProspectiveRiskCaptureAcceptance(unittest.TestCase):
         self.assertFalse(s["ready_for_live_aggressive_orders"])
         self.assertFalse(s["personal_portfolio_loaded"])
 
+    def test_full_streamlit_params_include_datetime_and_fingerprint_is_stable(self):
+        """The DCA Today UI passes aware start/end datetimes, not JSON strings."""
+        params = live_risk_params()
+        params["start_date"] = datetime(2015, 11, 14, tzinfo=timezone.utc)
+        params["end_date"] = datetime(2026, 11, 11, tzinfo=timezone.utc)
+        snapshot = snapshot_from_scored(frame("2026-11-10"), now_utc=NOW,
+                                        params=params, fx_latest_date="2026-11-10")
+        replay = snapshot_from_scored(frame("2026-11-10"), now_utc=NOW,
+                                      params=params, fx_latest_date="2026-11-10")
+        self.assertEqual(snapshot["status"], "RESEARCH_SIGNAL_SNAPSHOT_READY")
+        self.assertEqual(snapshot["fingerprint"], replay["fingerprint"])
+        self.assertEqual(snapshot["research_aggressive_risk_band_multiplier"], 3.)
+
     def test_daily_future_row_never_replaces_latest_closed(self):
         a = frame("2026-11-10", risk=.4)
         b = frame("2026-11-11", risk=0.)
