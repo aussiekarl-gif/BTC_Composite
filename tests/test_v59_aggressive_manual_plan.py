@@ -1,6 +1,8 @@
 """Deterministic broker-cash and manual IBIT quantity safety tests."""
 import copy
+from decimal import Decimal
 from datetime import datetime, timedelta, timezone, date
+import random
 import unittest
 from engines.research.v59_aggressive_manual_plan import (
     manual_ibit_plan, broker_fields_fingerprint,
@@ -132,6 +134,45 @@ class ManualAggressivePlanTests(unittest.TestCase):
                 p = plan(risk=dict(RISK, **updates))
                 self.assertFalse(p["ready"])
                 self.assertIn(error, p["blockers"])
+
+    def test_limit_price_rounded_up_for_budget_safety(self):
+        p = plan(ask=20.001)
+        self.assertTrue(p["ready"], p["blockers"])
+        self.assertEqual(p["maximum_buy_limit_price_aud"], 20.01)
+        self.assertEqual(p["order_type_required_for_budget_protection"], "BUY_LIMIT_NOT_MARKET")
+        self.assertLessEqual(p["indicative_order_total_inc_fee_aud"], p["proposed_max_spend_aud"])
+        self.assertFalse(p["order_sent"])
+
+    def test_huge_quote_is_safely_rejected(self):
+        p = plan(ask=1e308)
+        self.assertFalse(p["ready"])
+        self.assertEqual(p["status"], "INVALID_ORDER_PRICE_OR_BUDGET")
+        self.assertFalse(p["order_sent"])
+
+    def test_randomized_limit_orders_respect_cash_and_weekly_cap(self):
+        rng = random.Random(20261111)
+        risk_levels = (0, .10, .10001, .20, .20001, .40, .40001, .50, .50001, 1.)
+        for n in range(500):
+            cash = float(rng.randrange(2000, 600000))
+            reserve = float(rng.randrange(0, int(min(cash, 500000))+1))
+            ask = rng.randrange(300, 100000) / 100
+            risk = rng.choice(risk_levels)
+            p = plan(cash=cash, reserve=reserve, ask=ask,
+                     risk=dict(RISK, r2_sizing_risk=risk))
+            self.assertFalse(p["order_sent"])
+            if risk > .5 or not p["ready"]:
+                self.assertIsNone(p["indicative_whole_ibit_units"])
+                continue
+            with self.subTest(n=n):
+                units = p["indicative_whole_ibit_units"]
+                limit = Decimal(str(p["maximum_buy_limit_price_aud"]))
+                total = Decimal(str(p["indicative_order_total_inc_fee_aud"]))
+                self.assertEqual(total, units * limit + Decimal("3.00"))
+                self.assertLessEqual(total, Decimal(str(p["proposed_max_spend_aud"])))
+                self.assertLessEqual(total, Decimal(str(p["weekly_cap_aud"])))
+                self.assertLessEqual(total, Decimal(str(p["spendable_aud"])))
+                self.assertLessEqual(total, Decimal(str(cash)))
+                self.assertGreater(units, 0)
 
     def test_quote_larger_than_budget_no_whole_units(self):
         p = plan(ask=30000)
