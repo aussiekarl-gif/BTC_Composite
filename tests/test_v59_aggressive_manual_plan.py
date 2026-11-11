@@ -13,6 +13,11 @@ RISK = {
     "risk_score_source": "Walk-forward Power Law", "r2_sizing_risk": 0.0,
     "ready_for_live_aggressive_orders": False,
     "closed_risk_observation_utc": "2026-11-08T00:00:00+00:00",
+    "closed_risk_age_days": 1,
+    "captured_at_utc": NOW.isoformat(),
+    "fx_observation_date_utc": "2026-11-06",
+    "status": "RESEARCH_SIGNAL_SNAPSHOT_READY",
+    "risk_model": "Research WF Power Law",
 }
 
 
@@ -89,6 +94,44 @@ class ManualAggressivePlanTests(unittest.TestCase):
         p = plan(ledger=ledger, cash=499797, units=10)
         self.assertIn("BUY_ALREADY_RECORDED_THIS_WEEK", p["blockers"])
         self.assertFalse(p["ready"])
+
+    def test_old_risk_date_cannot_reuse_a_true_freshness_flag(self):
+        prior = dict(RISK, closed_risk_observation_utc="2026-10-20T00:00:00+00:00",
+                     closed_risk_age_days=20)
+        p = plan(risk=prior)
+        self.assertFalse(p["ready"])
+        self.assertIn("R2_COMPLETED_DAILY_OBSERVATION_STALE_OR_FUTURE", p["blockers"])
+        self.assertIsNone(p["indicative_whole_ibit_units"])
+
+    def test_dated_signal_and_age_must_agree(self):
+        prior = dict(RISK, closed_risk_age_days=0)
+        p = plan(risk=prior)
+        self.assertFalse(p["ready"])
+        self.assertIn("R2_OBSERVATION_DATE_AGE_MISMATCH", p["blockers"])
+
+    def test_partial_current_utc_day_is_not_a_closed_r2_signal(self):
+        risk = dict(RISK, closed_risk_observation_utc="2026-11-09T00:00:00+00:00",
+                    closed_risk_age_days=0)
+        p = plan(risk=risk)
+        self.assertFalse(p["ready"])
+        self.assertIn("R2_COMPLETED_DAILY_OBSERVATION_STALE_OR_FUTURE", p["blockers"])
+
+    def test_cached_snapshot_without_recent_capture_is_blocked(self):
+        r = dict(RISK, captured_at_utc=(NOW - timedelta(hours=2)).isoformat())
+        self.assertIn("R2_SNAPSHOT_CAPTURE_NOT_RECENT", plan(risk=r)["blockers"])
+        r = dict(RISK, captured_at_utc="2026-11-09T01:00:00")
+        self.assertIn("R2_SNAPSHOT_CAPTURE_TIMESTAMP_UNVERIFIED", plan(risk=r)["blockers"])
+
+    def test_status_model_and_fx_date_are_enforced(self):
+        for updates, error in (
+            ({"risk_model": "Composite V3.6"}, "RISK_MODEL_NOT_LIVE_V59_R2"),
+            ({"status": "BLOCKED_SOURCE_OR_FRESHNESS"}, "RISK_SOURCE_ACCEPTANCE_NOT_READY"),
+            ({"fx_observation_date_utc": "2026-10-30"}, "AUD_FX_OBSERVATION_DATE_STALE_OR_FUTURE"),
+        ):
+            with self.subTest(updates=updates):
+                p = plan(risk=dict(RISK, **updates))
+                self.assertFalse(p["ready"])
+                self.assertIn(error, p["blockers"])
 
     def test_quote_larger_than_budget_no_whole_units(self):
         p = plan(ask=30000)
