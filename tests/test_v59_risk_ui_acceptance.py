@@ -90,10 +90,10 @@ class ResearchRealPageAcceptance(unittest.TestCase):
             # Private portfolio intentionally absent; planner explicitly blocks.
             self.assertTrue(any(
                 "saved Google/Streamlit portfolio could not be verified"
-                in str(w.message) for w in page.warning
-            ), [str(w.message) for w in page.warning])
+                in str(w.proto) for w in page.warning
+            ), [str(w.proto) for w in page.warning])
             self.assertFalse(any(
-                "Manual IBIT plan only:" in str(s.message) for s in page.success
+                "Manual IBIT plan only:" in str(s.proto) for s in page.success
             ))
 
 
