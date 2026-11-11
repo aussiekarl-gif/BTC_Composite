@@ -8,6 +8,9 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.research import research_model as _model
+from engines.research.v59_risk_visibility import (
+    aggressive_candidate_preview, highlighted_histogram_bucket,
+)
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
 from engines.shared.ibit_dca_display import show_ibit_dca_equivalent
 from engines.shared.btc_ibit_comparison import show_btc_ibit_comparison
@@ -514,7 +517,7 @@ with st.sidebar:
         st.caption(
             "Custom V5.9 multiplier curve is active."
             if custom_curve_active else
-            "V5.9 default: 2.00× at risk 0.00, 1.00× at risk 0.50, and 0.80× at risk 1.00."
+            "V5.9 default: 2.00× at risk 0.00, 1.00× at risk 0.50, and 0.60× at risk 1.00."
         )
 
         browser_state["today"] = {
@@ -1256,6 +1259,18 @@ elif mode == "DCA Today":
         max(0.0, normal_weekly_allowance * challenger_weight),
     )
 
+    # Compare live capped recommendation with the separate research bands.
+    # Never silently promote candidate allocation into live sizing or ntfy.
+    _sizing_observation_date = pd.Timestamp(latest.name).date()
+    _sizing_observation_age_days = (now_utc.date() - _sizing_observation_date).days
+    _aggressive_preview = aggressive_candidate_preview(
+        sizing_risk=current_risk,
+        base_weekly_aud=normal_weekly_allowance,
+        deployable_aud=deployable_before_review,
+        starting_capital_aud=starting_capital_aud,
+        risk_observation_age_days=_sizing_observation_age_days,
+    )
+
     # Better-entry probability is informational only in V5.9 Research.
     # It never overrides the Risk Score sizing curve.
     extreme_all_in_eligible = False
@@ -1447,6 +1462,33 @@ elif mode == "DCA Today":
         """,
         unsafe_allow_html=True,
     )
+
+
+    st.info(
+        f"Why only 1×? The R2 sizing risk is {current_risk:.3f}, giving the selected "
+        f"curve {risk_weight:.2f}×, but the ordinary V5.9 live runway guard caps "
+        f"it at {paced_risk_weight:.2f}×. The orange histogram uses a DIFFERENT "
+        "continuous valuation-risk reading and does not set this week's buy."
+    )
+    with st.expander("Aggressive risk-band DCA — research preview, NOT the live buy", expanded=False):
+        _preview_amount = _aggressive_preview["candidate_buy_aud"]
+        _preview_text = (
+            f"A${_preview_amount:,.0f}" if _preview_amount is not None
+            else "BLOCKED: dated risk observation is stale or future-dated"
+        )
+        _preview_cols = st.columns(3)
+        _preview_cols[0].metric("Live ordinary multiplier", f"{paced_risk_weight:.2f}×")
+        _preview_cols[1].metric("Aggressive research multiplier", f"{_aggressive_preview['candidate_multiplier']:.2f}×")
+        _preview_cols[2].metric("Hypothetical weekly allocation", _preview_text)
+        st.caption(
+            f"R2 SIZING risk {current_risk:.3f}; observation date {_sizing_observation_date}; "
+            f"age {_sizing_observation_age_days} days. Research bands: ≤0.10: 3×, "
+            "≤0.20: 2×, ≤0.40: 1.5×, ≤0.50: 1×, >0.50: NO BUY. "
+            "Illustrative amount capped at the deployable cash and 5% of starting "
+            "capital per week. A recent observation does NOT prove provider timestamp "
+            "provenance or ETF tradeability. No live sizing, portfolio, Streamlit hero "
+            "recommendation, or ntfy execution is changed by this preview."
+        )
 
     a, b, c, d = st.columns(4)
     a.metric(
@@ -1709,8 +1751,8 @@ elif mode == "DCA Today":
             "capitulation stage while confluence remains exceptional uses 4x, and a recent recovery confirmation uses 3x.\n\n"
             "**Bull Age / Cycle Stage = context.** They describe how long the current confirmed weekly bull trend "
             "has been active and do not alter sizing.\n\n"
-            "**Halving Accumulation Zone = context only.** This is the broad causal day +800 to +1000 research window. "
-            "While active, it raises ordinary R2 sizing to at least 2.50x. The exact −500/+500 dates remain context markers and do not themselves trigger a trade.\n\n"
+            "**Halving Accumulation Zone = context only.** This is the broad causal day +600 to +1200 research window. "
+            "It does not change ordinary sizing. The exact −500/+500 dates remain context markers and do not trigger a trade.\n\n"
             "Opportunity Rarity and Better Entry Evidence remain informational only. Bull Age remains context only. "
             "Only an explicit new Bottom Challenger staged event can raise the purchase above the paced weekly allowance."
         )
@@ -1768,13 +1810,9 @@ elif mode == "DCA Today":
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(display_source)
     fig_occurrence = go.Figure()
-    # Highlight the bucket that contains today's risk (same edges as risk_occurrence_table).
-    _bucket_edges = [0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80]
-    try:
-        _cur = float(_display_now)
-        _cur_idx = sum(_cur >= e for e in _bucket_edges) if _cur == _cur else -1
-    except (TypeError, ValueError):
-        _cur_idx = -1
+    # The histogram has separate invalid, zero and (0, .01) categories.
+    # Former edge counting highlighted a bar two places to the left.
+    _cur_idx = highlighted_histogram_bucket(_display_now)
     _bar_colors = [
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
     ]
