@@ -35,6 +35,24 @@ class SeventeenWeekWmaEpisodeTests(unittest.TestCase):
         change[1]["btc_price_aud"]=1.
         self.assertEqual(study.historical_crossings(change),events)
 
+    def test_below_wma_streaks_measure_sunday_closes_not_calendar_crash_duration(self):
+        data=mock_rows(104,cross=1,remain_below=20)
+        streaks=study.observed_below_wma_streaks(data)
+        self.assertEqual(len(streaks),1)
+        self.assertEqual(streaks[0]["consecutive_weekly_closes_below_200wma"],20)
+        self.assertEqual(streaks[0]["first_monday"],"2018-01-08")
+
+    def test_near_5percent_threshold_may_trigger_without_being_below_wma(self):
+        data=mock_rows(105,cross=1,remain_below=20)
+        data[1]["ratio_to_200wma"]=1.03
+        data[2]["ratio_to_200wma"]=.98
+        a=study.historical_crossings(data,threshold=1.05)
+        b=study.historical_crossings(data,threshold=1.)
+        self.assertEqual(a[0]["crossing_monday"],date(2018,1,8))
+        self.assertEqual(b[0]["crossing_monday"],date(2018,1,15))
+        # Cohort starts must be distinguishable; near does not imply below.
+        self.assertEqual(study.eligible_cohorts(data,threshold=1.05)[0]["start"],"2018-01-08")
+
     def test_500k_17week_unrestricted_exceeds_user_cap(self):
         rows=mock_rows(104,cross=0,remain_below=104)
         x=study.replay(rows,policy="17_calendar_unrestricted",capital=500000.)
