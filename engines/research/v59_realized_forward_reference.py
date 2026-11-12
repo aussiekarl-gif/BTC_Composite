@@ -11,11 +11,16 @@ from datetime import date,datetime,timezone
 import hashlib
 import json
 import math
+import csv
+import io
 
 import requests
 
 SOURCE="BGeometrics Bitcoin Data API, realized-price"
 SOURCE_URL="https://bitcoin-data.com/v1/realized-price/last"
+EXPLORE21_SOURCE="Explore21 Bitcoin Core on-chain realized price CSV (CC BY 4.0)"
+EXPLORE21_URL="https://charts.explore21.com/data/bitcoin-realized-price.csv"
+EXPLORE21_CHART="https://charts.explore21.com/bitcoin-realized-price"
 MAX_PROVIDER_AGE_DAYS=3
 FIELDS=("realizedPrice","realized_price","realized-price","realizedPriceUsd",
         "realized_price_usd","realizedprice","realized_price_btc","value")
@@ -81,25 +86,94 @@ def normalized_reference(raw, *, captured_at_utc:datetime,
             "usable_for_forward":True}
 
 
+def _public_explore21(*,closed_signal_date:date,now:datetime) -> dict:
+    """Only daily data that the independent provider has published when fetched."""
+    response=requests.get(EXPLORE21_URL,timeout=12,
+                          headers={"User-Agent":USER_AGENT,"Accept":"text/csv"})
+    response.raise_for_status()
+    if len(response.content)>5_000_000:
+        raise ValueError("Unexpectedly large realized CSV")
+    reader=csv.DictReader(io.StringIO(response.text))
+    required=("date","realized_price_usd","btc_close_usd")
+    if reader.fieldnames is None or any(k not in reader.fieldnames for k in required):
+        raise ValueError("Explore21 CSV missing explicit realized USD/date fields")
+    last=None
+    prev=None
+    count=0
+    for row in reader:
+        current=date.fromisoformat(row["date"].strip())
+        if prev is not None and current<=prev:
+            raise ValueError("Explore21 CSV non-monotonic or duplicate dates")
+        prev=current
+        last=row
+        count+=1
+    if last is None or count<365:
+        raise ValueError("Explore21 returned empty/short market history")
+    rp=float(last["realized_price_usd"])
+    price=float(last["btc_close_usd"])
+    if not (math.isfinite(rp) and math.isfinite(price) and
+            1<rp<1_000_000 and price>0):
+        raise ValueError("Explore21 latest values are nonfinite or invalid")
+    reading=normalized_reference(
+        {"d":last["date"],"realizedPrice":rp},
+        captured_at_utc=now,closed_signal_date=closed_signal_date)
+    reading.update({
+        "provider":EXPLORE21_SOURCE,"url":EXPLORE21_URL,
+        "source_chart":EXPLORE21_CHART,
+        "provider_csv_rows":count,
+        "raw_response_sha256":hashlib.sha256(response.content).hexdigest(),
+        "provider_btc_close_usd":price,
+    })
+    return reading
+
+
+def _delayed_bgeometrics(*,closed_signal_date:date,now:datetime) -> dict:
+    """Fallback retained for provenance; recent days may be subscriber-delayed."""
+    import os
+    headers={"User-Agent":USER_AGENT,"Accept":"application/json"}
+    token=os.environ.get("BGEOMETRICS_API_TOKEN","").strip()
+    if token:
+        headers["Authorization"]="Bearer "+token
+    response=requests.get(SOURCE_URL,timeout=10,headers=headers)
+    response.raise_for_status()
+    return normalized_reference(response.json(),captured_at_utc=now,
+                                closed_signal_date=closed_signal_date)
+
+
 def capture_reference(*, closed_signal_date:date,
                       captured_at_utc:datetime|None=None) -> dict:
+    """Try fresh independent node CSV, then optional API; never assume freshness."""
     now=captured_at_utc or datetime.now(timezone.utc)
+    primary=None
     try:
-        response=requests.get(SOURCE_URL,timeout=10,
-                              headers={"User-Agent":USER_AGENT,
-                                       "Accept":"application/json"})
-        response.raise_for_status()
-        data=response.json()
-        return normalized_reference(data,captured_at_utc=now,
-                                    closed_signal_date=closed_signal_date)
+        primary=_public_explore21(closed_signal_date=closed_signal_date,now=now)
+        if primary.get("usable_for_forward"):
+            return primary
+    except Exception as e:
+        primary={"status":"UNAVAILABLE","provider":EXPLORE21_SOURCE,
+                 "url":EXPLORE21_URL,"failure":"SOURCE_OR_SCHEMA_FETCH_FAILED",
+                 "error_type":type(e).__name__,
+                 "usable_for_forward":False}
+    try:
+        secondary=_delayed_bgeometrics(closed_signal_date=closed_signal_date,now=now)
+        if secondary.get("usable_for_forward"):
+            secondary["primary_provider_status"]=primary.get("status")
+            return secondary
+        secondary["primary_provider_status"]=primary.get("status")
+        secondary["primary_provider_failure"]=primary.get("failure")
+        return secondary
     except Exception as e:
         return {
-            "status":"UNAVAILABLE","provider":SOURCE,"url":SOURCE_URL,
+            "status":"UNAVAILABLE","provider":EXPLORE21_SOURCE,
+            "url":EXPLORE21_URL,
             "captured_at_utc":now.astimezone(timezone.utc).isoformat(),
             "provider_observation_date":None,"realized_price_usd":None,
             "usable_for_forward":False,"price_to_realized_ratio":None,
-            "failure":"SOURCE_OR_SCHEMA_FETCH_FAILED",
-            "error_type":type(e).__name__,"not_asx_ibit_or_cowen_prediction":True,
+            "failure":"BOTH_PROVIDERS_UNAVAILABLE",
+            "primary_provider_status":primary.get("status"),
+            "primary_provider_failure":primary.get("failure"),
+            "secondary_error_type":type(e).__name__,
+            "not_asx_ibit_or_cowen_prediction":True,
         }
 
 
