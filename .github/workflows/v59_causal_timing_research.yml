@@ -6,6 +6,9 @@ on:
       - 'engines/research/v59_17week_200wma_episode.py'
       - 'engines/research/v59_four_year_bottoms.py'
       - 'engines/research/v59_three_cycle_entry.py'
+      - 'engines/research/v59_realized_price_study.py'
+      - 'tests/test_v59_realized_price_study.py'
+      - 'data/planb_realized_prices_2026-10-07T21-19-48.csv'
       - 'tests/test_v59_three_cycle_entry.py'
       - 'tests/test_v59_four_year_bottoms.py'
       - 'tests/test_v59_17week_200wma_episode.py'
@@ -38,8 +41,10 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_v59_17week_200wma_episode.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_four_year_bottoms.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_three_cycle_entry.py' -v
+      - run: python -m unittest discover -s tests -p 'test_v59_realized_price_study.py' -v
       - run: python -m py_compile engines/research/v59_causal_timing_horse_race.py
       - run: python -m py_compile engines/research/v59_three_cycle_entry.py
+      - run: python -m py_compile engines/research/v59_realized_price_study.py
   actual-public-history:
     runs-on: ubuntu-latest
     timeout-minutes: 25

@@ -12,10 +12,14 @@ on:
     branches: [main]
     paths:
       - 'engines/research/v59_forward_dca_tape.py'
+      - 'engines/research/v59_realized_forward_reference.py'
+      - 'tests/test_v59_realized_forward_reference.py'
       - '.github/workflows/v59_daily_forward_validation.yml'
   pull_request:
     paths:
       - 'engines/research/v59_forward_dca_tape.py'
+      - 'engines/research/v59_realized_forward_reference.py'
+      - 'tests/test_v59_realized_forward_reference.py'
       - 'engines/research/v59_live_signal_snapshot.py'
       - 'tests/test_v59_forward_dca_tape.py'
       - '.github/workflows/v59_daily_forward_validation.yml'
@@ -39,6 +43,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -p 'test_v59_forward_dca_tape.py' -v
+      - run: python -m unittest discover -s tests -p 'test_v59_realized_forward_reference.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_live_signal_snapshot.py' -v
 
   read-only-first-source-smoke:
@@ -177,7 +182,7 @@ jobs:
             echo ''
             echo 'Stored on the separate research/v59-forward-tape branch; no live trading or ntfy.'
             echo ''
-            jq '{observations,last_signal_day,uncaptured_calendar_days_between_first_last,prospective_shadow:{matched_prospective_monday_fills:.prospective_shadow.matched_prospective_monday_fills,status:.prospective_shadow.status}}' /tmp/v59_forward_dca/scorecard.json | sed 's/^/    /'
+            jq '{observations,last_signal_day,realized_observation_status,realized_reference_is_research_only,uncaptured_calendar_days_between_first_last,prospective_shadow:{matched_prospective_monday_fills:.prospective_shadow.matched_prospective_monday_fills,status:.prospective_shadow.status}}' /tmp/v59_forward_dca/scorecard.json | sed 's/^/    /'
             echo ''
             echo 'BTC/USD and FX references, not executable ASX:IBIT prices. No forward market outcomes are invented.'
           } >> "$GITHUB_STEP_SUMMARY"
