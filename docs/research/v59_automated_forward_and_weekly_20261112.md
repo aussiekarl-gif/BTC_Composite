@@ -8,7 +8,7 @@ Google Sheets, AAA cash reserve or Stake orders.
 
 | Track | Schedule in Brisbane (UTC+10; no DST) | Retention and purpose |
 |---|---|---|
-| **DAILY FORWARD VALIDATION** | 11:23 AM daily (after completed UTC close; GitHub Actions scheduling can be delayed) | Independently capture *today's as-of* actual V5.9 risk, price, FX, Sunday 200WMA with a capture timestamp and code SHA into a dedicated append-only `research/v59-forward-tape` branch. Record daily results and only grade later real saved observations; Monday paper entry can be evaluated only after Sunday signal and Monday close both captured. No historical backfill of missing dates. |
+| **DAILY FORWARD VALIDATION** | 11:23 AM daily plus 11:53 AM fallback (after completed UTC close; GitHub Actions scheduling can be delayed) | Independently capture *today's as-of* actual V5.9 risk, price, FX, Sunday 200WMA with a capture timestamp and code SHA into a dedicated append-only `research/v59-forward-tape` branch. Record daily results and only grade later real saved observations; Monday paper entry can be evaluated only after Sunday signal and Monday close both captured. No historical backfill of missing dates. |
 | **WEEKLY HISTORICAL BACKTEST** | Mondays 1:17 PM | Re-run PRs #259/#260/#261's fixed 2017–24 BTC/AUD reconstructed-risk horse race, false-bottom and 200WMA strategies against newly fetched public prices and lagged FX. Full result JSON retained as an Actions artifact for 90 days. Doesn't count overlapping history as new independent market cycles. |
 
 Both also accept manual `workflow_dispatch`, but **do not need ChatGPT or manual 'continue'** for ordinary scheduled runs.
@@ -89,7 +89,7 @@ are untouched.
 1. PR tests are **read-only**. Write scope is available only for scheduled
    and manual **main** daily captures, and writes **only** into the
    separate research data branch.
-2. Provider failures halt publication of that observation; no neutral
+2. Provider failures or missing previous-day market close halt publication of that observation; no neutral
    risk or ad-hoc fallback substitution.
 3. No data derived from a newly fetched retrospective response is
    inserted as a past as-of observation.
