@@ -22,6 +22,7 @@ Source references:
 - https://benjamincowen.com/reports/bitcoin-and-the-cycle-clock-october-2026
 - https://charts.bgeometrics.com/realized-price.html
 - https://bitcoin-data.com/v1/realized-price/last
+- https://charts.explore21.com/bitcoin-realized-price
 
 ## Historical source limitation
 
@@ -62,17 +63,26 @@ calendar. 2015 is PRICE/FX only: no fabricated V5.9 WF risk.
 
 ## Prospective as-published series
 
-The existing daily V5.9 forward-tape automation now attempts one
-BGeometrics realized-price last reading alongside its established
-closed UTC BTC price. Each new immutable tape entry records:
-provider, URL, numeric reading, **provider's own observation date**,
-first-captured UTC time and raw response SHA-256. No past capture is
-overwritten. If BGeometrics API is delayed, unavailable or more than
-3 days stale, status is explicitly UNAVAILABLE / STALE_OR_DELAYED
-and its conditional paper strategy **does not buy**. The original
-research paper strategies and live notifications are unaffected.
-The free API may withhold recent days: an unavailable reading is
-not treated as evidence that BTC is cheap or expensive.
+The existing daily V5.9 forward-tape automation first retrieves the
+dated **Explore21 Bitcoin Realized Price CSV** (published by a separate
+Bitcoin Core node operator under CC BY 4.0), and uses BGeometrics
+realized-price /last as a **secondary fallback**. On 12 November 2026,
+the BGeometrics free endpoint was experimentally confirmed to be
+**seven days delayed** with a provider delay flag; such a reading was
+correctly rejected for the 11 November BTC closing signal.
+Explore21 chart: https://charts.explore21.com/bitcoin-realized-price
+Explore21 free dated CSV:
+https://charts.explore21.com/data/bitcoin-realized-price.csv
+
+Each new immutable tape entry records provider, URL, numeric reading,
+**provider's own observation date**, first-captured UTC time and full
+raw response SHA-256. No past capture is overwritten. If both public
+sources are stale, unavailable, delayed or more than three days old,
+status is explicitly UNAVAILABLE / STALE_OR_DELAYED and its conditional
+paper strategy **does not buy**. The original paper strategies and
+live notifications are unaffected. No source is treated as a valid
+point-in-time record merely because its revised historical values
+contain past dates. Neither source supplies actual ASX:IBIT fills.
 
 Only source-valid prospectively recorded ratios with WF risk <=0.50
 can score the new realized110 paper comparison after a **future**
@@ -166,3 +176,15 @@ metric at the time of this first historical evaluation.
 
 All existing live Production V5.8.2, V5.9 recommendation, Cycle Trading,
 real portfolio, Stake and single daily ntfy remain unchanged.
+
+### Independent public latest-value sanity check (not live broker quote)
+
+The Explore21 site reported **US$53,874 realized price on 11 November
+2026**, close to Glassnode's publicly displayed latest reading of
+**US$53,930** and the Axel Adler chart value **US$53,879** for the
+same day. The respective spot close from Explore21 was about
+**US$73,915** (~1.37x realized price). These public displays
+independently support the **order of magnitude** of the realized-price
+scenario, but do not certify identical source methodology, a guaranteed
+bottom, real-time API entitlement, or historical PiT revisions.
+Compare the same UTC close and source each time.
