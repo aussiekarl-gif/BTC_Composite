@@ -1,0 +1,1 @@
+# V5.9 forward-only paper evidence\n\nThis branch stores first-captured, date-stamped BTC/USD risk and 200WMA observations, not broker records or trades. Never retrospectively backfill or rewrite prior rows. Only the research-only scheduled GitHub workflow may append. Daily scores and paper returns are illustrative, not live orders.\n
