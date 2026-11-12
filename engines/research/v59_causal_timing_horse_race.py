@@ -349,7 +349,10 @@ def fetch_and_evaluate() -> dict:
     fx=model.fetch_aud_usd_rates(start,now)
     if btc is None or btc.empty or fx is None or fx.empty:
         raise RuntimeError("BTC or real historical FX unavailable; refusing synthetic FX fallback")
-    scored=model.add_risk_indicators(btc,"Research WF Power Law",live_risk_params())
+    # Mirror live DCA Today: install the expected optional-factor columns
+    # as unavailable (NaN); Research WF Power Law uses its own causal fit.
+    priced=model.merge_bgeometrics(btc,pd.DataFrame())
+    scored=model.add_risk_indicators(priced,"Research WF Power Law",live_risk_params())
     rows=build_weekly_rows(scored,fx)
     result=evaluate(rows)
     result["provider_input_btc_first_last"]=[str(btc.index.min()),str(btc.index.max())]
