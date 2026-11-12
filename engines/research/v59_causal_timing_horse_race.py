@@ -200,7 +200,8 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         prev_day = day
         available = max(0., cash-reserve)
         weeks_left = max((review - day).days / 7., 1.)
-        weight = policy_multiplier(policy, row)
+        # Review date stops BUYs; it never forces expenditure or liquidation.
+        weight = policy_multiplier(policy, row) if day <= review else 0.
         spend = min(available, max(0., available / weeks_left * weight),
                     capital * max_fraction)
         if spend > fixed_fee + .01:
@@ -256,6 +257,55 @@ def cohort_windows(rows: list[dict]) -> list[dict]:
     if not windows:
         raise ValueError("No fully supported 104-week cohorts")
     return windows
+
+
+def horizon_sensitivity(windows, *, capital=CAPITAL_AUD):
+    """Common 104-week measurement; buying paused after review at 78/104/130w.
+
+    130-week review is incomplete by the 104-week measurement date;
+    unspent interest-earning cash must always be reported.
+    """
+    relevant=("plain_1x","risk_1x","risk_2x","risk_3x","risk_3x_risk_le_020")
+    records=[]
+    for w in windows:
+        anchor=date.fromisoformat(w["anchor"])
+        for cash_yield in CASH_YIELDS:
+            for reserve in RESERVE_FRACTIONS:
+                for horizon in (78,104,130):
+                    for policy in relevant:
+                        result=simulate(w["rows"],policy=policy,cash_yield=cash_yield,
+                                        reserve_fraction=reserve,capital=capital,
+                                        review_date=anchor+timedelta(weeks=horizon))
+                        records.append({"anchor":w["anchor"],"split":w["split"],
+                                        "policy":policy,"cash_yield":cash_yield,
+                                        "reserve_fraction":reserve,"horizon":horizon,
+                                        **result})
+    baseline={(r["anchor"],r["cash_yield"],r["reserve_fraction"]):r
+              for r in records if r["policy"]=="risk_1x" and r["horizon"]==104}
+    for rec in records:
+        b=baseline[(rec["anchor"],rec["cash_yield"],rec["reserve_fraction"])]
+        rec["equity_uplift_pct"]=100*(rec["equity_aud"]/b["equity_aud"]-1)
+        rec["drawdown_change_pp"]=rec["drawdown_pct"]-b["drawdown_pct"]
+    summary=[]
+    for split in ("TRAIN","HISTORICAL_HOLDOUT"):
+        for cash_yield in CASH_YIELDS:
+            for reserve in RESERVE_FRACTIONS:
+                for horizon in (78,104,130):
+                    for policy in relevant:
+                        selected=[r for r in records if r["split"]==split
+                                  and r["cash_yield"]==cash_yield
+                                  and r["reserve_fraction"]==reserve
+                                  and r["horizon"]==horizon and r["policy"]==policy]
+                        if not selected:continue
+                        summary.append({"split":split,"cash_yield":cash_yield,
+                            "reserve_fraction":reserve,"review_after_weeks":horizon,
+                            "policy":policy,"cohorts":len(selected),
+                            "median_equity_uplift_pct":float(np.median([x["equity_uplift_pct"] for x in selected])),
+                            "worst_equity_uplift_pct":min(x["equity_uplift_pct"] for x in selected),
+                            "median_deployed_fraction":float(np.median([x["deployed_fraction_of_initial"] for x in selected])),
+                            "median_drawdown_change_pp":float(np.median([x["drawdown_change_pp"] for x in selected])),
+                        })
+    return summary
 
 
 def evaluate(rows: list[dict], *, capital: float=CAPITAL_AUD) -> dict:
@@ -339,6 +389,7 @@ def evaluate(rows: list[dict], *, capital: float=CAPITAL_AUD) -> dict:
             "No claim of optimal timing until forward, provider-vintage and true out-of-sample validation.",
         ],
         "summary":summary,"trials":trials,
+        "review_horizon_sensitivity":horizon_sensitivity(windows,capital=capital),
     }
 
 
@@ -386,6 +437,12 @@ def main():
     for row in report["summary"]:
         if row["cash_yield"]==.05 and row["reserve_fraction"]==0.:
             print("TIMING_RESULT",json.dumps(row,sort_keys=True))
+        elif row["policy"] in ("risk_1x","risk_2x","risk_3x","risk_3x_risk_le_020"):
+            print("CASH_RESERVE_SENSITIVITY",json.dumps(row,sort_keys=True))
+    for row in report["review_horizon_sensitivity"]:
+        if (row["split"]=="HISTORICAL_HOLDOUT" and row["cash_yield"]==.05
+                and row["reserve_fraction"]==0.):
+            print("HORIZON_RESULT",json.dumps(row,sort_keys=True))
     return 0
 
 
