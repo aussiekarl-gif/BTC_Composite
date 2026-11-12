@@ -291,6 +291,13 @@ def main() -> int:
         closed_signal_date=date.fromisoformat(
             s["closed_risk_observation_utc"][:10]))
     new=to_observation(s,args.code_sha,realized_reference=real_capture)
+    reference=new["realized_price_reference"]
+    print("REALIZED_FORWARD_REFERENCE "+json.dumps({
+        k:reference.get(k) for k in (
+            "status","provider_observation_date","realized_price_usd",
+            "price_to_realized_ratio","usable_for_forward","provider_delayed",
+            "failure","captured_at_utc")
+    },sort_keys=True))
     tape,added=add_observation(old,new)
     summary=scorecard(tape,added)
     args.new.parent.mkdir(parents=True,exist_ok=True)
