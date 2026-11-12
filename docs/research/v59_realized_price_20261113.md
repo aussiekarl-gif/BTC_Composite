@@ -92,3 +92,77 @@ forward risk-adjusted performance before any promotion.
 Results are retained with the existing Monday weekly GitHub
 historical report; daily recorded references stay on the isolated
 research/v59-forward-tape branch.
+
+## Verified numerical results — historical run, 13 Nov 2026 (Brisbane)
+
+The first GitHub Actions run with the existing BlockHorizon realised-price
+data completed its real BTC/USD and AUD/USD matched-history calculations and
+historical causal tests successfully:
+https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/43306570788
+
+### Six overlapping later historical holdouts: R2 portfolio outcome
+
+Capital A$510,000, ~41% starting BTC, 59% AUD cash earning 5%,
+5% original-capital weekly limit A$25,500, same dates and costs in
+each policy. Compare **portfolio value**, not just the conditional
+purchase-price selection. The realized-price metric's historical
+provider publication vintages are **unverified**.
+
+| Research-only DCA policy | Median portfolio return vs strict risk<=0.20 3x | Worst cohort | Positive cohorts | Median AUD uninvested at terminal |
+|---|---:|---:|---:|---:|
+| strict V5.9 WF risk<=0.20 3x | baseline | 0.00% | 0/6 | A$5,409 |
+| aggressive V5.9 3x | +0.05% | -1.53% | 3/6 | A$1 |
+| risk<=0.50 AND BTC spot<=100% of realized | **-10.31%** | -30.72% | 1/6 | A$321,844 |
+| risk<=0.50 AND BTC spot<=110% of realized | **-8.88%** | -30.72% | 1/6 | A$312,399 |
+| risk<=0.50 AND BTC spot<=125% of realized | **-7.22%** | -30.72% | 1/6 | A$180,763 |
+| realized<=110% OR WF risk<=0.20, risk<=0.50 | 0.00% | 0.00% | 0/6 | A$5,409 |
+
+Both narrower AND combinations (realized<=110% / <=125% with risk<=0.20)
+matched the more restrictive respective realized-only rows on this
+six-cohort sample. The permissive OR combination matched existing strict
+risk<=0.20 throughout. **No new indicator produced an independently
+verified improvement here**; false cost-basis precision would create
+too much missed BTC exposure.
+
+### One historical major bottom per cycle: A$500k 20-week paper DCA
+
+Price/FX-only study with common halving-relative cycle dates, 5% idle
+cash, A$25k/calendar week and same illustrative friction.
+2015 has **no** V5.9 WF R2 comparison. The exact first realized
+ratio signal is a historical *revised-data* proxy; not an archived
+provider PiT observation.
+
+| Complete bear cycle | 20-week after spot<=100% realized | 20-week after spot<=110% realized | 20-week after spot<=125% realized | Original 20-week 200WMA+5% |
+|---|---:|---:|---:|---:|
+| 2015 | 1,602.61 BTC | 1,602.61 BTC | 1,602.61 BTC | 1,616.13 BTC |
+| 2018 | **92.82 BTC** | **92.82 BTC** | 54.44 BTC | 89.11 BTC |
+| 2022 | 16.20 BTC | 16.20 BTC | 15.45 BTC | 16.20 BTC |
+
+These are BTC holdings at the common halving-day-1300 terminal after
+illustrative ETF drag. In 2018, the first <=1.00/1.10
+realized-price paper entry was **2018-11-26** versus WMA+5% on
+**2018-12-17**. The 1.25 threshold activated considerably earlier
+(**2018-06-18**) and lost many BTC units. In 2022, the 1.00/1.10
+realized-price and WMA+5% strategies first bought **2022-06-20**,
+well before the November cycle low. In 2015 the first fully covered
+weekly WMA of this project begins in January; do not infer that
+2014 on-chain or WMA entry signals were retrospectively observed
+or falsify unavailable risk scores.
+
+### Interpretation and control
+
+Realized price is worth **tracking as a bottom-watch valuation reference**
+and testing against confirmed future prices, but this sample does not
+justify either an absolute wait-until-realized requirement or automatically
+raising live purchases on a realized-price touch. The core concern is
+holding hundreds of thousands in cash while BTC can recover without
+returning to the average cost basis.
+
+The prospective BGeometrics reference is independently dated and
+is marked **STALE_OR_DELAYED** rather than treated as a buy signal
+whenever its observation does not meet a maximum three-day age and
+the provider delay gate. No fresh forward result exists for this new
+metric at the time of this first historical evaluation.
+
+All existing live Production V5.8.2, V5.9 recommendation, Cycle Trading,
+real portfolio, Stake and single daily ntfy remain unchanged.
