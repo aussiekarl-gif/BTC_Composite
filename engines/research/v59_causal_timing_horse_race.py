@@ -162,7 +162,7 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
              review_date: date | None=None, max_fraction: float=MAX_WEEKLY_FRACTION,
              buy_friction: float=VARIABLE_BUY_FRICTION,
              fixed_fee: float=FIXED_FEE_AUD, etf_drag: float=ANNUAL_ETF_DRAG,
-             initial_btc_fraction: float=0.) -> dict:
+             initial_btc_fraction: float=0., weight_fn=None) -> dict:
     """Self-financing 104-week matched cohort with interest on uninvested cash."""
     if not rows or policy not in POLICIES:
         raise ValueError("No rows or invalid policy")
@@ -182,6 +182,7 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
     cash = capital * (1.-initial_btc_fraction)
     btc = capital * initial_btc_fraction / first_price
     invested, paid_cost, interest, nbuy = 0., 0., 0., 0
+    new_btc_before_drag, net_buy_cash = 0., 0.
     initial_day = rows[0]["date"]
     prev_day = initial_day
     reserve = reserve_fraction * capital
@@ -209,13 +210,20 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         available = max(0., cash-reserve)
         weeks_left = max((review - day).days / 7., 1.)
         # Review date stops BUYs; it never forces expenditure or liquidation.
-        weight = policy_multiplier(policy, row) if day <= review else 0.
+        # Research-only injection for matched 200WMA gate experiments; default
+        # remains the identical frozen PR #259 execution policy.
+        weight = (weight_fn(row) if weight_fn is not None else
+                  policy_multiplier(policy, row)) if day <= review else 0.
+        if not math.isfinite(weight) or not 0 <= weight <= 3.:
+            raise ValueError("Research buy weight must be finite and 0..3")
         spend = min(available, max(0., available / weeks_left * weight),
                     capital * max_fraction)
         if spend > fixed_fee + .01:
             net = (spend - fixed_fee) * (1. - buy_friction)
             cash -= spend
             btc += net / price
+            new_btc_before_drag += net / price
+            net_buy_cash += net
             invested += spend
             paid_cost += spend-net
             nbuy += 1
@@ -235,6 +243,13 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         "terminal_btc_equivalent": btc+cash/terminal,
         "drawdown_pct":100*worst_dd, "btc_50pct_shock_equity_aud":cash+btc*terminal*.5,
         "net_invested_aud": invested, "interest_earned_aud": interest,
+        "new_btc_before_drag":new_btc_before_drag,
+        "new_btc_avg_entry_aud":(net_buy_cash/new_btc_before_drag if new_btc_before_drag else None),
+        # Same eventual net dollars, equally spread over historical execution weeks:
+        # EX POST attribution only; not a deployable strategy.
+        "price_selection_vs_uniform_pct":(100*(new_btc_before_drag / (
+            net_buy_cash / len(rows) * sum(1./float(x["btc_price_aud"]) for x in rows)) - 1.)
+            if net_buy_cash else None),
         "initial_btc_fraction":initial_btc_fraction,
         "total_cost_aud":paid_cost, "buy_count":nbuy,
         "first_buy_date":first_date.isoformat() if first_date else None,
@@ -463,6 +478,8 @@ def fetch_and_evaluate() -> dict:
     # Additional RESEARCH-ONLY diagnostics share this exact historical run/input.
     from engines.research import v59_false_bottom_stress
     result["false_bottom_stress"]=v59_false_bottom_stress.evaluate(rows)
+    from engines.research import v59_200wma_proximity_study
+    result["wma_proximity_study"]=v59_200wma_proximity_study.evaluate(rows)
     result["provider_input_btc_first_last"]=[str(btc.index.min()),str(btc.index.max())]
     result["provider_input_fx_first_last"]=[str(fx.index.min()),str(fx.index.max())]
     return result
@@ -498,6 +515,10 @@ def main():
         print("FALSE_BOTTOM_HOLDOUT_VS_STRICT",json.dumps(entry,sort_keys=True))
     for entry in stress["synthetic_fixed_risk_stress"]:
         print("FALSE_BOTTOM_SYNTHETIC",json.dumps(entry,sort_keys=True))
+    print("WMA_NOW",json.dumps(report["wma_proximity_study"]["current_reference"],sort_keys=True))
+    for row in report["wma_proximity_study"]["summary"]:
+        if row["split"]=="HISTORICAL_HOLDOUT" and row["cash_yield"]==.05:
+            print("WMA_HOLDOUT",json.dumps(row,sort_keys=True))
     for row in report["summary"]:
         if row["cash_yield"]==.05 and row["reserve_fraction"]==0.:
             print("TIMING_RESULT",json.dumps(row,sort_keys=True))

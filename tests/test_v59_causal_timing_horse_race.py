@@ -225,5 +225,69 @@ class FalseBottomResearchTests(unittest.TestCase):
                            one["net_deployed_pct_initial"])
 
 
+
+class WmaProximityResearchTests(unittest.TestCase):
+    def test_200wma_bands_only_prior_sunday_ratio_and_risk(self):
+        from engines.research.v59_200wma_proximity_study import GATES,gate_weight
+        near=next(g for g in GATES if g.name=="within_10pct")
+        below=next(g for g in GATES if g.name=="below_to_plus10")
+        near_row=row(0,risk=.05,ratio=1.04)
+        self.assertEqual(gate_weight(near_row,near),3.)
+        self.assertEqual(gate_weight(dict(near_row,btc_price_aud=200.),near),3.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=.80),near),0.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=.80),below),3.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=1.11),near),0.)
+        self.assertEqual(gate_weight(dict(near_row,risk_score=.51),near),0.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=float("nan")),near),0.)
+        with self.assertRaises(ValueError):
+            gate_weight(dict(near_row,risk_score_source="Neutral fallback"),near)
+
+    def test_no_ratio_gate_fails_closed_and_allows_deep_discount_only_when_specified(self):
+        from engines.research.v59_200wma_proximity_study import GATES,gate_weight
+        r=row(0,risk=.05)
+        for gate in GATES:
+            self.assertEqual(gate_weight(dict(r,ratio_to_200wma=float("nan")),gate),0.)
+        under=next(x for x in GATES if x.name=="ten_pct_below")
+        within=next(x for x in GATES if x.name=="within_5pct")
+        self.assertEqual(gate_weight(dict(r,ratio_to_200wma=.70),under),3.)
+        self.assertEqual(gate_weight(dict(r,ratio_to_200wma=.70),within),0.)
+
+    def test_wma_research_injection_matches_original_when_unrestricted(self):
+        rows=[row(i,risk=.05,ratio=.96) for i in range(104)]
+        ordinary=simulate(rows,policy="risk_3x",cash_yield=.05,
+                          reserve_fraction=0.,initial_btc_fraction=.41)
+        overridden=simulate(rows,policy="risk_3x",cash_yield=.05,
+                            reserve_fraction=0.,initial_btc_fraction=.41,
+                            weight_fn=lambda r:policy_multiplier("risk_3x",r))
+        for k in ("cash_aud","btc_units","equity_aud","new_btc_avg_entry_aud"):
+            self.assertAlmostEqual(ordinary[k],overridden[k],places=7)
+        self.assertEqual(ordinary["buy_count"],overridden["buy_count"])
+        self.assertGreater(ordinary["new_btc_before_drag"],0)
+        self.assertAlmostEqual(ordinary["price_selection_vs_uniform_pct"],0.,places=7)
+
+    def test_wma_buys_rejected_risk_and_invalid_size(self):
+        rows=[row(i,risk=.70,ratio=1.0) for i in range(104)]
+        from engines.research.v59_200wma_proximity_study import GATES,gate_weight
+        for gate in GATES:
+            result=simulate(rows,policy="risk_3x",cash_yield=.05,
+                            reserve_fraction=0.,initial_btc_fraction=.41,
+                            weight_fn=lambda r,g=gate:gate_weight(r,g))
+            self.assertEqual(result["buy_count"],0)
+        with self.assertRaises(ValueError):
+            simulate(rows,policy="risk_3x",cash_yield=.05,reserve_fraction=0.,
+                     weight_fn=lambda r:float("nan"))
+
+    def test_summary_from_matched_historical_windows(self):
+        from engines.research import v59_200wma_proximity_study as study
+        rows=[row(i,risk=.05,ratio=.99) for i in range(104)]
+        # A real 104-week cohort requires a Jan/July anchor; our generated
+        # row series starts 2021-01-04 and aligns the full 104-week 2021 cohort.
+        results=study._matched_historical(rows,yield_rate=.05)
+        self.assertEqual(set(x["policy"] for x in results),set(study.POLICIES))
+        selected=next(x for x in results if x["policy"]=="below_200wma")
+        control=next(x for x in results if x["policy"]=="risk_3x")
+        self.assertAlmostEqual(selected["equity_aud"],control["equity_aud"],places=5)
+
+
 if __name__ == "__main__":
     unittest.main()
