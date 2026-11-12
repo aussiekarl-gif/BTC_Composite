@@ -492,6 +492,12 @@ def fetch_and_evaluate() -> dict:
     from engines.research import v59_three_cycle_entry
     legacy_price_rows=v59_three_cycle_entry.build_price_only_rows(btc,fx)
     result["three_cycle_price_only_entry"]=v59_three_cycle_entry.evaluate(legacy_price_rows,rows)
+    # BTC realized price is research-only from dated BlockHorizon/PlanB export.
+    # Historical publication vintages and independent source parity are unverified.
+    from engines.research import v59_realized_price_study
+    realized_archive=v59_realized_price_study.load_archive()
+    result["realized_price_study"]=v59_realized_price_study.evaluate(
+        legacy_price_rows,rows,btc,realized_archive)
     result["provider_input_btc_first_last"]=[str(btc.index.min()),str(btc.index.max())]
     result["provider_input_fx_first_last"]=[str(fx.index.min()),str(fx.index.max())]
     return result
@@ -551,6 +557,19 @@ def main():
     for item in episode["cases"]:
         label=("WMA17_EPISODE" if item["trigger_wma_ratio_ceiling"]==1. else "WMA17_NEAR")
         print(label,json.dumps(item,sort_keys=True,allow_nan=False))
+    realized=report["realized_price_study"]
+    print("REALIZED_ARCHIVE",json.dumps({
+        k:realized[k] for k in ("status","source","latest_archive_date",
+        "latest_archive_btc_realized_price_usd","latest_archive_btc_provider_price_usd",
+        "provider_methodology_and_historical_vintages_unverified")
+    },sort_keys=True))
+    for r in realized["historical_six_overlap_holdouts"]["holdout_summary"]:
+        print("REALIZED_RISK_HOLDOUT",json.dumps(r,sort_keys=True,allow_nan=False))
+    for item in realized["three_major_cycles_price_only"]["cycles"]:
+        if item.get("not_simulated"):
+            print("REALIZED_CYCLE_CONTEXT",json.dumps(item,sort_keys=True,allow_nan=False))
+        else:
+            print("REALIZED_CYCLE_OUTCOME",json.dumps(item,sort_keys=True,allow_nan=False))
     for row in report["summary"]:
         if row["cash_yield"]==.05 and row["reserve_fraction"]==0.:
             print("TIMING_RESULT",json.dumps(row,sort_keys=True))
