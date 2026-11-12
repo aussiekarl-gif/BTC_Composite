@@ -328,6 +328,36 @@ def evaluate(rows:list[dict]) -> dict:
                 "week104_spot_proxy_aud":event["rows"][-1]["btc_price_aud"],
                 "policies":summary,
                 })
+    # ALL strict downcrosses with enough future data, not merely the
+    # first crossing per calendar year. These windows overlap heavily.
+    indexed={r["date"]:i for i,r in enumerate(rows)}
+    every_strict_crossing=[]
+    for event in historical_crossings(rows,threshold=1.):
+        i=indexed[event["crossing_monday"]]
+        period=rows[i:i+HORIZON]
+        if len(period)!=HORIZON or any(
+                (right["date"]-left["date"]).days!=7
+                for left,right in zip(period,period[1:])):
+            continue
+        comparison={}
+        for name in ("17_calendar_unrestricted","20_calendar_capped",
+                     "17_eligible_below_unrestricted","20_eligible_below_capped",
+                     "risk_3x","risk_3x_risk_le_020"):
+            result=replay(period,policy=name,capital=FRESH_CASH_AUD)
+            comparison[name]={
+                "btc_17w":result["btc_held_after_week17"],
+                "btc_104w":result["btc_held_after_104w"],
+                "final_portfolio_aud":result["portfolio_after_104w_aud"],
+                "cash_aud":result["cash_after_104w_aud"],
+                "spent_aud":result["spent_aud"],
+                "buy_count":result["number_of_buys"],
+            }
+        every_strict_crossing.append({
+            "first_monday":event["crossing_monday"].isoformat(),
+            "consecutive_sundays_below":consecutive_weeks_below(rows,i),
+            "overlapping_nonindependent_event":True,
+            "policies":comparison,
+        })
     exact_events=eligible_cohorts(rows,threshold=1.)
     event_labels=[{"year":x["event_year"],"first_monday":x["start"],
                    "weeks_below_wma":x["consecutive_sunday_closes_below_200wma"]}
@@ -343,6 +373,7 @@ def evaluate(rows:list[dict]) -> dict:
         "year_by_year_weekly_WMA_counts":annual_context,
         "all_observed_prior_sunday_crossings":all_crossings,
         "all_observed_weekly_below_WMA_streaks":observed_below_wma_streaks(rows),
+        "all_strict_completed_crossings_sensitivity":every_strict_crossing,
         "cases":out,
         "per_week_unrestricted_500k_over_17_aud":FRESH_CASH_AUD/17,
         "user_weekly_cap_aud":CAP_AUD,
