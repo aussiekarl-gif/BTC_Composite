@@ -209,14 +209,21 @@ def historical_experiment(rows: list[dict]) -> dict:
 def cheap_signal_episode_study(rows: list[dict]) -> dict:
     """Real paths following first weekly return to <=.20; no future in decisions."""
     events=[]
-    prev_cheap=False
+    prev_cheap=None  # No prior observation: cannot infer a threshold crossing.
+    prev_day=None
     last=None
     for ix,row in enumerate(rows):
         cheap=row["risk_score_source"]==SOURCE and 0 <= float(row["risk_score"]) <= .20
-        if (cheap and not prev_cheap and ix+12<len(rows) and
+        contiguous_before=(prev_day is not None and (row["date"]-prev_day).days==7)
+        next12=rows[ix+1:ix+13]
+        contiguous_after=(len(next12)==12 and all(
+            z["date"]==row["date"]+timedelta(weeks=j+1)
+            for j,z in enumerate(next12)))
+        if (cheap and prev_cheap is False and contiguous_before and
+                contiguous_after and
                 (last is None or (row["date"]-last).days>=26*7)):
             anchor=float(row["btc_price_aud"])
-            future=[float(z["btc_price_aud"]) for z in rows[ix+1:ix+13]]
+            future=[float(z["btc_price_aud"]) for z in next12]
             if all(math.isfinite(p) and p>0 for p in future):
                 events.append({
                     "signal_date":row["signal_date"].isoformat(),
@@ -230,10 +237,11 @@ def cheap_signal_episode_study(rows: list[dict]) -> dict:
                 })
                 last=row["date"]
         prev_cheap=cheap
+        prev_day=row["date"]
     return {
         "events_count":len(events),
         "episodes_not_independent":True,
-        "selection":"First <=0.20 after >0.20, >=26w between retained starts, full next 12w only",
+        "selection":"Observed contiguous >0.20 to <=0.20 crossing, >=26w between starts, full contiguous next 12w only",
         "falls_20pct":sum(e["fell_20pct"] for e in events),
         "falls_35pct":sum(e["fell_35pct"] for e in events),
         "falls_50pct":sum(e["fell_50pct"] for e in events),
