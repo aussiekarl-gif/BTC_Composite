@@ -8,7 +8,7 @@ import numpy as np
 
 from engines.research.v59_causal_timing_horse_race import (
     CAPITAL_AUD, POLICIES, policy_multiplier, simulate, build_weekly_rows,
-    cohort_windows, evaluate, WEEKS,
+    cohort_windows, evaluate, horizon_sensitivity, WEEKS,
 )
 
 
@@ -62,6 +62,25 @@ class CausalTimingTests(unittest.TestCase):
                 self.assertGreaterEqual(res["btc_units"],0)
                 self.assertLessEqual(res["net_invested_aud"],104*CAPITAL_AUD*.05+1.e-6)
                 self.assertGreaterEqual(res["btc_50pct_shock_equity_aud"],0)
+
+    def test_review_date_pauses_buying_instead_of_forcing_deployment(self):
+        weeks=[row(i,risk=.05) for i in range(WEEKS)]
+        early=simulate(weeks,policy="risk_3x",cash_yield=.05,reserve_fraction=0,
+                       review_date=date(2021,4,1))
+        later=simulate(weeks,policy="risk_3x",cash_yield=.05,reserve_fraction=0,
+                       review_date=date(2023,4,1))
+        self.assertLess(early["buy_count"],later["buy_count"])
+        self.assertLess(early["net_invested_aud"],later["net_invested_aud"])
+        self.assertGreater(early["cash_aud"],later["cash_aud"])
+
+    def test_review_horizon_reports_matched_capital_and_holdout_split(self):
+        fake={"anchor":"2021-01-01","split":"TRAIN","rows":[row(i) for i in range(104)]}
+        summaries=horizon_sensitivity([fake])
+        self.assertEqual(len(summaries),5*3*2*2)
+        sample=[r for r in summaries if r["policy"]=="risk_3x"
+                and r["cash_yield"]==.05 and r["reserve_fraction"]==0]
+        self.assertEqual(set(x["review_after_weeks"] for x in sample),{78,104,130})
+        self.assertTrue(all(x["cohorts"]==1 for x in sample))
 
     def test_future_price_can_change_fill_but_not_prior_risk_gate(self):
         one=row(0, risk=.03, aud=50000.)
