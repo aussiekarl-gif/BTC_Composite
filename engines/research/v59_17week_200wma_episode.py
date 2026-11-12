@@ -173,7 +173,11 @@ def replay(rows: list[dict], *, policy: str, capital:float,
         if policy in REFERENCE or policy in ("17_calendar_capped","20_calendar_capped",
                                             "20_eligible_below_capped"):
             gross=min(gross,CAP_AUD)
-        gross=max(0.,min(gross,cash,starting_cash-spent))
+        # PR #259 risk baselines may reinvest earned cash interest; match
+        # its exact behaviour. Fixed-tranche policies deliberately invest
+        # only the initial allocated cash budget and leave interest as cash.
+        budget_left=(cash if policy in REFERENCE else max(0.,starting_cash-spent))
+        gross=max(0.,min(gross,cash,budget_left))
         if gross>base.FIXED_FEE_AUD+.01:
             net=(gross-base.FIXED_FEE_AUD)*(1-base.VARIABLE_BUY_FRICTION)
             cash-=gross
