@@ -480,6 +480,9 @@ def fetch_and_evaluate() -> dict:
     result["false_bottom_stress"]=v59_false_bottom_stress.evaluate(rows)
     from engines.research import v59_200wma_proximity_study
     result["wma_proximity_study"]=v59_200wma_proximity_study.evaluate(rows)
+    # Descriptive first-200WMA-crossing 17-week accumulation vs original V5.9.
+    from engines.research import v59_17week_200wma_episode
+    result["wma_17week_episode_study"]=v59_17week_200wma_episode.evaluate(rows)
     result["provider_input_btc_first_last"]=[str(btc.index.min()),str(btc.index.max())]
     result["provider_input_fx_first_last"]=[str(fx.index.min()),str(fx.index.max())]
     return result
@@ -519,6 +522,14 @@ def main():
     for row in report["wma_proximity_study"]["summary"]:
         if row["split"]=="HISTORICAL_HOLDOUT" and row["cash_yield"]==.05:
             print("WMA_HOLDOUT",json.dumps(row,sort_keys=True))
+    episode=report["wma_17week_episode_study"]
+    print("WMA17_RAW_CROSSINGS",json.dumps(episode["all_observed_prior_sunday_crossings"],default=str))
+    print("WMA17_YEAR_AUDIT",json.dumps(episode["year_by_year_weekly_WMA_counts"],sort_keys=True))
+    print("WMA17_STREAKS",json.dumps(episode["all_observed_weekly_below_WMA_streaks"],sort_keys=True))
+    print("WMA17_ALL_STRICT",json.dumps(episode["all_strict_completed_crossings_sensitivity"],sort_keys=True))
+    for item in episode["cases"]:
+        label=("WMA17_EPISODE" if item["trigger_wma_ratio_ceiling"]==1. else "WMA17_NEAR")
+        print(label,json.dumps(item,sort_keys=True,allow_nan=False))
     for row in report["summary"]:
         if row["cash_yield"]==.05 and row["reserve_fraction"]==0.:
             print("TIMING_RESULT",json.dumps(row,sort_keys=True))
