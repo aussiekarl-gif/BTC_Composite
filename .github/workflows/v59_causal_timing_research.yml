@@ -5,6 +5,8 @@ on:
       - 'engines/research/v59_causal_timing_horse_race.py'
       - 'engines/research/v59_17week_200wma_episode.py'
       - 'engines/research/v59_four_year_bottoms.py'
+      - 'engines/research/v59_three_cycle_entry.py'
+      - 'tests/test_v59_three_cycle_entry.py'
       - 'tests/test_v59_four_year_bottoms.py'
       - 'tests/test_v59_17week_200wma_episode.py'
       - 'tests/test_v59_causal_timing_horse_race.py'
@@ -35,7 +37,9 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_v59_causal_timing_horse_race.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_17week_200wma_episode.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_four_year_bottoms.py' -v
+      - run: python -m unittest discover -s tests -p 'test_v59_three_cycle_entry.py' -v
       - run: python -m py_compile engines/research/v59_causal_timing_horse_race.py
+      - run: python -m py_compile engines/research/v59_three_cycle_entry.py
   actual-public-history:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -61,7 +65,7 @@ jobs:
             echo '## BTC RESEARCH — WEEKLY BACKTEST (RETROSPECTIVE, NOT LIVE TRADING)'
             echo ''
             echo 'This is a repeat of the fixed historical 2017–2024 cohort comparison,'
-            echo 'not new independent cycles or an instruction to buy/sell BTC.'
+            echo 'not new independent cycles or an instruction to buy/sell BTC. Three-cycle 2015 price-only study, 2018/22 R2 comparison and synthetic shocks are included in the JSON artifact.'
             echo ''
             jq '{status,completed_cohorts,number_matched_weekly_rows,latest_historical_btc_execution:.data_last_execution_date,latest_200wma_signal:.wma_proximity_study.current_reference,assumptions}' artifacts/v59_buy_timing_horse_race.json | sed 's/^/    /'
             echo ''
