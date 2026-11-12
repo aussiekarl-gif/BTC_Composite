@@ -95,12 +95,14 @@ class ThreeCycleEntryTests(unittest.TestCase):
 
     def test_synthetic_stress_paths_include_20_35_50_and_no_leverage(self):
         stress=study.synthetic_false_bottom_stress()
-        self.assertEqual(len(stress),6*2*5)
+        self.assertEqual(len(stress),8*2*5)
         for r in stress:
             self.assertGreaterEqual(r["uninvested_cash_aud"],-1e-5)
             self.assertGreaterEqual(r["btc_units_at_terminal"],0)
             self.assertFalse(r["risk_is_recomputed"])
         self.assertIn("fall_50pct_then_recover",{r["scenario"] for r in stress})
+        self.assertIn("rally_25pct",{r["scenario"] for r in stress})
+        self.assertIn("flat",{r["scenario"] for r in stress})
 
     def test_unconfirmed_2026_not_assumed_future_cycle_bottom(self):
         r=study.cycle_periods(mock_cycle_rows(weeks=101))
