@@ -478,6 +478,8 @@ def fetch_and_evaluate() -> dict:
     # Additional RESEARCH-ONLY diagnostics share this exact historical run/input.
     from engines.research import v59_false_bottom_stress
     result["false_bottom_stress"]=v59_false_bottom_stress.evaluate(rows)
+    from engines.research import v59_200wma_proximity_study
+    result["wma_proximity_study"]=v59_200wma_proximity_study.evaluate(rows)
     result["provider_input_btc_first_last"]=[str(btc.index.min()),str(btc.index.max())]
     result["provider_input_fx_first_last"]=[str(fx.index.min()),str(fx.index.max())]
     return result
@@ -513,6 +515,10 @@ def main():
         print("FALSE_BOTTOM_HOLDOUT_VS_STRICT",json.dumps(entry,sort_keys=True))
     for entry in stress["synthetic_fixed_risk_stress"]:
         print("FALSE_BOTTOM_SYNTHETIC",json.dumps(entry,sort_keys=True))
+    print("WMA_NOW",json.dumps(report["wma_proximity_study"]["current_reference"],sort_keys=True))
+    for row in report["wma_proximity_study"]["summary"]:
+        if row["split"]=="HISTORICAL_HOLDOUT" and row["cash_yield"]==.05:
+            print("WMA_HOLDOUT",json.dumps(row,sort_keys=True))
     for row in report["summary"]:
         if row["cash_yield"]==.05 and row["reserve_fraction"]==0.:
             print("TIMING_RESULT",json.dumps(row,sort_keys=True))
