@@ -70,7 +70,7 @@ def consecutive_weeks_below(rows: list[dict], start_index: int, threshold: float
     return n
 
 
-def eligible_cohorts(rows: list[dict]) -> list[dict]:
+def eligible_cohorts(rows: list[dict], threshold: float=1.) -> list[dict]:
     """Select one independently rooted crossing per calendar year, 2018–2024.
 
     This comparison fixes the entry trigger first, instead of selecting the
@@ -78,7 +78,7 @@ def eligible_cohorts(rows: list[dict]) -> list[dict]:
     Year selection is a descriptive historical sample, not a claim of
     independent market cycles. The 2020 event may not survive Sunday close.
     """
-    crossings=historical_crossings(rows)
+    crossings=historical_crossings(rows,threshold=threshold)
     indexed={r["date"]:i for i,r in enumerate(rows)}
     first_per_year={}
     for cross in crossings:
@@ -91,6 +91,7 @@ def eligible_cohorts(rows: list[dict]) -> list[dict]:
             continue
         first_per_year[year]={
             "event_year":year,"start":cross["crossing_monday"].isoformat(),
+            "trigger_wma_ratio_ceiling":threshold,
             "initial_sunday_ratio_to_200wma":cross["sunday_wma_ratio"],
             "consecutive_sunday_closes_below_200wma":consecutive_weeks_below(rows,i),
             "rows":window,
@@ -228,18 +229,43 @@ def replay(rows: list[dict], *, policy: str, capital:float,
 
 
 def evaluate(rows:list[dict]) -> dict:
-    events=eligible_cohorts(rows)
-    if not events:
-        raise ValueError("No full 104w 200WMA crossing found in real data")
+    if not rows:
+        raise ValueError("Actual weekly inputs required")
+    annual_context=[]
+    for year in range(2017,2027):
+        subset=[r for r in rows if r["signal_date"].year==year
+                and math.isfinite(float(r.get("ratio_to_200wma",math.nan)))]
+        if subset:
+            ratios=[float(r["ratio_to_200wma"]) for r in subset]
+            annual_context.append({
+                "year":year,"weekly_observations":len(ratios),
+                "min_weekly_btc_over_wma_ratio":min(ratios),
+                "weeks_at_or_below_wma":sum(z<=1. for z in ratios),
+                "weeks_no_more_than_5pct_above_wma":sum(z<=1.05 for z in ratios),
+                "weeks_no_more_than_10pct_above_wma":sum(z<=1.10 for z in ratios),
+            })
     out=[]
-    for case_name,capital,initial_fraction in CASES:
-        for event in events:
-            variants={}
-            for policy in POLICIES:
-                variants[policy]=replay(event["rows"],policy=policy,capital=capital,
-                                        starting_btc_fraction=initial_fraction)
-            compare=variants["risk_3x_risk_le_020"]
-            summary={name:{
+    triggers=[]
+    for threshold in (1.,1.05,1.10):
+        events=eligible_cohorts(rows,threshold=threshold)
+        triggers.append({
+            "ratio_threshold":threshold,
+            "eligible_completed_104week_events":[{
+                "year":e["event_year"],"first_buy_monday":e["start"],
+                "initial_sunday_ratio":e["initial_sunday_ratio_to_200wma"],
+                "consecutive_below_200wma_weekly_closes_from_entry":
+                    e["consecutive_sunday_closes_below_200wma"],
+            } for e in events],
+            "raw_crossings_count":len(historical_crossings(rows,threshold)),
+        })
+        for case_name,capital,initial_fraction in CASES:
+            for event in events:
+                variants={}
+                for policy in POLICIES:
+                    variants[policy]=replay(event["rows"],policy=policy,capital=capital,
+                                            starting_btc_fraction=initial_fraction)
+                compare=variants["risk_3x_risk_le_020"]
+                summary={name:{
                 "btc_week17":v["btc_held_after_week17"],
                 "btc_week104":v["btc_held_after_104w"],
                 "new_btc_gross_week17":v["new_btc_bought_before_drag_week17"],
@@ -255,8 +281,9 @@ def evaluate(rows:list[dict]) -> dict:
                 "peak_weekly_spend_aud":v["biggest_weekly_buy_aud"],
                 "violates_AUD25500_cap":v["original_cap_violated"],
                 "worst_portfolio_drawdown_pct":v["max_drawdown_pct"],
-            } for name,v in variants.items()}
-            out.append({
+                } for name,v in variants.items()}
+                out.append({
+                "trigger_wma_ratio_ceiling":threshold,
                 "case":case_name,"event_year":event["event_year"],
                 "first_buy_monday":event["start"],
                 "consecutive_sundays_under_wma":event["consecutive_sunday_closes_below_200wma"],
@@ -265,10 +292,11 @@ def evaluate(rows:list[dict]) -> dict:
                 "week17_spot_proxy_aud":event["rows"][16]["btc_price_aud"],
                 "week104_spot_proxy_aud":event["rows"][-1]["btc_price_aud"],
                 "policies":summary,
-            })
+                })
+    exact_events=eligible_cohorts(rows,threshold=1.)
     event_labels=[{"year":x["event_year"],"first_monday":x["start"],
                    "weeks_below_wma":x["consecutive_sunday_closes_below_200wma"]}
-                  for x in events]
+                  for x in exact_events]
     all_crossings=[{"first_monday":c["crossing_monday"].isoformat(),
                     "ratio":c["sunday_wma_ratio"]}
                    for c in historical_crossings(rows)]
@@ -276,6 +304,8 @@ def evaluate(rows:list[dict]) -> dict:
         "status":"RESEARCH_ONLY_HINDSIGHT_MARKETS_NOT_EXECUTABLE_ETF",
         "trigger":"First prior-Sunday downward cross below 200 weekly Sunday closes",
         "selected_full_104week_episodes":event_labels,
+        "separate_first_near_crossing_sensitivity":triggers,
+        "year_by_year_weekly_WMA_counts":annual_context,
         "all_observed_prior_sunday_crossings":all_crossings,
         "cases":out,
         "per_week_unrestricted_500k_over_17_aud":FRESH_CASH_AUD/17,
