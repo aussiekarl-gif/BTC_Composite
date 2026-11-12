@@ -1,0 +1,194 @@
+name: BTC research DAILY forward validation (not trading)
+
+on:
+  schedule:
+    # 01:23 UTC = 11:23 AM Brisbane AEST; prior UTC day is complete.
+    - cron: '23 1 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'engines/research/v59_forward_dca_tape.py'
+      - 'engines/research/v59_live_signal_snapshot.py'
+      - 'tests/test_v59_forward_dca_tape.py'
+      - '.github/workflows/v59_daily_forward_validation.yml'
+      - 'engines/research/research_model.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: btc-v59-forward-dca-evidence
+  cancel-in-progress: false
+
+jobs:
+  test-offline-forward-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -p 'test_v59_forward_dca_tape.py' -v
+      - run: python -m unittest discover -s tests -p 'test_v59_live_signal_snapshot.py' -v
+
+  record-new-point-in-time-daily-evidence:
+    # PRIVILEGED WRITE only on main schedule/manual, never on PR.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    needs: test-offline-forward-safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 27
+    permissions:
+      contents: write
+      issues: write
+    env:
+      BTC_PORTFOLIO_BACKEND: sqlite
+      BTC_PORTFOLIO_DB_PATH: /tmp/v59_daily_forward_research.sqlite3
+      NTFY_TOPIC: ''
+      GOOGLE_SERVICE_ACCOUNT_JSON: ''
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Read immutable prospective tape, fail if durable branch is unavailable
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin refs/heads/research/v59-forward-tape
+          mkdir -p /tmp/v59_forward_dca
+          git show FETCH_HEAD:data/research_v59_forward/daily_observations.jsonl > /tmp/v59_forward_dca/old.jsonl
+      - name: Capture actual completed V5.9 risk and Sunday-200WMA context
+        env:
+          CODE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m engines.research.v59_forward_dca_tape \
+            --old /tmp/v59_forward_dca/old.jsonl \
+            --new /tmp/v59_forward_dca/new.jsonl \
+            --scorecard /tmp/v59_forward_dca/scorecard.json \
+            --snapshot /tmp/v59_forward_dca/snapshot.json \
+            --code-sha "$CODE_SHA"
+      - name: Retain full daily evidence even if Git write fails
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v59-forward-validation-daily-evidence
+          path: /tmp/v59_forward_dca/
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Publish append-only record to isolated research branch, not main
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(jq -r .status /tmp/v59_forward_dca/scorecard.json)" = "RESEARCH_ONLY_FORWARD_DATA"
+          if [[ "$(jq -r .new_day_appended /tmp/v59_forward_dca/scorecard.json)" != "true" ]]; then
+            echo "No new UTC closed day, original evidence is immutable; no commit."
+            exit 0
+          fi
+          git fetch --no-tags origin refs/heads/research/v59-forward-tape
+          git checkout --detach FETCH_HEAD
+          mkdir -p data/research_v59_forward
+          # Compare the input tape SHA to current remote to prevent a race.
+          git show HEAD:data/research_v59_forward/daily_observations.jsonl | cmp - /tmp/v59_forward_dca/old.jsonl
+          cp /tmp/v59_forward_dca/new.jsonl data/research_v59_forward/daily_observations.jsonl
+          cp /tmp/v59_forward_dca/scorecard.json data/research_v59_forward/scorecard.json
+          git config user.name 'v59-research-forward-bot'
+          git config user.email 'v59-research-forward-bot@users.noreply.github.com'
+          git add -- data/research_v59_forward/daily_observations.jsonl data/research_v59_forward/scorecard.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'RESEARCH ONLY: capture closed UTC day V5.9 paper signal [skip ci]'
+          git push origin HEAD:refs/heads/research/v59-forward-tape
+
+      - name: Publish labelled forward scorecard in Actions, never as a trade recommendation
+        shell: bash
+        run: |
+          {
+            echo '## BTC RESEARCH — DAILY FORWARD VALIDATION (NOT A TRADING SIGNAL)'
+            echo ''
+            echo 'Stored on the separate research/v59-forward-tape branch; no live trading or ntfy.'
+            echo ''
+            jq '{observations,last_signal_day,uncaptured_calendar_days_between_first_last,prospective_shadow:{matched_prospective_monday_fills:.prospective_shadow.matched_prospective_monday_fills,status:.prospective_shadow.status}}' /tmp/v59_forward_dca/scorecard.json | sed 's/^/    /'
+            echo ''
+            echo 'BTC/USD and FX references, not executable ASX:IBIT prices. No forward market outcomes are invented.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Alert only on materially divergent PROSPECTIVE paper evidence, not a buy instruction
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Minimum 12 genuine saved Sunday -> next-Monday pairs. This is only
+          # a REVIEW candidate, never statistically validated investment alpha.
+          n="$(jq -r '.prospective_shadow.matched_prospective_monday_fills' /tmp/v59_forward_dca/scorecard.json)"
+          if [[ "$n" -lt 12 ]]; then exit 0; fi
+          candidate="$(jq -r '[.prospective_shadow.strategies | to_entries[] |
+            select(.key != "risk_3x_risk_le_020" and (.value.value_gap_vs_strict020_pct | abs) >= 5)] | length' /tmp/v59_forward_dca/scorecard.json)"
+          if [[ "$candidate" -lt 1 ]]; then exit 0; fi
+          title="[BTC RESEARCH / DAILY FORWARD] Paper strategy gap needs review — NOT A BUY SIGNAL"
+          existing="$(gh issue list --state open --limit 100 --json title,number --jq '.[] | select(.title == "[BTC RESEARCH / DAILY FORWARD] Paper strategy gap needs review — NOT A BUY SIGNAL") | .number' | head -n 1)"
+          if [[ -z "$existing" ]]; then
+            gh issue create --title "$title" --assignee "aussiekarl-gif" \
+              --body "RESEARCH ONLY: A >=5% paper portfolio-value divergence appeared after $n separately captured Monday observation pairs. This is NOT evidence of a proven improvement and is NOT authorisation to buy, sell, or modify Production. Review the model's point-in-time source, cash exposure, spreads, independent cycles and sample size before any promotion. Study: $RUN_URL"
+          fi
+
+      - name: Clear an earlier research-feed failure after healthy capture
+        if: ${{ success() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          title="[BTC RESEARCH / DAILY FORWARD] Capture FAILED — NOT CYCLE TRADING"
+          existing="$(gh issue list --state open --limit 100 --json title,number --jq '.[] | select(.title == "[BTC RESEARCH / DAILY FORWARD] Capture FAILED — NOT CYCLE TRADING") | .number' | head -n 1)"
+          if [[ -n "$existing" ]]; then
+            gh issue close "$existing" --comment "A later research-only capture succeeded: $RUN_URL . This is not an order."
+          fi
+
+      - name: Alert on FAILED DAILY FORWARD recording, not the Cycle Trading notification
+        if: ${{ failure() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          title="[BTC RESEARCH / DAILY FORWARD] Capture FAILED — NOT CYCLE TRADING"
+          existing="$(gh issue list --state open --limit 100 --json title,number --jq '.[] | select(.title == "[BTC RESEARCH / DAILY FORWARD] Capture FAILED — NOT CYCLE TRADING") | .number' | head -n 1)"
+          if [[ -z "$existing" ]]; then
+            gh issue create --title "$title" --assignee "aussiekarl-gif" \
+              --body "Daily historical-untouched V5.9 forward observation or durable research-branch write FAILED; some dates may now be missing and must not be backfilled. RESEARCH ONLY, not a buy/sell alert. Live Cycle Trading / ntfy are separate and unchanged. Investigate $RUN_URL"
+          fi
+
+  alert-on-offline-test-failure:
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.test-offline-forward-safety.result == 'failure' }}
+    needs: test-offline-forward-safety
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Raise labelled research-only issue, once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          title="[BTC RESEARCH / DAILY FORWARD] Capture FAILED — NOT CYCLE TRADING"
+          existing="$(gh issue list --state open --limit 100 --json title,number --jq '.[] | select(.title == "[BTC RESEARCH / DAILY FORWARD] Capture FAILED — NOT CYCLE TRADING") | .number' | head -n 1)"
+          if [[ -z "$existing" ]]; then
+            gh issue create --title "$title" --assignee "aussiekarl-gif" \
+              --body "RESEARCH ONLY: daily V5.9 forward safety tests failed, so no new data should be accepted. Not a buy/sell or Cycle Trading signal. $RUN_URL"
+          fi
