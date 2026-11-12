@@ -147,5 +147,83 @@ class CausalTimingTests(unittest.TestCase):
             build_weekly_rows(pd.DataFrame(),pd.Series(dtype=float))
 
 
+
+
+class FalseBottomResearchTests(unittest.TestCase):
+    def test_new_replay_matches_pr259_baselines_without_parameter_drift(self):
+        from engines.research import v59_false_bottom_stress as study
+        rows=study.synthetic_path(drop=.35,recover=True)
+        for policy in ("risk_1x","risk_3x","risk_3x_risk_le_020"):
+            with self.subTest(policy=policy):
+                a=study.replay(rows,policy=policy)
+                b=simulate(rows,policy=policy,cash_yield=.05,
+                           reserve_fraction=0.,initial_btc_fraction=.41)
+                self.assertAlmostEqual(a["equity_aud"],b["equity_aud"],places=5)
+                self.assertAlmostEqual(a["btc_units"],b["btc_units"],places=8)
+                self.assertAlmostEqual(a["cash_aud"],b["cash_aud"],places=5)
+
+    def test_stage_cannot_see_current_monday_fill(self):
+        from engines.research import v59_false_bottom_stress as study
+        state=dict(cheap_streak=0,anchor_price=None,prev_monday_price=90000.,
+                   drop10_latched=False,drop20_latched=False)
+        x=row(1,risk=.05,aud=90000.)
+        y=dict(x,btc_price_aud=1000.)
+        state["anchor_price"]=100000.
+        a=study.candidate_multiplier("strict_stage_1x_drop10",x,dict(state))
+        b=study.candidate_multiplier("strict_stage_1x_drop10",y,dict(state))
+        self.assertEqual(a,b)
+        self.assertEqual(a,3.)
+
+    def test_new_policies_stop_when_score_high_and_reject_fallback(self):
+        from engines.research import v59_false_bottom_stress as study
+        for p in study.POLICIES:
+            s=dict(cheap_streak=0,anchor_price=None,prev_monday_price=None,
+                   drop10_latched=False,drop20_latched=False)
+            self.assertEqual(study.candidate_multiplier(p,row(1,risk=.70),s),0.)
+            with self.assertRaises(ValueError):
+                study.candidate_multiplier(p,dict(row(1),risk_score_source="Neutral fallback"),s)
+
+    def test_stress_is_explicitly_synthetic_and_completes(self):
+        from engines.research import v59_false_bottom_stress as study
+        shocks=study.synthetic_stress()
+        self.assertEqual(len(shocks),8*len(study.SHOCK_POLICIES))
+        self.assertEqual(set(x["path"] for x in shocks),{
+            "flat","rally_25pct","fall_20pct_stay_low",
+            "fall_20pct_then_recover","fall_35pct_stay_low",
+            "fall_35pct_then_recover","fall_50pct_stay_low",
+            "fall_50pct_then_recover"})
+        for x in shocks:
+            self.assertGreaterEqual(x["cash_aud"],0.)
+            self.assertLessEqual(x["net_deployed_pct_initial"],59.0+11.0)
+
+    def test_very_high_risk_keeps_cash_and_earns_interest(self):
+        from engines.research import v59_false_bottom_stress as study
+        rows=[row(i,risk=.90) for i in range(WEEKS)]
+        for policy in study.POLICIES:
+            r=study.replay(rows,policy=policy)
+            self.assertEqual(r["buys"],0)
+            self.assertEqual(r["invested_aud"],0.)
+            self.assertGreater(r["interest_aud"],10000.)
+
+    def test_episode_requires_observed_transition_and_full_twelve_weeks(self):
+        from engines.research import v59_false_bottom_stress as study
+        all_cheap=[row(i,risk=.05) for i in range(20)]
+        self.assertEqual(study.cheap_signal_episode_study(all_cheap)["events_count"],0)
+        crossing=[row(i,risk=.70 if i<2 else .05) for i in range(20)]
+        self.assertEqual(study.cheap_signal_episode_study(crossing)["events_count"],1)
+        with_missing_week=crossing[:3]+crossing[4:]
+        self.assertEqual(study.cheap_signal_episode_study(with_missing_week)["events_count"],0)
+
+    def test_two_week_confirmation_does_not_buy_first_signal(self):
+        from engines.research import v59_false_bottom_stress as study
+        rows=study.synthetic_path(drop=.20)
+        one=study.replay(rows,policy="strict_confirm_2w")
+        immediate=study.replay(rows,policy="risk_3x_risk_le_020")
+        self.assertEqual(one["buys"],15)
+        self.assertEqual(immediate["buys"],16)
+        self.assertGreater(immediate["net_deployed_pct_initial"],
+                           one["net_deployed_pct_initial"])
+
+
 if __name__ == "__main__":
     unittest.main()

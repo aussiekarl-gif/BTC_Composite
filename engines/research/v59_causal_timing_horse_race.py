@@ -460,6 +460,9 @@ def fetch_and_evaluate() -> dict:
     scored=model.add_risk_indicators(priced,"Research WF Power Law",live_risk_params())
     rows=build_weekly_rows(scored,fx)
     result=evaluate(rows)
+    # Additional RESEARCH-ONLY diagnostics share this exact historical run/input.
+    from engines.research import v59_false_bottom_stress
+    result["false_bottom_stress"]=v59_false_bottom_stress.evaluate(rows)
     result["provider_input_btc_first_last"]=[str(btc.index.min()),str(btc.index.max())]
     result["provider_input_fx_first_last"]=[str(fx.index.min()),str(fx.index.max())]
     return result
@@ -488,6 +491,13 @@ def main():
         "train_selected":report["train_selected_by_predeclared_score"],
         "holdout_result":report["historical_holdout_outcome_for_train_selection"],
     },default=str))
+    # Diagnostic-only reporting; original PR #259 summary remains unmodified.
+    stress=report["false_bottom_stress"]
+    print("FALSE_BOTTOM_EPISODES",json.dumps(stress["cheap_signal_episode_study"],sort_keys=True))
+    for entry in stress["historical"]["holdout_vs_strict3x"]:
+        print("FALSE_BOTTOM_HOLDOUT_VS_STRICT",json.dumps(entry,sort_keys=True))
+    for entry in stress["synthetic_fixed_risk_stress"]:
+        print("FALSE_BOTTOM_SYNTHETIC",json.dumps(entry,sort_keys=True))
     for row in report["summary"]:
         if row["cash_yield"]==.05 and row["reserve_fraction"]==0.:
             print("TIMING_RESULT",json.dumps(row,sort_keys=True))
