@@ -187,7 +187,7 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         if (day - row["signal_date"]).days != 1:
             raise ValueError("Missing strictly previous daily signal")
         passed_days = (day - prev_day).days if i > 0 else 0
-        if i > 0 and (passed_days > 14 or passed_days < 6):
+        if i > 0 and passed_days != 7:
             raise ValueError("Weekly cohort has a missing execution date")
         price = float(row["btc_price_aud"])
         if not math.isfinite(price) or price <= 0:
