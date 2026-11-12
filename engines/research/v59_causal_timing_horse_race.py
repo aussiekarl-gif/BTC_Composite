@@ -161,19 +161,27 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
              reserve_fraction: float, capital: float=CAPITAL_AUD,
              review_date: date | None=None, max_fraction: float=MAX_WEEKLY_FRACTION,
              buy_friction: float=VARIABLE_BUY_FRICTION,
-             fixed_fee: float=FIXED_FEE_AUD, etf_drag: float=ANNUAL_ETF_DRAG) -> dict:
+             fixed_fee: float=FIXED_FEE_AUD, etf_drag: float=ANNUAL_ETF_DRAG,
+             initial_btc_fraction: float=0.) -> dict:
     """Self-financing 104-week matched cohort with interest on uninvested cash."""
     if not rows or policy not in POLICIES:
         raise ValueError("No rows or invalid policy")
     if not all(math.isfinite(x) for x in
-               (cash_yield, reserve_fraction, capital, max_fraction, buy_friction, fixed_fee, etf_drag)):
+               (cash_yield, reserve_fraction, capital, max_fraction, buy_friction, fixed_fee, etf_drag, initial_btc_fraction)):
         raise ValueError("Financial input nonfinite")
     if not (0 <= cash_yield < 1 and 0 <= reserve_fraction <= 1 and capital > 0
             and 0 < max_fraction <= 1 and 0 <= buy_friction < 1
-            and 0 <= fixed_fee < capital and 0 <= etf_drag < 1):
+            and 0 <= fixed_fee < capital and 0 <= etf_drag < 1
+            and 0 <= initial_btc_fraction <= 1):
         raise ValueError("Invalid financial input")
     review = review_date or rows[0]["date"] + timedelta(weeks=WEEKS)
-    cash, btc, invested, paid_cost, interest, nbuy = capital, 0., 0., 0., 0., 0
+    first_price=float(rows[0]["btc_price_aud"])
+    if not math.isfinite(first_price) or first_price <= 0:
+        raise ValueError("Invalid initial BTC/AUD mark for existing holdings")
+    # Already-owned BTC is valued at cohort entry, not bought again.
+    cash = capital * (1.-initial_btc_fraction)
+    btc = capital * initial_btc_fraction / first_price
+    invested, paid_cost, interest, nbuy = 0., 0., 0., 0
     initial_day = rows[0]["date"]
     prev_day = initial_day
     reserve = reserve_fraction * capital
@@ -227,6 +235,7 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         "terminal_btc_equivalent": btc+cash/terminal,
         "drawdown_pct":100*worst_dd, "btc_50pct_shock_equity_aud":cash+btc*terminal*.5,
         "net_invested_aud": invested, "interest_earned_aud": interest,
+        "initial_btc_fraction":initial_btc_fraction,
         "total_cost_aud":paid_cost, "buy_count":nbuy,
         "first_buy_date":first_date.isoformat() if first_date else None,
         "deployed_fraction_of_initial":invested/capital,
@@ -260,7 +269,7 @@ def cohort_windows(rows: list[dict]) -> list[dict]:
 
 
 def horizon_sensitivity(windows, *, capital=CAPITAL_AUD):
-    """Common 104-week measurement; buying paused after review at 78/104/130w.
+    """Common 104-week measurement; buying paused after review at 39..130w.
 
     130-week review is incomplete by the 104-week measurement date;
     unspent interest-earning cash must always be reported.
@@ -271,7 +280,7 @@ def horizon_sensitivity(windows, *, capital=CAPITAL_AUD):
         anchor=date.fromisoformat(w["anchor"])
         for cash_yield in CASH_YIELDS:
             for reserve in RESERVE_FRACTIONS:
-                for horizon in (78,104,130):
+                for horizon in (39,52,60,78,104,130):
                     for policy in relevant:
                         result=simulate(w["rows"],policy=policy,cash_yield=cash_yield,
                                         reserve_fraction=reserve,capital=capital,
@@ -290,7 +299,7 @@ def horizon_sensitivity(windows, *, capital=CAPITAL_AUD):
     for split in ("TRAIN","HISTORICAL_HOLDOUT"):
         for cash_yield in CASH_YIELDS:
             for reserve in RESERVE_FRACTIONS:
-                for horizon in (78,104,130):
+                for horizon in (39,52,60,78,104,130):
                     for policy in relevant:
                         selected=[r for r in records if r["split"]==split
                                   and r["cash_yield"]==cash_yield
