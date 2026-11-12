@@ -33,7 +33,7 @@ def mock_cycle_rows(*,halving=date(2012,11,28),weeks=100,trend=.0,
 class ThreeCycleEntryTests(unittest.TestCase):
     def test_full_daily_build_2015_uses_200_actual_sundays(self):
         dates=pd.date_range("2011-03-07","2016-11-01",freq="D",tz="UTC")
-        prices=pd.DataFrame({"price":200.+range(len(dates))},index=dates)
+        prices=pd.DataFrame({"price":[200.+i for i in range(len(dates))]},index=dates)
         fixdays=pd.date_range("2011-03-07","2016-11-01",freq="B",tz="UTC")
         fx=pd.Series(.7,index=fixdays)
         rows=study.build_price_only_rows(prices,fx)
