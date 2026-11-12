@@ -103,6 +103,14 @@ class ThreeCycleEntryTests(unittest.TestCase):
         self.assertIn("fall_50pct_then_recover",{r["scenario"] for r in stress})
         self.assertIn("rally_25pct",{r["scenario"] for r in stress})
         self.assertIn("flat",{r["scenario"] for r in stress})
+        fall=next(x for x in stress if x["scenario"]=="fall_50pct_then_stay_low"
+                  and x["policy"]=="wma_near_stage20drop"
+                  and x["initial_btc_fraction"]==0.)
+        rally=next(x for x in stress if x["scenario"]=="rally_25pct"
+                   and x["policy"]=="wma_near_stage20drop"
+                   and x["initial_btc_fraction"]==0.)
+        self.assertIsNotNone(fall["first_dip_acceleration_signal"])
+        self.assertIsNone(rally["first_dip_acceleration_signal"])
 
     def test_unconfirmed_2026_not_assumed_future_cycle_bottom(self):
         r=study.cycle_periods(mock_cycle_rows(weeks=101))
