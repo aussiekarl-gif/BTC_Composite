@@ -483,6 +483,10 @@ def fetch_and_evaluate() -> dict:
     # Descriptive first-200WMA-crossing 17-week accumulation vs original V5.9.
     from engines.research import v59_17week_200wma_episode
     result["wma_17week_episode_study"]=v59_17week_200wma_episode.evaluate(rows)
+    # Independent bear-cycle grouping: two mature BTC cycles, not 2020 COVID
+    # or repeated 2022/23 moving-average crossing events.
+    from engines.research import v59_four_year_bottoms
+    result["major_bear_cycle_bottom_audit"]=v59_four_year_bottoms.evaluate(rows)
     result["provider_input_btc_first_last"]=[str(btc.index.min()),str(btc.index.max())]
     result["provider_input_fx_first_last"]=[str(fx.index.min()),str(fx.index.max())]
     return result
@@ -523,6 +527,9 @@ def main():
         if row["split"]=="HISTORICAL_HOLDOUT" and row["cash_yield"]==.05:
             print("WMA_HOLDOUT",json.dumps(row,sort_keys=True))
     episode=report["wma_17week_episode_study"]
+    cycle_audit=report["major_bear_cycle_bottom_audit"]
+    for cycle in cycle_audit["cycles"]:
+        print("CYCLE_MAJOR_BOTTOM",json.dumps(cycle,sort_keys=True,allow_nan=False))
     print("WMA17_RAW_CROSSINGS",json.dumps(episode["all_observed_prior_sunday_crossings"],default=str))
     print("WMA17_YEAR_AUDIT",json.dumps(episode["year_by_year_weekly_WMA_counts"],sort_keys=True))
     print("WMA17_STREAKS",json.dumps(episode["all_observed_weekly_below_WMA_streaks"],sort_keys=True))

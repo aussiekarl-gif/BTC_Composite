@@ -4,6 +4,8 @@ on:
     paths:
       - 'engines/research/v59_causal_timing_horse_race.py'
       - 'engines/research/v59_17week_200wma_episode.py'
+      - 'engines/research/v59_four_year_bottoms.py'
+      - 'tests/test_v59_four_year_bottoms.py'
       - 'tests/test_v59_17week_200wma_episode.py'
       - 'tests/test_v59_causal_timing_horse_race.py'
       - '.github/workflows/v59_causal_timing_research.yml'
@@ -32,6 +34,7 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -p 'test_v59_causal_timing_horse_race.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_17week_200wma_episode.py' -v
+      - run: python -m unittest discover -s tests -p 'test_v59_four_year_bottoms.py' -v
       - run: python -m py_compile engines/research/v59_causal_timing_horse_race.py
   actual-public-history:
     runs-on: ubuntu-latest
