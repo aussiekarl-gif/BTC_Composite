@@ -175,19 +175,19 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
     review = review_date or rows[0]["date"] + timedelta(weeks=WEEKS)
     cash, btc, invested, paid_cost, interest, nbuy = capital, 0., 0., 0., 0., 0
     initial_day = rows[0]["date"]
-    prev_day = initial_day - timedelta(days=7)
+    prev_day = initial_day
     reserve = reserve_fraction * capital
     peak, worst_dd = capital, 0.
     first_date = None
     spent_first_26w = 0.
-    for row in rows:
+    for i, row in enumerate(rows):
         day = row["date"]
-        if not isinstance(day, date) or day <= prev_day:
+        if not isinstance(day, date) or (i > 0 and day <= prev_day):
             raise ValueError("Unsorted or duplicate execution dates")
         if (day - row["signal_date"]).days != 1:
             raise ValueError("Missing strictly previous daily signal")
-        passed_days = (day - prev_day).days
-        if passed_days > 14 or passed_days < 6:
+        passed_days = (day - prev_day).days if i > 0 else 0
+        if i > 0 and (passed_days > 14 or passed_days < 6):
             raise ValueError("Weekly cohort has a missing execution date")
         price = float(row["btc_price_aud"])
         if not math.isfinite(price) or price <= 0:
