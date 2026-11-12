@@ -162,7 +162,7 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
              review_date: date | None=None, max_fraction: float=MAX_WEEKLY_FRACTION,
              buy_friction: float=VARIABLE_BUY_FRICTION,
              fixed_fee: float=FIXED_FEE_AUD, etf_drag: float=ANNUAL_ETF_DRAG,
-             initial_btc_fraction: float=0.) -> dict:
+             initial_btc_fraction: float=0., weight_fn=None) -> dict:
     """Self-financing 104-week matched cohort with interest on uninvested cash."""
     if not rows or policy not in POLICIES:
         raise ValueError("No rows or invalid policy")
@@ -209,7 +209,12 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         available = max(0., cash-reserve)
         weeks_left = max((review - day).days / 7., 1.)
         # Review date stops BUYs; it never forces expenditure or liquidation.
-        weight = policy_multiplier(policy, row) if day <= review else 0.
+        # Research-only injection for matched 200WMA gate experiments; default
+        # remains the identical frozen PR #259 execution policy.
+        weight = (weight_fn(row) if weight_fn is not None else
+                  policy_multiplier(policy, row)) if day <= review else 0.
+        if not math.isfinite(weight) or not 0 <= weight <= 3.:
+            raise ValueError("Research buy weight must be finite and 0..3")
         spend = min(available, max(0., available / weeks_left * weight),
                     capital * max_fraction)
         if spend > fixed_fee + .01:
