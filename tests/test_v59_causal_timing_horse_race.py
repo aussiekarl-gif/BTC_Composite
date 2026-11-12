@@ -205,6 +205,15 @@ class FalseBottomResearchTests(unittest.TestCase):
             self.assertEqual(r["invested_aud"],0.)
             self.assertGreater(r["interest_aud"],10000.)
 
+    def test_episode_requires_observed_transition_and_full_twelve_weeks(self):
+        from engines.research import v59_false_bottom_stress as study
+        all_cheap=[row(i,risk=.05) for i in range(20)]
+        self.assertEqual(study.cheap_signal_episode_study(all_cheap)["events_count"],0)
+        crossing=[row(i,risk=.70 if i<2 else .05) for i in range(20)]
+        self.assertEqual(study.cheap_signal_episode_study(crossing)["events_count"],1)
+        with_missing_week=crossing[:3]+crossing[4:]
+        self.assertEqual(study.cheap_signal_episode_study(with_missing_week)["events_count"],0)
+
     def test_two_week_confirmation_does_not_buy_first_signal(self):
         from engines.research import v59_false_bottom_stress as study
         rows=study.synthetic_path(drop=.20)
