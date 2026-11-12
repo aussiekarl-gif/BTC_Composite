@@ -8,7 +8,7 @@ import numpy as np
 
 from engines.research.v59_causal_timing_horse_race import (
     CAPITAL_AUD, POLICIES, policy_multiplier, simulate, build_weekly_rows,
-    cohort_windows, evaluate, horizon_sensitivity, WEEKS,
+    cohort_windows, evaluate, horizon_sensitivity, existing_btc_exposure_sensitivity, WEEKS,
 )
 
 
@@ -76,11 +76,30 @@ class CausalTimingTests(unittest.TestCase):
     def test_review_horizon_reports_matched_capital_and_holdout_split(self):
         fake={"anchor":"2021-01-01","split":"TRAIN","rows":[row(i) for i in range(104)]}
         summaries=horizon_sensitivity([fake])
-        self.assertEqual(len(summaries),5*3*2*2)
+        self.assertEqual(len(summaries),5*6*2*2)
         sample=[r for r in summaries if r["policy"]=="risk_3x"
                 and r["cash_yield"]==.05 and r["reserve_fraction"]==0]
-        self.assertEqual(set(x["review_after_weeks"] for x in sample),{78,104,130})
+        self.assertEqual(set(x["review_after_weeks"] for x in sample),{39,52,60,78,104,130})
         self.assertTrue(all(x["cohorts"]==1 for x in sample))
+
+    def test_existing_btc_is_not_purchased_twice(self):
+        rows=[row(i,risk=.99) for i in range(WEEKS)]
+        r=simulate(rows,policy="risk_3x",cash_yield=.05,reserve_fraction=0,
+                   initial_btc_fraction=.41)
+        self.assertEqual(r["buy_count"],0)
+        self.assertEqual(r["net_invested_aud"],0.)
+        self.assertEqual(r["initial_btc_fraction"],.41)
+        self.assertGreater(r["btc_units"],2.)
+        self.assertGreater(r["cash_aud"],CAPITAL_AUD*.59)
+        self.assertLess(r["btc_units"],CAPITAL_AUD*.41/100000.)
+
+    def test_existing_btc_sensitivity_is_same_cohort_and_base(self):
+        win={"anchor":"2021-01-01","split":"TRAIN",
+             "rows":[row(i,risk=.05) for i in range(104)],
+             "review_date":date(2023,1,1)}
+        reports=existing_btc_exposure_sensitivity([win])
+        self.assertEqual(len(reports),len(POLICIES)*len((0,.05))*len((0,.1)))
+        self.assertEqual(set(r["initial_btc_fraction"] for r in reports),{.41})
 
     def test_future_price_can_change_fill_but_not_prior_risk_gate(self):
         one=row(0, risk=.03, aud=50000.)
