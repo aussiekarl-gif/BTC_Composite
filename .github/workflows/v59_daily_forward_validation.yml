@@ -4,7 +4,15 @@ on:
   schedule:
     # 01:23 UTC = 11:23 AM Brisbane AEST; prior UTC day is complete.
     - cron: '23 1 * * *'
+    # Fallback if GitHub delays/skips the first launch; tape is idempotent.
+    - cron: '53 1 * * *'
   workflow_dispatch:
+  # One-time initial capture after this code is merged to main.
+  push:
+    branches: [main]
+    paths:
+      - 'engines/research/v59_forward_dca_tape.py'
+      - '.github/workflows/v59_daily_forward_validation.yml'
   pull_request:
     paths:
       - 'engines/research/v59_forward_dca_tape.py'
@@ -33,9 +41,52 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_v59_forward_dca_tape.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_live_signal_snapshot.py' -v
 
+  read-only-first-source-smoke:
+    # Verify live source and complete branch-to-scorecard pipeline on PR,
+    # without any write token, orders or user notifications.
+    if: github.event_name == 'pull_request'
+    needs: test-offline-forward-safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BTC_PORTFOLIO_BACKEND: sqlite
+      BTC_PORTFOLIO_DB_PATH: /tmp/v59_forward_pr_readonly.sqlite3
+      NTFY_TOPIC: ''
+      GOOGLE_SERVICE_ACCOUNT_JSON: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Rehearse actual provider capture without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/v59_smoke
+          git fetch origin refs/heads/research/v59-forward-tape
+          git show FETCH_HEAD:data/research_v59_forward/daily_observations.jsonl > /tmp/v59_smoke/old.jsonl
+          python -m engines.research.v59_forward_dca_tape \
+            --old /tmp/v59_smoke/old.jsonl \
+            --new /tmp/v59_smoke/new.jsonl \
+            --scorecard /tmp/v59_smoke/scorecard.json \
+            --snapshot /tmp/v59_smoke/snapshot.json \
+            --code-sha "$GITHUB_SHA"
+          jq '{observations,last_signal_day,prospective_shadow}' /tmp/v59_smoke/scorecard.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve smoke result, do not write repo history
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v59-forward-source-smoke-research-only
+          path: /tmp/v59_smoke/
+          if-no-files-found: warn
+          retention-days: 14
+
   record-new-point-in-time-daily-evidence:
-    # PRIVILEGED WRITE only on main schedule/manual, never on PR.
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    # PRIVILEGED WRITE only on main schedule/manual/trusted push, never on PR.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
     needs: test-offline-forward-safety
     runs-on: ubuntu-latest
     timeout-minutes: 27
@@ -173,7 +224,7 @@ jobs:
           fi
 
   alert-on-offline-test-failure:
-    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.test-offline-forward-safety.result == 'failure' }}
+    if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.test-offline-forward-safety.result == 'failure' }}
     needs: test-offline-forward-safety
     runs-on: ubuntu-latest
     permissions:
