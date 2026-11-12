@@ -7,6 +7,10 @@ on:
       - '.github/workflows/v59_causal_timing_research.yml'
       - 'engines/research/research_model.py'
   workflow_dispatch:
+  schedule:
+    # Monday 03:17 UTC = Monday 13:17 Brisbane (year round).
+    # Fresh 104-week market research, never a live buy/sell action.
+    - cron: '17 3 * * 1'
 permissions:
   contents: read
 jobs:
@@ -42,6 +46,22 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Retrospective matched BTC/AUD 2017-2024 cohorts — no private portfolio data
         run: python -m engines.research.v59_causal_timing_horse_race --out artifacts/v59_buy_timing_horse_race.json
+      - name: Weekly RESEARCH summary (not an ntfy trading recommendation)
+        if: ${{ success() && github.event_name == 'schedule' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## BTC RESEARCH — WEEKLY BACKTEST (RETROSPECTIVE, NOT LIVE TRADING)'
+            echo ''
+            echo 'This is a repeat of the fixed historical 2017–2024 cohort comparison,'
+            echo 'not new independent cycles or an instruction to buy/sell BTC.'
+            echo ''
+            jq '{status,completed_cohorts,number_matched_weekly_rows,latest_historical_btc_execution:.data_last_execution_date,latest_200wma_signal:.wma_proximity_study.current_reference,assumptions}' artifacts/v59_buy_timing_horse_race.json | sed 's/^/    /'
+            echo ''
+            echo 'All strategy-level results and individual cohorts are saved as the 90-day Actions artifact.'
+            echo 'Production V5.8.2 / live V5.9 / Cycle Trading / ntfy remain unchanged.'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Retain complete audit as artifact, not a live recommendation
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,3 +70,32 @@ jobs:
           path: artifacts/v59_buy_timing_horse_race.json
           if-no-files-found: warn
           retention-days: 90
+
+  notify-on-weekly-research-failure:
+    # Dedicated privileged job only for the scheduled run, never for PR code.
+    if: ${{ always() && github.ref == 'refs/heads/main' && github.event_name == 'schedule' }}
+    needs: [causal-unit-tests, actual-public-history]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create/close exception-only clearly labelled GitHub research issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          UNIT_RESULT: ${{ needs.causal-unit-tests.result }}
+          HISTORY_RESULT: ${{ needs.actual-public-history.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          title="[BTC RESEARCH / WEEKLY BACKTEST] FAILED — NOT A TRADING SIGNAL"
+          existing="$(gh issue list --state open --limit 100 --json title,number --jq '.[] | select(.title == "[BTC RESEARCH / WEEKLY BACKTEST] FAILED — NOT A TRADING SIGNAL") | .number' | head -n 1)"
+          if [[ "$UNIT_RESULT" == "success" && "$HISTORY_RESULT" == "success" ]]; then
+            if [[ -n "$existing" ]]; then
+              gh issue close "$existing" --comment "A subsequent WEEKLY RESEARCH backtest passed: $RUN_URL . No live trading rules changed."
+            fi
+          elif [[ -z "$existing" ]]; then
+            gh issue create --title "$title" --assignee "aussiekarl-gif" \
+              --body "WEEKLY RESEARCH historical backtest or unit-test failure (unit=$UNIT_RESULT, history=$HISTORY_RESULT). RESEARCH ONLY — NOT a BTC price alert, not a Cycle Trading signal and NOT an order. Review $RUN_URL. The previous validated model remains unchanged."
+          fi
