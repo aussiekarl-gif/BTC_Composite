@@ -15,6 +15,9 @@ from typing import Any
 
 from engines.research.v59_dynamic_risk_policy import risk_buy_multiplier
 from engines.research.v59_live_signal_snapshot import capture
+from engines.research.v59_realized_forward_reference import (
+    capture_reference, paired_to_spot,
+)
 
 CAPITAL = 510_000.
 INITIAL_BTC_FRACTION = .41
@@ -26,11 +29,12 @@ WEEKLY_CAP = .05*CAPITAL
 ILLUSTRATIVE_REVIEW = date(2027,12,31)
 HORIZONS=(7,28,84)
 REQUIRED_SNAPSHOT_STATUS="RESEARCH_SIGNAL_SNAPSHOT_READY"
-GATES=("risk_1x","risk_3x","risk_3x_risk_le_020","below_200wma","below_to_plus10")
+GATES=("risk_1x","risk_3x","risk_3x_risk_le_020","below_200wma","below_to_plus10",
+       "realized110_and_risk050")
 DATA_VERSION=1
 
 
-def to_observation(s:dict, code_sha:str="") -> dict:
+def to_observation(s:dict, code_sha:str="",realized_reference:dict|None=None) -> dict:
     """Never replace actual observed risk with recomputed history."""
     if s.get("status") != REQUIRED_SNAPSHOT_STATUS or not s.get("risk_and_fx_fresh"):
         raise ValueError("Invalid or stale prospective snapshot; no paper trade")
@@ -73,6 +77,10 @@ def to_observation(s:dict, code_sha:str="") -> dict:
         "price_source":s["risk_provider"],"fx_source":s["fx_provider"],
         "code_commit_sha":code_sha or "UNKNOWN_NOT_ATTESTED",
         "asx_ibit_trade_executable":False,"actual_broker_holdings_verified":False,
+        # Optional first-captured on-chain provider reference: missing rows
+        # remain missing, older tape rows are NEVER reconstructed.
+        "realized_price_reference":paired_to_spot(
+            realized_reference,price,signal.date()),
         "paper_only":True
     }
 
@@ -129,12 +137,20 @@ def multipliers(row:dict) -> dict:
             math.isfinite(ratio) and ratio>0):
         raise ValueError("Invalid point-in-time policy input")
     aggressive=risk_buy_multiplier(risk)
+    source=row.get("realized_price_reference") or {}
+    realized_ratio=source.get("price_to_realized_ratio")
+    valid_realized=(source.get("usable_for_forward") is True and
+                    realized_ratio is not None and
+                    math.isfinite(float(realized_ratio)) and
+                    0<float(realized_ratio)<=1.10)
     return {
         "risk_1x":min(1.,aggressive),
         "risk_3x":aggressive,
         "risk_3x_risk_le_020":aggressive if risk<=.20 else 0.,
         "below_200wma":aggressive if ratio<=1. else 0.,
         "below_to_plus10":aggressive if ratio<=1.10 else 0.,
+        # Strict source/date gate AND existing universal >.50 stop:
+        "realized110_and_risk050":aggressive if risk<=.50 and valid_realized else 0.,
     }
 
 
@@ -247,6 +263,11 @@ def scorecard(rows:list[dict], new_record_added:bool) -> dict:
         "matured_paper_BTC_AUD_returns":matured_returns(rows),
         "prospective_shadow":paper_portfolios(rows),
         "not_asx_ibit_execution_or_personal_portfolio":True,
+        "realized_observation_status":(
+            rows[-1].get("realized_price_reference",{}).get("status","UNAVAILABLE")
+            if rows else "UNAVAILABLE"),
+        "realized_current_signal_is_tradeable":False,
+        "realized_reference_is_research_only":True,
         "no_live_recommendations_orders_notifications":True,
     }
 
@@ -263,7 +284,13 @@ def main() -> int:
     s=capture()
     args.snapshot.parent.mkdir(parents=True,exist_ok=True)
     args.snapshot.write_text(json.dumps(s,sort_keys=True,indent=2,allow_nan=False)+"\n")
-    new=to_observation(s,args.code_sha)
+    # BGeometrics may lag by days or be unavailable for free accounts.
+    # An unavailable on-chain read cannot block the existing V5.9 tape
+    # or be used to infer a buy; record explicit source status instead.
+    real_capture=capture_reference(
+        closed_signal_date=date.fromisoformat(
+            s["closed_risk_observation_utc"][:10]))
+    new=to_observation(s,args.code_sha,realized_reference=real_capture)
     tape,added=add_observation(old,new)
     summary=scorecard(tape,added)
     args.new.parent.mkdir(parents=True,exist_ok=True)
