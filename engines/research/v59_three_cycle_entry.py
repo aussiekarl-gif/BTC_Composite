@@ -111,14 +111,23 @@ def cycle_periods(rows:list[dict]) -> list[dict]:
     indexed={r["date"]:i for i,r in enumerate(rows)}
     out=[]
     for halving,cycle,bottom in HALVINGS:
-        first=next_monday(halving+timedelta(days=FIRST_PHASE_DAY))
+        requested_first=next_monday(halving+timedelta(days=FIRST_PHASE_DAY))
         terminal=next_monday(halving+timedelta(days=END_PHASE_DAY))
+        # In 2015 the first **fully supported** 200-week Sunday average can
+        # occur after day 600, because the public BTC archive starts in 2011.
+        # Left-truncate every policy on that same first observable Monday;
+        # never invent earlier WMA values or call it a full day-600 comparison.
+        first=next((r["date"] for r in rows
+                    if requested_first<=r["date"]<=terminal),requested_first)
+        warmup_truncated=first>requested_first
         if bottom is None:
             out.append({
                 "cycle":cycle,"halving":halving.isoformat(),
                 "status":"UNCONFIRMED_AND_RIGHT_CENSORED",
                 "expost_low":None,"not_simulated":True,
                 "first_phase_monday":first.isoformat(),
+                "requested_phase_monday":requested_first.isoformat(),
+                "wma_warmup_left_truncated":warmup_truncated,
                 "common_terminal_monday":terminal.isoformat(),
             })
             continue
@@ -145,6 +154,8 @@ def cycle_periods(rows:list[dict]) -> list[dict]:
                       else "COMPLETE_PRICE_FX_R2_COMPARABLE",
             "expost_low":bottom.isoformat(),"not_simulated":False,
             "first_phase_monday":first.isoformat(),
+            "requested_phase_monday":requested_first.isoformat(),
+            "wma_warmup_left_truncated":warmup_truncated,
             "common_terminal_monday":terminal.isoformat(),
             "rows":block})
     return out
