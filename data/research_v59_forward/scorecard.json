@@ -1,0 +1,92 @@
+{
+  "first_actual_capture": "2026-11-12T11:19:52.234443+00:00",
+  "last_signal_day": "2026-11-11",
+  "matured_paper_BTC_AUD_returns": {
+    "28d": {
+      "btc_aud_excess_over_5pct_cash_on_signals_pct": {
+        "below_200wma": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "below_to_plus10": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_1x": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_3x": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_3x_risk_le_020": {
+          "count": 0,
+          "mean_pct": null
+        }
+      },
+      "observed_exact_horizon_pairs": 0
+    },
+    "7d": {
+      "btc_aud_excess_over_5pct_cash_on_signals_pct": {
+        "below_200wma": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "below_to_plus10": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_1x": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_3x": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_3x_risk_le_020": {
+          "count": 0,
+          "mean_pct": null
+        }
+      },
+      "observed_exact_horizon_pairs": 0
+    },
+    "84d": {
+      "btc_aud_excess_over_5pct_cash_on_signals_pct": {
+        "below_200wma": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "below_to_plus10": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_1x": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_3x": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "risk_3x_risk_le_020": {
+          "count": 0,
+          "mean_pct": null
+        }
+      },
+      "observed_exact_horizon_pairs": 0
+    }
+  },
+  "new_day_appended": true,
+  "no_live_recommendations_orders_notifications": true,
+  "not_asx_ibit_execution_or_personal_portfolio": true,
+  "observations": 1,
+  "prospective_shadow": {
+    "broker_fills_verified": false,
+    "matched_prospective_monday_fills": 0,
+    "status": "WAITING_FOR_FULL_SUNDAY_MONDAY_PAIR"
+  },
+  "status": "RESEARCH_ONLY_FORWARD_DATA",
+  "uncaptured_calendar_days_between_first_last": 0
+}
