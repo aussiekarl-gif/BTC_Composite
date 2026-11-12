@@ -317,6 +317,50 @@ def horizon_sensitivity(windows, *, capital=CAPITAL_AUD):
     return summary
 
 
+def existing_btc_exposure_sensitivity(windows, *, capital=CAPITAL_AUD):
+    """Same preexisting ~41% BTC position across policies; time only cash buys."""
+    exposure=.41
+    reports=[]
+    for w in windows:
+        for cash_yield in CASH_YIELDS:
+            for reserve in RESERVE_FRACTIONS:
+                for policy in POLICIES:
+                    rec=simulate(w["rows"],policy=policy,cash_yield=cash_yield,
+                         reserve_fraction=reserve,capital=capital,
+                         review_date=w["review_date"],initial_btc_fraction=exposure)
+                    reports.append({"anchor":w["anchor"],"split":w["split"],
+                       "cash_yield":cash_yield,"reserve_fraction":reserve,
+                       "policy":policy,**rec})
+    control={(r["anchor"],r["cash_yield"],r["reserve_fraction"]):r
+             for r in reports if r["policy"]=="risk_1x"}
+    for r in reports:
+        b=control[(r["anchor"],r["cash_yield"],r["reserve_fraction"])]
+        r["equity_gain_pct"]=100*(r["equity_aud"]/b["equity_aud"]-1)
+        r["drawdown_gap_pp"]=r["drawdown_pct"]-b["drawdown_pct"]
+    out=[]
+    for split in ("TRAIN","HISTORICAL_HOLDOUT"):
+        for cash_yield in CASH_YIELDS:
+            for reserve in RESERVE_FRACTIONS:
+                for policy in POLICIES:
+                    selected=[r for r in reports if r["split"]==split
+                              and r["cash_yield"]==cash_yield
+                              and r["reserve_fraction"]==reserve
+                              and r["policy"]==policy]
+                    if not selected:continue
+                    out.append({"split":split,"policy":policy,
+                       "cash_yield":cash_yield,"reserve_fraction":reserve,
+                       "initial_btc_fraction":exposure,"cohorts":len(selected),
+                       "median_equity_uplift_pct":float(np.median([r["equity_gain_pct"] for r in selected])),
+                       "worst_equity_uplift_pct":min(r["equity_gain_pct"] for r in selected),
+                       "equity_win_fraction":sum(r["equity_gain_pct"]>0 for r in selected)/len(selected),
+                       "median_new_cash_deployed_frac_initial":float(np.median(
+                           [r["deployed_fraction_of_initial"] for r in selected])),
+                       "median_drawdown_change_pp":float(np.median(
+                           [r["drawdown_gap_pp"] for r in selected])),
+                    })
+    return out
+
+
 def evaluate(rows: list[dict], *, capital: float=CAPITAL_AUD) -> dict:
     windows = cohort_windows(rows)
     trials = []
@@ -399,6 +443,7 @@ def evaluate(rows: list[dict], *, capital: float=CAPITAL_AUD) -> dict:
         ],
         "summary":summary,"trials":trials,
         "review_horizon_sensitivity":horizon_sensitivity(windows,capital=capital),
+        "existing_btc_exposure_sensitivity":existing_btc_exposure_sensitivity(windows,capital=capital),
     }
 
 
@@ -452,6 +497,10 @@ def main():
         if (row["split"]=="HISTORICAL_HOLDOUT" and row["cash_yield"]==.05
                 and row["reserve_fraction"]==0.):
             print("HORIZON_RESULT",json.dumps(row,sort_keys=True))
+    for row in report["existing_btc_exposure_sensitivity"]:
+        if (row["split"]=="HISTORICAL_HOLDOUT" and row["cash_yield"]==.05
+                and row["reserve_fraction"]==0.):
+            print("EXISTING_BTC_RESULT",json.dumps(row,sort_keys=True))
     return 0
 
 
