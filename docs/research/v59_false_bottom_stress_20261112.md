@@ -72,3 +72,73 @@ The result JSON contains `false_bottom_stress.historical`,
 `false_bottom_stress.synthetic_fixed_risk_stress`.
 
 **No portfolio records, live recommendations, notification logic or trades are written.**
+
+## Completed GitHub Actions research results — 12 Nov 2026
+
+- [Actual-history + unit-test workflow](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/43200888580): **success** (both jobs).
+- [Research DCA regression workflow](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/43200888716): **success**.
+- Historical inputs: **515** matched weekly executions, **16** completed 104-week cohorts (six later overlapping historical holdouts).
+- All tables below are computed from the actual `FALSE_BOTTOM_*` log output in run `43200888580`; not hypothetical or estimated backtest scores.
+
+### Six later historical holdouts, existing 41% BTC, 5% cash yield
+
+Value differences are compared to strict 3x at prior-Sunday R2 risk <=0.20
+with identical 104-week valuation dates. Worst means lowest cohort excess
+return. Positive extra drawdown (pp) means **less** drawdown than reference.
+The price-selection diagnostic compares acquired undragged BTC units against
+the **same net executed buying dollars** spread equally over every cohort week;
+total dollars were known only after the simulation, so this is NOT investable.
+
+| Policy | Median final value vs strict 3x | Worst | Wins | Median extra drawdown | Median total deployed / original A$510k | Price-selection vs uniform same-net-spend |
+|---|---:|---:|---:|---:|---:|---:|
+| 1x gate <=0.50 | -10.03% | -12.91% | 1/6 | 1.81 pp | 62.2% | 4.8% |
+| Full 3x gate <=0.50 | +0.05% | -1.53% | 3/6 | -0.45 pp | 60.8% | 25.3% |
+| Strict 3x gate <=0.20 (reference) | 0.00% | 0.00% | 0/6 | 0.00 pp | 59.4% | 25.8% |
+| Strict gate, wait 2 cheap weeks | -0.80% | -2.20% | 1/6 | 0.40 pp | 58.8% | 26.0% |
+| Strict gate, wait 4 cheap weeks | -1.61% | -5.31% | 2/6 | 1.27 pp | 57.6% | 26.6% |
+| Strict gate, 1x then 3x after 10% fall | -2.75% | -13.51% | 2/6 | 2.19 pp | 52.7% | 20.5% |
+| Strict gate, 1x then 3x after 20% fall | -8.64% | -16.16% | 2/6 | 3.07 pp | 47.7% | 17.3% |
+| Strict gate, 2x then 3x after 10% fall | -1.13% | -4.62% | 2/6 | 0.59 pp | 58.5% | 25.1% |
+| Strict gate plus 25% prior-year drawdown | -6.00% | -29.39% | 0/6 | 2.56 pp | 39.9% | 14.7% |
+
+### Real-market low-risk episodes
+
+There were **7** separated (but not statistically
+independent) <=0.20 crossings with a fully observed following 12-week window.
+**3/7** subsequently fell at least
+20%, **1/7** fell at least 35%,
+and **0/7** fell at least 50%.
+The worst observed episode was **-37.3%** from the
+initial entry proxy; episode selection and reconstructed scores may bias
+the apparent frequency. Neither 3/7 nor 1/7 is a forward probability.
+
+### Artificial fixed-risk scenario outcomes
+
+Risk is manually 0.05 for 16 weeks and 0.70 afterwards; BTC prices
+decline linearly over 12 weeks and either stay at their low or recover.
+These results measure liquidity/funding stress, not V5.9 forecast skill.
+
+| Path | 1x then 3x on -20%: value difference | 1x then 3x on -10%: value difference | 2-week confirmation: value difference | 1x/-20%: BTC units difference |
+|---|---:|---:|---:|---:|
+| flat | +1.42% | +1.42% | +0.12% | -22.35% |
+| rally_25pct | -0.06% | -0.06% | -0.21% | -20.69% |
+| fall_20pct_stay_low | +2.75% | +1.80% | +0.43% | -17.90% |
+| fall_35pct_stay_low | +3.32% | +2.23% | +0.72% | -8.90% |
+| fall_50pct_stay_low | +3.94% | +2.71% | +1.05% | -5.29% |
+| fall_50pct_then_recover | +0.79% | +0.74% | +0.37% | -5.55% |
+
+**Interpretation:** The staged 1x/-20% scheme protects more AUD cash in
+flat or prolonged falling paths, but commonly accumulates **fewer** BTC units
+and missed considerable historical appreciation. Positive total portfolio
+values during a crash can be caused by **lower exposure**, not superior
+purchase prices. Under a -50% fall that subsequently fully recovers, staged
+1x/-20% beat strict 3x by only **+0.79%**
+while holding **-5.55%**
+fewer simulated BTC units. Values of 5% interest, all costs and implied ETF
+holding drag are illustrative.
+
+**Research decision:** There is no convincing basis to replace the
+strict <=0.20 3x *research candidate*. Current risk<=0.50 live policy
+remains unchanged. Do not optimize to these six overlapping
+holdouts; prospectively capture time-stamped risk, actual ASX:IBIT quotes and
+broker spreads, and evaluate forward performance before any promotion.
