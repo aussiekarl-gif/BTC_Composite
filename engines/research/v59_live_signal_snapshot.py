@@ -75,6 +75,16 @@ def snapshot_from_scored(scored: pd.DataFrame, *, now_utc: datetime, params: dic
     risk_ready = source_ok and age_ok and risk_valid and spot_valid
     market_ready = risk_ready and fx_valid and fx_age_ok
     preview_multiplier = risk_buy_multiplier(score) if risk_ready else None
+    # Strictly completed 200-week Sunday UTC average; don't use a still
+    # forming current week as a finished W-SUN close on Mon..Sat.
+    weekly_prices = pd.to_numeric(valid["price"], errors="coerce").resample("W-SUN").last()
+    completed_weeks = weekly_prices.loc[weekly_prices.index <= stamp]
+    weekly_wma = completed_weeks.rolling(200, min_periods=200).mean()
+    wma_week = completed_weeks.index[-1] if len(completed_weeks) else None
+    wma_usd = (float(weekly_wma.iloc[-1]) if len(weekly_wma)
+               else float("nan"))
+    wma_ready = math.isfinite(wma_usd) and wma_usd > 0
+    ratio_to_200wma = spot_usd/wma_usd if wma_ready and spot_valid else None
     fingerprint = hashlib.sha256(
         (json.dumps(params, sort_keys=True, default=str)+"|"+str(stamp)+"|"+
          str(spot_usd)+"|"+str(score)+"|"+source).encode("utf-8")
@@ -93,6 +103,9 @@ def snapshot_from_scored(scored: pd.DataFrame, *, now_utc: datetime, params: dic
             pd.notna(latest["continuous_valuation_risk"]) else None
         ),
         "btc_usd_closed_price": spot_usd if spot_valid else None,
+        "btc_usd_200wma_last_completed_sunday": wma_usd if wma_ready else None,
+        "btc_usd_200wma_week_ending_utc": wma_week.date().isoformat() if wma_week else None,
+        "daily_closed_btc_usd_to_last_completed_200wma_ratio": ratio_to_200wma,
         "usd_per_aud": fx if fx_valid and fx_age_ok else None,
         "fx_observation_date_utc": fx_day.isoformat() if fx_day else None,
         "fx_age_days": fx_age,
