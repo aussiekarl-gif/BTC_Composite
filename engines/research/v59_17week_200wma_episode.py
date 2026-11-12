@@ -70,6 +70,41 @@ def consecutive_weeks_below(rows: list[dict], start_index: int, threshold: float
     return n
 
 
+def observed_below_wma_streaks(rows: list[dict]) -> list[dict]:
+    """Descriptive streaks of contiguous prior-Sunday weekly BTC closes below WMA."""
+    streaks=[]
+    start=None
+    last=None
+    n=0
+    def flush():
+        if start is not None:
+            streaks.append({"first_monday":start.isoformat(),
+                            "last_monday":last.isoformat(),
+                            "consecutive_weekly_closes_below_200wma":n})
+    for r in rows:
+        day=r["date"]
+        ratio=float(r.get("ratio_to_200wma",math.nan))
+        below=(math.isfinite(ratio) and ratio<=1. and ratio>0)
+        if below:
+            if start is None:
+                start=day
+                n=1
+            elif last is not None and (day-last).days==7:
+                n+=1
+            else:
+                flush()
+                start=day
+                n=1
+            last=day
+        else:
+            flush()
+            start=None
+            last=None
+            n=0
+    flush()
+    return streaks
+
+
 def eligible_cohorts(rows: list[dict], threshold: float=1.) -> list[dict]:
     """Select one independently rooted crossing per calendar year, 2018–2024.
 
@@ -307,6 +342,7 @@ def evaluate(rows:list[dict]) -> dict:
         "separate_first_near_crossing_sensitivity":triggers,
         "year_by_year_weekly_WMA_counts":annual_context,
         "all_observed_prior_sunday_crossings":all_crossings,
+        "all_observed_weekly_below_WMA_streaks":observed_below_wma_streaks(rows),
         "cases":out,
         "per_week_unrestricted_500k_over_17_aud":FRESH_CASH_AUD/17,
         "user_weekly_cap_aud":CAP_AUD,
