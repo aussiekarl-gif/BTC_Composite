@@ -182,7 +182,7 @@ jobs:
             echo ''
             echo 'Stored on the separate research/v59-forward-tape branch; no live trading or ntfy.'
             echo ''
-            jq '{observations,last_signal_day,uncaptured_calendar_days_between_first_last,prospective_shadow:{matched_prospective_monday_fills:.prospective_shadow.matched_prospective_monday_fills,status:.prospective_shadow.status}}' /tmp/v59_forward_dca/scorecard.json | sed 's/^/    /'
+            jq '{observations,last_signal_day,realized_observation_status,realized_reference_is_research_only,uncaptured_calendar_days_between_first_last,prospective_shadow:{matched_prospective_monday_fills:.prospective_shadow.matched_prospective_monday_fills,status:.prospective_shadow.status}}' /tmp/v59_forward_dca/scorecard.json | sed 's/^/    /'
             echo ''
             echo 'BTC/USD and FX references, not executable ASX:IBIT prices. No forward market outcomes are invented.'
           } >> "$GITHUB_STEP_SUMMARY"
