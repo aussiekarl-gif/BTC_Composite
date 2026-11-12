@@ -1,5 +1,6 @@
 """Provider-date acceptance and fail-closed realized-price paper evidence."""
 from datetime import date,datetime,timezone,timedelta
+from unittest.mock import patch
 import unittest
 
 from engines.research import v59_realized_forward_reference as rp
@@ -82,6 +83,41 @@ class RealizedForwardReferenceTests(unittest.TestCase):
             "price_to_realized_ratio":.60}})
         self.assertEqual(before,after)
         self.assertEqual(before["realized110_and_risk050"],0.)
+
+
+    def test_fresh_explore21_csv_is_preferred_with_original_response_hash(self):
+        sample_dates=[DAY-timedelta(days=500-i) for i in range(500)]
+        content="date,realized_price_usd,sth_realized_price_usd,btc_close_usd\n"
+        content+="".join(f"{d.isoformat()},53900,70000,74000\n" for d in sample_dates)
+        class Response:
+            text=content
+            content=content.encode()
+            def raise_for_status(self):pass
+        with patch.object(rp.requests,"get",return_value=Response()) as get:
+            out=rp.capture_reference(closed_signal_date=DAY,captured_at_utc=NOW)
+        self.assertEqual(get.call_count,1)
+        self.assertEqual(out["provider"],rp.EXPLORE21_SOURCE)
+        self.assertTrue(out["usable_for_forward"])
+        self.assertEqual(out["provider_observation_date"],"2026-11-11")
+        self.assertEqual(out["provider_csv_rows"],500)
+        self.assertEqual(len(out["raw_response_sha256"]),64)
+        self.assertAlmostEqual(out["realized_price_usd"],53900.)
+
+    def test_bad_csv_with_delayed_backup_never_becomes_live_paper_buy(self):
+        class BadCSV:
+            text="oops,bad\n"
+            content=text.encode()
+            def raise_for_status(self):pass
+        class Delayed:
+            def raise_for_status(self):pass
+            def json(self):return {
+                "d":"2026-11-05","realizedPrice":53947.12,"delayed":True}
+        with patch.object(rp.requests,"get",side_effect=[BadCSV(),Delayed()]) as get:
+            out=rp.capture_reference(closed_signal_date=DAY,captured_at_utc=NOW)
+        self.assertEqual(get.call_count,2)
+        self.assertEqual(out["status"],"STALE_OR_DELAYED")
+        self.assertEqual(out["provider_observation_date"],"2026-11-05")
+        self.assertFalse(out["usable_for_forward"])
 
 
 if __name__=="__main__":
