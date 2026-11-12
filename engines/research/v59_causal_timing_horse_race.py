@@ -525,6 +525,7 @@ def main():
     episode=report["wma_17week_episode_study"]
     print("WMA17_RAW_CROSSINGS",json.dumps(episode["all_observed_prior_sunday_crossings"],default=str))
     print("WMA17_YEAR_AUDIT",json.dumps(episode["year_by_year_weekly_WMA_counts"],sort_keys=True))
+    print("WMA17_STREAKS",json.dumps(episode["all_observed_weekly_below_WMA_streaks"],sort_keys=True))
     for item in episode["cases"]:
         label=("WMA17_EPISODE" if item["trigger_wma_ratio_ceiling"]==1. else "WMA17_NEAR")
         print(label,json.dumps(item,sort_keys=True,allow_nan=False))
