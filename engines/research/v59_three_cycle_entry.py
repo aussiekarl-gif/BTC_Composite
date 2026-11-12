@@ -209,6 +209,7 @@ def replay(rows:list[dict], *, policy:str, capital:float=CAPITAL,
     paid=0.;net_bought=0.;interest=0.;orders=0
     peak=capital;dd=0.
     first_fill=None
+    first_dip_acceleration_signal=None
     prev=beginning
     cohort_rows_after_entry=0
     for i,r in enumerate(rows):
@@ -232,6 +233,9 @@ def replay(rows:list[dict], *, policy:str, capital:float=CAPITAL,
                 # must be 20/35% below the FIRST signal's Sunday close.
                 drop=.20 if policy=="wma_near_stage20drop" else .35
                 triggered=r["spot_sunday_usd"]<=anchor["spot_sunday_usd"]*(1-drop)
+                if (triggered and first_dip_acceleration_signal is None
+                        and paid < available_budget-.01):
+                    first_dip_acceleration_signal=r["signal_date"].isoformat()
                 # Early cautious rate or accelerate after an observed extra fall,
                 # eventually invest residual principal over next ~24-32 weeks.
                 gross=initial_cash*(.051 if triggered else (.025 if age<8 else .05))
@@ -282,6 +286,7 @@ def replay(rows:list[dict], *, policy:str, capital:float=CAPITAL,
         "total_purchases_aud":paid,
         "cash_interest_aud":interest,
         "buy_count":orders,
+        "first_dip_acceleration_signal":first_dip_acceleration_signal,
         "worst_drawdown_pct":100*dd,
         "not_a_historical_ASX_IBIT_fill":True,
     }
@@ -333,6 +338,7 @@ def synthetic_false_bottom_stress() -> list[dict]:
                         "total_portfolio_aud":rec["portfolio_aud_at_terminal"],
                         "uninvested_cash_aud":rec["cash_aud_at_terminal"],
                         "max_drawdown_pct":rec["worst_drawdown_pct"],
+                        "first_dip_acceleration_signal":rec["first_dip_acceleration_signal"],
                     })
     return out
 
