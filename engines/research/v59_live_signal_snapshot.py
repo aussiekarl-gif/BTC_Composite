@@ -137,6 +137,25 @@ def snapshot_from_scored(scored: pd.DataFrame, *, now_utc: datetime, params: dic
     }
 
 
+def last_fx_fixing_on_or_before_closed_btc(btc: pd.DataFrame, fx: pd.Series,
+                                              now_utc:datetime):
+    """Select the latest FX date no newer than the latest CLOSED BTC UTC day.
+
+    A later available weekday FX quote would be future information for the
+    prior UTC BTC daily close and must not be paired with that score.
+    """
+    if btc is None or btc.empty or fx is None or len(fx)==0:
+        return None
+    utc_now=pd.Timestamp(now_utc).tz_convert("UTC")
+    closes=pd.to_datetime(btc.index,utc=True)
+    eligible_closes=closes[closes<pd.Timestamp(utc_now.date(),tz="UTC")]
+    if len(eligible_closes)==0:return None
+    cutoff=eligible_closes.max().floor("D")
+    candidates=pd.to_datetime(fx.index,utc=True)
+    valid=candidates[candidates<=cutoff]
+    return valid.max() if len(valid) else None
+
+
 def capture(now_utc: datetime | None = None) -> dict:
     now = now_utc or datetime.now(timezone.utc)
     params = live_risk_params()
@@ -145,7 +164,10 @@ def capture(now_utc: datetime | None = None) -> dict:
     if btc.empty:
         raise RuntimeError("Blockchain.com history unavailable; no trading inference")
     fx = model.fetch_aud_usd_rates(start, now)
-    fx_latest = fx.index.max() if fx is not None and len(fx) else None
+    # IMPORTANT: The provider can publish today's FX before yesterday's
+    # BTC close is the newest scored market day. Use ONLY a fixing dated
+    # on/before the exact completed BTC close (research-only parity fix).
+    fx_latest = last_fx_fixing_on_or_before_closed_btc(btc,fx,now)
     frame = model.align_fx_to_dates(btc, fx)
     frame = model.merge_bgeometrics(frame, pd.DataFrame())
     scored = model.add_risk_indicators(frame, params["risk_model"], params)
