@@ -55,12 +55,12 @@ class CycleBottomTests(unittest.TestCase):
         self.assertEqual(c22["signal_days_relative_to_hindsight_bottom"],-143)
         self.assertEqual(c18["near_signal_cohort"]["anchor_monday"],"2018-12-17")
         self.assertEqual(c22["hindsight_oracle_cohort"]["anchor_monday"],"2022-11-14")
-        self.assertTrue(c22["hindsight_oracle_not_tradeable"])
+        self.assertTrue(c22["oracle_hindsight_not_tradeable"])
 
     def test_shock_price_cannot_invent_new_four_year_cycle(self):
         r=rows()
         out=audit.evaluate(r)
-        start=list(x["id"] for x in out["cycles"])
+        start=list(x["cycle_id"] for x in out["cycles"])
         price_change=[dict(x) for x in r]
         for x in price_change:
             if x["date"]==date(2020,3,16):
