@@ -80,5 +80,24 @@ class ProspectiveRiskCaptureAcceptance(unittest.TestCase):
         self.assertEqual(s["research_aggressive_risk_band_multiplier"], 0.)
 
 
+    def test_fx_fixing_must_be_no_later_than_closed_btc_day(self):
+        from engines.research.v59_live_signal_snapshot import (
+            last_fx_fixing_on_or_before_closed_btc,
+        )
+        closed = pd.DataFrame(
+            {"price":[70000.,71000.]},
+            index=pd.to_datetime(["2026-11-10","2026-11-11"],utc=True),
+        )
+        fx = pd.Series(
+            [.70,.71,.72],
+            index=pd.to_datetime(["2026-11-10","2026-11-11","2026-11-12"],
+                                  utc=True),
+        )
+        selected = last_fx_fixing_on_or_before_closed_btc(
+            closed,fx,datetime(2026,11,12,21,tzinfo=timezone.utc))
+        self.assertEqual(selected.date().isoformat(),"2026-11-11")
+        self.assertNotEqual(selected.date().isoformat(),"2026-11-12")
+
+
 if __name__ == "__main__":
     unittest.main()
