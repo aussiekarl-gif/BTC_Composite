@@ -524,8 +524,10 @@ def main():
             print("WMA_HOLDOUT",json.dumps(row,sort_keys=True))
     episode=report["wma_17week_episode_study"]
     print("WMA17_RAW_CROSSINGS",json.dumps(episode["all_observed_prior_sunday_crossings"],default=str))
+    print("WMA17_YEAR_AUDIT",json.dumps(episode["year_by_year_weekly_WMA_counts"],sort_keys=True))
     for item in episode["cases"]:
-        print("WMA17_EPISODE",json.dumps(item,sort_keys=True,allow_nan=False))
+        label=("WMA17_EPISODE" if item["trigger_wma_ratio_ceiling"]==1. else "WMA17_NEAR")
+        print(label,json.dumps(item,sort_keys=True,allow_nan=False))
     for row in report["summary"]:
         if row["cash_yield"]==.05 and row["reserve_fraction"]==0.:
             print("TIMING_RESULT",json.dumps(row,sort_keys=True))
