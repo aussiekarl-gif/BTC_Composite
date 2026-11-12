@@ -127,7 +127,9 @@ def build_weekly_rows(scored: pd.DataFrame, fx: pd.Series) -> list[dict]:
                 math.isfinite(price_usd) and price_usd > 0 and
                 math.isfinite(spot_usd) and spot_usd > 0):
             continue
-        fx_pos = fx.index.searchsorted(ts, side="right") - 1
+        # Monday's official FX fix is not necessarily published by ASX open.
+        # Use strictly PREVIOUS Sunday's latest available fix (usually Friday).
+        fx_pos = fx.index.searchsorted(sunday, side="right") - 1
         if fx_pos < 0:
             continue
         fx_day, usd_per_aud = fx.index[fx_pos], float(fx.iloc[fx_pos])
