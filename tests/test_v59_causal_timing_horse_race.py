@@ -101,8 +101,8 @@ class CausalTimingTests(unittest.TestCase):
 
     def test_completed_cohorts_do_not_use_future_or_partial_windows(self):
         rows=[row(i) for i in range(104)]
-        self.assertFalse(cohort_windows(rows),
-            "A 2021-only synthetic cohort should not be treated as 2017 or 2024 complete")
+        with self.assertRaisesRegex(ValueError, "No fully supported"):
+            cohort_windows(rows)
 
     def test_no_data_in_report_is_not_silently_assumed(self):
         with self.assertRaises(ValueError):
