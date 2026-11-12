@@ -234,11 +234,11 @@ class WmaProximityResearchTests(unittest.TestCase):
         near_row=row(0,risk=.05,ratio=1.04)
         self.assertEqual(gate_weight(near_row,near),3.)
         self.assertEqual(gate_weight(dict(near_row,btc_price_aud=200.),near),3.)
-        self.assertEqual(gate_weight(dict(near_row,ratio=.80),near),0.)
-        self.assertEqual(gate_weight(dict(near_row,ratio=.80),below),3.)
-        self.assertEqual(gate_weight(dict(near_row,ratio=1.11),near),0.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=.80),near),0.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=.80),below),3.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=1.11),near),0.)
         self.assertEqual(gate_weight(dict(near_row,risk=.51),near),0.)
-        self.assertEqual(gate_weight(dict(near_row,ratio=float("nan")),near),0.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=float("nan")),near),0.)
         with self.assertRaises(ValueError):
             gate_weight(dict(near_row,risk_score_source="Neutral fallback"),near)
 
