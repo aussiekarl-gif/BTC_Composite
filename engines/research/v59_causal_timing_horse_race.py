@@ -487,6 +487,11 @@ def fetch_and_evaluate() -> dict:
     # or repeated 2022/23 moving-average crossing events.
     from engines.research import v59_four_year_bottoms
     result["major_bear_cycle_bottom_audit"]=v59_four_year_bottoms.evaluate(rows)
+    # The 2015 cycle requires raw 2011+ BTC Sunday closes and historical
+    # AUD FX. DO NOT invent V5.9 risk values before their supported vintage.
+    from engines.research import v59_three_cycle_entry
+    legacy_price_rows=v59_three_cycle_entry.build_price_only_rows(btc,fx)
+    result["three_cycle_price_only_entry"]=v59_three_cycle_entry.evaluate(legacy_price_rows,rows)
     result["provider_input_btc_first_last"]=[str(btc.index.min()),str(btc.index.max())]
     result["provider_input_fx_first_last"]=[str(fx.index.min()),str(fx.index.max())]
     return result
@@ -530,6 +535,15 @@ def main():
     cycle_audit=report["major_bear_cycle_bottom_audit"]
     for cycle in cycle_audit["cycles"]:
         print("CYCLE_MAJOR_BOTTOM",json.dumps(cycle,sort_keys=True,allow_nan=False))
+    for cycle in report["three_cycle_price_only_entry"]["schedules"]:
+        context={k:v for k,v in cycle.items() if k!="three_scenario_replays"}
+        print("THREE_CYCLE_CONTEXT",json.dumps(context,sort_keys=True))
+        for case,v in cycle.get("three_scenario_replays",{}).items():
+            print("THREE_CYCLE_OUTCOME",json.dumps({"cycle":cycle["cycle"],
+                "case":case,"policies":v},sort_keys=True,allow_nan=False))
+    print("THREE_CYCLE_SHOCKS",json.dumps(
+        report["three_cycle_price_only_entry"]["synthetic_fixed_valuation_stress"],
+        sort_keys=True,allow_nan=False))
     print("WMA17_RAW_CROSSINGS",json.dumps(episode["all_observed_prior_sunday_crossings"],default=str))
     print("WMA17_YEAR_AUDIT",json.dumps(episode["year_by_year_weekly_WMA_counts"],sort_keys=True))
     print("WMA17_STREAKS",json.dumps(episode["all_observed_weekly_below_WMA_streaks"],sort_keys=True))
