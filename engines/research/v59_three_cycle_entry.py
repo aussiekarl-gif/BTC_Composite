@@ -291,13 +291,19 @@ def synthetic_false_bottom_stress() -> list[dict]:
     """Artificial fixed-valuation context; no historical signal refitting."""
     out=[]
     generic_start=next_monday(date(2020,5,11)+timedelta(days=800))
-    for decline in (.20,.35,.50):
-        for recover in (False,True):
+    setups=[("flat",0.,False,False),
+            ("rally_25pct",.25,False,True)]
+    setups += [(f"fall_{int(d*100)}pct_then_{'recover' if recover else 'stay_low'}",
+                d,recover,False)
+               for d in (.20,.35,.50) for recover in (False,True)]
+    for scenario,decline,recover,rally in setups:
             seq=[]
             for i in range(104):
                 # Prior-Sunday USD close observed before next Monday proxy.
-                # Deterministic 12-week fall, 12-week recovery or stay-low.
-                if i<=12:
+                # Deterministic 12-week fall, recovery, flat or missed-dip rally.
+                if rally:
+                    price=100000*(1+decline*min(i,12)/12)
+                elif i<=12:
                     price=100000*(1-decline*i/12)
                 elif recover and i<=24:
                     price=100000*(1-decline+decline*(i-12)/12)
@@ -318,7 +324,7 @@ def synthetic_false_bottom_stress() -> list[dict]:
                     rec=replay(seq,policy=policy,capital=capital,
                                initial_btc_fraction=initial_fraction)
                     out.append({
-                        "scenario":f"fall_{int(decline*100)}pct_then_"+("recover" if recover else "stay_low"),
+                        "scenario":scenario,
                         "risk_is_recomputed":False,
                         "wma_held_fixed_at_initial_price":True,
                         "policy":policy,
