@@ -182,6 +182,7 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
     cash = capital * (1.-initial_btc_fraction)
     btc = capital * initial_btc_fraction / first_price
     invested, paid_cost, interest, nbuy = 0., 0., 0., 0
+    new_btc_before_drag, net_buy_cash = 0., 0.
     initial_day = rows[0]["date"]
     prev_day = initial_day
     reserve = reserve_fraction * capital
@@ -221,6 +222,8 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
             net = (spend - fixed_fee) * (1. - buy_friction)
             cash -= spend
             btc += net / price
+            new_btc_before_drag += net / price
+            net_buy_cash += net
             invested += spend
             paid_cost += spend-net
             nbuy += 1
@@ -240,6 +243,13 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         "terminal_btc_equivalent": btc+cash/terminal,
         "drawdown_pct":100*worst_dd, "btc_50pct_shock_equity_aud":cash+btc*terminal*.5,
         "net_invested_aud": invested, "interest_earned_aud": interest,
+        "new_btc_before_drag":new_btc_before_drag,
+        "new_btc_avg_entry_aud":(net_buy_cash/new_btc_before_drag if new_btc_before_drag else None),
+        # Same eventual net dollars, equally spread over historical execution weeks:
+        # EX POST attribution only; not a deployable strategy.
+        "price_selection_vs_uniform_pct":(100*(new_btc_before_drag / (
+            net_buy_cash / len(rows) * sum(1./float(x["btc_price_aud"]) for x in rows)) - 1.)
+            if net_buy_cash else None),
         "initial_btc_fraction":initial_btc_fraction,
         "total_cost_aud":paid_cost, "buy_count":nbuy,
         "first_buy_date":first_date.isoformat() if first_date else None,
