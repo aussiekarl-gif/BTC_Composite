@@ -90,10 +90,11 @@ class RealizedForwardReferenceTests(unittest.TestCase):
         content="date,realized_price_usd,sth_realized_price_usd,btc_close_usd\n"
         content+="".join(f"{d.isoformat()},53900,70000,74000\n" for d in sample_dates)
         class Response:
-            text=content
-            content=content.encode()
+            def __init__(self,text):
+                self.text=text
+                self.content=text.encode()
             def raise_for_status(self):pass
-        with patch.object(rp.requests,"get",return_value=Response()) as get:
+        with patch.object(rp.requests,"get",return_value=Response(content)) as get:
             out=rp.capture_reference(closed_signal_date=DAY,captured_at_utc=NOW)
         self.assertEqual(get.call_count,1)
         self.assertEqual(out["provider"],rp.EXPLORE21_SOURCE)
