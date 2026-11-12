@@ -128,6 +128,16 @@ jobs:
             --scorecard /tmp/v59_forward_dca/scorecard.json \
             --snapshot /tmp/v59_forward_dca/snapshot.json \
             --code-sha "$CODE_SHA"
+      - name: Require the actual latest completed UTC day, never a stale green pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(date -u -d 'yesterday' +%F)"
+          observed="$(jq -r .last_signal_day /tmp/v59_forward_dca/scorecard.json)"
+          if [[ "$observed" != "$expected" ]]; then
+            echo "::error::V5.9 research forward source is stale; latest closed UTC day should be $expected, got $observed."
+            exit 1
+          fi
       - name: Retain full daily evidence even if Git write fails
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -192,6 +202,23 @@ jobs:
           if [[ -z "$existing" ]]; then
             gh issue create --title "$title" --assignee "aussiekarl-gif" \
               --body "RESEARCH ONLY: A >=5% paper portfolio-value divergence appeared after $n separately captured Monday observation pairs. This is NOT evidence of a proven improvement and is NOT authorisation to buy, sell, or modify Production. Review the model's point-in-time source, cash exposure, spreads, independent cycles and sample size before any promotion. Study: $RUN_URL"
+          fi
+
+      - name: Flag non-repairable missing prospective capture days (one clear issue)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gaps="$(jq -r .uncaptured_calendar_days_between_first_last /tmp/v59_forward_dca/scorecard.json)"
+          if [[ "$gaps" -le 0 ]]; then exit 0; fi
+          title="[BTC RESEARCH / DAILY FORWARD] Historical capture gap — NOT A BUY SIGNAL"
+          existing="$(gh issue list --state open --limit 100 --json title,number --jq '.[] | select(.title == "[BTC RESEARCH / DAILY FORWARD] Historical capture gap — NOT A BUY SIGNAL") | .number' | head -n 1)"
+          if [[ -z "$existing" ]]; then
+            gh issue create --title "$title" --assignee "aussiekarl-gif" \
+              --body "RESEARCH ONLY: $gaps UTC day(s) were not recorded live since this forward tape started. They cannot be repaired by retroactive backfill without destroying genuine prospective evidence. Ordinary capture has resumed; review $RUN_URL and the data branch. No Cycle Trading / ntfy change and no buy/sell action."
           fi
 
       - name: Clear an earlier research-feed failure after healthy capture
