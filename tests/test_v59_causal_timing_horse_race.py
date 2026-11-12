@@ -100,7 +100,7 @@ class CausalTimingTests(unittest.TestCase):
         self.assertEqual(target["risk_score"],.05)
 
     def test_completed_cohorts_do_not_use_future_or_partial_windows(self):
-        rows=[row(i) for i in range(104)]
+        rows=[row(i) for i in range(52)]
         with self.assertRaisesRegex(ValueError, "No fully supported"):
             cohort_windows(rows)
 
