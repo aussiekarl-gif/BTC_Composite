@@ -80,7 +80,22 @@ class PairedCaptureTests(TestCase):
             c._stamp("2026-10-19T07:17:05")
     def test_no_scheduled_extra_notification(self):
         self.assertEqual(run()[0]["new_ntfy_messages"],0)
-        self.assertEqual(run()[0]["scheduled_runner_jobs_per_day"],4)
+        self.assertEqual(run()[0]["scheduled_runner_jobs_per_day"],6)
+
+    def test_redundant_midnight_schedule_preserves_original_captures_and_guard(self):
+        workflow=(Path(__file__).resolve().parents[1]/
+                  ".github/workflows/research_btc_paired_microstructure.yml").read_text()
+        self.assertEqual(workflow.count("- cron:"),1)
+        self.assertIn("- cron: '17 0,1,3,7,13,19 * * *'",workflow)
+        hours={int(h) for h in "0,1,3,7,13,19".split(",")}
+        self.assertEqual(hours,{0,1,3,7,13,19})
+        self.assertTrue({1,7,13,19}.issubset(hours))
+        self.assertEqual(len(hours & {0,1,2,3,4,5}),3)
+        self.assertIn("group: research-btc-microstructure-source-collection",workflow)
+        self.assertIn("cancel-in-progress: false",workflow)
+        self.assertIn("python -m engines.research.btc_spot_depth_forward --self-check-only",workflow)
+        self.assertIn("python -m engines.research.coinbase_trade_samples --self-check-only",workflow)
+        self.assertNotIn("ntfy.sh",workflow)
 
 if __name__=="__main__":
     import unittest
