@@ -119,7 +119,7 @@ class ExistingPostcloseAsxFallbackTests(unittest.TestCase):
     def test_existing_paired_workflow_unchanged_one_cron_and_no_message(self):
         c=WORKFLOW.read_text()
         self.assertEqual(c.count("cron:"),1)
-        self.assertIn("17 1,7,13,19 * * *",c)
+        self.assertIn("17 0,1,3,7,13,19 * * *",c)
         self.assertIn("asx_ibit_postclose_paired_backup --is-window",c)
         self.assertIn("python -m engines.research.asx_ibit_postclose_paired_backup",c)
         self.assertNotIn("ntfy.sh",c)
