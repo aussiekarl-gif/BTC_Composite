@@ -32,8 +32,10 @@ on:
       - '.github/workflows/research_coinbase_trade_samples.yml'
   workflow_dispatch:
   schedule:
-    # Four paired captures per UTC day, same runner, consecutive public calls.
-    - cron: '17 1,7,13,19 * * *'
+    # Keep four original paired capture attempts; add two chances for the
+    # systematically missed 00:00-05:59 UTC slot (actual receipt decides slot).
+    # One runner/concurrency lock; duplicate observations remain no-ops.
+    - cron: '17 0,1,3,7,13,19 * * *'
 
 permissions:
   contents: write
@@ -151,8 +153,8 @@ jobs:
           PY
 
       - name: Best-effort strictly TIMESTAMPED Cycle mid-session research fallback (zero ntfy)
-        # This is on the EXISTING 01:17/07:17/13:17/19:17 UTC paired
-        # schedule. GitHub may run it hours late. Only ACTUAL time
+        # This uses the paired source schedule including redundant 00:17/03:17
+        # attempts. GitHub may run hours late. Only ACTUAL time
         # within 11:00-15:00 Sydney may create a new research observation.
         # It executes AFTER the original BTC book/trade publication; any
         # provider failure must not suppress or change those tapes.
