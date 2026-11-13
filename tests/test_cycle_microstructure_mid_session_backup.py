@@ -49,6 +49,15 @@ class PairedWorkflowBestEffortCycleTests(unittest.TestCase):
         self.assertTrue(x["eligible"])
         self.assertEqual(x["actual_sydney_local_time"][:16],"2026-10-21T12:17")
 
+    def test_extra_midnight_utc_attempts_do_not_override_actual_sydney_gate(self):
+        # Scheduled clock time is never evidence of an eligible source receipt.
+        for hour in (0, 3):
+            with self.subTest(hour=hour):
+                actual=dt.datetime(2026,10,21,hour,17,tzinfo=UTC)
+                self.assertTrue(eligibility(actual)["eligible"])
+        delayed=dt.datetime(2026,10,21,7,17,tzinfo=UTC)
+        self.assertFalse(eligibility(delayed)["eligible"])
+
     def test_weekend_and_before_enrolment_skip(self):
         self.assertFalse(eligibility(at(19,12,0))["eligible"])
         self.assertFalse(eligibility(at(24,12,0))["eligible"])
@@ -66,7 +75,7 @@ class PairedWorkflowBestEffortCycleTests(unittest.TestCase):
     def test_cannot_have_two_independent_cron_schedules(self):
         s=WORKFLOW.read_text(encoding="utf-8")
         self.assertEqual(s.count("cron:"),1)
-        self.assertIn("17 1,7,13,19 * * *",s)
+        self.assertIn("17 0,1,3,7,13,19 * * *",s)
         self.assertIn("github.event_name == 'schedule'",s)
         self.assertIn("cycle_microstructure_mid_session_backup --is-window",s)
         self.assertIn("python -m engines.research.cycle_mid_session_signal_tape",s)
