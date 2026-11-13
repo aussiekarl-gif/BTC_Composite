@@ -1,6 +1,6 @@
 {
   "first_actual_capture": "2026-11-12T11:19:52.234443+00:00",
-  "last_signal_day": "2026-11-11",
+  "last_signal_day": "2026-11-12",
   "matured_paper_BTC_AUD_returns": {
     "28d": {
       "btc_aud_excess_over_5pct_cash_on_signals_pct": {
@@ -9,6 +9,10 @@
           "mean_pct": null
         },
         "below_to_plus10": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "realized110_and_risk050": {
           "count": 0,
           "mean_pct": null
         },
@@ -37,6 +41,10 @@
           "count": 0,
           "mean_pct": null
         },
+        "realized110_and_risk050": {
+          "count": 0,
+          "mean_pct": null
+        },
         "risk_1x": {
           "count": 0,
           "mean_pct": null
@@ -62,6 +70,10 @@
           "count": 0,
           "mean_pct": null
         },
+        "realized110_and_risk050": {
+          "count": 0,
+          "mean_pct": null
+        },
         "risk_1x": {
           "count": 0,
           "mean_pct": null
@@ -81,12 +93,15 @@
   "new_day_appended": true,
   "no_live_recommendations_orders_notifications": true,
   "not_asx_ibit_execution_or_personal_portfolio": true,
-  "observations": 1,
+  "observations": 2,
   "prospective_shadow": {
     "broker_fills_verified": false,
     "matched_prospective_monday_fills": 0,
     "status": "WAITING_FOR_FULL_SUNDAY_MONDAY_PAIR"
   },
+  "realized_current_signal_is_tradeable": false,
+  "realized_observation_status": "VALID_DATED_RESEARCH_REFERENCE",
+  "realized_reference_is_research_only": true,
   "status": "RESEARCH_ONLY_FORWARD_DATA",
   "uncaptured_calendar_days_between_first_last": 0
 }
