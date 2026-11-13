@@ -84,7 +84,7 @@ def collect(
         "new_trading_signals":0,
         "new_ntfy_messages":0,
         "personal_portfolio_writes":0,
-        "scheduled_runner_jobs_per_day":4,
+        "scheduled_runner_jobs_per_day":6,
     }
 
 
