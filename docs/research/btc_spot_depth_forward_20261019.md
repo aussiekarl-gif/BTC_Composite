@@ -35,3 +35,46 @@ Offline local tests: `python -m unittest discover -s tests -p 'test_btc_spot_dep
 ## Running cost
 
 The collector uses existing repository Python/GitHub Action infrastructure and `requests`, already installed for research. There are no AI API calls or provider subscriptions. GitHub Actions usage, request throttling, source changes and archival storage still require oversight.
+
+## 13 November 2026 — midnight UTC collection redundancy (research-only)
+
+The coordinated paired source, rather than the dormant standalone Kraken collector,
+currently publishes both Kraken/Coinbase records:
+`.github/workflows/research_btc_paired_microstructure.yml`.
+As inspected 13 November 2026 (09:57 UTC), the paired tape contained 68
+observations per venue: only **three** in the 00:00–05:59 UTC slot, versus
+25, 14 and 26 in the 06:00, 12:00 and 18:00 slots. Systematic midnight
+undercoverage is tracked under issue #205. This is **not** evidence of
+a reliable predictive edge or an exchange outage.
+
+**Narrow mitigation:** preserve the existing 01:17, 07:17, 13:17 and 19:17
+UTC GitHub schedule attempts and add 00:17 and 03:17 UTC attempts to the
+*same* paired workflow and concurrency lock (six potential jobs per day).
+The two additional attempts target only the missing 00:00–05:59 slot.
+Actual response receipt still determines the immutable six-hour slot; a
+delayed execution in the 06:00 slot cannot be assigned to 00:00. If an
+earlier attempt already saved the source for that actual slot, the source
+collector remains idempotent and reuses the existing hash chain. The optional
+Sydney Cycle sidecar remains governed by its original actual-time eligible
+window and cannot invent an earlier capture.
+
+**Safety checks before merging:** GitHub PR workflow checks must pass,
+including source hash-chain validation, chronological/no-backfill rules,
+provider parser smoke probes, coordinated capture tests and Sydney time-gate
+tests. No changes to Production V5.8.2, Research V5.9, live Cycle trading,
+real ASX:IBIT holdings, ntfy, Google Sheets, brokerage or authoritative
+market-price master are authorized by this scheduling mitigation.
+
+**Acceptance after prospective rollout:** measure actual UTC midnight
+coverage over the following 7 and 14 days using the existing read-only
+`btc_microstructure_capture_coverage.py` report and compare against
+the prechange observed coverage. Count true timestamped paired observations,
+not scheduled launches or rerun artifacts. Report delayed, duplicate and
+cross-venue-skewed receipts separately. This is a **reliability experiment**,
+not proven successful until genuine samples arrive; GitHub Actions can still
+delay or skip scheduled jobs.
+
+**Rollback:** revert the workflow cron to `17 1,7,13,19 * * *` and the
+paired collector's `scheduled_runner_jobs_per_day` metadata to 4, plus
+their two corresponding tests. Never delete/modify any already-published
+source rows.
