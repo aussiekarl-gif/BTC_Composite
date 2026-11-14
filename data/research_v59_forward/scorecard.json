@@ -1,6 +1,6 @@
 {
   "first_actual_capture": "2026-11-12T11:19:52.234443+00:00",
-  "last_signal_day": "2026-11-12",
+  "last_signal_day": "2026-11-13",
   "matured_paper_BTC_AUD_returns": {
     "28d": {
       "btc_aud_excess_over_5pct_cash_on_signals_pct": {
@@ -93,7 +93,7 @@
   "new_day_appended": true,
   "no_live_recommendations_orders_notifications": true,
   "not_asx_ibit_execution_or_personal_portfolio": true,
-  "observations": 2,
+  "observations": 3,
   "prospective_shadow": {
     "broker_fills_verified": false,
     "matched_prospective_monday_fills": 0,
