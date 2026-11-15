@@ -70,13 +70,19 @@ def normalize_ibit_reference(quote:dict|None, captured_at_utc:datetime) -> dict:
     }
 
 
-def capture_ibit_reference(captured_at_utc:datetime) -> dict:
-    """Capture ASX quote separately; its absence must not block BTC evidence."""
+def capture_ibit_reference() -> dict:
+    """Capture ASX quote separately and timestamp it after the HTTP response.
+
+    The provider parser timestamps its quote when the response is parsed.
+    Record our own receipt time only after the request returns (or fails), so
+    network latency cannot make an indicative quote appear artificially newer.
+    """
     try:
-        quote=fetch_ibit_quote(now=captured_at_utc)
+        quote=fetch_ibit_quote()
     except Exception:
         quote=None
-    return normalize_ibit_reference(quote,captured_at_utc)
+    received_at_utc=datetime.now(timezone.utc)
+    return normalize_ibit_reference(quote,received_at_utc)
 
 
 def to_observation(s:dict, code_sha:str="",realized_reference:dict|None=None,
@@ -340,7 +346,7 @@ def main() -> int:
     real_capture=capture_reference(
         closed_signal_date=date.fromisoformat(
             s["closed_risk_observation_utc"][:10]))
-    ibit_capture=capture_ibit_reference(captured_at)
+    ibit_capture=capture_ibit_reference()
     new=to_observation(s,args.code_sha,realized_reference=real_capture,
                        ibit_reference=ibit_capture)
     reference=new["realized_price_reference"]

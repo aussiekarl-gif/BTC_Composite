@@ -4,6 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from engines.research import v59_forward_dca_tape as t
 
@@ -122,6 +123,34 @@ class ForwardDcaTapeTests(unittest.TestCase):
                          "INVALID_QUOTE_REFERENCE")
         self.assertEqual(t.normalize_ibit_reference(None,captured)["status"],
                          "UNAVAILABLE")
+
+    def test_ibit_capture_timestamp_is_after_provider_response(self):
+        received = datetime(2026,11,16,1,23,10,tzinfo=timezone.utc)
+        market_stamp = received - timedelta(minutes=1)
+        quote = {
+            "symbol":"ASX:IBIT","provider":"Yahoo Finance delayed quote",
+            "price_aud":20.81,"timestamp_utc":market_stamp.isoformat(),
+            "age_hours":1/60,
+        }
+
+        class ReceiptClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return received if tz else received.replace(tzinfo=None)
+
+        with patch.object(t,"datetime",ReceiptClock), \
+             patch.object(t,"fetch_ibit_quote",return_value=quote) as fetch:
+            result=t.capture_ibit_reference()
+        fetch.assert_called_once_with()
+        self.assertEqual(result["captured_at_utc"],received.isoformat())
+        self.assertAlmostEqual(result["age_hours"],1/60,places=2)
+        self.assertFalse(result["broker_fill_verified"])
+
+        with patch.object(t,"datetime",ReceiptClock), \
+             patch.object(t,"fetch_ibit_quote",side_effect=ValueError("unavailable")):
+            unavailable=t.capture_ibit_reference()
+        self.assertEqual(unavailable["status"],"UNAVAILABLE")
+        self.assertEqual(unavailable["captured_at_utc"],received.isoformat())
 
     def test_no_lookahead_matured_return(self):
         start=date(2026,11,15)
