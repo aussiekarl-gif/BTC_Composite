@@ -477,12 +477,19 @@ server_portfolio, portfolio_storage_error = load_portfolio()
 shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
 # DCA Today may use only the authoritative durable portfolio. Browser snapshots
 # remain available to My Portfolio recovery, but never authorise a cash recommendation.
-portfolio_verified = (
+verified_portfolio_positions = None
+portfolio_verified = False
+if (
     not portfolio_storage_error
     and isinstance(server_portfolio, dict)
     and isinstance(server_portfolio.get("rows"), list)
     and len(server_portfolio.get("rows", [])) > 0
-)
+):
+    try:
+        verified_portfolio_positions = portfolio_positions(server_portfolio)
+        portfolio_verified = True
+    except (ValueError, TypeError, KeyError, ZeroDivisionError):
+        verified_portfolio_positions = None
 
 st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
 st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
@@ -600,12 +607,15 @@ with st.sidebar:
             )
 
         saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
-        saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
+        saved_portfolio = server_portfolio if portfolio_verified else {}
 
-        starting_default = float(saved_portfolio.get(
-            "starting_capital_aud",
-            saved_today.get("starting_capital_aud", 500_000.0)
-        )) if portfolio_verified else 1_000.0
+        starting_default = (
+            float(saved_portfolio.get(
+                "starting_capital_aud",
+                verified_portfolio_positions["starting_capital_aud"],
+            ))
+            if portfolio_verified else 1_000.0
+        )
         starting_capital_aud = st.number_input(
             "Starting Capital (AUD)",
             min_value=1_000.0, max_value=100_000_000.0,
@@ -615,9 +625,11 @@ with st.sidebar:
         )
 
         portfolio_remaining_saved = saved_portfolio.get("capital_remaining_aud", None)
-        remaining_default = saved_today.get("remaining_capital_aud", starting_capital_aud) if portfolio_verified else 0.0
-        if portfolio_remaining_saved is not None:
-            remaining_default = portfolio_remaining_saved
+        remaining_default = (
+            float(portfolio_remaining_saved)
+            if portfolio_remaining_saved is not None
+            else float(verified_portfolio_positions["cash_remaining_aud"])
+        ) if portfolio_verified else 0.0
 
         remaining_capital_aud = st.number_input(
             "Capital Remaining (AUD)",
@@ -1247,7 +1259,10 @@ elif mode == "DCA Today":
         )
 
     st.subheader("SMART DCA THIS WEEK")
-    st.metric("Recommended DCA This Week", f"A${recommended_buy:,.0f}")
+    st.metric(
+        "Recommended DCA This Week" if portfolio_verified else "Purchase recommendation",
+        f"A${recommended_buy:,.0f}" if portfolio_verified else "BLOCKED",
+    )
     if portfolio_verified:
         show_ibit_dca_equivalent(recommended_buy)
     else:
