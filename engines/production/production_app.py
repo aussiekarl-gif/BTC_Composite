@@ -610,10 +610,7 @@ with st.sidebar:
         saved_portfolio = server_portfolio if portfolio_verified else {}
 
         starting_default = (
-            float(saved_portfolio.get(
-                "starting_capital_aud",
-                verified_portfolio_positions["starting_capital_aud"],
-            ))
+            float(verified_portfolio_positions["starting_capital_aud"])
             if portfolio_verified else 1_000.0
         )
         starting_capital_aud = st.number_input(
@@ -624,12 +621,12 @@ with st.sidebar:
             disabled=not portfolio_verified,
         )
 
-        portfolio_remaining_saved = saved_portfolio.get("capital_remaining_aud", None)
+        # Recompute available cash from the executed ledger; do not trust a
+        # potentially stale cached capital_remaining_aud field.
         remaining_default = (
-            float(portfolio_remaining_saved)
-            if portfolio_remaining_saved is not None
-            else float(verified_portfolio_positions["cash_remaining_aud"])
-        ) if portfolio_verified else 0.0
+            float(verified_portfolio_positions["cash_remaining_aud"])
+            if portfolio_verified else 0.0
+        )
 
         remaining_capital_aud = st.number_input(
             "Capital Remaining (AUD)",
