@@ -354,7 +354,7 @@ if (
     try:
         verified_portfolio_positions = portfolio_positions(server_portfolio)
         portfolio_verified = True
-    except (ValueError, TypeError, KeyError, ZeroDivisionError):
+    except Exception:
         verified_portfolio_positions = None
 
 st.title("Bitcoin Dynamic DCA V5.9 — Three-Pillar Research")
@@ -1251,9 +1251,9 @@ elif mode == "DCA Today":
         0.0, float(remaining_capital_aud) - float(preserved_capital_aud)
     )
     normal_weekly_allowance = deployable_before_review / weeks_remaining
-    recommended_buy = min(
-        deployable_before_review,
-        max(0.0, normal_weekly_allowance * paced_risk_weight),
+    recommended_buy = (
+        min(deployable_before_review, max(0.0, normal_weekly_allowance * paced_risk_weight))
+        if portfolio_verified else 0.0
     )
     # V5.9 sizing: the halving window is context only. Front-loading above the
     # paced allowance is reserved for a newly confirmed Bottom Challenger event.
@@ -1928,18 +1928,21 @@ elif mode == "DCA Today":
 
     st.subheader("R2 Control vs Three-Pillar Challenger — audit view")
     y1, y2 = st.columns(2)
-    y1.metric("Frozen R2 Buy", f"A${recommended_buy:,.0f}", help=f"Raw R2 {risk_weight:.2f}×; runway-guarded to {paced_risk_weight:.2f}×")
+    y1.metric("Frozen R2 Buy", f"A${recommended_buy:,.0f}" if portfolio_verified else "BLOCKED", help=f"Raw R2 {risk_weight:.2f}×; runway-guarded to {paced_risk_weight:.2f}×")
     y2.metric(
-        "Three-Pillar Buy", f"A${challenger_recommended_buy:,.0f}",
-        delta=(f"A${challenger_recommended_buy-recommended_buy:+,.0f} vs R2" if challenger_recommended_buy != recommended_buy else "same as R2"),
+        "Three-Pillar Buy", f"A${challenger_recommended_buy:,.0f}" if portfolio_verified else "BLOCKED",
+        delta=(f"A${challenger_recommended_buy-recommended_buy:+,.0f} vs R2" if portfolio_verified and challenger_recommended_buy != recommended_buy else ("same as R2" if portfolio_verified else None)),
         help=f"{challenger_weight:.2f}× normal weekly allowance; halving context does not size, staged bottom events may override"
     )
 
-    st.markdown("**ASX:IBIT equivalent — Three-Pillar recommendation**")
-    show_ibit_dca_equivalent(challenger_recommended_buy, label="Three-Pillar DCA")
-    show_btc_ibit_comparison()
-    with st.expander("Frozen R2 equivalent in ASX:IBIT"):
-        show_ibit_dca_equivalent(recommended_buy, label="Frozen R2 DCA")
+    if portfolio_verified:
+        st.markdown("**ASX:IBIT equivalent — Three-Pillar recommendation**")
+        show_ibit_dca_equivalent(challenger_recommended_buy, label="Three-Pillar DCA")
+        show_btc_ibit_comparison()
+        with st.expander("Frozen R2 equivalent in ASX:IBIT"):
+            show_ibit_dca_equivalent(recommended_buy, label="Frozen R2 DCA")
+    else:
+        st.warning("ASX:IBIT quantities and AUD purchase estimates are withheld until the portfolio is verified.")
 
     x1, x2, x3 = st.columns(3)
     x1.metric("Normal Monday DCA", f"A${normal_weekly_allowance:,.0f}", help="Deployable capital divided by weeks to the Strategy Review Date")
