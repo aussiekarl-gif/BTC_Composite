@@ -109,6 +109,23 @@ class NightlyIndependentDetectionTests(unittest.TestCase):
         self.assertEqual(x["latest_completed_weekday_status"],
                          "MISSING_COMPLETED_WEEKDAY_DO_NOT_BACKFILL")
 
+    def test_historical_gaps_remain_visible_when_latest_weekday_is_present(self):
+        x=audit_status(now=at(22),rows=[row(22)])
+        self.assertEqual(x["latest_completed_weekday_status"],
+                         "VERIFIED_COMPLETED_WEEKDAY_SOURCE_IN_CHECKOUT")
+        self.assertEqual(x["expected_completed_weekdays_since_enrolment"],3)
+        self.assertEqual(x["verified_completed_weekday_rows_since_enrolment"],1)
+        self.assertEqual(x["missing_completed_weekdays_sydney"],
+                         ["2026-10-20","2026-10-21"])
+        self.assertEqual(x["historical_missing_weekday_count"],2)
+        self.assertFalse(x["missed_date_backfilled"])
+
+    def test_contiguous_completed_weekdays_have_no_gap(self):
+        x=audit_status(now=at(22),rows=[row(20),row(21),row(22)])
+        self.assertEqual(x["missing_completed_weekdays_sydney"],[])
+        self.assertEqual(x["historical_missing_weekday_count"],0)
+        self.assertEqual(x["verified_completed_weekday_rows_since_enrolment"],3)
+
     def test_before_first_enrolment_returns_no_expected_completed_session(self):
         x=audit_status(now=at(20,11,35),rows=[])
         self.assertIsNone(x["latest_completed_sydney_weekday_checked"])
