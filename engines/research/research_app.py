@@ -2162,36 +2162,61 @@ elif mode == "My Portfolio":
             except Exception as exc:
                 st.error(f"Could not read portfolio CSV: {exc}")
 
-    # Display-only historical BTC/USD reference. Never persist inferred prices
-    # in the executed-trade ledger or use them as broker execution prices.
-    portfolio_display = portfolio_df.copy()
-    portfolio_display["BTC Price (USD)"] = pd.Series(np.nan, index=portfolio_display.index, dtype=float)
-    if not portfolio_display.empty:
-        def _display_purchase_date(value):
-            for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
-                try:
-                    return dt.datetime.strptime(str(value).strip(), fmt).date()
-                except (TypeError, ValueError):
-                    continue
+    # Display-only historical BTC/USD reference. The same lookup is used by
+    # both portfolio tables, after edits are submitted, and is never saved as
+    # an executed trade price in the authoritative portfolio ledger.
+    def _parse_portfolio_date(value):
+        if pd.isna(value):
             return None
-
-        purchase_dates = portfolio_display["Date"].map(_display_purchase_date)
-        valid_dates = [d for d in purchase_dates if d is not None and d <= dt.date.today()]
-        if valid_dates:
+        text = str(value).strip()
+        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
             try:
-                history = fetch_btc_history(min(valid_dates) - dt.timedelta(days=7), max(valid_dates))
-                if history is not None and not history.empty:
-                    dated = history[["price"]].copy()
-                    dated.index = pd.to_datetime(dated.index, utc=True).tz_convert(None).normalize()
-                    daily_usd = dated.groupby(level=0)["price"].last().sort_index()
-                    for idx, purchase_date in purchase_dates.items():
-                        if purchase_date is None or purchase_date > dt.date.today():
-                            continue
-                        earlier = daily_usd.loc[:pd.Timestamp(purchase_date)].dropna()
-                        if not earlier.empty:
-                            portfolio_display.at[idx, "BTC Price (USD)"] = float(earlier.iloc[-1])
-            except Exception as exc:
-                st.caption(f"Historical BTC/USD reference unavailable: {exc}")
+                return dt.datetime.strptime(text, fmt).date()
+            except (TypeError, ValueError):
+                continue
+        parsed = pd.to_datetime(text, dayfirst=True, errors="coerce")
+        return parsed.date() if pd.notna(parsed) else None
+
+    def _lookup_btc_usd_for_dates(date_values):
+        result = pd.Series(np.nan, index=date_values.index, dtype=float)
+        purchase_dates = date_values.map(_parse_portfolio_date)
+        valid_dates = [
+            value for value in purchase_dates
+            if value is not None and value <= dt.date.today()
+        ]
+        if not valid_dates:
+            return result
+        try:
+            history = fetch_btc_history(
+                min(valid_dates) - dt.timedelta(days=7), max(valid_dates)
+            )
+            if history is None or history.empty or "price" not in history.columns:
+                return result
+            dated = history[["price"]].copy()
+            dated.index = (
+                pd.to_datetime(dated.index, utc=True)
+                .tz_convert(None)
+                .normalize()
+            )
+            daily_usd = (
+                pd.to_numeric(dated["price"], errors="coerce")
+                .groupby(level=0).last().dropna().sort_index()
+            )
+            for row_index, purchase_date in purchase_dates.items():
+                if purchase_date is None or purchase_date > dt.date.today():
+                    continue
+                # Strictly on-or-before: never use a future close to fill a gap.
+                prior = daily_usd.loc[:pd.Timestamp(purchase_date)]
+                if not prior.empty:
+                    result.at[row_index] = float(prior.iloc[-1])
+        except Exception as exc:
+            st.caption(f"Historical BTC/USD reference unavailable: {exc}")
+        return result
+
+    portfolio_display = portfolio_df.copy()
+    portfolio_display["BTC Price (USD)"] = _lookup_btc_usd_for_dates(
+        portfolio_display["Date"]
+    )
 
     st.subheader("Purchases")
     st.caption(
@@ -2319,19 +2344,14 @@ elif mode == "My Portfolio":
     for col in ["AUD Spent", "Brokerage / Fee AUD", "Units / BTC Received", "BTC AUD Price"]:
         clean[col] = pd.to_numeric(clean[col], errors="coerce").fillna(0.0)
 
-    # Australian date format: DD/MM/YY. Also accept ISO dates from older V5.6 CSVs.
-    def _parse_portfolio_date(value):
-        if pd.isna(value):
-            return pd.NaT
-        s = str(value).strip()
-        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                return pd.Timestamp(dt.datetime.strptime(s, fmt).date())
-            except Exception:
-                pass
-        return pd.to_datetime(s, dayfirst=True, errors="coerce")
-
-    clean["_purchase_date"] = clean["Date"].apply(_parse_portfolio_date)
+    # Parse the submitted/current editor rows independently from the editor's
+    # pre-submit snapshot. This keeps Calculated Transactions in sync immediately
+    # after a user saves changed or newly added purchase dates.
+    clean["_purchase_date"] = clean["Date"].apply(
+        lambda value: pd.Timestamp(_parse_portfolio_date(value))
+        if _parse_portfolio_date(value) is not None else pd.NaT
+    )
+    clean["BTC Price (USD)"] = _lookup_btc_usd_for_dates(clean["Date"])
 
     # Automatically populate BTC/AUD for ASX:IBIT rows from the same BTC + FX data
     # used elsewhere in the app. This avoids manual BTC price entry.
@@ -2647,8 +2667,7 @@ elif mode == "My Portfolio":
         )
 
     st.subheader("Calculated Transactions")
-    # Display-only purchase-date BTC/USD; do not alter saved ledger or calculations.
-    clean["BTC Price (USD)"] = portfolio_display["BTC Price (USD)"].reindex(clean.index)
+    # BTC/USD is the same date-aligned, display-only reference shown in Purchases.
     clean["Date"] = clean["_purchase_date"].apply(
         lambda x: x.strftime("%d/%m/%y") if pd.notna(x) else ""
     )
