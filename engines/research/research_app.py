@@ -485,6 +485,9 @@ with st.sidebar:
             key="today_remaining_capital",
             disabled=not portfolio_verified,
         )
+        if not portfolio_verified:
+            # Ignore any stale Streamlit widget state while storage is unavailable.
+            remaining_capital_aud = 0.0
 
         # Date persistence used to rely on browser LocalStorage only.
         # Read the independent, persistent Google/SQLite preference
@@ -553,13 +556,14 @@ with st.sidebar:
             "V5.9 default: 2.00× at risk 0.00, 1.00× at risk 0.50, and 0.60× at risk 1.00."
         )
 
-        browser_state["today"] = {
-            "starting_capital_aud": float(starting_capital_aud),
-            "remaining_capital_aud": float(remaining_capital_aud),
-            "target_date": target_deployment_date.isoformat(),
-            "preserved_capital_aud": float(preserved_capital_aud),
-        }
-        _save_browser_state(browser_state)
+        if portfolio_verified:
+            browser_state["today"] = {
+                "starting_capital_aud": float(starting_capital_aud),
+                "remaining_capital_aud": float(remaining_capital_aud),
+                "target_date": target_deployment_date.isoformat(),
+                "preserved_capital_aud": float(preserved_capital_aud),
+            }
+            _save_browser_state(browser_state)
 
         # Compatibility values for the shared risk engine.
         total_capital_aud = float(starting_capital_aud)
