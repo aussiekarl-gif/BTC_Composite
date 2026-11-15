@@ -341,6 +341,14 @@ browser_state = _load_browser_state()
 browser_portfolio = _load_shared_portfolio(browser_state)
 server_portfolio, portfolio_storage_error = load_portfolio()
 shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
+# DCA Today may use only the authoritative durable portfolio. Browser snapshots
+# remain available to My Portfolio recovery, but never authorise a cash recommendation.
+portfolio_verified = (
+    not portfolio_storage_error
+    and isinstance(server_portfolio, dict)
+    and isinstance(server_portfolio.get("rows"), list)
+    and len(server_portfolio.get("rows", [])) > 0
+)
 
 st.title("Bitcoin Dynamic DCA V5.9 — Three-Pillar Research")
 st.caption("Version 5.9 RESEARCH • R2 Valuation • Exceptional Bottom Zone • Halving Accumulation Zone • Persistent portfolio")
@@ -429,6 +437,13 @@ with st.sidebar:
 
     elif mode == "DCA Today":
         st.header("DCA Today")
+        if not portfolio_verified:
+            st.error(
+                "PURCHASE RECOMMENDATION BLOCKED — the authoritative Google/SQLite "
+                "portfolio could not be verified. Browser recovery data is not trusted "
+                "for cash sizing. Market data and risk signals remain available; "
+                "restore or verify the saved portfolio in My Portfolio, then reload."
+            )
 
         saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
         saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
@@ -436,16 +451,17 @@ with st.sidebar:
         starting_default = float(saved_portfolio.get(
             "starting_capital_aud",
             saved_today.get("starting_capital_aud", 500_000.0)
-        ))
+        )) if portfolio_verified else 1_000.0
         starting_capital_aud = st.number_input(
             "Starting Capital (AUD)",
             min_value=1_000.0, max_value=100_000_000.0,
             value=starting_default, step=10_000.0, format="%.0f",
             key="today_starting_capital",
+            disabled=not portfolio_verified,
         )
 
         portfolio_remaining_saved = saved_portfolio.get("capital_remaining_aud", None)
-        remaining_default = saved_today.get("remaining_capital_aud", starting_capital_aud)
+        remaining_default = saved_today.get("remaining_capital_aud", starting_capital_aud) if portfolio_verified else 0.0
         if portfolio_remaining_saved is not None:
             remaining_default = portfolio_remaining_saved
 
@@ -455,6 +471,7 @@ with st.sidebar:
             value=min(float(starting_capital_aud), float(remaining_default)),
             step=5_000.0, format="%.0f",
             key="today_remaining_capital",
+            disabled=not portfolio_verified,
         )
 
         # Date persistence used to rely on browser LocalStorage only.
@@ -1258,9 +1275,9 @@ elif mode == "DCA Today":
         max(paced_risk_weight, _event_multiplier)
         if _event_is_eligible else paced_risk_weight
     )
-    challenger_recommended_buy = min(
-        deployable_before_review,
-        max(0.0, normal_weekly_allowance * challenger_weight),
+    challenger_recommended_buy = (
+        min(deployable_before_review, max(0.0, normal_weekly_allowance * challenger_weight))
+        if portfolio_verified else 0.0
     )
 
     # Compare live capped recommendation with the separate research bands.
@@ -1389,8 +1406,8 @@ elif mode == "DCA Today":
           <div class="v59-hero">
             <div>
               <div class="v59-title">🛒 &nbsp; Recommended DCA This Week <span class="v59-q" title="This week's research-challenger buy amount. Base weekly allowance × effective V5.9 multiplier, capped by remaining capital. No automatic all-in.">?</span></div>
-              <div class="v59-big">A$ {challenger_recommended_buy:,.0f}</div>
-              <span class="v59-buy-pill">₿ &nbsp; BUY THIS WEEK</span>
+              <div class="v59-big">{"A$ " + format(challenger_recommended_buy, ",.0f") if portfolio_verified else "BLOCKED"}</div>
+              <span class="v59-buy-pill">{"₿ &nbsp; BUY THIS WEEK" if portfolio_verified else "PORTFOLIO NOT VERIFIED"}</span>
               <span class="v59-sub" style="margin-left:10px;">That's {challenger_weight:.2f}× your base weekly amount</span>
             </div>
             <div>
