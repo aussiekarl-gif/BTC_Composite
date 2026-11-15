@@ -488,7 +488,7 @@ if (
     try:
         verified_portfolio_positions = portfolio_positions(server_portfolio)
         portfolio_verified = True
-    except (ValueError, TypeError, KeyError, ZeroDivisionError):
+    except Exception:
         verified_portfolio_positions = None
 
 st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
@@ -1164,7 +1164,7 @@ elif mode == "DCA Today":
               <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's V5.8.2 production buy amount. Base Weekly Allowance × Smart DCA risk multiplier, capped by remaining capital.">?</span></div>
               <div class="v58-big">{"A$ " + format(recommended_buy, ",.0f") if portfolio_verified else "BLOCKED"}</div>
               <span class="v58-buy-pill">{"₿ &nbsp; BUY THIS WEEK" if portfolio_verified else "PORTFOLIO NOT VERIFIED"}</span>
-              <span class="v58-sub" style="margin-left:10px;">That's {risk_weight:.2f}× your base weekly amount</span>
+              <span class="v58-sub" style="margin-left:10px;">{"That's " + format(risk_weight, ".2f") + "× your base weekly amount" if portfolio_verified else "Cash sizing withheld"}</span>
             </div>
             <div>
               <div class="v58-title">Current Multiplier <span class="v58-q" title="Production Smart DCA multiplier determined only by the V5.8.2 Risk Score curve.">?</span></div>
@@ -1375,11 +1375,14 @@ elif mode == "DCA Today":
             "That allowance is multiplied only by the fixed Smart DCA weight from today's Risk Score, "
             "then capped at remaining capital."
         )
-        st.write(
-            f"A${remaining_capital_aud:,.0f} ÷ {weeks_remaining:.1f} weeks "
-            f"× {risk_weight:.2f} Risk Score weight "
-            f"= A${recommended_buy:,.0f}"
-        )
+        if portfolio_verified:
+            st.write(
+                f"A${remaining_capital_aud:,.0f} ÷ {weeks_remaining:.1f} weeks "
+                f"× {risk_weight:.2f} Risk Score weight "
+                f"= A${recommended_buy:,.0f}"
+            )
+        else:
+            st.warning("Cash-based calculation unavailable until the authoritative portfolio is verified.")
         if np.isfinite(rarity["percentile"]):
             st.write(
                 f"Historically, only about {rarity['percentile']:.1f}% of weekly observations "
