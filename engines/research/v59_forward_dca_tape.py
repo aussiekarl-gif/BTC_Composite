@@ -18,6 +18,7 @@ from engines.research.v59_live_signal_snapshot import capture
 from engines.research.v59_realized_forward_reference import (
     capture_reference, paired_to_spot,
 )
+from engines.research.ibit_quote import fetch_ibit_quote
 
 CAPITAL = 510_000.
 INITIAL_BTC_FRACTION = .41
@@ -34,7 +35,52 @@ GATES=("risk_1x","risk_3x","risk_3x_risk_le_020","below_200wma","below_to_plus10
 DATA_VERSION=1
 
 
-def to_observation(s:dict, code_sha:str="",realized_reference:dict|None=None) -> dict:
+def normalize_ibit_reference(quote:dict|None, captured_at_utc:datetime) -> dict:
+    """Store a dated ASX:IBIT price reference, never an executable fill."""
+    captured=captured_at_utc.astimezone(timezone.utc)
+    unavailable={"status":"UNAVAILABLE","usable_for_comparison":False,
+                 "indicative_only":True,"broker_fill_verified":False,
+                 "captured_at_utc":captured.isoformat()}
+    if not isinstance(quote,dict):
+        return unavailable
+    try:
+        symbol=str(quote["symbol"]).upper()
+        provider=str(quote["provider"])
+        price=float(quote["price_aud"])
+        stamp=datetime.fromisoformat(str(quote["timestamp_utc"]).replace("Z","+00:00"))
+        age=float(quote["age_hours"])
+    except (KeyError,TypeError,ValueError,OverflowError):
+        return {**unavailable,"status":"INVALID_QUOTE_REFERENCE"}
+    if stamp.tzinfo is None or symbol!="ASX:IBIT" or not provider or not (
+        math.isfinite(price) and price>0 and math.isfinite(age) and 0<=age<=120
+    ):
+        return {**unavailable,"status":"INVALID_QUOTE_REFERENCE"}
+    stamp=stamp.astimezone(timezone.utc)
+    actual_age=(captured-stamp).total_seconds()/3600
+    if actual_age < -0.01 or actual_age > 120 or abs(actual_age-age)>2.0:
+        return {**unavailable,"status":"INVALID_QUOTE_TIMESTAMP"}
+    return {
+        "status":"DATED_INDICATIVE_ASX_IBIT_REFERENCE",
+        "symbol":symbol,"price_aud":price,"provider":provider,
+        "market_timestamp_utc":stamp.isoformat(),
+        "captured_at_utc":captured.isoformat(),
+        "age_hours":round(actual_age,2),
+        "usable_for_comparison":actual_age<=36,
+        "indicative_only":True,"broker_fill_verified":False,
+    }
+
+
+def capture_ibit_reference(captured_at_utc:datetime) -> dict:
+    """Capture ASX quote separately; its absence must not block BTC evidence."""
+    try:
+        quote=fetch_ibit_quote(now=captured_at_utc)
+    except Exception:
+        quote=None
+    return normalize_ibit_reference(quote,captured_at_utc)
+
+
+def to_observation(s:dict, code_sha:str="",realized_reference:dict|None=None,
+                   ibit_reference:dict|None=None) -> dict:
     """Never replace actual observed risk with recomputed history."""
     if s.get("status") != REQUIRED_SNAPSHOT_STATUS or not s.get("risk_and_fx_fresh"):
         raise ValueError("Invalid or stale prospective snapshot; no paper trade")
@@ -81,6 +127,9 @@ def to_observation(s:dict, code_sha:str="",realized_reference:dict|None=None) ->
         # remain missing, older tape rows are NEVER reconstructed.
         "realized_price_reference":paired_to_spot(
             realized_reference,price,signal.date()),
+        "asx_ibit_reference":ibit_reference or {
+            "status":"UNAVAILABLE","usable_for_comparison":False,
+            "indicative_only":True,"broker_fill_verified":False},
         "paper_only":True
     }
 
@@ -281,7 +330,8 @@ def main() -> int:
     p.add_argument("--code-sha",default="UNKNOWN_NOT_ATTESTED")
     args=p.parse_args()
     old=read_tape(args.old)
-    s=capture()
+    captured_at=datetime.now(timezone.utc)
+    s=capture(captured_at)
     args.snapshot.parent.mkdir(parents=True,exist_ok=True)
     args.snapshot.write_text(json.dumps(s,sort_keys=True,indent=2,allow_nan=False)+"\n")
     # BGeometrics may lag by days or be unavailable for free accounts.
@@ -290,7 +340,9 @@ def main() -> int:
     real_capture=capture_reference(
         closed_signal_date=date.fromisoformat(
             s["closed_risk_observation_utc"][:10]))
-    new=to_observation(s,args.code_sha,realized_reference=real_capture)
+    ibit_capture=capture_ibit_reference(captured_at)
+    new=to_observation(s,args.code_sha,realized_reference=real_capture,
+                       ibit_reference=ibit_capture)
     reference=new["realized_price_reference"]
     print("REALIZED_FORWARD_REFERENCE "+json.dumps({
         k:reference.get(k) for k in (
