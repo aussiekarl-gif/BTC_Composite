@@ -475,6 +475,21 @@ portfolio_snapshots = _load_portfolio_snapshots(browser_state)
 browser_portfolio = _load_shared_portfolio(browser_state)
 server_portfolio, portfolio_storage_error = load_portfolio()
 shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
+# DCA Today may use only the authoritative durable portfolio. Browser snapshots
+# remain available to My Portfolio recovery, but never authorise a cash recommendation.
+verified_portfolio_positions = None
+portfolio_verified = False
+if (
+    not portfolio_storage_error
+    and isinstance(server_portfolio, dict)
+    and isinstance(server_portfolio.get("rows"), list)
+    and len(server_portfolio.get("rows", [])) > 0
+):
+    try:
+        verified_portfolio_positions = portfolio_positions(server_portfolio)
+        portfolio_verified = True
+    except Exception:
+        verified_portfolio_positions = None
 
 st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
 st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
@@ -583,25 +598,35 @@ with st.sidebar:
 
     elif mode == "DCA Today":
         st.header("DCA Today")
+        if not portfolio_verified:
+            st.error(
+                "PURCHASE RECOMMENDATION BLOCKED — the authoritative Google/SQLite "
+                "portfolio could not be verified. Browser recovery data is not trusted "
+                "for cash sizing. Market data and risk signals remain available; "
+                "restore or verify the saved portfolio in My Portfolio, then reload."
+            )
 
         saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
-        saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
+        saved_portfolio = server_portfolio if portfolio_verified else {}
 
-        starting_default = float(saved_portfolio.get(
-            "starting_capital_aud",
-            saved_today.get("starting_capital_aud", 500_000.0)
-        ))
+        starting_default = (
+            float(verified_portfolio_positions["starting_capital_aud"])
+            if portfolio_verified else 1_000.0
+        )
         starting_capital_aud = st.number_input(
             "Starting Capital (AUD)",
             min_value=1_000.0, max_value=100_000_000.0,
             value=starting_default, step=10_000.0, format="%.0f",
             key="today_starting_capital",
+            disabled=not portfolio_verified,
         )
 
-        portfolio_remaining_saved = saved_portfolio.get("capital_remaining_aud", None)
-        remaining_default = saved_today.get("remaining_capital_aud", starting_capital_aud)
-        if portfolio_remaining_saved is not None:
-            remaining_default = portfolio_remaining_saved
+        # Recompute available cash from the executed ledger; do not trust a
+        # potentially stale cached capital_remaining_aud field.
+        remaining_default = (
+            float(verified_portfolio_positions["cash_remaining_aud"])
+            if portfolio_verified else 0.0
+        )
 
         remaining_capital_aud = st.number_input(
             "Capital Remaining (AUD)",
@@ -609,7 +634,11 @@ with st.sidebar:
             value=min(float(starting_capital_aud), float(remaining_default)),
             step=5_000.0, format="%.0f",
             key="today_remaining_capital",
+            disabled=not portfolio_verified,
         )
+        if not portfolio_verified:
+            # Ignore any stale Streamlit widget state while storage is unavailable.
+            remaining_capital_aud = 0.0
 
         # Date persistence used to rely on browser LocalStorage only.
         # Read the independent, persistent Google/SQLite preference
@@ -663,12 +692,13 @@ with st.sidebar:
             "V5.8.2 default: 2.75× at risk 0.00, 1.00× at risk 0.50, and 0.05× at risk 1.00."
         )
 
-        browser_state["today"] = {
-            "starting_capital_aud": float(starting_capital_aud),
-            "remaining_capital_aud": float(remaining_capital_aud),
-            "target_date": target_deployment_date.isoformat(),
-        }
-        _save_browser_state(browser_state)
+        if portfolio_verified:
+            browser_state["today"] = {
+                "starting_capital_aud": float(starting_capital_aud),
+                "remaining_capital_aud": float(remaining_capital_aud),
+                "target_date": target_deployment_date.isoformat(),
+            }
+            _save_browser_state(browser_state)
 
         # Compatibility values for the shared risk engine.
         total_capital_aud = float(starting_capital_aud)
@@ -1065,9 +1095,9 @@ elif mode == "DCA Today":
     )
 
     normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
-    recommended_buy = min(
-        float(remaining_capital_aud),
-        max(0.0, normal_weekly_allowance * risk_weight),
+    recommended_buy = (
+        min(float(remaining_capital_aud), max(0.0, normal_weekly_allowance * risk_weight))
+        if portfolio_verified else 0.0
     )
 
     # Better-entry probability is informational only in V5.8.2.
@@ -1133,9 +1163,9 @@ elif mode == "DCA Today":
           <div class="v58-hero">
             <div>
               <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's V5.8.2 production buy amount. Base Weekly Allowance × Smart DCA risk multiplier, capped by remaining capital.">?</span></div>
-              <div class="v58-big">A$ {recommended_buy:,.0f}</div>
-              <span class="v58-buy-pill">₿ &nbsp; BUY THIS WEEK</span>
-              <span class="v58-sub" style="margin-left:10px;">That's {risk_weight:.2f}× your base weekly amount</span>
+              <div class="v58-big">{"A$ " + format(recommended_buy, ",.0f") if portfolio_verified else "BLOCKED"}</div>
+              <span class="v58-buy-pill">{"₿ &nbsp; BUY THIS WEEK" if portfolio_verified else "PORTFOLIO NOT VERIFIED"}</span>
+              <span class="v58-sub" style="margin-left:10px;">{"That's " + format(risk_weight, ".2f") + "× your base weekly amount" if portfolio_verified else "Cash sizing withheld"}</span>
             </div>
             <div>
               <div class="v58-title">Current Multiplier <span class="v58-q" title="Production Smart DCA multiplier determined only by the V5.8.2 Risk Score curve.">?</span></div>
@@ -1230,8 +1260,14 @@ elif mode == "DCA Today":
         )
 
     st.subheader("SMART DCA THIS WEEK")
-    st.metric("Recommended DCA This Week", f"A${recommended_buy:,.0f}")
-    show_ibit_dca_equivalent(recommended_buy)
+    st.metric(
+        "Recommended DCA This Week" if portfolio_verified else "Purchase recommendation",
+        f"A${recommended_buy:,.0f}" if portfolio_verified else "BLOCKED",
+    )
+    if portfolio_verified:
+        show_ibit_dca_equivalent(recommended_buy)
+    else:
+        st.warning("IBIT quantity and purchase price withheld until the portfolio is verified.")
     show_btc_ibit_comparison()
 
     x1, x2, x3 = st.columns(3)
@@ -1340,11 +1376,14 @@ elif mode == "DCA Today":
             "That allowance is multiplied only by the fixed Smart DCA weight from today's Risk Score, "
             "then capped at remaining capital."
         )
-        st.write(
-            f"A${remaining_capital_aud:,.0f} ÷ {weeks_remaining:.1f} weeks "
-            f"× {risk_weight:.2f} Risk Score weight "
-            f"= A${recommended_buy:,.0f}"
-        )
+        if portfolio_verified:
+            st.write(
+                f"A${remaining_capital_aud:,.0f} ÷ {weeks_remaining:.1f} weeks "
+                f"× {risk_weight:.2f} Risk Score weight "
+                f"= A${recommended_buy:,.0f}"
+            )
+        else:
+            st.warning("Cash-based calculation unavailable until the authoritative portfolio is verified.")
         if np.isfinite(rarity["percentile"]):
             st.write(
                 f"Historically, only about {rarity['percentile']:.1f}% of weekly observations "
