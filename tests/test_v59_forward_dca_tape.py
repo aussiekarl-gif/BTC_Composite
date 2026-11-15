@@ -100,6 +100,29 @@ class ForwardDcaTapeTests(unittest.TestCase):
         medium=row(date(2026,11,15),risk=.33,ratio=1.05)
         self.assertEqual(t.multipliers(medium)["risk_3x_risk_le_020"],0.)
 
+
+    def test_asx_ibit_reference_is_dated_indicative_and_never_a_broker_fill(self):
+        captured=datetime(2026,11,16,1,23,tzinfo=timezone.utc)
+        fresh={
+            "symbol":"ASX:IBIT","provider":"Yahoo Finance delayed quote",
+            "price_aud":20.81,"timestamp_utc":"2026-11-16T01:00:00+00:00",
+            "age_hours":.383,"indicative_only":True,
+        }
+        result=t.normalize_ibit_reference(fresh,captured)
+        self.assertEqual(result["status"],"DATED_INDICATIVE_ASX_IBIT_REFERENCE")
+        self.assertTrue(result["usable_for_comparison"])
+        self.assertTrue(result["indicative_only"])
+        self.assertFalse(result["broker_fill_verified"])
+        stale=dict(fresh,timestamp_utc="2026-11-14T01:00:00+00:00",age_hours=48.383)
+        result=t.normalize_ibit_reference(stale,captured)
+        self.assertFalse(result["usable_for_comparison"])
+        self.assertFalse(result["broker_fill_verified"])
+        wrong=dict(fresh,symbol="NASDAQ:IBIT")
+        self.assertEqual(t.normalize_ibit_reference(wrong,captured)["status"],
+                         "INVALID_QUOTE_REFERENCE")
+        self.assertEqual(t.normalize_ibit_reference(None,captured)["status"],
+                         "UNAVAILABLE")
+
     def test_no_lookahead_matured_return(self):
         start=date(2026,11,15)
         first=row(start)
