@@ -81,6 +81,21 @@ def audit_status(*, now:dt.datetime, rows:list[dict],
         else "VERIFIED_COMPLETED_WEEKDAY_SOURCE_IN_CHECKOUT" if completed_rows
         else "MISSING_COMPLETED_WEEKDAY_DO_NOT_BACKFILL"
     )
+    # Audit the whole completed period, not only the latest weekday. A newer
+    # valid row must not hide older missed captures in the append-only tape.
+    expected_completed=[]
+    cursor=FIRST_ELIGIBLE_DATE
+    while completed is not None and cursor<=completed:
+        if cursor.weekday()<5:
+            expected_completed.append(cursor)
+        cursor+=dt.timedelta(days=1)
+    observed_dates={
+        dt.date.fromisoformat(r["research_sydney_date"])
+        for r in rows
+    }
+    missing_completed=[
+        d.isoformat() for d in expected_completed if d not in observed_dates
+    ]
     return {
         "kind":"RESEARCH_MID_SESSION_CAPTURE_HEALTH_READ_ONLY",
         "audited_at_utc":now.astimezone(dt.timezone.utc).isoformat(),
@@ -94,6 +109,11 @@ def audit_status(*, now:dt.datetime, rows:list[dict],
             completed_rows[0]["row_hash"] if completed_rows else None),
         "latest_completed_weekday_source_captured_at_utc":(
             completed_rows[0]["captured_at_utc"] if completed_rows else None),
+        "expected_completed_weekdays_since_enrolment":len(expected_completed),
+        "verified_completed_weekday_rows_since_enrolment":(
+            len(expected_completed)-len(missing_completed)),
+        "missing_completed_weekdays_sydney":missing_completed,
+        "historical_missing_weekday_count":len(missing_completed),
         "status":status,
         "verified_rows_in_existing_tape":len(rows),
         "current_date_source_capture_at_utc":(
@@ -134,6 +154,9 @@ def main(argv=None):
         print("::warning::Scheduled BTC Cycle mid-session capture missing for completed Sydney weekday "+
               result["latest_completed_sydney_weekday_checked"]+
               ". No backfill. Check original scheduled Actions workflow run / source and push logs.")
+    if result["missing_completed_weekdays_sydney"]:
+        print("::warning::Historical BTC Cycle mid-session capture gaps (no backfill): "+
+              ", ".join(result["missing_completed_weekdays_sydney"]))
 
 
 if __name__=="__main__":
