@@ -343,12 +343,19 @@ server_portfolio, portfolio_storage_error = load_portfolio()
 shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
 # DCA Today may use only the authoritative durable portfolio. Browser snapshots
 # remain available to My Portfolio recovery, but never authorise a cash recommendation.
-portfolio_verified = (
+verified_portfolio_positions = None
+portfolio_verified = False
+if (
     not portfolio_storage_error
     and isinstance(server_portfolio, dict)
     and isinstance(server_portfolio.get("rows"), list)
     and len(server_portfolio.get("rows", [])) > 0
-)
+):
+    try:
+        verified_portfolio_positions = portfolio_positions(server_portfolio)
+        portfolio_verified = True
+    except (ValueError, TypeError, KeyError, ZeroDivisionError):
+        verified_portfolio_positions = None
 
 st.title("Bitcoin Dynamic DCA V5.9 — Three-Pillar Research")
 st.caption("Version 5.9 RESEARCH • R2 Valuation • Exceptional Bottom Zone • Halving Accumulation Zone • Persistent portfolio")
@@ -446,12 +453,15 @@ with st.sidebar:
             )
 
         saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
-        saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
+        saved_portfolio = server_portfolio if portfolio_verified else {}
 
-        starting_default = float(saved_portfolio.get(
-            "starting_capital_aud",
-            saved_today.get("starting_capital_aud", 500_000.0)
-        )) if portfolio_verified else 1_000.0
+        starting_default = (
+            float(saved_portfolio.get(
+                "starting_capital_aud",
+                verified_portfolio_positions["starting_capital_aud"],
+            ))
+            if portfolio_verified else 1_000.0
+        )
         starting_capital_aud = st.number_input(
             "Starting Capital (AUD)",
             min_value=1_000.0, max_value=100_000_000.0,
@@ -461,9 +471,11 @@ with st.sidebar:
         )
 
         portfolio_remaining_saved = saved_portfolio.get("capital_remaining_aud", None)
-        remaining_default = saved_today.get("remaining_capital_aud", starting_capital_aud) if portfolio_verified else 0.0
-        if portfolio_remaining_saved is not None:
-            remaining_default = portfolio_remaining_saved
+        remaining_default = (
+            float(portfolio_remaining_saved)
+            if portfolio_remaining_saved is not None
+            else float(verified_portfolio_positions["cash_remaining_aud"])
+        ) if portfolio_verified else 0.0
 
         remaining_capital_aud = st.number_input(
             "Capital Remaining (AUD)",
@@ -1492,10 +1504,10 @@ elif mode == "DCA Today":
         "continuous valuation-risk reading and does not set this week's buy."
     )
     with st.expander("Aggressive risk-band DCA — research preview, NOT the live buy", expanded=False):
-        _preview_amount = _aggressive_preview["candidate_buy_aud"]
+        _preview_amount = _aggressive_preview["candidate_buy_aud"] if portfolio_verified else None
         _preview_text = (
             f"A${_preview_amount:,.0f}" if _preview_amount is not None
-            else "BLOCKED: dated risk observation is stale or future-dated"
+            else ("BLOCKED: portfolio not verified" if not portfolio_verified else "BLOCKED: dated risk observation is stale or future-dated")
         )
         _preview_cols = st.columns(3)
         _preview_cols[0].metric("Live ordinary multiplier", f"{paced_risk_weight:.2f}×")
