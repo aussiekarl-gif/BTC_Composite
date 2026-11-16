@@ -1,9 +1,8 @@
-"""Daily first-captured realized-price *reference* from BGeometrics, not trading.
+"""Daily first-captured realized-price reference from Explore21/BGeometrics.
 
-Free API GET /v1/realized-price/last; response schemas and recent-value
-entitlements may change. On fetch failure/staleness, return an explicitly
-UNAVAILABLE observation; NEVER use a stale on-chain value as if it were a
-current 2026 daily on-chain reading. No private keys, no sell/buy action.
+Explore21's realized price and BTC close are captured from the same dated CSV
+row. BGeometrics remains a provenance fallback, but without its own matched
+BTC close it cannot produce a forward-eligible spot/realized ratio. No trades.
 """
 from __future__ import annotations
 
@@ -178,24 +177,63 @@ def capture_reference(*, closed_signal_date:date,
 
 
 def paired_to_spot(reference:dict|None,spot_usd:float,signal_date:date) -> dict:
-    """Use only first-captured nonfuture on-chain values with dated spot signal."""
+    """Use the provider's own same-day BTC close for a realized-price ratio.
+
+    spot_usd is the separate Blockchain.com daily-average market-price proxy
+    used by the V5.9 tape. It is retained as a diagnostic, never silently
+    mixed with Explore21's daily-close realized-price observation.
+    """
     if not reference:
         return {"status":"UNAVAILABLE","usable_for_forward":False,
-                "price_to_realized_ratio":None,"realized_price_usd":None}
+                "price_to_realized_ratio":None,"realized_price_usd":None,
+                "ratio_method_version":None}
     result=dict(reference)
-    result["price_to_realized_ratio"]=None
+    result.update({
+        "price_to_realized_ratio":None,
+        "ratio_method_version":None,
+        "ratio_spot_price_source":None,
+        "ratio_spot_price_basis":None,
+        "blockchain_market_price_usd":None,
+        "blockchain_market_price_basis":(
+            "Blockchain.com market-price chart daily average across major exchanges; not OHLC close"),
+        "blockchain_market_price_to_realized_ratio":None,
+        "blockchain_vs_provider_close_gap_pct":None,
+    })
     if not result.get("usable_for_forward"):
         return result
     try:
         date_obs=date.fromisoformat(result["provider_observation_date"])
         val=float(result["realized_price_usd"])
-        spot=float(spot_usd)
+        provider_close=float(result["provider_btc_close_usd"])
         age=(signal_date-date_obs).days
-        if not (0<=age<=MAX_PROVIDER_AGE_DAYS and math.isfinite(val)
-                and math.isfinite(spot) and val>0 and spot>0):
-            raise ValueError("Future/stale date or invalid price")
-        result["price_to_realized_ratio"]=spot/val
-    except (TypeError,ValueError,KeyError):
+        if age!=0:
+            result.update(status="STALE_DATE_MISMATCH",usable_for_forward=False,
+                          failure="PROVIDER_DATE_MUST_MATCH_SIGNAL_DATE")
+            return result
+        if not (math.isfinite(val) and math.isfinite(provider_close)
+                and val>0 and provider_close>0):
+            raise ValueError("Invalid provider close or realized price")
+        try:
+            market_average=float(spot_usd)
+            if math.isfinite(market_average) and market_average>0:
+                result["blockchain_market_price_usd"]=market_average
+                result["blockchain_market_price_to_realized_ratio"]=market_average/val
+                result["blockchain_vs_provider_close_gap_pct"]=(
+                    100*(market_average/provider_close-1))
+        except (TypeError,ValueError,OverflowError):
+            market_average=None
+        result.update({
+            "price_to_realized_ratio":provider_close/val,
+            "ratio_method_version":"explore21_same_day_close_v2",
+            "ratio_spot_price_source":result.get("provider"),
+            "ratio_spot_price_basis":"Provider BTC daily UTC close from the same CSV row/date as realized price",
+            "usable_for_forward":True,
+            "status":"VALID_DATED_RESEARCH_REFERENCE",
+        })
+    except KeyError:
+        result.update(status="UNMATCHED_PRICE_BASIS",usable_for_forward=False,
+                      failure="PROVIDER_BTC_CLOSE_REQUIRED_FOR_RATIO")
+    except (TypeError,ValueError,OverflowError):
         result.update(status="INVALID_DATED_PAIR",usable_for_forward=False,
                       price_to_realized_ratio=None)
     return result
