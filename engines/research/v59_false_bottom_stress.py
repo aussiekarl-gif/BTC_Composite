@@ -40,9 +40,15 @@ def candidate_multiplier(policy: str, row: dict, state: dict) -> float:
         raise ValueError("Missing validated prior-Sunday historical WF risk")
     if policy in prior.POLICIES:
         return prior.policy_multiplier(policy, row)
+    state.setdefault("trigger_events", [])
+    state.setdefault("anchor_monday", None)
+    state.setdefault("prev_monday_date", None)
     if risk > .20:
         state["cheap_streak"] = 0
         state["anchor_price"] = None
+        state["anchor_monday"] = None
+        state["prev_monday_price"] = None
+        state["prev_monday_date"] = None
         state["drop10_latched"] = False
         state["drop20_latched"] = False
         return 0.
@@ -60,10 +66,32 @@ def candidate_multiplier(policy: str, row: dict, state: dict) -> float:
         anchor = state["anchor_price"]
         # Lagged observations may only trigger on NEXT Monday's buy decision.
         if anchor is not None and prev is not None:
-            if prev <= .90 * anchor:
+            observed_day = state.get("prev_monday_date")
+            anchor_day = state.get("anchor_monday")
+            if not state["drop10_latched"] and prev <= .90 * anchor:
                 state["drop10_latched"] = True
-            if prev <= .80 * anchor:
+                state["trigger_events"].append({
+                    "threshold_pct": 10,
+                    "anchor_monday": anchor_day,
+                    "signal_sunday": row["signal_date"].isoformat(),
+                    "trigger_monday": row["date"].isoformat(),
+                    "observed_previous_monday": observed_day,
+                    "anchor_price_aud": round(anchor, 2),
+                    "observed_previous_monday_price_aud": round(prev, 2),
+                    "drawdown_from_anchor_pct": round(100. * (prev / anchor - 1.), 3),
+                })
+            if not state["drop20_latched"] and prev <= .80 * anchor:
                 state["drop20_latched"] = True
+                state["trigger_events"].append({
+                    "threshold_pct": 20,
+                    "anchor_monday": anchor_day,
+                    "signal_sunday": row["signal_date"].isoformat(),
+                    "trigger_monday": row["date"].isoformat(),
+                    "observed_previous_monday": observed_day,
+                    "anchor_price_aud": round(anchor, 2),
+                    "observed_previous_monday_price_aud": round(prev, 2),
+                    "drawdown_from_anchor_pct": round(100. * (prev / anchor - 1.), 3),
+                })
         if policy == "strict_stage_1x_drop10":
             return base if state["drop10_latched"] else min(1., base)
         if policy == "strict_stage_2x_drop10":
@@ -91,8 +119,9 @@ def replay(rows: list[dict], *, policy: str, initial_btc_fraction: float=.41,
     peak = capital
     drawdown = 0.
     early_spend = 0.
-    state = dict(cheap_streak=0,anchor_price=None,
-                 prev_monday_price=None,drop10_latched=False,drop20_latched=False)
+    state = dict(cheap_streak=0,anchor_price=None,anchor_monday=None,
+                 prev_monday_price=None,prev_monday_date=None,
+                 drop10_latched=False,drop20_latched=False,trigger_events=[])
     prior_day = first
     for ix,row in enumerate(rows):
         day = row["date"]
@@ -126,7 +155,9 @@ def replay(rows: list[dict], *, policy: str, initial_btc_fraction: float=.41,
         # A prior risk-streak reset allows a new independent cheap episode.
         if float(row["risk_score"]) <= .20 and state["anchor_price"] is None:
             state["anchor_price"] = price
+            state["anchor_monday"] = day.isoformat()
         state["prev_monday_price"] = price
+        state["prev_monday_date"] = day.isoformat()
         mark=cash+btc*price
         peak=max(peak,mark)
         drawdown=min(drawdown,mark/peak-1)
@@ -149,6 +180,11 @@ def replay(rows: list[dict], *, policy: str, initial_btc_fraction: float=.41,
         "max_drawdown_pct":100*drawdown,
         "spent_first_26w_pct_initial":100*early_spend/capital,
         "net_deployed_pct_initial":100*invested/capital,
+        "stage_trigger_events":list(state["trigger_events"]),
+        "stage_trigger_counts":{
+            "drop10":sum(e["threshold_pct"]==10 for e in state["trigger_events"]),
+            "drop20":sum(e["threshold_pct"]==20 for e in state["trigger_events"]),
+        },
     }
 
 
@@ -190,12 +226,26 @@ def historical_experiment(rows: list[dict]) -> dict:
             records.append({"anchor":window["anchor"],"split":window["split"],**outcome})
     holdout=[r for r in records if r["split"]=="HISTORICAL_HOLDOUT"]
     train=[r for r in records if r["split"]=="TRAIN"]
+    stage_trigger_audit=[]
+    for policy in ("strict_stage_1x_drop10","strict_stage_1x_drop20","strict_stage_2x_drop10"):
+        records_for_policy=[r for r in holdout if r["policy"]==policy]
+        events=[e for r in records_for_policy for e in r["stage_trigger_events"]]
+        stage_trigger_audit.append({
+            "policy":policy,
+            "holdout_cohorts":len(records_for_policy),
+            "cohorts_with_drop10_trigger":sum(r["stage_trigger_counts"]["drop10"]>0 for r in records_for_policy),
+            "cohorts_with_drop20_trigger":sum(r["stage_trigger_counts"]["drop20"]>0 for r in records_for_policy),
+            "drop10_trigger_count":sum(r["stage_trigger_counts"]["drop10"] for r in records_for_policy),
+            "drop20_trigger_count":sum(r["stage_trigger_counts"]["drop20"] for r in records_for_policy),
+            "events":events,
+        })
     return {
         "historical_cohorts":len(windows),
         "historical_holdout_cohorts":len({r["anchor"] for r in holdout}),
         "holdout_vs_risk1x":_summarise(holdout,"risk_1x"),
         "holdout_vs_strict3x":_summarise(holdout,"risk_3x_risk_le_020"),
         "train_vs_strict3x":_summarise(train,"risk_3x_risk_le_020"),
+        "stage_trigger_audit":stage_trigger_audit,
         "holdout_per_cohort":holdout,
         "known_limitations":(
             "Cohorts overlap; market signal is retrospectively refitted in 2026; "
