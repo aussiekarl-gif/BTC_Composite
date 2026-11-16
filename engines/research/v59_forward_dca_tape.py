@@ -195,6 +195,7 @@ def multipliers(row:dict) -> dict:
     source=row.get("realized_price_reference") or {}
     realized_ratio=source.get("price_to_realized_ratio")
     valid_realized=(source.get("usable_for_forward") is True and
+                    source.get("ratio_method_version")=="explore21_same_day_close_v2" and
                     realized_ratio is not None and
                     math.isfinite(float(realized_ratio)) and
                     0<float(realized_ratio)<=1.10)
@@ -321,6 +322,17 @@ def scorecard(rows:list[dict], new_record_added:bool) -> dict:
         "realized_observation_status":(
             rows[-1].get("realized_price_reference",{}).get("status","UNAVAILABLE")
             if rows else "UNAVAILABLE"),
+        "realized_gate_method_version":"explore21_same_day_close_v2",
+        "realized_gate_eligible_observations":sum(
+            1 for r in rows
+            if (r.get("realized_price_reference") or {}).get("usable_for_forward") is True
+            and (r.get("realized_price_reference") or {}).get("ratio_method_version")
+                =="explore21_same_day_close_v2"),
+        "legacy_realized_rows_not_scored":sum(
+            1 for r in rows
+            if (r.get("realized_price_reference") or {}).get("price_to_realized_ratio") is not None
+            and (r.get("realized_price_reference") or {}).get("ratio_method_version")
+                !="explore21_same_day_close_v2"),
         "realized_current_signal_is_tradeable":False,
         "realized_reference_is_research_only":True,
         "no_live_recommendations_orders_notifications":True,
@@ -353,8 +365,10 @@ def main() -> int:
     print("REALIZED_FORWARD_REFERENCE "+json.dumps({
         k:reference.get(k) for k in (
             "status","provider_observation_date","realized_price_usd",
-            "price_to_realized_ratio","usable_for_forward","provider_delayed",
-            "failure","captured_at_utc")
+            "price_to_realized_ratio","ratio_method_version",
+            "ratio_spot_price_source","blockchain_market_price_to_realized_ratio",
+            "blockchain_vs_provider_close_gap_pct","usable_for_forward",
+            "provider_delayed","failure","captured_at_utc")
     },sort_keys=True))
     tape,added=add_observation(old,new)
     summary=scorecard(tape,added)
