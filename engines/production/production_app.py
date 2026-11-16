@@ -15,6 +15,9 @@ from engines.shared.model_settings_store import (
     load_dca_target_date,save_dca_target_date,choose_target_date,
 )
 from engines.shared.portfolio_transactions import merge_legacy_purchase_editor,portfolio_positions
+from engines.shared.portfolio_buy_tables import (
+    add_btc_usd_reference, parse_portfolio_date, render_purchase_editor, render_calculated_transactions,
+)
 from engines.shared.portfolio_execution_accuracy import (
     calculate_portfolio_entry_error, DEFAULT_REFERENCE_USD, DEFAULT_REFERENCE_DATE,
 )
@@ -1521,140 +1524,19 @@ elif mode == "My Portfolio":
             except Exception as exc:
                 st.error(f"Could not read portfolio CSV: {exc}")
 
-    st.subheader("Purchases")
-    st.caption(
-        "For ASX:IBIT enter the purchase date as DD/MM/YY, units bought and total AUD trade value. "
-        "Brokerage defaults to A$3. The app automatically looks up BTC/AUD for the purchase date "
-        "and calculates BTC-equivalent exposure. For Direct BTC, enter the actual BTC received."
+    portfolio_display = add_btc_usd_reference(portfolio_df, fetch_btc_history)
+    edited_portfolio, starting_portfolio_capital, portfolio_submit = render_purchase_editor(
+        st, portfolio_display, portfolio_cols
     )
-
-    # Restore the original starter rows only when there is no saved portfolio.
-    if portfolio_df.empty:
-        portfolio_df = pd.DataFrame([
-            {
-                "Date": "19/06/26",
-                "Asset": "ASX:IBIT",
-                "AUD Spent": 1700.0,
-                "Brokerage / Fee AUD": 3.0,
-                "Units / BTC Received": 100.0,
-                "BTC AUD Price": 0.0,
-            },
-            {
-                "Date": "26/08/26",
-                "Asset": "ASX:IBIT",
-                "AUD Spent": 2092.0,
-                "Brokerage / Fee AUD": 3.0,
-                "Units / BTC Received": 100.0,
-                "BTC AUD Price": 0.0,
-            },
-            {
-                "Date": "31/08/26",
-                "Asset": "ASX:IBIT",
-                "AUD Spent": 2061.0,
-                "Brokerage / Fee AUD": 3.0,
-                "Units / BTC Received": 100.0,
-                "BTC AUD Price": 0.0,
-            },
-            {
-                "Date": "01/09/26",
-                "Asset": "ASX:IBIT",
-                "AUD Spent": 2087.0,
-                "Brokerage / Fee AUD": 3.0,
-                "Units / BTC Received": 100.0,
-                "BTC AUD Price": 0.0,
-            },
-            {
-                "Date": "02/09/26",
-                "Asset": "ASX:IBIT",
-                "AUD Spent": 2050.0,
-                "Brokerage / Fee AUD": 3.0,
-                "Units / BTC Received": 100.0,
-                "BTC AUD Price": 0.0,
-            },
-        ])
-        st.session_state["portfolio_live_rows"] = portfolio_df.to_dict(orient="records")
-
-    with st.form("portfolio_edit_form", clear_on_submit=False):
-        starting_portfolio_capital = st.number_input(
-            "Starting Deployment Capital (AUD)",
-            min_value=0.0,
-            value=float(st.session_state["portfolio_live_starting_capital"]),
-            step=10000.0,
-            format="%.2f",
-            key="portfolio_starting_capital_form",
-        )
-
-        edited_portfolio = st.data_editor(
-            portfolio_df,
-            num_rows="dynamic",
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "Date": st.column_config.TextColumn(
-                    "Date (DD/MM/YY)",
-                    help="Australian date format, e.g. 02/09/26",
-                ),
-                "Asset": st.column_config.SelectboxColumn(
-                    "Asset",
-                    options=["ASX:IBIT", "Direct BTC"],
-                    required=True,
-                ),
-                "AUD Spent": st.column_config.NumberColumn(
-                    "AUD Spent", min_value=0.0, format="A$%.2f"
-                ),
-                "Brokerage / Fee AUD": st.column_config.NumberColumn(
-                    "Brokerage / Fee AUD", min_value=0.0, default=3.0, format="A$%.2f"
-                ),
-                "Units / BTC Received": st.column_config.NumberColumn(
-                    "Units / BTC Received", min_value=0.0, format="%.8f"
-                ),
-            },
-            column_order=[
-                "Date",
-                "Asset",
-                "AUD Spent",
-                "Brokerage / Fee AUD",
-                "Units / BTC Received",
-            ],
-            key="portfolio_editor_form",
-        )
-        portfolio_submit = st.form_submit_button(
-            "Save Portfolio Changes",
-            type="primary",
-            use_container_width=True,
-        )
-
-    if portfolio_submit:
-        st.session_state["portfolio_live_rows"] = edited_portfolio[portfolio_cols].to_dict(orient="records")
-        st.session_state["portfolio_live_starting_capital"] = float(starting_portfolio_capital)
-        st.session_state["portfolio_starting_capital"] = float(starting_portfolio_capital)
-        st.session_state["portfolio_save_pending"] = True
-    else:
-        # Outside a submit rerun, calculations use the last committed state.
-        edited_portfolio = pd.DataFrame(st.session_state["portfolio_live_rows"])
-        for col in portfolio_cols:
-            if col not in edited_portfolio.columns:
-                edited_portfolio[col] = "" if col in ("Date", "Asset") else 0.0
-        edited_portfolio = edited_portfolio[portfolio_cols]
-        starting_portfolio_capital = float(st.session_state["portfolio_live_starting_capital"])
 
     clean = edited_portfolio.copy()
     for col in ["AUD Spent", "Brokerage / Fee AUD", "Units / BTC Received", "BTC AUD Price"]:
         clean[col] = pd.to_numeric(clean[col], errors="coerce").fillna(0.0)
 
-    # Australian date format: DD/MM/YY. Also accept ISO dates from older V5.6 CSVs.
-    def _parse_portfolio_date(value):
-        if pd.isna(value):
-            return pd.NaT
-        s = str(value).strip()
-        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                return pd.Timestamp(dt.datetime.strptime(s, fmt).date())
-            except Exception:
-                pass
-        return pd.to_datetime(s, dayfirst=True, errors="coerce")
-
-    clean["_purchase_date"] = clean["Date"].apply(_parse_portfolio_date)
+    clean["_purchase_date"] = clean["Date"].apply(
+        lambda value: pd.Timestamp(parse_portfolio_date(value))
+        if parse_portfolio_date(value) is not None else pd.NaT
+    )
 
     # Automatically populate BTC/AUD for ASX:IBIT rows from the same BTC + FX data
     # used elsewhere in the app. This avoids manual BTC price entry.
@@ -1969,43 +1851,8 @@ elif mode == "My Portfolio":
             "ASX:IBIT value is estimated from BTC-equivalent exposure, so it can differ from the ETF's exact live ASX market value due to tracking difference, fees and market pricing."
         )
 
-    st.subheader("Calculated Transactions")
-    clean["Date"] = clean["_purchase_date"].apply(
-        lambda x: x.strftime("%d/%m/%y") if pd.notna(x) else ""
-    )
-    display_cols = [
-        "Date", "Asset", "AUD Spent", "Brokerage / Fee AUD",
-        "Units / BTC Received", "ETF Unit Price AUD", "BTC AUD Price",
-        "BTC Eq / ETF Unit", "BTC Equivalent", "Entry Error vs Bottom %"
-    ]
-    clean["Entry Error vs Bottom %"] = portfolio_accuracy["per_transaction_error_pct"]
-    transaction_column_config = {
-        "AUD Spent": st.column_config.NumberColumn(format="dollar"),
-        "Brokerage / Fee AUD": st.column_config.NumberColumn(format="dollar"),
-        "Units / BTC Received": st.column_config.NumberColumn(format="%.8g"),
-        "ETF Unit Price AUD": st.column_config.NumberColumn(format="dollar"),
-        "BTC AUD Price": st.column_config.NumberColumn(format="dollar"),
-        "BTC Eq / ETF Unit": st.column_config.NumberColumn(format="%.4f"),
-        "BTC Equivalent": st.column_config.NumberColumn(format="%.4f"),
-        "Entry Error vs Bottom %": st.column_config.NumberColumn(
-            "Entry Error vs Bottom (%)", format="%.2f%%",
-            help="Fee-inclusive purchase price error relative to the "
-                 "editable provisional bottom, in the selected currency.",
-        ),
-    }
-    st.dataframe(
-        clean[display_cols],
-        width="stretch",
-        hide_index=True,
-        column_config=transaction_column_config,
-    )
-
-    st.caption(
-        "For ASX:IBIT, the app calculates the ETF unit price from AUD spent ÷ units, automatically "
-        "looks up BTC/AUD for the purchase date, then estimates BTC-equivalent exposure as AUD trade "
-        "value ÷ BTC/AUD. This is an economic exposure estimate, not the exact bitcoin legally held "
-        "for each ETF unit."
-    )
+    clean = add_btc_usd_reference(clean, fetch_btc_history)
+    clean = render_calculated_transactions(st, clean, portfolio_accuracy)
 
     export_clean = clean.drop(columns=["_purchase_date"], errors="ignore")
     st.download_button(

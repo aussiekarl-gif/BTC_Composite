@@ -10,9 +10,12 @@ on:
       - 'engines/research/cycle_trade_decision.py'
       - 'engines/research/cycle_single_screen_brief.py'
       - 'engines/shared/model_settings_store.py'
+      - 'engines/shared/portfolio_buy_tables.py'
+      - 'tests/test_shared_portfolio_buy_tables.py'
       - 'engines/production/production_app.py'
       - 'engines/research/research_app.py'
       - 'tests/test_v59_risk_ui_acceptance.py'
+      - 'tests/test_shared_portfolio_buy_tables.py'
   pull_request:
     paths:
       - 'tests/test_streamlit_offline_ui_smoke.py'
@@ -48,13 +51,15 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Compile unchanged launcher, UI and safety logic
         run: |
-          python -m py_compile app.py engines/research/cycle_trading_app.py
+          python -m py_compile app.py engines/research/cycle_trading_app.py engines/shared/portfolio_buy_tables.py
           python -m py_compile engines/production/production_app.py engines/research/research_app.py
           python -m py_compile tests/test_streamlit_offline_ui_smoke.py
       - name: Run REAL launcher AppTest with synthetic BTC and offline personal ledger
         run: python -m unittest discover -s tests -p 'test_streamlit_offline_ui_smoke.py' -v
       - name: Test REAL V5.9 Research page with synthetic price and missing private ledger
         run: python -m unittest discover -s tests -p 'test_v59_risk_ui_acceptance.py' -v
+      - name: Test shared Production and Research portfolio buy tables
+        run: python -m unittest discover -s tests -p 'test_shared_portfolio_buy_tables.py' -v
       - name: Protect actual date widgets, model decisions and notification agreement
         run: |
           python -m unittest discover -s tests -p 'test_dca_target_date_persistence.py' -v
