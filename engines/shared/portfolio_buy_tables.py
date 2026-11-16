@@ -10,6 +10,20 @@ import numpy as np
 import pandas as pd
 
 
+def parse_portfolio_date(value):
+    """Parse supported portfolio dates into a Python date, or None."""
+    if pd.isna(value):
+        return None
+    text = str(value).strip()
+    for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return dt.datetime.strptime(text, fmt).date()
+        except (TypeError, ValueError):
+            continue
+    parsed = pd.to_datetime(text, dayfirst=True, errors="coerce")
+    return parsed.date() if pd.notna(parsed) else None
+
+
 def add_btc_usd_reference(portfolio_df, fetch_btc_history, today=None):
     """Return a display copy with purchase-date BTC/USD references."""
     today = today or dt.date.today()
@@ -18,19 +32,7 @@ def add_btc_usd_reference(portfolio_df, fetch_btc_history, today=None):
     if display.empty or "Date" not in display.columns:
         return display
 
-    def parse_date(value):
-        if pd.isna(value):
-            return None
-        text = str(value).strip()
-        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                return dt.datetime.strptime(text, fmt).date()
-            except (TypeError, ValueError):
-                continue
-        parsed = pd.to_datetime(text, dayfirst=True, errors="coerce")
-        return parsed.date() if pd.notna(parsed) else None
-
-    purchase_dates = display["Date"].map(parse_date)
+    purchase_dates = display["Date"].map(parse_portfolio_date)
     valid_dates = [d for d in purchase_dates if d is not None and d <= today]
     if not valid_dates:
         return display
