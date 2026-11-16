@@ -21,7 +21,7 @@ The figures below are from the first-captured tape rows. “Blockchain average�
 | 13 Nov 2026 | 71,365.77 | 68,225.90 | 4.60% | 1.3275 | 1.2691 |
 | 14 Nov 2026 | 68,232.31 | 64,113.69 | 6.42% | 1.2701 | 1.1934 |
 
-The difference is large enough to distort a 1.10 threshold, even though none of these three observations would currently pass that threshold under either calculation. It must not be described as a realized-price alpha result.
+The difference is large enough to flip the 1.25 threshold on 14 Nov: the mixed-basis ratio was 1.2701, while the same-provider close ratio was 1.1934. None of the 12–14 Nov observations passes 1.10 under either calculation. This is a price-basis classification error, not a realized-price alpha result.
 
 ## Independent realized-price parity
 
@@ -54,3 +54,10 @@ This does not change the V5.9 risk input, historical horse-race results, any liv
 - Tests: `tests/test_v59_realized_forward_reference.py`.
 
 **No historic tape row is rewritten. No live or production path is modified.**
+
+
+## Post-review durable capture — 16 November 2026
+
+The post-merge research-only push run [43815032047](https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/43815032047) appended the 15 Nov UTC observation to the isolated forward tape at 2026-11-16 06:12:13 UTC. Provider observation date matched signal date (15 Nov); Explore21 ordinary realized price was US$53,671.2252 and its own BTC close was US$65,312.48, giving the date-matched ratio 1.21690. The Blockchain.com daily-average proxy was US$64,119.34, giving 1.19467 (1.83% below the provider close). The source was current, not delayed.
+
+The durable scorecard now has five daily observations, one eligible v2 realized-price observation, and three older mixed-basis rows explicitly excluded from realized-gate scoring. No exact 7-, 28- or 84-day returns have matured; there are still zero complete prospective Sunday-to-Monday pairs and no broker fills. The push run was a research-only recovery capture, not the missing weekly horse-race run and not a trade signal.
