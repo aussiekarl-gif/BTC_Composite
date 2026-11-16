@@ -6,6 +6,7 @@ on:
       - 'engines/research/v59_17week_200wma_episode.py'
       - 'engines/research/v59_four_year_bottoms.py'
       - 'engines/research/v59_three_cycle_entry.py'
+      - 'engines/research/v59_false_bottom_stress.py'
       - 'engines/research/v59_realized_price_study.py'
       - 'tests/test_v59_realized_price_study.py'
       - 'data/planb_realized_prices_2026-10-07T21-19-48.csv'
