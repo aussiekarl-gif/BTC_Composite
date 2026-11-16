@@ -12,11 +12,9 @@ import json
 from pathlib import Path
 
 from engines.research.btc_spot_depth_forward import (
-    OUTPUT as KRAKEN_TAPE,
     read_verified_tape as read_kraken_tape,
 )
 from engines.research.coinbase_trade_samples import (
-    OUTPUT as COINBASE_TAPE,
     read_tape as read_coinbase_tape,
 )
 
@@ -205,17 +203,24 @@ def main(argv=None) -> int:
         "--as-of-utc",
         help="Optional timezone-aware ISO timestamp for deterministic replay",
     )
+    parser.add_argument(
+        "--data-dir", type=Path,
+        default=Path("data/research_forward_validation"),
+        help="Directory containing the remotely published immutable source tapes",
+    )
     args = parser.parse_args(argv)
     as_of = _utc(args.as_of_utc, "audit time") if args.as_of_utc else dt.datetime.now(UTC)
 
+    kraken_path = args.data_dir / "kraken_spot_depth_forward.csv"
+    coinbase_path = args.data_dir / "coinbase_trade_samples_forward.csv"
     # Missing source files must not be mistaken for zero observed coverage.
-    if not KRAKEN_TAPE.is_file() or not COINBASE_TAPE.is_file():
+    if not kraken_path.is_file() or not coinbase_path.is_file():
         raise FileNotFoundError("Both immutable Kraken and Coinbase source tapes are required")
 
     # These readers validate each source's immutable schema, chronology and
     # hash chain before any receipt-time coverage calculation is attempted.
-    kraken_rows = read_kraken_tape(KRAKEN_TAPE)
-    coinbase_rows = read_coinbase_tape(COINBASE_TAPE)
+    kraken_rows = read_kraken_tape(kraken_path)
+    coinbase_rows = read_coinbase_tape(coinbase_path)
     if not kraken_rows or not coinbase_rows:
         raise ValueError("Both validated source tapes must contain observations")
     report = audit_midnight_checkpoints(
