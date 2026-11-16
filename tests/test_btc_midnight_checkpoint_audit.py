@@ -57,7 +57,7 @@ class MidnightCheckpointAuditTests(unittest.TestCase):
         self.assertEqual(metrics["paired_observations"], 2)
         self.assertEqual(metrics["midnight_receipt_time_pairs"], 1)
         self.assertEqual(metrics["midnight_pairs_within_5_minutes"], 1)
-        self.assertAlmostEqual(metrics["baseline"]["midnight_coverage_pct"], 3 / 68 * 100)
+        self.assertAlmostEqual(metrics["baseline"]["midnight_coverage_pct"], 3 / 68 * 100, places=5)
 
     def test_six_am_is_outside_midnight_window(self):
         k, c = pair("2026-11-14T06:00:00Z", "2026-11-14T06:01:00Z")
