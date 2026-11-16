@@ -13,6 +13,8 @@ on:
       - 'engines/research/btc_spot_depth_forward.py'
       - 'engines/research/coinbase_trade_samples.py'
       - 'engines/research/btc_microstructure_forward_scorecard.py'
+      - 'engines/research/btc_midnight_checkpoint_audit.py'
+      - 'tests/test_btc_midnight_checkpoint_audit.py'
       - 'engines/research/btc_post_signal_forward.py'
       - 'tests/test_btc_post_signal_forward.py'
       - '.github/workflows/research_btc_paired_microstructure.yml'
@@ -23,6 +25,8 @@ on:
     paths:
       - 'engines/research/btc_coordinated_capture.py'
       - 'engines/research/cycle_microstructure_mid_session_backup.py'
+      - 'engines/research/btc_midnight_checkpoint_audit.py'
+      - 'tests/test_btc_midnight_checkpoint_audit.py'
       - 'engines/research/asx_ibit_postclose_paired_backup.py'
       - 'tests/test_cycle_microstructure_mid_session_backup.py'
       - 'tests/test_asx_ibit_postclose_paired_backup.py'
@@ -60,11 +64,12 @@ jobs:
         run: python -m pip install 'requests>=2.31,<3'
       - name: Guard independent tapes and frozen research thresholds
         run: |
-          python -m py_compile engines/research/btc_coordinated_capture.py engines/research/btc_spot_depth_forward.py engines/research/coinbase_trade_samples.py engines/research/btc_microstructure_forward_scorecard.py
+          python -m py_compile engines/research/btc_coordinated_capture.py engines/research/btc_spot_depth_forward.py engines/research/coinbase_trade_samples.py engines/research/btc_microstructure_forward_scorecard.py engines/research/btc_midnight_checkpoint_audit.py
           python -m unittest discover -s tests -p 'test_btc_coordinated_capture.py' -v
           python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v
           python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
           python -m unittest discover -s tests -p 'test_btc_microstructure_forward_scorecard.py' -v
+          python -m unittest discover -s tests -p 'test_btc_midnight_checkpoint_audit.py' -v
           python -m unittest discover -s tests -p 'test_btc_post_signal_forward.py' -v
           python -m engines.research.btc_post_signal_forward --self-check-only
           python -m unittest discover -s tests -p 'test_cycle_microstructure_mid_session_backup.py' -v
@@ -151,6 +156,36 @@ jobs:
                                + "; ".join(report["provider_capture_failures"]))
           print("Both public source captures completed, or exact UTC slot was already stored.")
           PY
+
+      - name: Audit PR #267 from remotely published tapes at fixed checkpoints
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        shell: bash
+        run: |
+          set -u
+          out='artifacts/btc_midnight_checkpoint_audit.json'
+          scratch=$(mktemp -d)
+          mkdir -p "$scratch/data"
+          if ! git fetch origin main > "$scratch/fetch.log" 2>&1; then
+            echo '::warning::Cannot verify remote source tapes for PR #267 checkpoint audit.'
+            exit 0
+          fi
+          for name in kraken_spot_depth_forward.csv coinbase_trade_samples_forward.csv; do
+            if ! git show "origin/main:data/research_forward_validation/$name" > "$scratch/data/$name" 2>/dev/null; then
+              echo "::warning::Published source tape missing ($name); no checkpoint comparison."
+              exit 0
+            fi
+          done
+          if ! python -m engines.research.btc_midnight_checkpoint_audit --data-dir "$scratch/data" --output "$out"; then
+            echo '::warning::PR #267 receipt-time checkpoint audit unavailable; published source tapes remain unchanged.'
+          fi
+      - name: Retain PR #267 checkpoint artifact only (no notification)
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr267-midnight-receipt-checkpoint-audit
+          path: artifacts/btc_midnight_checkpoint_audit.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Best-effort strictly TIMESTAMPED Cycle mid-session research fallback (zero ntfy)
         # This uses the paired source schedule including redundant 00:17/03:17
