@@ -13,8 +13,10 @@ issue #205. It does not change the Kraken/Coinbase schedule or any trading rule.
 
 ## Measurement rules
 
-The audit reads the existing immutable Kraken and Coinbase tapes through their
-hash-chain validators. A pair requires the same six-hour slot in both sources
+The existing workflow fetches origin/main after the source-publication step;
+the audit therefore reads only the remotely published immutable Kraken and
+Coinbase tapes through their hash-chain validators. A local uncommitted capture
+cannot enter a checkpoint result. A pair requires the same six-hour slot in both sources
 and both actual HTTP receipt instants after the merge. Midnight coverage
 requires both receipt instants to fall in **00:00:00 inclusive to 06:00:00
 exclusive UTC**. The nominal slot label is checked against the actual receipt;
