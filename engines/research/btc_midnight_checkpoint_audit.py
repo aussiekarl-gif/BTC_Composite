@@ -208,13 +208,25 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     as_of = _utc(args.as_of_utc, "audit time") if args.as_of_utc else dt.datetime.now(UTC)
 
+    # Missing source files must not be mistaken for zero observed coverage.
+    if not KRAKEN_TAPE.is_file() or not COINBASE_TAPE.is_file():
+        raise FileNotFoundError("Both immutable Kraken and Coinbase source tapes are required")
+
     # These readers validate each source's immutable schema, chronology and
     # hash chain before any receipt-time coverage calculation is attempted.
     kraken_rows = read_kraken_tape(KRAKEN_TAPE)
     coinbase_rows = read_coinbase_tape(COINBASE_TAPE)
+    if not kraken_rows or not coinbase_rows:
+        raise ValueError("Both validated source tapes must contain observations")
     report = audit_midnight_checkpoints(
         kraken_rows, coinbase_rows, as_of_utc=as_of
     )
+    report["source_tapes"] = {
+        "kraken_rows": len(kraken_rows),
+        "coinbase_rows": len(coinbase_rows),
+        "hash_chain_validation": "PASSED_BY_EXISTING_SOURCE_READERS",
+        "source_tapes_modified": False,
+    }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps(report, sort_keys=True))
