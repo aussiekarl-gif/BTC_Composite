@@ -23,7 +23,7 @@ from engines.shared.model_settings_store import (
 )
 from engines.shared.portfolio_transactions import merge_legacy_purchase_editor,portfolio_positions
 from engines.shared.portfolio_buy_tables import (
-    add_btc_usd_reference, render_purchase_editor, render_calculated_transactions,
+    add_btc_usd_reference, parse_portfolio_date, render_purchase_editor, render_calculated_transactions,
 )
 from engines.shared.portfolio_execution_accuracy import (
     calculate_portfolio_entry_error, DEFAULT_REFERENCE_USD, DEFAULT_REFERENCE_DATE,
@@ -2178,10 +2178,9 @@ elif mode == "My Portfolio":
     # pre-submit snapshot. This keeps Calculated Transactions in sync immediately
     # after a user saves changed or newly added purchase dates.
     clean["_purchase_date"] = clean["Date"].apply(
-        lambda value: pd.Timestamp(_parse_portfolio_date(value))
-        if _parse_portfolio_date(value) is not None else pd.NaT
+        lambda value: pd.Timestamp(parse_portfolio_date(value))
+        if parse_portfolio_date(value) is not None else pd.NaT
     )
-    clean["BTC Price (USD)"] = _lookup_btc_usd_for_dates(clean["Date"])
 
     # Automatically populate BTC/AUD for ASX:IBIT rows from the same BTC + FX data
     # used elsewhere in the app. This avoids manual BTC price entry.
