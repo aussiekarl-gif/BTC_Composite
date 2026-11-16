@@ -5,8 +5,6 @@ on:
     paths:
       - 'engines/research/btc_coordinated_capture.py'
       - 'engines/research/cycle_microstructure_mid_session_backup.py'
-      - 'engines/research/btc_midnight_checkpoint_audit.py'
-      - 'tests/test_btc_midnight_checkpoint_audit.py'
       - 'engines/research/asx_ibit_postclose_paired_backup.py'
       - 'tests/test_cycle_microstructure_mid_session_backup.py'
       - 'tests/test_asx_ibit_postclose_paired_backup.py'
@@ -27,6 +25,8 @@ on:
     paths:
       - 'engines/research/btc_coordinated_capture.py'
       - 'engines/research/cycle_microstructure_mid_session_backup.py'
+      - 'engines/research/btc_midnight_checkpoint_audit.py'
+      - 'tests/test_btc_midnight_checkpoint_audit.py'
       - 'engines/research/asx_ibit_postclose_paired_backup.py'
       - 'tests/test_cycle_microstructure_mid_session_backup.py'
       - 'tests/test_asx_ibit_postclose_paired_backup.py'
