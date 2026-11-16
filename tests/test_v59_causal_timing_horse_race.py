@@ -185,8 +185,7 @@ class FalseBottomResearchTests(unittest.TestCase):
         decision=row(2,risk=.05,aud=1000.)
         multiplier=study.candidate_multiplier("strict_stage_1x_drop10",decision,state)
         self.assertEqual(multiplier,3.)
-        self.assertEqual(state["stage_trigger_counts"] if "stage_trigger_counts" in state else
-                         [e["threshold_pct"] for e in state["trigger_events"]],[10])
+        self.assertEqual([e["threshold_pct"] for e in state["trigger_events"]],[10])
         event=state["trigger_events"][0]
         self.assertEqual(event["anchor_monday"],"2021-01-04")
         self.assertEqual(event["observed_previous_monday"],"2021-01-11")
