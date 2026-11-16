@@ -5,6 +5,8 @@ on:
     paths:
       - 'engines/research/btc_coordinated_capture.py'
       - 'engines/research/cycle_microstructure_mid_session_backup.py'
+      - 'engines/research/btc_midnight_checkpoint_audit.py'
+      - 'tests/test_btc_midnight_checkpoint_audit.py'
       - 'engines/research/asx_ibit_postclose_paired_backup.py'
       - 'tests/test_cycle_microstructure_mid_session_backup.py'
       - 'tests/test_asx_ibit_postclose_paired_backup.py'
@@ -13,6 +15,8 @@ on:
       - 'engines/research/btc_spot_depth_forward.py'
       - 'engines/research/coinbase_trade_samples.py'
       - 'engines/research/btc_microstructure_forward_scorecard.py'
+      - 'engines/research/btc_midnight_checkpoint_audit.py'
+      - 'tests/test_btc_midnight_checkpoint_audit.py'
       - 'engines/research/btc_post_signal_forward.py'
       - 'tests/test_btc_post_signal_forward.py'
       - '.github/workflows/research_btc_paired_microstructure.yml'
@@ -60,11 +64,12 @@ jobs:
         run: python -m pip install 'requests>=2.31,<3'
       - name: Guard independent tapes and frozen research thresholds
         run: |
-          python -m py_compile engines/research/btc_coordinated_capture.py engines/research/btc_spot_depth_forward.py engines/research/coinbase_trade_samples.py engines/research/btc_microstructure_forward_scorecard.py
+          python -m py_compile engines/research/btc_coordinated_capture.py engines/research/btc_spot_depth_forward.py engines/research/coinbase_trade_samples.py engines/research/btc_microstructure_forward_scorecard.py engines/research/btc_midnight_checkpoint_audit.py
           python -m unittest discover -s tests -p 'test_btc_coordinated_capture.py' -v
           python -m unittest discover -s tests -p 'test_btc_spot_depth_forward.py' -v
           python -m unittest discover -s tests -p 'test_coinbase_trade_samples.py' -v
           python -m unittest discover -s tests -p 'test_btc_microstructure_forward_scorecard.py' -v
+          python -m unittest discover -s tests -p 'test_btc_midnight_checkpoint_audit.py' -v
           python -m unittest discover -s tests -p 'test_btc_post_signal_forward.py' -v
           python -m engines.research.btc_post_signal_forward --self-check-only
           python -m unittest discover -s tests -p 'test_cycle_microstructure_mid_session_backup.py' -v
@@ -101,6 +106,14 @@ jobs:
           if ! python -m engines.research.btc_microstructure_forward_scorecard; then
             echo '::warning::Optional scorecard unavailable; original immutable sources still require preservation.'
           fi
+      - name: Audit PR #267 actual receipt-time midnight coverage at fixed checkpoints
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          if ! python -m engines.research.btc_midnight_checkpoint_audit; then
+            echo '::warning::PR #267 receipt-time checkpoint audit unavailable; source tapes remain unchanged.'
+          fi
       - name: Upload research records and optional diagnostic even on provider errors
         if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
@@ -111,6 +124,7 @@ jobs:
             data/research_forward_validation/coinbase_trade_samples_forward.csv
             artifacts/btc_microstructure_capture_status.json
             artifacts/btc_microstructure_forward_scorecard.json
+            artifacts/btc_midnight_checkpoint_audit.json
             data/research_forward_validation/kraken_post_signal_quotes_forward.csv
             artifacts/btc_post_signal_forward_scorecard.json
           if-no-files-found: ignore
