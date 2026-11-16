@@ -16,7 +16,7 @@ from engines.shared.model_settings_store import (
 )
 from engines.shared.portfolio_transactions import merge_legacy_purchase_editor,portfolio_positions
 from engines.shared.portfolio_buy_tables import (
-    add_btc_usd_reference, render_purchase_editor, render_calculated_transactions,
+    add_btc_usd_reference, parse_portfolio_date, render_purchase_editor, render_calculated_transactions,
 )
 from engines.shared.portfolio_execution_accuracy import (
     calculate_portfolio_entry_error, DEFAULT_REFERENCE_USD, DEFAULT_REFERENCE_DATE,
