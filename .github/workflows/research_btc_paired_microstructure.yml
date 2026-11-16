@@ -106,14 +106,6 @@ jobs:
           if ! python -m engines.research.btc_microstructure_forward_scorecard; then
             echo '::warning::Optional scorecard unavailable; original immutable sources still require preservation.'
           fi
-      - name: Audit PR #267 actual receipt-time midnight coverage at fixed checkpoints
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        shell: bash
-        run: |
-          mkdir -p artifacts
-          if ! python -m engines.research.btc_midnight_checkpoint_audit; then
-            echo '::warning::PR #267 receipt-time checkpoint audit unavailable; source tapes remain unchanged.'
-          fi
       - name: Upload research records and optional diagnostic even on provider errors
         if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
         uses: actions/upload-artifact@v4
@@ -124,7 +116,6 @@ jobs:
             data/research_forward_validation/coinbase_trade_samples_forward.csv
             artifacts/btc_microstructure_capture_status.json
             artifacts/btc_microstructure_forward_scorecard.json
-            artifacts/btc_midnight_checkpoint_audit.json
             data/research_forward_validation/kraken_post_signal_quotes_forward.csv
             artifacts/btc_post_signal_forward_scorecard.json
           if-no-files-found: ignore
@@ -165,6 +156,36 @@ jobs:
                                + "; ".join(report["provider_capture_failures"]))
           print("Both public source captures completed, or exact UTC slot was already stored.")
           PY
+
+      - name: Audit PR #267 from remotely published tapes at fixed checkpoints
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        shell: bash
+        run: |
+          set -u
+          out='artifacts/btc_midnight_checkpoint_audit.json'
+          scratch=$(mktemp -d)
+          mkdir -p "$scratch/data"
+          if ! git fetch origin main > "$scratch/fetch.log" 2>&1; then
+            echo '::warning::Cannot verify remote source tapes for PR #267 checkpoint audit.'
+            exit 0
+          fi
+          for name in kraken_spot_depth_forward.csv coinbase_trade_samples_forward.csv; do
+            if ! git show "origin/main:data/research_forward_validation/$name" > "$scratch/data/$name" 2>/dev/null; then
+              echo "::warning::Published source tape missing ($name); no checkpoint comparison."
+              exit 0
+            fi
+          done
+          if ! python -m engines.research.btc_midnight_checkpoint_audit --data-dir "$scratch/data" --output "$out"; then
+            echo '::warning::PR #267 receipt-time checkpoint audit unavailable; published source tapes remain unchanged.'
+          fi
+      - name: Retain PR #267 checkpoint artifact only (no notification)
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr267-midnight-receipt-checkpoint-audit
+          path: artifacts/btc_midnight_checkpoint_audit.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Best-effort strictly TIMESTAMPED Cycle mid-session research fallback (zero ntfy)
         # This uses the paired source schedule including redundant 00:17/03:17
