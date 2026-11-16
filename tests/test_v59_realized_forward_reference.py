@@ -23,7 +23,47 @@ class RealizedForwardReferenceTests(unittest.TestCase):
         self.assertEqual(result["realized_price_usd"],54012.25)
         self.assertEqual(len(result["raw_response_sha256"]),64)
         paired=rp.paired_to_spot(result,82000.,DAY)
-        self.assertAlmostEqual(paired["price_to_realized_ratio"],82000/54012.25)
+        self.assertEqual(paired["status"],"UNMATCHED_PRICE_BASIS")
+        self.assertFalse(paired["usable_for_forward"])
+        self.assertIsNone(paired["price_to_realized_ratio"])
+
+    def test_explore21_same_day_close_drives_ratio_and_average_is_diagnostic_only(self):
+        reference={
+            "status":"VALID_DATED_RESEARCH_REFERENCE",
+            "provider":rp.EXPLORE21_SOURCE,
+            "provider_observation_date":DAY.isoformat(),
+            "realized_price_usd":53000.,
+            "provider_btc_close_usd":71000.,
+            "usable_for_forward":True,
+        }
+        paired=rp.paired_to_spot(reference,74000.,DAY)
+        self.assertTrue(paired["usable_for_forward"])
+        self.assertEqual(paired["ratio_method_version"],"explore21_same_day_close_v2")
+        self.assertAlmostEqual(paired["price_to_realized_ratio"],71000/53000)
+        self.assertAlmostEqual(paired["blockchain_market_price_to_realized_ratio"],74000/53000)
+        self.assertAlmostEqual(paired["blockchain_vs_provider_close_gap_pct"],
+                               100*(74000/71000-1))
+
+    def test_stale_date_or_missing_provider_close_fails_closed(self):
+        reference={
+            "status":"VALID_DATED_RESEARCH_REFERENCE",
+            "provider":rp.EXPLORE21_SOURCE,
+            "provider_observation_date":DAY.isoformat(),
+            "realized_price_usd":53000.,
+            "provider_btc_close_usd":71000.,
+            "usable_for_forward":True,
+        }
+        stale=rp.paired_to_spot({**reference,"provider_observation_date":
+                                 (DAY-timedelta(days=1)).isoformat()},74000.,DAY)
+        self.assertEqual(stale["status"],"STALE_DATE_MISMATCH")
+        self.assertFalse(stale["usable_for_forward"])
+        self.assertIsNone(stale["price_to_realized_ratio"])
+        unmatched=dict(reference)
+        unmatched.pop("provider_btc_close_usd")
+        pair=rp.paired_to_spot(unmatched,74000.,DAY)
+        self.assertEqual(pair["status"],"UNMATCHED_PRICE_BASIS")
+        self.assertFalse(pair["usable_for_forward"])
+        self.assertIsNone(pair["price_to_realized_ratio"])
 
     def test_stale_delayed_future_or_unrecognised_source_never_buys(self):
         for raw in (
@@ -45,8 +85,9 @@ class RealizedForwardReferenceTests(unittest.TestCase):
             "status":"VALID_DATED_RESEARCH_REFERENCE",
             "captured_at_utc":NOW.isoformat(),
             "provider_observation_date":"2026-11-12",
-            "provider":"BGeometrics",
+            "provider":rp.EXPLORE21_SOURCE,
             "realized_price_usd":54000.,
+            "provider_btc_close_usd":54000.,
             "usable_for_forward":True,
         }
         snap={
@@ -67,6 +108,8 @@ class RealizedForwardReferenceTests(unittest.TestCase):
         }
         x=tape.to_observation(snap,realized_reference=first)
         self.assertAlmostEqual(x["realized_price_reference"]["price_to_realized_ratio"],1.)
+        self.assertEqual(x["realized_price_reference"]["ratio_method_version"],
+                         "explore21_same_day_close_v2")
         self.assertGreater(tape.multipliers(x)["realized110_and_risk050"],0.)
         old,new=tape.add_observation([],x)
         self.assertTrue(new)
@@ -81,12 +124,16 @@ class RealizedForwardReferenceTests(unittest.TestCase):
         after=tape.multipliers({**row,"realized_price_reference":{
             "status":"STALE_OR_DELAYED","usable_for_forward":False,
             "price_to_realized_ratio":.60}})
+        legacy=tape.multipliers({**row,"realized_price_reference":{
+            "status":"VALID_DATED_RESEARCH_REFERENCE","usable_for_forward":True,
+            "price_to_realized_ratio":1.00}})
         self.assertEqual(before,after)
         self.assertEqual(before["realized110_and_risk050"],0.)
+        self.assertEqual(legacy["realized110_and_risk050"],0.)
 
 
     def test_fresh_explore21_csv_is_preferred_with_original_response_hash(self):
-        sample_dates=[DAY-timedelta(days=500-i) for i in range(500)]
+        sample_dates=[DAY-timedelta(days=499-i) for i in range(500)]
         content="date,realized_price_usd,sth_realized_price_usd,btc_close_usd\n"
         content+="".join(f"{d.isoformat()},53900,70000,74000\n" for d in sample_dates)
         class Response:
@@ -99,10 +146,13 @@ class RealizedForwardReferenceTests(unittest.TestCase):
         self.assertEqual(get.call_count,1)
         self.assertEqual(out["provider"],rp.EXPLORE21_SOURCE)
         self.assertTrue(out["usable_for_forward"])
-        self.assertEqual(out["provider_observation_date"],"2026-11-11")
+        self.assertEqual(out["provider_observation_date"],DAY.isoformat())
         self.assertEqual(out["provider_csv_rows"],500)
         self.assertEqual(len(out["raw_response_sha256"]),64)
         self.assertAlmostEqual(out["realized_price_usd"],53900.)
+        paired=rp.paired_to_spot(out,82000.,DAY)
+        self.assertTrue(paired["usable_for_forward"])
+        self.assertAlmostEqual(paired["price_to_realized_ratio"],74000/53900)
 
     def test_bad_csv_with_delayed_backup_never_becomes_live_paper_buy(self):
         class BadCSV:
