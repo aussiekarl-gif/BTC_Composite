@@ -1533,19 +1533,10 @@ elif mode == "My Portfolio":
     for col in ["AUD Spent", "Brokerage / Fee AUD", "Units / BTC Received", "BTC AUD Price"]:
         clean[col] = pd.to_numeric(clean[col], errors="coerce").fillna(0.0)
 
-    # Australian date format: DD/MM/YY. Also accept ISO dates from older V5.6 CSVs.
-    def _parse_portfolio_date(value):
-        if pd.isna(value):
-            return pd.NaT
-        s = str(value).strip()
-        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
-            try:
-                return pd.Timestamp(dt.datetime.strptime(s, fmt).date())
-            except Exception:
-                pass
-        return pd.to_datetime(s, dayfirst=True, errors="coerce")
-
-    clean["_purchase_date"] = clean["Date"].apply(_parse_portfolio_date)
+    clean["_purchase_date"] = clean["Date"].apply(
+        lambda value: pd.Timestamp(parse_portfolio_date(value))
+        if parse_portfolio_date(value) is not None else pd.NaT
+    )
 
     # Automatically populate BTC/AUD for ASX:IBIT rows from the same BTC + FX data
     # used elsewhere in the app. This avoids manual BTC price entry.
