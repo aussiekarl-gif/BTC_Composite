@@ -174,6 +174,36 @@ class FalseBottomResearchTests(unittest.TestCase):
         self.assertEqual(a,b)
         self.assertEqual(a,3.)
 
+    def test_stage_trigger_is_dated_on_next_monday_from_prior_monday_price(self):
+        from engines.research import v59_false_bottom_stress as study
+        state=dict(
+            cheap_streak=1,anchor_price=100000.,
+            anchor_monday="2021-01-04",
+            prev_monday_price=89000.,prev_monday_date="2021-01-11",
+            drop10_latched=False,drop20_latched=False,trigger_events=[],
+        )
+        decision=row(2,risk=.05,aud=1000.)
+        multiplier=study.candidate_multiplier("strict_stage_1x_drop10",decision,state)
+        self.assertEqual(multiplier,3.)
+        self.assertEqual(state["stage_trigger_counts"] if "stage_trigger_counts" in state else
+                         [e["threshold_pct"] for e in state["trigger_events"]],[10])
+        event=state["trigger_events"][0]
+        self.assertEqual(event["anchor_monday"],"2021-01-04")
+        self.assertEqual(event["observed_previous_monday"],"2021-01-11")
+        self.assertEqual(event["trigger_monday"],decision["date"].isoformat())
+        self.assertEqual(event["signal_sunday"],decision["signal_date"].isoformat())
+        self.assertAlmostEqual(event["drawdown_from_anchor_pct"],-11.)
+
+    def test_replay_reports_actual_stage_trigger_counts_and_dates(self):
+        from engines.research import v59_false_bottom_stress as study
+        rows=[row(i,risk=.05,aud=100000. if i==0 else 89000.) for i in range(WEEKS)]
+        result=study.replay(rows,policy="strict_stage_1x_drop10",initial_btc_fraction=0.)
+        self.assertEqual(result["stage_trigger_counts"],{"drop10":1,"drop20":0})
+        event=result["stage_trigger_events"][0]
+        self.assertEqual(event["observed_previous_monday"],row(1)["date"].isoformat())
+        self.assertEqual(event["trigger_monday"],row(2)["date"].isoformat())
+        self.assertAlmostEqual(event["drawdown_from_anchor_pct"],-11.)
+
     def test_new_policies_stop_when_score_high_and_reject_fallback(self):
         from engines.research import v59_false_bottom_stress as study
         for p in study.POLICIES:
