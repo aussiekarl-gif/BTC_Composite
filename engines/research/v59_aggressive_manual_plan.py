@@ -136,7 +136,7 @@ def manual_ibit_plan(*, saved_portfolio: dict, risk_snapshot: dict,
         multiplier = None
         blocked.append("R2_SIZING_RISK_INVALID")
     if multiplier == 0:
-        blocked.append("RISK_ABOVE_0_50_NO_BUY")
+        blocked.append("RISK_AT_OR_ABOVE_0_40_NO_BUY")
     asx_now = now.astimezone(_ASX_TZ)
     # Market session test is necessary, NOT proof of an ASX holiday/calendar.
     # The user's fresh live Stake ask quote is separately required.
