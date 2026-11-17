@@ -91,34 +91,25 @@ DEFAULT_RELATIVE_RISK_WEIGHT = 0.40
 DEFAULT_DRAWDOWN_WINDOW = 365
 DEFAULT_FIXED_DCA_AUD = 1000.0
 
-DEFAULT_ALWAYS_DCA_POINTS = [
-    (0.00, 3.00),
-    (0.10, 2.50),
-    (0.20, 2.00),
-    (0.30, 1.50),
-    (0.40, 1.20),
-    (0.50, 1.00),
-    (0.60, 0.80),
-    (0.70, 0.60),
-    (0.80, 0.40),
-    (0.90, 0.25),
-    (1.00, 0.10),
+# Same discrete risk-band ladder as Production; epsilon anchors preserve step bands.
+SCREENSHOT_RISK_LADDER_POINTS = [
+    (0.000000, 16.0), (0.099999, 16.0),
+    (0.100000, 8.0), (0.199999, 8.0),
+    (0.200000, 4.0), (0.299999, 4.0),
+    (0.300000, 2.0), (0.399999, 2.0),
+    (0.400000, 1.0), (0.499999, 1.0),
+    (0.500000, 0.0), (1.000000, 0.0),
 ]
+DEFAULT_ALWAYS_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 
 DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
 
-SMART_DCA_LOW_RISK_WEIGHT = 2.00
-SMART_DCA_HIGH_RISK_WEIGHT = 0.80
+SMART_DCA_LOW_RISK_WEIGHT = 16.0
+SMART_DCA_HIGH_RISK_WEIGHT = 0.0
 
-# V5.9 Research: deliberately moderate, neutral-centred sizing curve.
-# Research candidate is intentionally simple: 2.0x at risk 0, 1.0x at 0.5,
-# and 0.6x at risk 1.0, with linear interpolation between anchors.
-SMART_DCA_POINTS = [
-    (0.00, 2.00),
-    (0.50, 1.00),
-    (1.00, 0.60),
-]
+# V5.9 Research uses the same screenshot risk-band multipliers as Production.
+SMART_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 RESEARCH_PL_REFIT_DAYS = 91
 RESEARCH_PL_MIN_WEEKS = 52
@@ -1838,9 +1829,13 @@ def simulate_dca_backtest(
         if strategy_mode == "Plain DCA":
             multiplier, contribution, signal = 1.0, float(base_dca_aud), "FIXED DCA"
         else:
-            multiplier = float(interpolate(risk_curve, risk)) if np.isfinite(risk) else 1.0
-            recent_peak = float(row.get("recent_peak_365", price_usd))
-            multiplier += drawdown_severity_multiplier(price_usd, recent_peak)
+            if np.isfinite(risk) and risk >= 0.50:
+                # The selected ladder explicitly stops buying from the 0.50 band upward.
+                multiplier = 0.0
+            else:
+                multiplier = float(interpolate(risk_curve, risk)) if np.isfinite(risk) else 1.0
+                recent_peak = float(row.get("recent_peak_365", price_usd))
+                multiplier += drawdown_severity_multiplier(price_usd, recent_peak)
             contribution = float(base_dca_aud) * multiplier
             signal = "SCALED DCA"
         fee = contribution * float(params.get("fee_pct", 0.0))
