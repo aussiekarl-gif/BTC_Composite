@@ -496,7 +496,8 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
     frame = pd.concat([risk, residual], axis=1).dropna(subset=["risk"])
     columns = [
         "Cycle", "Weeks", "Floor weeks", "Floor %",
-        "Residual weeks", "Residual ≤−0.15 %", "Residual ≤−0.20 %",
+        "Residual weeks", "Residual missing weeks", "Aligned floor %",
+        "Residual ≤−0.15 %", "Residual ≤−0.20 %",
         "Score/residual mismatches",
     ]
     if frame.empty or not isinstance(frame.index, pd.DatetimeIndex):
@@ -535,6 +536,10 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
             "Floor weeks": int(floor.sum()),
             "Floor %": round(100.0 * float(floor.mean()), 1),
             "Residual weeks": residual_weeks,
+            "Residual missing weeks": int(n - residual_weeks),
+            "Aligned floor %": round(
+                100.0 * float(floor.loc[residual_valid].mean()), 1
+            ) if residual_weeks else 0.0,
             "Residual ≤−0.15 %": round(
                 100.0 * float(part.loc[residual_valid, "residual"].le(-0.15).mean()), 1
             ) if residual_weeks else 0.0,
