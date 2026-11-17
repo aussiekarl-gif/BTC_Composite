@@ -461,7 +461,12 @@ def completed_weekly_last(series, as_of=None):
     values = pd.to_numeric(pd.Series(series), errors="coerce").dropna()
     if values.empty:
         return values
-    weekly = values.resample("W-MON").last().dropna()
+    weekly = values.resample("W-MON", closed="right", label="right").last().dropna()
+    # A W-MON label is the expected Monday endpoint. Do not treat a partial
+    # bucket as completed merely because its label is <= as_of: the source must
+    # contain an actual observation on that endpoint date.
+    if isinstance(values.index, pd.DatetimeIndex):
+        weekly = weekly.loc[weekly.index.isin(values.index)]
     if as_of is None:
         as_of = values.index.max()
     cutoff = pd.Timestamp(as_of)
@@ -927,11 +932,10 @@ def walk_forward_power_law(data, cheap=-0.10, expensive=0.20, min_weeks=52, refi
         if need_refit:
             hist = prices.loc[prices.index < ts].dropna()
             if not hist.empty:
-                weekly = hist.resample("W-MON").last().dropna()
-                # W-MON labels a Tuesday–Monday bucket with its ending Monday.
-                # On dates before that Monday, the bucket is still incomplete;
-                # exclude it so the expanding regression uses completed weeks only.
-                weekly = weekly.loc[weekly.index < ts]
+                weekly = completed_weekly_last(hist, as_of=hist.index.max())
+                # Only actual Tuesday–Monday buckets whose ending Monday exists
+                # in the prior history may enter this expanding fit. This is
+                # stable across pandas resampling-label changes and sparse feeds.
                 days = np.array([(x - GENESIS_DATE).days for x in weekly.index], dtype=float)
                 vals = weekly.to_numpy(dtype=float)
                 ok = (days > 0) & np.isfinite(vals) & (vals > 0)
@@ -1062,7 +1066,7 @@ def add_cycle_context_research(result, params):
 
     # ---------- Weekly trend confirmation / age ----------
     price = pd.to_numeric(out["price"], errors="coerce")
-    weekly = price.resample("W-MON").last().dropna()
+    weekly = completed_weekly_last(price)
     w = pd.DataFrame(index=weekly.index)
     w["close"] = weekly
     w["ma50"] = weekly.rolling(50, min_periods=50).mean()
@@ -1205,14 +1209,14 @@ def add_bottom_zone_challenger(result):
         return out
 
     price = pd.to_numeric(out.get("price"), errors="coerce")
-    weekly_price = price.resample("W-MON").last().dropna()
+    weekly_price = completed_weekly_last(price)
     weekly = pd.DataFrame(index=weekly_price.index)
     weekly["price"] = weekly_price
 
     def wk(col):
         if col not in out.columns:
             return pd.Series(np.nan, index=weekly.index, dtype=float)
-        return pd.to_numeric(out[col], errors="coerce").resample("W-MON").last().reindex(weekly.index)
+        return completed_weekly_last(pd.to_numeric(out[col], errors="coerce")).reindex(weekly.index)
 
     pl = wk("bottom_component_pl").clip(0, 1)
     mvrv = wk("bottom_component_mvrv").clip(0, 1)
@@ -1247,7 +1251,7 @@ def add_bottom_zone_challenger(result):
     ).fillna(False)
 
     if "bull_confirmation_flip" in out.columns:
-        bull_flip = out["bull_confirmation_flip"].astype(bool).resample("W-MON").max().reindex(weekly.index).fillna(False)
+        bull_flip = completed_weekly_last(out["bull_confirmation_flip"].astype(bool)).reindex(weekly.index).fillna(False)
     else:
         bull_flip = pd.Series(False, index=weekly.index)
 
