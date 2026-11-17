@@ -2030,7 +2030,7 @@ elif mode == "DCA Today":
 
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(display_source)
-    _research_bucket_lowers = [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80, 1.00, None]
+    _research_bucket_lowers = [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 0.60, 0.80, 1.00, None]
     _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
         occurrence["Risk range"].tolist(), _research_bucket_lowers,
         active_smart_dca_curve,
