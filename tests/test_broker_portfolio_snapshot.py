@@ -75,7 +75,7 @@ class BrokerPortfolioSnapshotTests(unittest.TestCase):
     def test_merge_snapshot_into_empty_durable_store_does_not_invent_trades(self):
         merged = merge_broker_snapshot({}, snapshot())
         self.assertEqual(merged["rows"], [])
-        self.assertNotIn("sales", merged)
+        self.assertEqual(merged["sales"], [])
         self.assertEqual(merged["starting_capital_aud"], 510000.0)
 
     def test_zero_holdings_are_valid_only_when_units_and_value_both_zero(self):
