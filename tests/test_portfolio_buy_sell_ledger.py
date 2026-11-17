@@ -146,6 +146,27 @@ class PortfolioBuySellLedgerTests(unittest.TestCase):
                 trade_date="16/10/26",quantity=1,trade_price_aud=22.,
                 btc_aud_price=140000.)
 
+    def test_explicit_first_time_recovery_migrates_browser_snapshot_only_into_empty_store(self):
+        browser = initial()
+        browser["broker_snapshot"] = {"as_of": "2026-11-17"}
+        migrated = merge_legacy_purchase_editor(
+            browser, {}, edited_buys=copy.deepcopy(browser["rows"]),
+            starting_capital_aud=500000.,
+        )
+        self.assertEqual(migrated["rows"], browser["rows"])
+        self.assertEqual(migrated["broker_snapshot"], browser["broker_snapshot"])
+        self.assertEqual(portfolio_positions(migrated)["ibit_units"], 100.)
+
+    def test_first_time_recovery_never_overwrites_existing_durable_transactions(self):
+        browser = initial()
+        durable = initial()
+        durable["rows"][0]["Units / BTC Received"] = 99.
+        with self.assertRaisesRegex(ValueError, "changed elsewhere"):
+            merge_legacy_purchase_editor(
+                browser, durable, edited_buys=copy.deepcopy(browser["rows"]),
+                starting_capital_aud=500000.,
+            )
+
     def test_legacy_editor_preserves_executed_sales(self):
         base=initial()
         after,status=append_executed_trade(

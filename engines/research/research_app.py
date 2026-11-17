@@ -23,6 +23,9 @@ from engines.shared.model_settings_store import (
     load_dca_target_date,save_dca_target_date,choose_target_date,
 )
 from engines.shared.portfolio_transactions import merge_legacy_purchase_editor,portfolio_positions
+from engines.shared.broker_portfolio_snapshot import (
+    snapshot_as_portfolio_positions, render_broker_snapshot_editor, merge_broker_snapshot,
+)
 from engines.shared.portfolio_buy_tables import (
     add_btc_usd_reference, parse_portfolio_date, render_purchase_editor, render_calculated_transactions,
 )
@@ -345,12 +348,43 @@ browser_state = _load_browser_state()
 browser_portfolio = _load_shared_portfolio(browser_state)
 server_portfolio, portfolio_storage_error = load_portfolio()
 shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
+if server_portfolio.get("broker_snapshot"):
+    shared_portfolio = dict(shared_portfolio) if isinstance(shared_portfolio, dict) else {}
+    shared_portfolio["broker_snapshot"] = server_portfolio["broker_snapshot"]
 # DCA Today may use only the authoritative durable portfolio. Browser snapshots
 # remain available to My Portfolio recovery, but never authorise a cash recommendation.
 verified_portfolio_positions = None
 portfolio_verified = False
+broker_snapshot_error = None
+broker_snapshot_ledger_warning = None
+if not portfolio_storage_error and isinstance(server_portfolio, dict):
+    _broker_snapshot = server_portfolio.get("broker_snapshot")
+    if _broker_snapshot:
+        try:
+            verified_portfolio_positions = snapshot_as_portfolio_positions(_broker_snapshot)
+            portfolio_verified = True
+            _ledger_candidate = server_portfolio
+            if not _ledger_candidate.get("rows") and isinstance(browser_portfolio, dict):
+                _ledger_candidate = browser_portfolio
+            if _ledger_candidate.get("rows"):
+                try:
+                    _ledger_positions = portfolio_positions(_ledger_candidate)
+                    if abs(float(_ledger_positions["ibit_units"]) - float(verified_portfolio_positions["ibit_units"])) > 0.5:
+                        broker_snapshot_ledger_warning = (
+                            f"Broker snapshot shows {verified_portfolio_positions['ibit_units']:,.0f} IBIT units; "
+                            f"the selected transaction ledger records {_ledger_positions['ibit_units']:,.0f}. "
+                            "Current cash sizing uses the dated broker snapshot; reconcile the historical ledger separately."
+                        )
+                except (ValueError, TypeError, KeyError) as ledger_exc:
+                    broker_snapshot_ledger_warning = (
+                        f"The historical transaction ledger is not currently reconcilable ({ledger_exc}). "
+                        "Current cash sizing uses the separate dated broker snapshot."
+                    )
+        except (ValueError, TypeError, KeyError) as exc:
+            broker_snapshot_error = str(exc)
 if (
-    not portfolio_storage_error
+    not portfolio_verified
+    and not portfolio_storage_error
     and isinstance(server_portfolio, dict)
     and isinstance(server_portfolio.get("rows"), list)
     and len(server_portfolio.get("rows", [])) > 0
@@ -455,6 +489,19 @@ with st.sidebar:
                 "for cash sizing. Market data and risk signals remain available; "
                 "restore or verify the saved portfolio in My Portfolio, then reload."
             )
+        elif verified_portfolio_positions.get("broker_snapshot"):
+            _bs = verified_portfolio_positions["broker_snapshot"]
+            st.info(
+                f"Broker snapshot {_bs['as_of']}: A${_bs['cash_aud']:,.2f} cash now + "
+                f"A${_bs['aaa_reserve_aud']:,.2f} AAA reserve "
+                f"= A${_bs['deployable_reserve_aud']:,.2f} deployable. "
+                "AAA is counted only because liquidation was explicitly confirmed. "
+                "Snapshot is user-entered, not a live brokerage feed."
+            )
+            if broker_snapshot_ledger_warning:
+                st.warning(broker_snapshot_ledger_warning)
+        elif broker_snapshot_error:
+            st.warning(f"Saved broker snapshot cannot authorise sizing: {broker_snapshot_error}")
 
         saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
         saved_portfolio = server_portfolio if portfolio_verified else {}
@@ -479,7 +526,7 @@ with st.sidebar:
         )
 
         remaining_capital_aud = st.number_input(
-            "Capital Remaining (AUD)",
+            "Deployable Reserve (cash + sellable AAA, AUD)" if verified_portfolio_positions and verified_portfolio_positions.get("broker_snapshot") else "Capital Remaining (AUD)",
             min_value=0.0, max_value=float(starting_capital_aud),
             value=min(float(starting_capital_aud), float(remaining_default)),
             step=5_000.0, format="%.0f",
@@ -2072,10 +2119,11 @@ elif mode == "DCA Today":
 
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
-            "Normal weekly allowance = capital remaining ÷ weeks remaining. "
-            "The raw Risk Score weight is capped at 1.00x for ordinary weekly purchases. "
-            "Only an eligible newly confirmed Exceptional Bottom event may raise that cap. "
-            "The final purchase is capped at deployable capital."
+            "Normal weekly allowance = (deployable reserve − protected capital) ÷ weeks remaining. "
+            "The ordinary Risk Score multiplier follows the discrete 16× / 8× / 4× / 2× / 1× / 0× ladder. "
+            "Only a newly confirmed, eligible Exceptional Bottom event may increase the separate research challenger amount; "
+            "the Halving Accumulation Zone is context only. "
+            "The final purchase is capped at deployable reserve and 5% of original starting capital per week."
         )
         st.write(
             f"(A${remaining_capital_aud:,.0f} − A${preserved_capital_aud:,.0f} protected) ÷ {weeks_remaining:.1f} weeks "
@@ -2129,6 +2177,27 @@ elif mode == "My Portfolio":
     ]
 
     saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
+
+    _broker_snapshot_candidate = render_broker_snapshot_editor(st, saved_portfolio)
+    if _broker_snapshot_candidate is not None:
+        _fresh_portfolio, _fresh_portfolio_error = load_portfolio()
+        if _fresh_portfolio_error:
+            st.error(f"Broker snapshot was not saved: {_fresh_portfolio_error}")
+        else:
+            try:
+                _portfolio_with_snapshot = merge_broker_snapshot(
+                    _fresh_portfolio, _broker_snapshot_candidate
+                )
+                _snapshot_saved, _snapshot_save_error = save_portfolio(_portfolio_with_snapshot)
+                if _snapshot_saved:
+                    st.success(
+                        "Broker snapshot saved and storage-verified. Historical transactions were not changed."
+                    )
+                    st.rerun()
+                else:
+                    st.error(f"Broker snapshot was not saved: {_snapshot_save_error}")
+            except (ValueError, TypeError, KeyError) as exc:
+                st.error(f"Broker snapshot was not saved: {exc}")
     if saved_portfolio.get("sales"):
         st.info(
             "Sales are now recorded in Cycle Trading → My Portfolio. "

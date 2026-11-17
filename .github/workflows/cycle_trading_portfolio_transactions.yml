@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "engines/shared/portfolio_transactions.py"
+      - "engines/shared/broker_portfolio_snapshot.py"
+      - "tests/test_broker_portfolio_snapshot.py"
       - "engines/research/cycle_portfolio_editor.py"
       - "engines/research/cycle_trading_app.py"
       - "engines/research/cycle_trading_dashboard_model.py"
@@ -32,9 +34,11 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Compile both old My Portfolio editors plus Cycle Trading
         run: |
-          python -m py_compile engines/shared/portfolio_transactions.py engines/research/cycle_portfolio_editor.py engines/research/cycle_trading_dashboard_model.py engines/research/cycle_trading_app.py engines/production/production_app.py engines/research/research_app.py
+          python -m py_compile engines/shared/portfolio_transactions.py engines/shared/broker_portfolio_snapshot.py engines/research/cycle_portfolio_editor.py engines/research/cycle_trading_dashboard_model.py engines/research/cycle_trading_app.py engines/production/production_app.py engines/research/research_app.py
       - name: Test buy/sell ledger and persistent JSON/SQLite roundtrip
         run: python -m unittest discover -s tests -p 'test_portfolio_buy_sell_ledger.py' -v
+      - name: Test broker snapshot validation and separate deployable reserves
+        run: python -m unittest discover -s tests -p 'test_broker_portfolio_snapshot.py' -v
       - name: Existing dashboard and decision regression
         run: |
           python -m unittest discover -s tests -p 'test_cycle_trading_dashboard_model.py' -v
