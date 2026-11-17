@@ -31,7 +31,11 @@ ILLUSTRATIVE_REVIEW = date(2027,12,31)
 HORIZONS=(7,28,84)
 REQUIRED_SNAPSHOT_STATUS="RESEARCH_SIGNAL_SNAPSHOT_READY"
 GATES=("risk_1x","risk_3x","risk_3x_risk_le_020","below_200wma","below_to_plus10",
-       "realized110_and_risk050")
+       "realized110_and_risk050","piecewise_tail_3x_mid")
+TAIL_STRETCHED_3X_MID_KNOTS=(
+    (-0.32,0.00),(-0.31,0.01),(-0.30,0.02),(-0.25,0.03),
+    (-0.10,0.049),(-0.04,0.20),(0.02,0.40),(0.20,1.00),
+)
 DATA_VERSION=1
 
 
@@ -101,6 +105,12 @@ def to_observation(s:dict, code_sha:str="",realized_reference:dict|None=None,
     if s.get("risk_score_source")!="Walk-forward Power Law":
         raise ValueError("Cannot publish neutral risk fallback")
     risk=float(s["r2_sizing_risk"])
+    residual=s.get("power_law_residual")
+    try:
+        residual=float(residual)
+        if not math.isfinite(residual): residual=None
+    except (TypeError,ValueError,OverflowError):
+        residual=None
     price=float(s["btc_usd_closed_price"])
     fx=float(s["usd_per_aud"])
     wma=float(s["btc_usd_200wma_last_completed_sunday"])
@@ -124,7 +134,8 @@ def to_observation(s:dict, code_sha:str="",realized_reference:dict|None=None,
         "btc_usd":price,"usd_per_aud":fx,"fx_fix_date":fx_date.isoformat(),
         "btc_usd_200wma":wma,
         "btc_usd_to_200wma":ratio,"wma_week_ending":week.isoformat(),
-        "risk":risk,"model_fingerprint":str(s["fingerprint"]),
+        "risk":risk,"power_law_residual":residual,
+        "model_fingerprint":str(s["fingerprint"]),
         "risk_model":s["risk_model"],"risk_source":s["risk_score_source"],
         "price_source":s["risk_provider"],"fx_source":s["fx_provider"],
         "code_commit_sha":code_sha or "UNKNOWN_NOT_ATTESTED",
@@ -185,6 +196,23 @@ def add_observation(rows:list[dict],new:dict) -> tuple[list[dict],bool]:
     return rows+[new],True
 
 
+
+
+def piecewise_tail_risk(residual:float) -> float:
+    """Map an observed raw WF residual to the research-only tail candidate."""
+    if not math.isfinite(residual):
+        raise ValueError("Power Law residual must be finite")
+    if residual <= TAIL_STRETCHED_3X_MID_KNOTS[0][0]:
+        return TAIL_STRETCHED_3X_MID_KNOTS[0][1]
+    for (x0,y0),(x1,y1) in zip(
+        TAIL_STRETCHED_3X_MID_KNOTS,TAIL_STRETCHED_3X_MID_KNOTS[1:]
+    ):
+        if residual <= x1:
+            fraction=(residual-x0)/(x1-x0)
+            return y0+fraction*(y1-y0)
+    return TAIL_STRETCHED_3X_MID_KNOTS[-1][1]
+
+
 def multipliers(row:dict) -> dict:
     risk=float(row["risk"])
     ratio=float(row["btc_usd_to_200wma"])
@@ -199,6 +227,14 @@ def multipliers(row:dict) -> dict:
                     realized_ratio is not None and
                     math.isfinite(float(realized_ratio)) and
                     0<float(realized_ratio)<=1.10)
+    residual=row.get("power_law_residual")
+    tail_multiplier=0.0
+    if residual is not None:
+        try:
+            mapped_risk=piecewise_tail_risk(float(residual))
+            tail_multiplier=risk_buy_multiplier(mapped_risk)
+        except (TypeError,ValueError,OverflowError):
+            tail_multiplier=0.0
     return {
         "risk_1x":min(1.,aggressive),
         "risk_3x":aggressive,
@@ -207,6 +243,9 @@ def multipliers(row:dict) -> dict:
         "below_to_plus10":aggressive if ratio<=1.10 else 0.,
         # Strict source/date gate AND existing universal >.50 stop:
         "realized110_and_risk050":aggressive if risk<=.50 and valid_realized else 0.,
+        # New research-only gate uses the immutable raw residual saved at capture.
+        # Legacy tape rows without it remain ineligible; never backfill them.
+        "piecewise_tail_3x_mid":tail_multiplier,
     }
 
 
@@ -328,6 +367,9 @@ def scorecard(rows:list[dict], new_record_added:bool) -> dict:
             if (r.get("realized_price_reference") or {}).get("usable_for_forward") is True
             and (r.get("realized_price_reference") or {}).get("ratio_method_version")
                 =="explore21_same_day_close_v2"),
+        "piecewise_tail_shadow_eligible_observations":sum(
+            1 for r in rows if r.get("power_law_residual") is not None
+            and math.isfinite(float(r["power_law_residual"]))),
         "legacy_realized_rows_not_scored":sum(
             1 for r in rows
             if (r.get("realized_price_reference") or {}).get("price_to_realized_ratio") is not None
