@@ -162,6 +162,17 @@ class AppRiskLadderTests(unittest.TestCase):
         self.assertEqual(result["pill"], "NO BUY THIS WEEK")
         self.assertEqual(result["reason_title"], "Risk policy: NO BUY")
 
+    def test_research_can_explain_040_without_changing_shared_default(self):
+        common = dict(
+            portfolio_verified=True, risk_multiplier=0.0,
+            effective_multiplier=0.0, recommended_buy_aud=0.0,
+            base_allowance_aud=1000.0, remaining_capital_aud=10000.0,
+        )
+        production_default = dca_purchase_display(**common)
+        research = dca_purchase_display(**common, no_buy_threshold=0.40)
+        self.assertIn("0.50", production_default["reason_sub"])
+        self.assertIn("0.40", research["reason_sub"])
+
     def test_shared_purchase_display_shows_buy_only_for_positive_verified_amount(self):
         result = dca_purchase_display(
             portfolio_verified=True, risk_multiplier=0.05,
