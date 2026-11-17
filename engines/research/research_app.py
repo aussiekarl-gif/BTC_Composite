@@ -1292,7 +1292,7 @@ elif mode == "DCA Today":
     # Opportunity rarity: use weekly historical risk observations available up
     # to today. This estimates how often BTC has been at least as cheap as now.
     if isinstance(valid_today.index, pd.DatetimeIndex):
-        rarity_source = completed_weekly_last(
+        rarity_source = _model.completed_weekly_last(
             valid_today["risk_score"], as_of=valid_today.index[-1]
         )
     elif "date" in valid_today.columns:
@@ -2098,7 +2098,7 @@ elif mode == "DCA Today":
     )
 
     with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
-        _weekly_pl_residual = completed_weekly_last(
+        _weekly_pl_residual = _model.completed_weekly_last(
             valid_today["power_law_residual"], as_of=valid_today.index[-1]
         )
         _floor_audit = power_law_floor_diagnostics(
