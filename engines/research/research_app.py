@@ -2110,9 +2110,11 @@ elif mode == "DCA Today":
             st.caption(
                 f"The default floor is reached when BTC is at or below {_cheap_ratio:.1%} "
                 f"of the walk-forward Power Law fair value (residual ≤{pl_cheap_threshold:.2f}). "
-                "The tighter −0.15 and −0.20 columns are sensitivity checks only; they do not "
-                "change the active model. Zero is a clipped valuation score, not zero market risk. "
-                "Mismatches should be zero; any non-zero count needs investigation."
+                "The −0.15 through −0.40 columns show both week counts and percentages at "
+                "progressively deeper valuation discounts. They are diagnostic comparisons only; "
+                "they do not change the active model. The current −0.10 floor is a broad clipping "
+                "boundary, not a rare-bottom signal. Zero is a clipped valuation score, not zero "
+                "market risk. Mismatches should be zero; any non-zero count needs investigation."
             )
         else:
             st.info("Not enough aligned weekly risk and Power Law residual observations for this audit.")
