@@ -14,16 +14,23 @@ BUY_BANDS = ((0.10, 3.0), (0.20, 2.0), (0.40, 1.5),
 # External reference ladders are hypotheses for matched research only.
 # Cowen's proprietary risk formula is not reproduced by these multipliers.
 SCREENSHOT_16X_BANDS = (
-    (0.10, 16.0), (0.20, 8.0), (0.30, 4.0),
-    (0.40, 2.0), (0.50, 1.0), (1.0, 0.0),
+    (math.nextafter(0.10, 0.0), 16.0),
+    (math.nextafter(0.20, 0.0), 8.0),
+    (math.nextafter(0.30, 0.0), 4.0),
+    (math.nextafter(0.40, 0.0), 2.0),
+    (math.nextafter(0.50, 0.0), 1.0), (1.0, 0.0),
 )
 COWEN_CLASSIC_BANDS = (
-    (0.10, 5.0), (0.20, 4.0), (0.30, 3.0),
-    (0.40, 2.0), (0.50, 1.0), (1.0, 0.0),
+    (math.nextafter(0.10, 0.0), 5.0),
+    (math.nextafter(0.20, 0.0), 4.0),
+    (math.nextafter(0.30, 0.0), 3.0),
+    (math.nextafter(0.40, 0.0), 2.0),
+    (math.nextafter(0.50, 0.0), 1.0), (1.0, 0.0),
 )
 COWEN_2026_REPORTED_BANDS = (
-    (0.10, 4.0), (0.20, 3.0), (0.30, 2.0),
-    (1.0, 0.0),
+    (math.nextafter(0.10, 0.0), 4.0),
+    (math.nextafter(0.20, 0.0), 3.0),
+    (math.nextafter(0.30, 0.0), 2.0), (1.0, 0.0),
 )
 BUY_POLICY_BANDS = {
     "v59_current": BUY_BANDS,
