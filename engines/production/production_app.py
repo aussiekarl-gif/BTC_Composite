@@ -1148,7 +1148,7 @@ elif mode == "DCA Today":
 
     normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
     recommended_buy = (
-        min(float(remaining_capital_aud), max(0.0, normal_weekly_allowance * risk_weight), float(starting_capital_aud) * 0.05)
+        min(float(remaining_capital_aud), max(0.0, normal_weekly_allowance * risk_weight))
         if portfolio_verified else 0.0
     )
 
@@ -1231,7 +1231,7 @@ elif mode == "DCA Today":
         <div class="v58-wrap">
           <div class="v58-hero">
             <div>
-              <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's purchase amount after applying the risk-band multiplier, portfolio verification, deployable-cash limit and 5% weekly cap.">?</span></div>
+              <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's purchase amount after applying the risk-band multiplier, portfolio verification, deployable-cash limit.">?</span></div>
               <div class="v58-big">{purchase_status}</div>
               <span class="v58-buy-pill {purchase_pill_class}">{purchase_pill}</span>
               <span class="v58-sub" style="margin-left:10px;">{purchase_sub}</span>
