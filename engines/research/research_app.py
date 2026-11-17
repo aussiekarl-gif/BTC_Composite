@@ -352,8 +352,18 @@ shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser
 # remain available to My Portfolio recovery, but never authorise a cash recommendation.
 verified_portfolio_positions = None
 portfolio_verified = False
+broker_snapshot_error = None
+if not portfolio_storage_error and isinstance(server_portfolio, dict):
+    _broker_snapshot = server_portfolio.get("broker_snapshot")
+    if _broker_snapshot:
+        try:
+            verified_portfolio_positions = snapshot_as_portfolio_positions(_broker_snapshot)
+            portfolio_verified = True
+        except (ValueError, TypeError, KeyError) as exc:
+            broker_snapshot_error = str(exc)
 if (
-    not portfolio_storage_error
+    not portfolio_verified
+    and not portfolio_storage_error
     and isinstance(server_portfolio, dict)
     and isinstance(server_portfolio.get("rows"), list)
     and len(server_portfolio.get("rows", [])) > 0
