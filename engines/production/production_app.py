@@ -1494,6 +1494,27 @@ elif mode == "My Portfolio":
                 st.rerun()
 
     saved_portfolio = shared_portfolio if isinstance(shared_portfolio, dict) else {}
+
+    _broker_snapshot_candidate = render_broker_snapshot_editor(st, saved_portfolio)
+    if _broker_snapshot_candidate is not None:
+        _fresh_portfolio, _fresh_portfolio_error = load_portfolio()
+        if _fresh_portfolio_error:
+            st.error(f"Broker snapshot was not saved: {_fresh_portfolio_error}")
+        else:
+            try:
+                _portfolio_with_snapshot = merge_broker_snapshot(
+                    _fresh_portfolio, _broker_snapshot_candidate
+                )
+                _snapshot_saved, _snapshot_save_error = save_portfolio(_portfolio_with_snapshot)
+                if _snapshot_saved:
+                    st.success(
+                        "Broker snapshot saved and storage-verified. Historical transactions were not changed."
+                    )
+                    st.rerun()
+                else:
+                    st.error(f"Broker snapshot was not saved: {_snapshot_save_error}")
+            except (ValueError, TypeError, KeyError) as exc:
+                st.error(f"Broker snapshot was not saved: {exc}")
     if saved_portfolio.get("sales"):
         st.info(
             "Sales are now recorded in Cycle Trading → My Portfolio. "
