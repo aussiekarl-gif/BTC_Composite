@@ -9,7 +9,7 @@ from unittest.mock import patch
 from engines.research import v59_forward_dca_tape as t
 
 
-def snapshot(d=date(2026,11,15),risk=.05,ratio=1.02):
+def snapshot(d=date(2026,11,15),risk=.05,ratio=1.02,residual=-.10):
     captured=datetime.combine(d+timedelta(days=1),datetime.min.time(),timezone.utc)+timedelta(hours=1)
     sunday=d-timedelta(days=(d.weekday()+1)%7)
     # WMA is a completed Sunday on or before signal
@@ -19,6 +19,7 @@ def snapshot(d=date(2026,11,15),risk=.05,ratio=1.02):
         "captured_at_utc":captured.isoformat(),
         "closed_risk_observation_utc":datetime.combine(d,datetime.min.time(),timezone.utc).isoformat(),
         "risk_score_source":"Walk-forward Power Law","r2_sizing_risk":risk,
+        "power_law_residual":residual,
         "btc_usd_closed_price":price,"usd_per_aud":.70,
         "btc_usd_200wma_last_completed_sunday":price/ratio,
         "daily_closed_btc_usd_to_last_completed_200wma_ratio":ratio,
@@ -31,8 +32,8 @@ def snapshot(d=date(2026,11,15),risk=.05,ratio=1.02):
     }
 
 
-def row(d,risk=.05,ratio=1.02,price=100000.):
-    s=snapshot(d,risk,ratio)
+def row(d,risk=.05,ratio=1.02,price=100000.,residual=-.10):
+    s=snapshot(d,risk,ratio,residual)
     s["btc_usd_closed_price"]=price
     s["btc_usd_200wma_last_completed_sunday"]=price/ratio
     return t.to_observation(s)
@@ -90,6 +91,20 @@ class ForwardDcaTapeTests(unittest.TestCase):
         self.assertFalse(stats["broker_fills_verified"])
         only_monday=t.paper_portfolios(r[1:])
         self.assertEqual(only_monday["matched_prospective_monday_fills"],0)
+
+    def test_piecewise_tail_shadow_uses_only_saved_raw_residual(self):
+        deep=row(date(2026,11,15),risk=.05,residual=-.32)
+        self.assertEqual(t.multipliers(deep)["piecewise_tail_3x_mid"],10.)
+        near_deep=row(date(2026,11,15),risk=.05,residual=-.31)
+        self.assertEqual(t.multipliers(near_deep)["piecewise_tail_3x_mid"],5.)
+        mid=row(date(2026,11,15),risk=.05,residual=-.10)
+        self.assertEqual(t.multipliers(mid)["piecewise_tail_3x_mid"],3.)
+        # Legacy rows have no raw residual and cannot be retroactively scored.
+        legacy=dict(mid)
+        legacy.pop("power_law_residual")
+        self.assertEqual(t.multipliers(legacy)["piecewise_tail_3x_mid"],0.)
+        # The shadow is separate from the current live-risk multiplier.
+        self.assertEqual(t.multipliers(mid)["risk_3x"],2.)
 
     def test_200wma_proximity_gate_and_high_risk_stop(self):
         cheap=row(date(2026,11,15),risk=.05,ratio=.98)
