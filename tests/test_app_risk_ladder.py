@@ -1,5 +1,8 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+import pandas as pd
 
 from engines.production import production_model as production
 from engines.research import research_model as research
@@ -48,6 +51,57 @@ class AppRiskLadderTests(unittest.TestCase):
         source = Path("engines/research/research_model.py").read_text(encoding="utf-8")
         self.assertIn("risk_band_multiplier(risk_curve, risk)", source)
         self.assertNotIn("interpolate(risk_curve, risk)", source)
+
+    def _one_row_history(self, risk):
+        day = pd.Timestamp("2026-11-16")
+        return pd.DataFrame(
+            {"price": [100000.0], "usd_per_aud": [0.65], "risk_score": [risk]},
+            index=pd.DatetimeIndex([day]),
+        )
+
+    def _backtest_params(self):
+        day = pd.Timestamp("2026-11-16")
+        return {
+            "start_date": day,
+            "end_date": day,
+            "risk_model": "Test fixture",
+            "day_of_week": 0,
+            "fee_pct": 0.0,
+        }
+
+    def test_production_historical_backtest_executes_16x_and_zero_buy_bands(self):
+        for risk, expected_multiplier, expected_buy in (
+            (0.05, 16.0, 16000.0),
+            (0.10, 8.0, 8000.0),
+            (0.50, 0.0, 0.0),
+        ):
+            with self.subTest(risk=risk):
+                with patch.object(production, "add_risk_indicators", side_effect=lambda df, *_: df):
+                    result, summary = production.simulate_dca_backtest(
+                        self._one_row_history(risk), self._backtest_params(),
+                        1000.0, "Weekly", "Risk-Scaled DCA",
+                        risk_curve=production.SMART_DCA_POINTS,
+                    )
+                self.assertEqual(float(result.iloc[0]["dca_multiplier"]), expected_multiplier)
+                self.assertEqual(float(result.iloc[0]["actual_buy_aud"]), expected_buy)
+                self.assertEqual(summary["buy_count"], int(expected_buy > 0))
+
+    def test_research_historical_backtest_executes_16x_and_zero_buy_bands(self):
+        for risk, expected_multiplier, expected_buy in (
+            (0.05, 16.0, 16000.0),
+            (0.10, 8.0, 8000.0),
+            (0.50, 0.0, 0.0),
+        ):
+            with self.subTest(risk=risk):
+                with patch.object(research, "add_risk_indicators", side_effect=lambda df, *_: df):
+                    result, summary = research.simulate_dca_backtest(
+                        self._one_row_history(risk), self._backtest_params(),
+                        1000.0, "Weekly", "Risk-Scaled DCA",
+                        risk_curve=research.SMART_DCA_POINTS,
+                    )
+                self.assertEqual(float(result.iloc[0]["dca_multiplier"]), expected_multiplier)
+                self.assertEqual(float(result.iloc[0]["actual_buy_aud"]), expected_buy)
+                self.assertEqual(summary["buy_count"], int(expected_buy > 0))
 
     def test_dca_today_paths_keep_the_five_percent_weekly_cap_and_stop_at_050(self):
         production_source = Path("engines/production/production_app.py").read_text(encoding="utf-8")
