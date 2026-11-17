@@ -136,7 +136,7 @@ class AppRiskLadderTests(unittest.TestCase):
 
     def test_shared_purchase_display_obeys_risk_no_buy_band(self):
         result = dca_purchase_display(
-            portfolio_verified=True, risk_multiplier=0.50,
+            portfolio_verified=True, risk_multiplier=0.0,
             effective_multiplier=0.0, recommended_buy_aud=0.0,
             base_allowance_aud=1000.0, remaining_capital_aud=10000.0,
         )
