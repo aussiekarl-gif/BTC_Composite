@@ -1,5 +1,11 @@
 name: V5.9 full-history Power Law floor audit (research only)
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'engines/research/v59_power_law_floor_full_history.py'
+      - 'engines/research/research_model.py'
+      - '.github/workflows/v59_power_law_floor_full_history.yml'
   push:
     branches: [main]
     paths:
