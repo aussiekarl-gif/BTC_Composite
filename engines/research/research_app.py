@@ -1395,6 +1395,7 @@ elif mode == "DCA Today":
         base_allowance_aud=normal_weekly_allowance,
         remaining_capital_aud=remaining_capital_aud,
         portfolio_verification_reason=portfolio_verification_reason,
+        no_buy_threshold=0.40,
     )
     purchase_status = _purchase_display["amount"]
     purchase_pill = _purchase_display["pill"]
