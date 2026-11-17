@@ -960,6 +960,23 @@ def continuous_pl_display_risk(price, fair_value, cheap=-0.10, expensive=0.20):
     return float(min(out, float(np.nextafter(1.0, 0.0))))
 
 
+def continuous_valuation_risk_label(value):
+    """Human-readable band for the display-only continuous valuation score."""
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return "n/a"
+    if not np.isfinite(score):
+        return "n/a"
+    return (
+        "VERY LOW" if score <= 0.20 else
+        "LOW" if score <= 0.40 else
+        "NEUTRAL" if score <= 0.60 else
+        "HIGH" if score <= 0.80 else
+        "VERY HIGH"
+    )
+
+
 def format_continuous_risk(value, price=None):
     """Format risk so a positive BTC price never visually rounds to 0.000."""
     if value is None or not np.isfinite(value):
