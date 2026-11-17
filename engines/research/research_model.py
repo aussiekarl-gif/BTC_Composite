@@ -515,10 +515,18 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
     risk = pd.to_numeric(pd.Series(risk_series), errors="coerce").rename("risk")
     residual = pd.to_numeric(pd.Series(residual_series), errors="coerce").rename("residual")
     frame = pd.concat([risk, residual], axis=1).dropna(subset=["risk"])
+    residual_cutoffs = (-0.15, -0.20, -0.25, -0.30, -0.35, -0.40)
     columns = [
         "Cycle", "Weeks", "Floor weeks", "Floor %",
         "Residual weeks", "Residual missing weeks", "Aligned floor %",
-        "Residual ≤−0.15 %", "Residual ≤−0.20 %",
+        *[
+            label
+            for cutoff in residual_cutoffs
+            for label in (
+                f"Residual ≤{cutoff:.2f} weeks",
+                f"Residual ≤{cutoff:.2f} %",
+            )
+        ],
         "Score/residual mismatches",
     ]
     if frame.empty or not isinstance(frame.index, pd.DatetimeIndex):
@@ -561,12 +569,20 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
             "Aligned floor %": round(
                 100.0 * float(floor.loc[residual_valid].mean()), 1
             ) if residual_weeks else 0.0,
-            "Residual ≤−0.15 %": round(
-                100.0 * float(part.loc[residual_valid, "residual"].le(-0.15).mean()), 1
-            ) if residual_weeks else 0.0,
-            "Residual ≤−0.20 %": round(
-                100.0 * float(part.loc[residual_valid, "residual"].le(-0.20).mean()), 1
-            ) if residual_weeks else 0.0,
+            **{
+                label: (
+                    int(part.loc[residual_valid, "residual"].le(cutoff).sum())
+                    if label.endswith("weeks")
+                    else round(
+                        100.0 * float(part.loc[residual_valid, "residual"].le(cutoff).mean()), 1
+                    ) if residual_weeks else 0.0
+                )
+                for cutoff in residual_cutoffs
+                for label in (
+                    f"Residual ≤{cutoff:.2f} weeks",
+                    f"Residual ≤{cutoff:.2f} %",
+                )
+            },
             "Score/residual mismatches": mismatches,
         })
     return pd.DataFrame(rows, columns=columns)
