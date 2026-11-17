@@ -146,8 +146,13 @@ class HistoricalProductionIntegrityTests(unittest.TestCase):
             risk_curve=SMART_DCA_POINTS)
         self.assertEqual(list(plain["date"]),list(smart["date"]))
         self.assertTrue(plain["actual_buy_aud"].eq(1000).all())
-        self.assertTrue(smart["dca_multiplier"].ge(.05).all())
-        self.assertTrue(smart["dca_multiplier"].le(2.75).all())
+        # New shared discrete ladder permits a genuine 0x no-buy band
+        # from risk 0.50, and scales up to 16x at the lowest risk.
+        self.assertTrue(smart["dca_multiplier"].ge(0.0).all())
+        self.assertTrue(smart["dca_multiplier"].le(16.0).all())
+        self.assertTrue(
+            smart.loc[smart["risk_score"].ge(0.50), "dca_multiplier"].eq(0.0).all()
+        )
 
 
 if __name__=="__main__":
