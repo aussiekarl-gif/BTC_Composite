@@ -23,6 +23,9 @@ from engines.shared.model_settings_store import (
     load_dca_target_date,save_dca_target_date,choose_target_date,
 )
 from engines.shared.portfolio_transactions import merge_legacy_purchase_editor,portfolio_positions
+from engines.shared.broker_portfolio_snapshot import (
+    snapshot_as_portfolio_positions, render_broker_snapshot_editor, merge_broker_snapshot,
+)
 from engines.shared.portfolio_buy_tables import (
     add_btc_usd_reference, parse_portfolio_date, render_purchase_editor, render_calculated_transactions,
 )
