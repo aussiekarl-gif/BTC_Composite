@@ -2033,7 +2033,7 @@ elif mode == "DCA Today":
     _research_bucket_lowers = [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80, 1.00, None]
     _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
         occurrence["Risk range"].tolist(), _research_bucket_lowers,
-        SMART_DCA_POINTS,
+        active_smart_dca_curve,
     )
     fig_occurrence = go.Figure()
     # Separate invalid and exact-zero buckets are preserved. The histogram is
@@ -2065,12 +2065,9 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current valuation risk {_display_txt} (orange bar). This chart is descriptive: it shows the percentage "
-        "of weekly observations that fell inside each continuous valuation-risk range. The R2 sizing score "
-        f"({current_risk:.3f}) is separate and still controls the DCA multiplier. It does NOT assign "
-        "Opportunity Rarity to individual buckets. Opportunity Rarity is calculated separately "
-        "as how often comparable cycle-phase observations were at or below today's risk "
-        f"(currently: {rarity['rarity_label']})."
+        f"Current R2 sizing risk {current_risk:.3f} (orange bar). The orange bar, risk bucket labels "
+        "and displayed multipliers all use the same active DCA sizing score and multiplier curve. "
+        "Opportunity Rarity is calculated separately and does not change the multiplier."
     )
 
     with st.expander("Chance of a lower-risk entry — current + previous 2 cycles", expanded=False):
