@@ -17,6 +17,12 @@ All external multiplier ladders are applied to the same project-generated **V5.9
 
 The Cowen historical ladder is transcribed from his 8 February 2023 Total Indicator Risk video transcript. The 2026 ladder is from a secondary summary of his 14 June 2026 video; it is not an official machine-readable specification. The user's screenshot is the source for the 16× ladder. All multiplier definitions are explicitly research hypotheses when applied to this project's score.
 
+## Source attribution note: Digital Asset News
+
+The public Digital Asset News transcript indexed for its dynamic-DCA explanation describes a different example: ordinary 1x at risk 0.50–0.59, 2x at 0.40–0.49, then 4x / 8x / 16x as risk falls further. It does not give a precise numeric multiplier for the 0.00–0.09 band in the available transcript. That is **not identical to the supplied screenshot**, which labels 0.50+ as 0x and 0.00–0.09 as 16x. Accordingly, this report treats the screenshot ladder as a separate image-transcribed research hypothesis and does not attribute it as an exact official Digital Asset News rule.
+
+Transcript reference: https://podprose.org/post/1572/digital-asset-news-bitcoin-dead-cat-bounce-why-i-doubled-transcript
+
 ## Backtest and execution assumptions
 
 GitHub Actions run: https://github.com/aussiekarl-gif/BTC_Composite/actions/runs/44032627044
