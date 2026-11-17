@@ -455,15 +455,15 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
 def risk_occurrence_table(risk_series):
     """Descriptive weekly risk distribution with mutually exclusive buckets.
 
-    Exact clipped endpoints are shown separately; invalid out-of-range values
-    are counted rather than silently disappearing from the denominator.
+    Zero is included in the lowest valid sizing band (0.00–0.01); it is a
+    clipped model score, not a separate risk category. Invalid out-of-range
+    values are counted rather than silently disappearing from the denominator.
     """
     s = pd.to_numeric(pd.Series(risk_series), errors="coerce").dropna()
     n = len(s)
     masks = [
         ("<0.00 (invalid)", s < 0),
-        ("0.000 (floor)", s == 0),
-        ("(0.00, 0.01)", (s > 0) & (s < 0.01)),
+        ("0.00–0.01", (s >= 0) & (s < 0.01)),
         ("0.01–0.02", (s >= 0.01) & (s < 0.02)),
         ("0.02–0.05", (s >= 0.02) & (s < 0.05)),
         ("0.05–0.10", (s >= 0.05) & (s < 0.10)),
