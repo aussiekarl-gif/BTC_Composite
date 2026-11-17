@@ -23,7 +23,7 @@ The candidate transforms the raw, point-in-time walk-forward Power Law residual 
 
 Values between knots are linearly interpolated. Values outside the knot range are clipped to the nearest endpoint. The exact knots are stored in `engines/research/v59_forward_dca_tape.py`.
 
-This is the same candidate tested in PR #302. It is not the active risk formula. It does not reproduce Benjamin Cowen's proprietary risk score.
+This is the same residual-to-score mapping tested in PR #302. The forward shadow additionally preserves the current V5.9 universal no-buy veto at active risk >= 0.40; the candidate cannot override that safety stop. It is not the active risk formula and does not reproduce Benjamin Cowen's proprietary risk score.
 
 ## Evidence integrity
 
