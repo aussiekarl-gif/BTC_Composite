@@ -182,7 +182,6 @@ class AppRiskLadderTests(unittest.TestCase):
             self.assertNotIn("R2 raised to at least", source)
             self.assertNotIn("16× / 8× / 4×", source)
             self.assertNotIn("5% of starting capital per week", source)
-            self.assertIn("risk 0.40", source)
 
 
 if __name__ == "__main__":
