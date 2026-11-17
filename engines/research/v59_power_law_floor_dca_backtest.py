@@ -26,6 +26,16 @@ from engines.research.v59_live_signal_snapshot import live_risk_params
 CANDIDATE_CHEAP_FLOORS = (-0.10, -0.20, -0.24, -0.25, -0.30, -0.31, -0.33, -0.35)
 CASH_YIELDS = (0.0, 0.05)
 EXPENSIVE_FLOOR = model.DEFAULT_PL_EXPENSIVE
+TAIL_STRETCHED_KNOTS = (
+    (-0.32, 0.00),
+    (-0.31, 0.01),
+    (-0.30, 0.02),
+    (-0.25, 0.05),
+    (-0.10, 0.20),
+    (-0.04, 0.30),
+    (0.02, 0.40),
+    (0.20, 1.00),
+)
 
 
 def main() -> None:
@@ -54,14 +64,31 @@ def main() -> None:
 
     results = []
     cohort_anchors = None
-    for cheap in CANDIDATE_CHEAP_FLOORS:
+    mappings = [
+        (f"linear_floor_{cheap:.2f}", cheap)
+        for cheap in CANDIDATE_CHEAP_FLOORS
+    ] + [("piecewise_extreme_tail_-0.32", None)]
+
+    for mapping_name, cheap in mappings:
         candidate = scored.copy()
-        candidate["risk_score"] = (
-            (pd.to_numeric(candidate["power_law_residual"], errors="coerce") - cheap)
-            / (EXPENSIVE_FLOOR - cheap)
-        ).clip(0.0, 1.0)
-        # Keep the validated source label; the candidate is a transformation
-        # of the same causal WF residual, not a fallback risk series.
+        residual_values = pd.to_numeric(candidate["power_law_residual"], errors="coerce")
+        if cheap is not None:
+            candidate["risk_score"] = (
+                (residual_values - cheap) / (EXPENSIVE_FLOOR - cheap)
+            ).clip(0.0, 1.0)
+        else:
+            # Candidate nonlinear mapping: only the deepest residual tail gets
+            # the 10x/5x bands. Above −0.10 the ordinary risk scale is stretched
+            # while preserving the existing no-buy boundary at residual +0.02.
+            valid = residual_values.notna()
+            candidate["risk_score"] = np.nan
+            xp = np.array([x for x, _ in TAIL_STRETCHED_KNOTS], dtype=float)
+            fp = np.array([y for _, y in TAIL_STRETCHED_KNOTS], dtype=float)
+            candidate.loc[valid, "risk_score"] = np.interp(
+                residual_values.loc[valid].to_numpy(), xp, fp
+            )
+        # Keep the validated source label; candidates transform the same causal
+        # WF residual, not a fallback risk series.
         candidate["risk_score_source"] = "Walk-forward Power Law"
         rows = build_weekly_rows(candidate, fx)
         windows = cohort_windows(rows)
@@ -69,10 +96,9 @@ def main() -> None:
         if cohort_anchors is None:
             cohort_anchors = anchors
         elif anchors != cohort_anchors:
-            raise AssertionError("Candidate floors changed the matched cohort sample")
+            raise AssertionError("Candidate mappings changed the matched cohort sample")
 
         for w in windows:
-            baseline = None
             for cash_yield in CASH_YIELDS:
                 baseline = simulate(
                     w["rows"], policy="plain_1x", cash_yield=cash_yield,
@@ -86,6 +112,7 @@ def main() -> None:
                     weight_fn=lambda row: risk_buy_multiplier(float(row["risk_score"])),
                 )
                 results.append({
+                    "mapping_name": mapping_name,
                     "candidate_cheap_floor": cheap,
                     "anchor": w["anchor"],
                     "start": w["start"],
@@ -123,13 +150,14 @@ def main() -> None:
             for cash_yield in CASH_YIELDS:
                 selected = [
                     r for r in results
-                    if r["candidate_cheap_floor"] == cheap
+                    if r["mapping_name"] == mapping_name
                     and r["split"] == split
                     and r["cash_yield"] == cash_yield
                 ]
                 if not selected:
                     continue
                 summaries.append({
+                    "mapping_name": mapping_name,
                     "candidate_cheap_floor": cheap,
                     "split": split,
                     "cash_yield": cash_yield,
@@ -177,6 +205,7 @@ def main() -> None:
         "flat_fee_aud": 3.0,
         "illustrative_annual_etf_drag": 0.0025,
         "candidate_cheap_floors": CANDIDATE_CHEAP_FLOORS,
+        "piecewise_tail_stretched_knots": TAIL_STRETCHED_KNOTS,
         "expensive_floor": EXPENSIVE_FLOOR,
         "current_score_reconstruction_max_abs_difference": max_diff,
         "signal_execution": "Prior Sunday UTC risk; next Monday BTC/AUD spot proxy execution",
