@@ -1203,7 +1203,7 @@ elif mode == "DCA Today":
         <div class="v58-wrap">
           <div class="v58-hero">
             <div>
-              <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's V5.8.2 production buy amount. Base Weekly Allowance × Smart DCA risk multiplier, capped by remaining capital.">?</span></div>
+              <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's purchase amount after applying the risk-band multiplier, portfolio verification, deployable-cash limit and 5% weekly cap.">?</span></div>
               <div class="v58-big">{purchase_status}</div>
               <span class="v58-buy-pill {purchase_pill_class}">{purchase_pill}</span>
               <span class="v58-sub" style="margin-left:10px;">{purchase_sub}</span>
@@ -1227,7 +1227,7 @@ elif mode == "DCA Today":
             <div class="v58-card"><div class="v58-card-title">BTC Risk <span class="v58-q" title="Production composite Risk Score. Lower risk produces a larger Smart DCA multiplier.">?</span></div><div class="v58-card-value {risk_tone}">{risk_tone_label}</div><div class="v58-card-sub">Risk score: {current_risk:.3f}<br>Multiplier: <b>{risk_weight:.2f}×</b></div></div>
             <div class="v58-card"><div class="v58-card-title">Opportunity Rarity <span class="v58-q" title="Cycle-based context comparing today's risk with comparable cycle ages. It does not change production sizing.">?</span></div><span class="v58-badge context">{rarity['rarity_label']}</span><div class="v58-card-sub">Context only<br>Does not change buy amount</div></div>
             <div class="v58-card"><div class="v58-card-title">Better Entry Evidence <span class="v58-q" title="Limited cycle evidence about whether comparable periods later produced lower risk. Context only.">?</span></div><span class="v58-badge context">{better_entry_text}</span><div class="v58-card-sub">Context only<br>No sizing override</div></div>
-            <div class="v58-card"><div class="v58-card-title">Remaining Capital <span class="v58-q" title="Capital still scheduled for deployment. Base Weekly Allowance = remaining capital ÷ remaining weeks.">?</span></div><div class="v58-card-value">A$ {remaining_capital_aud:,.0f}</div><div class="v58-card-sub">~{weeks_remaining:.0f} weeks remaining<br>until {target_deployment_date.strftime('%d %b %Y')}</div></div>
+            <div class="v58-card"><div class="v58-card-title">Remaining Capital <span class="v58-q" title="Capital still scheduled for deployment. Base Weekly Allowance = remaining capital ÷ remaining weeks.">?</span></div><div class="v58-card-value">{remaining_display}</div><div class="v58-card-sub">{"Portfolio verification required" if not portfolio_verified else f"~{weeks_remaining:.0f} weeks remaining until {target_deployment_date.strftime('%d %b %Y')}"}</div></div>
           </div>
 
           <div class="v58-info"><span class="v58-info-icon">i</span><div><div class="v58-info-title">How this week's amount is calculated</div><div class="v58-info-text">This week's production DCA amount is the Base Weekly Allowance multiplied by the V5.8.2 risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy. Cash sizing is blocked until the authoritative portfolio is verified. Opportunity Rarity, Better Entry Evidence and the Historical Weekly Risk Distribution are context only and do not independently change the buy amount.</div></div></div>
