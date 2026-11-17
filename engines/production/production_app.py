@@ -1356,7 +1356,7 @@ elif mode == "DCA Today":
     _prod_bucket_lowers = [0.00, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80]
     _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
         occurrence["Risk range"].tolist(), _prod_bucket_lowers,
-        DEFAULT_ALWAYS_DCA_POINTS,
+        active_smart_dca_curve,
     )
     fig_occurrence = go.Figure()
     # Highlight today's actual sizing-risk bucket; show its applicable buy
