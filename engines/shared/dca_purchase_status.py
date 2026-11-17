@@ -8,6 +8,8 @@ def dca_purchase_display(
     recommended_buy_aud: float,
     base_allowance_aud: float,
     remaining_capital_aud: float,
+    portfolio_verification_reason: str | None = None,
+    no_buy_threshold: float = 0.50,
 ) -> dict:
     """Return one coherent status for the hero, reason and cash labels."""
     if not portfolio_verified:
@@ -19,7 +21,7 @@ def dca_purchase_display(
             "allowance": "Unavailable",
             "remaining": "Unavailable",
             "reason_title": "Cash sizing blocked",
-            "reason_sub": "Authoritative portfolio could not be verified; no purchase amount is available.",
+            "reason_sub": (portfolio_verification_reason or "Authoritative portfolio could not be verified; no purchase amount is available."),
         }
 
     allowance = f"A$ {float(base_allowance_aud):,.0f}"
@@ -29,11 +31,11 @@ def dca_purchase_display(
             "amount": "A$ 0",
             "pill": "NO BUY THIS WEEK",
             "pill_class": "blocked",
-            "sub": "Risk score is in the 0.50+ no-buy band",
+            "sub": f"Risk score is in the {float(no_buy_threshold):.2f}+ no-buy band",
             "allowance": allowance,
             "remaining": remaining,
             "reason_title": "Risk policy: NO BUY",
-            "reason_sub": "Risk score is 0.50 or higher; the selected ladder sets the multiplier to 0×.",
+            "reason_sub": f"Risk score is {float(no_buy_threshold):.2f} or higher; the selected ladder sets the multiplier to 0×.",
         }
 
     if float(recommended_buy_aud) <= 0.0:
@@ -56,5 +58,5 @@ def dca_purchase_display(
         "allowance": allowance,
         "remaining": remaining,
         "reason_title": "Risk policy: BUY BAND",
-        "reason_sub": "Portfolio verified, deployable cash available, and risk is below the 0.50 no-buy threshold.",
+        "reason_sub": f"Portfolio verified, deployable cash available, and risk is below the {float(no_buy_threshold):.2f} no-buy threshold.",
     }

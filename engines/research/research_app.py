@@ -358,6 +358,7 @@ verified_portfolio_positions = None
 portfolio_verified = False
 broker_snapshot_error = None
 broker_snapshot_ledger_warning = None
+portfolio_ledger_error = None
 if not portfolio_storage_error and isinstance(server_portfolio, dict):
     _broker_snapshot = server_portfolio.get("broker_snapshot")
     if _broker_snapshot:
@@ -393,8 +394,30 @@ if (
     try:
         verified_portfolio_positions = portfolio_positions(server_portfolio)
         portfolio_verified = True
-    except Exception:
+    except Exception as exc:
         verified_portfolio_positions = None
+        portfolio_ledger_error = f"{type(exc).__name__}: {exc}"
+
+if portfolio_verified:
+    portfolio_verification_reason = None
+elif portfolio_storage_error:
+    portfolio_verification_reason = f"Persistent portfolio storage error: {portfolio_storage_error}"
+elif broker_snapshot_error:
+    portfolio_verification_reason = f"Saved broker snapshot is invalid: {broker_snapshot_error}"
+elif portfolio_ledger_error:
+    portfolio_verification_reason = f"Saved transaction ledger is invalid: {portfolio_ledger_error}"
+elif isinstance(browser_portfolio, dict) and browser_portfolio.get("rows") and not server_portfolio.get("rows"):
+    portfolio_verification_reason = (
+        "Only a browser-recovery copy is available. Save the portfolio to persistent server storage "
+        "before DCA Today can calculate a cash-based amount."
+    )
+elif not server_portfolio.get("rows") and not server_portfolio.get("broker_snapshot"):
+    portfolio_verification_reason = (
+        "Persistent storage returned no saved broker snapshot or transaction ledger. "
+        "Open My Portfolio and save the current portfolio to server storage."
+    )
+else:
+    portfolio_verification_reason = "The saved portfolio has not passed authoritative verification."
 
 st.title("Bitcoin Dynamic DCA V5.9 — Three-Pillar Research")
 st.caption("Version 5.9 RESEARCH • R2 Valuation • Exceptional Bottom Zone • Halving Accumulation Zone • Persistent portfolio")
@@ -602,7 +625,7 @@ with st.sidebar:
         st.caption(
             "Custom V5.9 multiplier curve is active."
             if custom_curve_active else
-            "V5.9 default: 16× / 8× / 4× / 2× / 1× across risk bands; 0× from risk 0.50. Weekly purchases remain capped at 5% of starting capital."
+            "V5.9 default: 10× / 5× / 3× / 2× / 1.5× / 1× across risk bands; 0× from risk 0.40. No fixed weekly cap; purchases remain bounded by verified deployable cash and remaining deployment capital."
         )
 
         if portfolio_verified:
@@ -1103,10 +1126,9 @@ if mode == "DCA Backtest":
 
     with st.expander("How Smart DCA works", expanded=False):
         st.write(
-            "Smart DCA always buys, but conviction is intentionally asymmetric. "
-            "Low-risk periods can receive many times more capital than high-risk periods. "
-            "You control only the two endpoints; risk 0.50 stays anchored at 1.00x. "
-            "The total budget is still normalized to exactly the same amount as Plain DCA."
+            "Smart DCA concentrates purchases in lower-risk periods rather than buying the same amount every week. "
+            "Under the default curve, risk 0.40 and above receives a 0× multiplier. "
+            "The backtest normalizes total deployment to the same budget as Plain DCA; this is a historical comparison, not a live cash recommendation."
         )
         curve_df = pd.DataFrame(smart_dca_curve, columns=["Risk", "Relative Weight"])
         curve_df["Relative Weight"] = curve_df["Relative Weight"].map(lambda x: f"{x:.2f}x")
@@ -1278,7 +1300,7 @@ elif mode == "DCA Today":
         rarity_source = valid_today["risk_score"].dropna()
     # The first histogram is the DCA risk-band chart, so it must use the
     # historical R2 sizing score (not the separate continuous valuation display).
-    # This keeps its bucket labels and 16x/8x/... multipliers consistent with sizing.
+    # This keeps its bucket labels and current 10x/5x/... multipliers consistent with sizing.
     display_source = rarity_source
     _display_now = current_risk
     _display_txt = f"R2 sizing risk {current_risk:.3f}"
@@ -1372,6 +1394,8 @@ elif mode == "DCA Today":
         recommended_buy_aud=challenger_recommended_buy,
         base_allowance_aud=normal_weekly_allowance,
         remaining_capital_aud=remaining_capital_aud,
+        portfolio_verification_reason=portfolio_verification_reason,
+        no_buy_threshold=0.40,
     )
     purchase_status = _purchase_display["amount"]
     purchase_pill = _purchase_display["pill"]
@@ -1494,7 +1518,7 @@ elif mode == "DCA Today":
               <div class="v59-sub">{"Deployable capital unavailable until portfolio verification" if not portfolio_verified else f"Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}"}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × risk-band multiplier, bounded by verified deployable cash and remaining capital. Risk ≥0.40 means no buy.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-off">i</span><div><b>{purchase_reason_title}</b><small>{purchase_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>Valuation display {_display_txt} • R2 sizing score {current_risk:.3f} → {risk_weight:.2f}× risk multiplier</small></div></div>
@@ -1542,7 +1566,7 @@ elif mode == "DCA Today":
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
             <div><div class="v59-info-title">How this week's amount is calculated</div>
-            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or cash caps.</div></div>
+            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, bounded by verified deployable cash and remaining deployment capital. Risk ≥0.40 means no buy under the default curve. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or verified-cash limit.</div></div>
           </div>
 
           <div class="v59-explain-grid">
@@ -1581,10 +1605,10 @@ elif mode == "DCA Today":
         _preview_cols[2].metric("Hypothetical weekly allocation", _preview_text)
         st.caption(
             f"R2 SIZING risk {current_risk:.3f}; observation date {_sizing_observation_date}; "
-            f"age {_sizing_observation_age_days} days. Research bands: ≤0.10: 3×, "
-            "≤0.20: 2×, ≤0.40: 1.5×, ≤0.50: 1×, >0.50: NO BUY. "
-            "Illustrative amount capped at the deployable cash and 5% of starting "
-            "capital per week. A recent observation does NOT prove provider timestamp "
+            f"age {_sizing_observation_age_days} days. Candidate multiplier {_aggressive_preview['candidate_multiplier']:.2f}×. "
+            "The preview uses the current research risk-band schedule; risk ≥0.40 maps to 0×. "
+            "Illustrative amount is bounded by verified deployable cash and remaining "
+            "capital, with no fixed weekly percentage cap. A recent observation does NOT prove provider timestamp "
             "provenance or ETF tradeability. No live sizing, portfolio, Streamlit hero "
             "recommendation, or ntfy execution is changed by this preview."
         )
@@ -2070,6 +2094,24 @@ elif mode == "DCA Today":
         "Opportunity Rarity is calculated separately and does not change the multiplier."
     )
 
+    with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
+        _weekly_pl_residual = valid_today["power_law_residual"].resample("W-MON").last().dropna()
+        _floor_audit = power_law_floor_diagnostics(
+            display_source, _weekly_pl_residual, cheap_threshold=pl_cheap_threshold
+        )
+        if not _floor_audit.empty:
+            st.dataframe(_floor_audit, width="stretch", hide_index=True)
+            _cheap_ratio = 10.0 ** pl_cheap_threshold
+            st.caption(
+                f"The default floor is reached when BTC is at or below {_cheap_ratio:.1%} "
+                f"of the walk-forward Power Law fair value (residual ≤{pl_cheap_threshold:.2f}). "
+                "The tighter −0.15 and −0.20 columns are sensitivity checks only; they do not "
+                "change the active model. Zero is a clipped valuation score, not zero market risk. "
+                "Mismatches should be zero; any non-zero count needs investigation."
+            )
+        else:
+            st.info("Not enough aligned weekly risk and Power Law residual observations for this audit.")
+
     with st.expander("Chance of a lower-risk entry — current + previous 2 cycles", expanded=False):
         if opportunity["samples"] >= 1:
             st.write(
@@ -2122,15 +2164,15 @@ elif mode == "DCA Today":
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
             "Normal weekly allowance = (deployable reserve − protected capital) ÷ weeks remaining. "
-            "The ordinary Risk Score multiplier follows the discrete 16× / 8× / 4× / 2× / 1× / 0× ladder. "
+            "The ordinary Risk Score multiplier follows the active 10× / 5× / 3× / 2× / 1.5× / 1× / 0× ladder. "
             "Only a newly confirmed, eligible Exceptional Bottom event may increase the separate research challenger amount; "
             "the Halving Accumulation Zone is context only. "
-            "The final purchase is capped at deployable reserve and 5% of original starting capital per week."
+            "The ordinary amount is bounded by verified deployable reserve and remaining deployment capital; there is no fixed weekly percentage cap."
         )
         st.write(
             f"(A${remaining_capital_aud:,.0f} − A${preserved_capital_aud:,.0f} protected) ÷ {weeks_remaining:.1f} weeks "
             f"× {paced_risk_weight:.2f} effective ordinary multiplier "
-            f"(raw risk weight {risk_weight:.2f}x; capped at 1.00x) "
+            f"(raw risk weight {risk_weight:.2f}x) "
             f"= A${recommended_buy:,.0f}"
         )
         if np.isfinite(rarity["percentile"]):

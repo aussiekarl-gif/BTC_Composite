@@ -126,13 +126,22 @@ class AppRiskLadderTests(unittest.TestCase):
     def test_shared_purchase_display_blocks_unverified_portfolio(self):
         result = dca_purchase_display(
             portfolio_verified=False, risk_multiplier=0.05,
-            effective_multiplier=16.0, recommended_buy_aud=0.0,
+            effective_multiplier=10.0, recommended_buy_aud=0.0,
             base_allowance_aud=1000.0, remaining_capital_aud=50000.0,
         )
         self.assertEqual(result["amount"], "BLOCKED")
         self.assertEqual(result["pill"], "PORTFOLIO NOT VERIFIED")
         self.assertEqual(result["allowance"], "Unavailable")
         self.assertEqual(result["remaining"], "Unavailable")
+
+    def test_unverified_portfolio_explains_exact_blocker(self):
+        result = dca_purchase_display(
+            portfolio_verified=False, risk_multiplier=0.0,
+            effective_multiplier=0.0, recommended_buy_aud=0.0,
+            base_allowance_aud=0.0, remaining_capital_aud=0.0,
+            portfolio_verification_reason="Only a browser-recovery copy is available. Save to server storage.",
+        )
+        self.assertIn("browser-recovery copy", result["reason_sub"])
 
     def test_shared_purchase_display_does_not_show_buy_when_cash_is_zero(self):
         result = dca_purchase_display(
@@ -153,6 +162,17 @@ class AppRiskLadderTests(unittest.TestCase):
         self.assertEqual(result["pill"], "NO BUY THIS WEEK")
         self.assertEqual(result["reason_title"], "Risk policy: NO BUY")
 
+    def test_research_can_explain_040_without_changing_shared_default(self):
+        common = dict(
+            portfolio_verified=True, risk_multiplier=0.0,
+            effective_multiplier=0.0, recommended_buy_aud=0.0,
+            base_allowance_aud=1000.0, remaining_capital_aud=10000.0,
+        )
+        production_default = dca_purchase_display(**common)
+        research = dca_purchase_display(**common, no_buy_threshold=0.40)
+        self.assertIn("0.50", production_default["reason_sub"])
+        self.assertIn("0.40", research["reason_sub"])
+
     def test_shared_purchase_display_shows_buy_only_for_positive_verified_amount(self):
         result = dca_purchase_display(
             portfolio_verified=True, risk_multiplier=0.05,
@@ -171,6 +191,8 @@ class AppRiskLadderTests(unittest.TestCase):
             self.assertNotIn("V5.8.2 always buys", source)
             self.assertNotIn("Why only 1×?", source)
             self.assertNotIn("R2 raised to at least", source)
+        self.assertNotIn("16× / 8× / 4×", research_source)
+        self.assertNotIn("5% of starting capital per week", research_source)
 
 
 if __name__ == "__main__":

@@ -483,6 +483,69 @@ def risk_occurrence_table(risk_series):
     ])
 
 
+
+def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0.10):
+    """Audit clipped zero-risk observations by halving cycle and residual depth.
+
+    The current score is zero when its walk-forward Power Law residual is at or
+    below cheap_threshold. Tighter residual cutoffs are shown for sensitivity
+    only; this function never changes the live score or sizing policy.
+    """
+    risk = pd.to_numeric(pd.Series(risk_series), errors="coerce").rename("risk")
+    residual = pd.to_numeric(pd.Series(residual_series), errors="coerce").rename("residual")
+    frame = pd.concat([risk, residual], axis=1).dropna(subset=["risk"])
+    columns = [
+        "Cycle", "Weeks", "Floor weeks", "Floor %",
+        "Residual weeks", "Residual ≤−0.15 %", "Residual ≤−0.20 %",
+        "Score/residual mismatches",
+    ]
+    if frame.empty or not isinstance(frame.index, pd.DatetimeIndex):
+        return pd.DataFrame(columns=columns)
+
+    idx = pd.to_datetime(frame.index, utc=True).tz_localize(None)
+    frame.index = idx
+    frame = frame.sort_index()
+    periods = [
+        ("Pre-2016 halving (partial history)", None, pd.Timestamp("2016-07-09")),
+        ("2016–2020 cycle", pd.Timestamp("2016-07-09"), pd.Timestamp("2020-05-11")),
+        ("2020–2024 cycle", pd.Timestamp("2020-05-11"), pd.Timestamp("2024-04-20")),
+        ("2024–current cycle", pd.Timestamp("2024-04-20"), None),
+    ]
+    groups = [("All history", frame)]
+    for label, start, end in periods:
+        part = frame
+        if start is not None:
+            part = part.loc[part.index >= start]
+        if end is not None:
+            part = part.loc[part.index < end]
+        if not part.empty:
+            groups.append((label, part))
+
+    rows = []
+    for label, part in groups:
+        n = int(len(part))
+        floor = part["risk"].eq(0.0)
+        residual_valid = part["residual"].notna()
+        residual_weeks = int(residual_valid.sum())
+        model_floor = part.loc[residual_valid, "residual"].le(float(cheap_threshold))
+        mismatches = int((floor.loc[residual_valid].to_numpy() != model_floor.to_numpy()).sum())
+        rows.append({
+            "Cycle": label,
+            "Weeks": n,
+            "Floor weeks": int(floor.sum()),
+            "Floor %": round(100.0 * float(floor.mean()), 1),
+            "Residual weeks": residual_weeks,
+            "Residual ≤−0.15 %": round(
+                100.0 * float(part.loc[residual_valid, "residual"].le(-0.15).mean()), 1
+            ) if residual_weeks else 0.0,
+            "Residual ≤−0.20 %": round(
+                100.0 * float(part.loc[residual_valid, "residual"].le(-0.20).mean()), 1
+            ) if residual_weeks else 0.0,
+            "Score/residual mismatches": mismatches,
+        })
+    return pd.DataFrame(rows, columns=columns)
+
+
 # ================================================================
 # Data Fetchers
 # ================================================================
