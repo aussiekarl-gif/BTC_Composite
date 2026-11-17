@@ -2099,10 +2099,11 @@ elif mode == "DCA Today":
 
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
-            "Normal weekly allowance = capital remaining ÷ weeks remaining. "
-            "The raw Risk Score weight is capped at 1.00x for ordinary weekly purchases. "
-            "Only an eligible newly confirmed Exceptional Bottom event may raise that cap. "
-            "The final purchase is capped at deployable capital."
+            "Normal weekly allowance = (deployable reserve − protected capital) ÷ weeks remaining. "
+            "The ordinary Risk Score multiplier follows the discrete 16× / 8× / 4× / 2× / 1× / 0× ladder. "
+            "Only a newly confirmed, eligible Exceptional Bottom event may increase the separate research challenger amount; "
+            "the Halving Accumulation Zone is context only. "
+            "The final purchase is capped at deployable reserve and 5% of original starting capital per week."
         )
         st.write(
             f"(A${remaining_capital_aud:,.0f} − A${preserved_capital_aud:,.0f} protected) ÷ {weeks_remaining:.1f} weeks "
