@@ -10,7 +10,7 @@ class RiskOccurrenceTableTests(unittest.TestCase):
         by_label = result.set_index("Risk range")
         self.assertEqual(result["Weeks"].sum(), 10)
         self.assertAlmostEqual(result["Percent"].sum(), 100)
-        self.assertEqual(by_label.loc["0.000 (floor)", "Weeks"], 1)
+        self.assertEqual(by_label.loc["0.00–0.01", "Weeks"], 2)
         self.assertEqual(by_label.loc["1.000 (cap)", "Weeks"], 1)
         self.assertEqual(by_label.loc[">1.00 (invalid)", "Weeks"], 2)
         self.assertEqual(by_label.loc["<0.00 (invalid)", "Weeks"], 2)
