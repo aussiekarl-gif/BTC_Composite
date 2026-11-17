@@ -8,6 +8,7 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.production import production_model as _model
+from engines.shared.dca_purchase_status import dca_purchase_display
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
 from engines.shared.ibit_dca_display import show_ibit_dca_equivalent
 from engines.shared.btc_ibit_comparison import show_btc_ibit_comparison
@@ -1140,43 +1141,22 @@ elif mode == "DCA Today":
         if opportunity["cycles_used"] >= 1 else "n/a"
     )
 
-    # Keep the displayed action consistent with the verified cash recommendation.
-    if not portfolio_verified:
-        purchase_status = "BLOCKED"
-        purchase_pill = "PORTFOLIO NOT VERIFIED"
-        purchase_pill_class = "blocked"
-        purchase_sub = "Cash sizing withheld"
-        allowance_display = "Unavailable"
-        remaining_display = "Unavailable"
-        purchase_reason_title = "Cash sizing blocked"
-        purchase_reason_sub = "Authoritative portfolio could not be verified; no purchase amount is available."
-    elif risk_weight <= 0.0:
-        purchase_status = "A$ 0"
-        purchase_pill = "NO BUY THIS WEEK"
-        purchase_pill_class = "blocked"
-        purchase_sub = "Risk score is in the 0.50+ no-buy band"
-        allowance_display = f"A$ {normal_weekly_allowance:,.0f}"
-        remaining_display = f"A$ {remaining_capital_aud:,.0f}"
-        purchase_reason_title = "Risk policy: NO BUY"
-        purchase_reason_sub = "Risk score is 0.50 or higher; the selected ladder sets the multiplier to 0×."
-    elif recommended_buy <= 0.0:
-        purchase_status = "A$ 0"
-        purchase_pill = "NO BUY — NO CASH"
-        purchase_pill_class = "blocked"
-        purchase_sub = "No deployable cash is available"
-        allowance_display = f"A$ {normal_weekly_allowance:,.0f}"
-        remaining_display = f"A$ {remaining_capital_aud:,.0f}"
-        purchase_reason_title = "No deployable cash"
-        purchase_reason_sub = "The verified portfolio has no available cash for a purchase."
-    else:
-        purchase_status = f"A$ {recommended_buy:,.0f}"
-        purchase_pill = "BUY THIS WEEK"
-        purchase_pill_class = "ready"
-        purchase_sub = f"That's {risk_weight:.2f}× your base weekly amount"
-        allowance_display = f"A$ {normal_weekly_allowance:,.0f}"
-        remaining_display = f"A$ {remaining_capital_aud:,.0f}"
-        purchase_reason_title = "Risk policy: BUY BAND"
-        purchase_reason_sub = "Portfolio verified, cash available, and risk is below the 0.50 no-buy threshold."
+    _purchase_display = dca_purchase_display(
+        portfolio_verified=portfolio_verified,
+        risk_multiplier=risk_weight,
+        effective_multiplier=risk_weight,
+        recommended_buy_aud=recommended_buy,
+        base_allowance_aud=normal_weekly_allowance,
+        remaining_capital_aud=remaining_capital_aud,
+    )
+    purchase_status = _purchase_display["amount"]
+    purchase_pill = _purchase_display["pill"]
+    purchase_pill_class = _purchase_display["pill_class"]
+    purchase_sub = _purchase_display["sub"]
+    allowance_display = _purchase_display["allowance"]
+    remaining_display = _purchase_display["remaining"]
+    purchase_reason_title = _purchase_display["reason_title"]
+    purchase_reason_sub = _purchase_display["reason_sub"]
 
     st.markdown(
         """
