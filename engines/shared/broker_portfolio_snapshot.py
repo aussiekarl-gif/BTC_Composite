@@ -190,6 +190,8 @@ def merge_broker_snapshot(fresh_portfolio, snapshot):
     if not isinstance(fresh_portfolio, dict):
         raise ValueError("Persistent portfolio must be a dictionary")
     result = copy.deepcopy(fresh_portfolio)
+    result.setdefault("rows", [])
+    result.setdefault("sales", [])
     result["broker_snapshot"] = copy.deepcopy(snapshot)
     if not result.get("starting_capital_aud"):
         result["starting_capital_aud"] = float(snapshot["starting_capital_aud"])
