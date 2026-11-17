@@ -22,6 +22,7 @@ from engines.shared.broker_portfolio_snapshot import (
 from engines.shared.portfolio_buy_tables import (
     add_btc_usd_reference, parse_portfolio_date, render_purchase_editor, render_calculated_transactions,
 )
+from engines.shared.risk_ladder_chart import risk_ladder_chart_labels
 from engines.shared.portfolio_execution_accuracy import (
     calculate_portfolio_entry_error, DEFAULT_REFERENCE_USD, DEFAULT_REFERENCE_DATE,
 )
@@ -1352,9 +1353,15 @@ elif mode == "DCA Today":
 
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(rarity_source)
+    _prod_bucket_lowers = [0.00, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80]
+    _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
+        occurrence["Risk range"].tolist(), _prod_bucket_lowers,
+        DEFAULT_ALWAYS_DCA_POINTS,
+    )
     fig_occurrence = go.Figure()
-    # Highlight the bucket that contains today's risk (same edges as risk_occurrence_table).
-    _bucket_edges = [0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80]
+    # Highlight today's actual sizing-risk bucket; show its applicable buy
+    # multiplier directly on every valid bucket label.
+    _bucket_edges = _prod_bucket_lowers[1:]
     try:
         _cur = float(current_risk)
         _cur_idx = sum(_cur >= e for e in _bucket_edges) if _cur == _cur else -1
@@ -1363,14 +1370,17 @@ elif mode == "DCA Today":
     _bar_colors = [
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
     ]
+    _chart_custom = occurrence[["Weeks"]].copy()
+    _chart_custom["Buy multiplier"] = _chart_multipliers
     fig_occurrence.add_bar(
-        x=occurrence["Risk range"],
+        x=_chart_labels,
         y=occurrence["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks"]],
+        customdata=_chart_custom.to_numpy(),
         hovertemplate=(
             "Risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
+            "<br>Buy multiplier: %{customdata[1]}×"
             "<extra></extra>"
         ),
     )
@@ -1382,7 +1392,7 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current risk {current_risk:.3f} (orange bar). This chart is descriptive: it shows the percentage "
+        f"Current risk {current_risk:.3f} (orange bar). Each valid risk bucket is labelled with its DCA buy multiplier. The chart shows the percentage "
         "of weekly observations that fell inside each Risk Score range. It does NOT assign "
         "Opportunity Rarity to individual buckets. Opportunity Rarity is calculated separately "
         "as how often comparable cycle-phase observations were at or below today's risk "

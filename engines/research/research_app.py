@@ -29,6 +29,7 @@ from engines.shared.broker_portfolio_snapshot import (
 from engines.shared.portfolio_buy_tables import (
     add_btc_usd_reference, parse_portfolio_date, render_purchase_editor, render_calculated_transactions,
 )
+from engines.shared.risk_ladder_chart import risk_ladder_chart_labels
 from engines.shared.portfolio_execution_accuracy import (
     calculate_portfolio_entry_error, DEFAULT_REFERENCE_USD, DEFAULT_REFERENCE_DATE,
 )
@@ -1275,17 +1276,12 @@ elif mode == "DCA Today":
     else:
         # Safe fallback: use observations in their existing chronological order.
         rarity_source = valid_today["risk_score"].dropna()
-    # Display-only: weekly history of the continuous valuation risk (never clamps at 0.000).
-    # Sizing, Opportunity Rarity and the multiplier keep using the frozen R2 score above.
-    _display_hist = pd.Series(dtype=float)
-    if "continuous_valuation_risk" in valid_today.columns:
-        if isinstance(valid_today.index, pd.DatetimeIndex):
-            _display_hist = valid_today["continuous_valuation_risk"].resample("W-MON").last().dropna()
-        elif "date" in valid_today.columns:
-            _display_hist = valid_today.set_index("date")["continuous_valuation_risk"].resample("W-MON").last().dropna()
-    display_source = _display_hist if len(_display_hist) >= 10 else rarity_source
-    _display_now = current_display_risk if np.isfinite(current_display_risk) else current_risk
-    _display_txt = format_continuous_risk(_display_now, current_price_usd)
+    # The first histogram is the DCA risk-band chart, so it must use the
+    # historical R2 sizing score (not the separate continuous valuation display).
+    # This keeps its bucket labels and 16x/8x/... multipliers consistent with sizing.
+    display_source = rarity_source
+    _display_now = current_risk
+    _display_txt = f"R2 sizing risk {current_risk:.3f}"
     rarity = opportunity_rarity_from_history(rarity_source, current_risk)
     # V5.9 Research: rarity is decision-support context only. Risk Score alone controls sizing.
     effective_weight = risk_weight
@@ -2034,21 +2030,30 @@ elif mode == "DCA Today":
 
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(display_source)
+    _research_bucket_lowers = [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80, 1.00, None]
+    _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
+        occurrence["Risk range"].tolist(), _research_bucket_lowers,
+        SMART_DCA_POINTS,
+    )
     fig_occurrence = go.Figure()
-    # The histogram has separate invalid, zero and (0, .01) categories.
-    # Former edge counting highlighted a bar two places to the left.
-    _cur_idx = highlighted_histogram_bucket(_display_now)
+    # Separate invalid and exact-zero buckets are preserved. The histogram is
+    # now explicitly based on R2 sizing risk, with each valid bucket labelled
+    # using the exact same discrete ladder as DCA Today.
+    _cur_idx = highlighted_histogram_bucket(current_risk)
     _bar_colors = [
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
     ]
+    _chart_custom = occurrence[["Weeks"]].copy()
+    _chart_custom["Buy multiplier"] = _chart_multipliers
     fig_occurrence.add_bar(
-        x=occurrence["Risk range"],
+        x=_chart_labels,
         y=occurrence["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks"]],
+        customdata=_chart_custom.to_numpy(),
         hovertemplate=(
             "Risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
+            "<br>Buy multiplier: %{customdata[1]}×"
             "<extra></extra>"
         ),
     )

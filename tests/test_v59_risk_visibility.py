@@ -1,6 +1,7 @@
 """Regression tests: orange histogram bucket and read-only 3x candidate preview."""
 import unittest
 
+from engines.shared.risk_ladder_chart import risk_ladder_chart_labels
 from engines.research.v59_risk_visibility import (
     aggressive_candidate_preview, highlighted_histogram_bucket,
 )
@@ -69,6 +70,36 @@ class RiskHighlightAndCandidateTests(unittest.TestCase):
         for risk in (-0.1, 1.1, float("nan")):
             with self.assertRaises(ValueError):
                 self.preview(risk)
+
+
+class RiskLadderChartLabelTests(unittest.TestCase):
+    LADDER = [(0.00, 16.0), (0.10, 8.0), (0.20, 4.0), (0.30, 2.0), (0.40, 1.0), (0.50, 0.0)]
+
+    def test_research_chart_shows_16x_on_zero_and_first_low_risk_buckets(self):
+        labels, multipliers = risk_ladder_chart_labels(
+            ["<0.00 (invalid)", "0.000 (floor)", "(0.00, 0.01)", "0.01–0.02",
+             "0.02–0.05", "0.05–0.10", "0.10–0.20", "0.20–0.40",
+             "0.40–0.60", "0.60–0.80", "0.80–1.00", "1.000 (cap)", ">1.00 (invalid)"],
+            [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20,
+             0.40, 0.60, 0.80, 1.00, None],
+            self.LADDER,
+        )
+        self.assertIsNone(multipliers[0])
+        self.assertEqual(multipliers[1:6], [16.0] * 5)
+        self.assertEqual(multipliers[6:11], [8.0, 4.0, 1.0, 0.0, 0.0])
+        self.assertEqual(multipliers[11], 0.0)
+        self.assertIsNone(multipliers[12])
+        self.assertIn("16×", labels[1])
+        self.assertIn("16×", labels[2])
+
+    def test_production_chart_shows_16x_on_both_first_bars(self):
+        labels, multipliers = risk_ladder_chart_labels(
+            ["0.00–0.01", "0.01–0.02", "0.02–0.05", "0.05–0.10", "0.10–0.20"],
+            [0.00, 0.01, 0.02, 0.05, 0.10],
+            self.LADDER,
+        )
+        self.assertEqual(multipliers, [16.0, 16.0, 16.0, 16.0, 8.0])
+        self.assertTrue(all("16×" in label for label in labels[:4]))
 
 
 if __name__ == "__main__":
