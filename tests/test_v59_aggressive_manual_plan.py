@@ -42,21 +42,21 @@ def plan(ledger=None, risk=None, cash=500000, units=0, ask=20, reserve=0,
 
 
 class ManualAggressivePlanTests(unittest.TestCase):
-    def test_risk_zero_is_3x_with_5pct_original_cap(self):
+    def test_risk_zero_is_10x_without_fixed_weekly_cap(self):
         p = plan()
         self.assertTrue(p["ready"], p["blockers"])
-        self.assertEqual(p["multiplier"], 3.0)
-        self.assertEqual(p["weekly_cap_aud"], 25000)
-        self.assertEqual(p["proposed_max_spend_aud"], 25000)
-        self.assertEqual(p["indicative_whole_ibit_units"], 1249)
+        self.assertEqual(p["multiplier"], 10.0)
+        self.assertEqual(p["weekly_cap_aud"], p["spendable_aud"])
+        self.assertGreater(p["proposed_max_spend_aud"], 25000)
+        self.assertEqual(p["indicative_whole_ibit_units"], int((Decimal(str(p["proposed_max_spend_aud"])) - Decimal("3.00")) / Decimal("20.00")))
         self.assertLessEqual(p["indicative_order_total_inc_fee_aud"], p["proposed_max_spend_aud"])
         self.assertFalse(p["order_sent"])
 
-    def test_no_buy_above_point_five(self):
-        risk = dict(RISK, r2_sizing_risk=.500001)
+    def test_no_buy_at_or_above_point_four(self):
+        risk = dict(RISK, r2_sizing_risk=.40)
         p = plan(risk=risk)
         self.assertFalse(p["ready"])
-        self.assertIn("RISK_ABOVE_0_50_NO_BUY", p["blockers"])
+        self.assertIn("RISK_AT_OR_ABOVE_0_40_NO_BUY", p["blockers"])
         self.assertIsNone(p["proposed_max_spend_aud"])
 
     def test_cash_reserve_and_broker_cash_reduce_allowance(self):
@@ -149,7 +149,7 @@ class ManualAggressivePlanTests(unittest.TestCase):
         self.assertEqual(p["status"], "INVALID_ORDER_PRICE_OR_BUDGET")
         self.assertFalse(p["order_sent"])
 
-    def test_randomized_limit_orders_respect_cash_and_weekly_cap(self):
+    def test_randomized_limit_orders_respect_verified_cash(self):
         rng = random.Random(20261111)
         risk_levels = (0, .10, .10001, .20, .20001, .40, .40001, .50, .50001, 1.)
         for n in range(500):
@@ -160,7 +160,7 @@ class ManualAggressivePlanTests(unittest.TestCase):
             p = plan(cash=cash, reserve=reserve, ask=ask,
                      risk=dict(RISK, r2_sizing_risk=risk))
             self.assertFalse(p["order_sent"])
-            if risk > .5 or not p["ready"]:
+            if risk >= .4 or not p["ready"]:
                 self.assertIsNone(p["indicative_whole_ibit_units"])
                 continue
             with self.subTest(n=n):
@@ -169,14 +169,13 @@ class ManualAggressivePlanTests(unittest.TestCase):
                 total = Decimal(str(p["indicative_order_total_inc_fee_aud"]))
                 self.assertEqual(total, units * limit + Decimal("3.00"))
                 self.assertLessEqual(total, Decimal(str(p["proposed_max_spend_aud"])))
-                self.assertLessEqual(total, Decimal(str(p["weekly_cap_aud"])))
                 self.assertLessEqual(total, Decimal(str(p["spendable_aud"])))
                 self.assertLessEqual(total, Decimal(str(cash)))
                 self.assertGreater(units, 0)
 
     def test_quote_larger_than_budget_no_whole_units(self):
-        p = plan(ask=30000)
-        self.assertIn("NO_AFFORDABLE_WHOLE_IBIT_SHARES_WITHIN_WEEKLY_BUDGET", p["blockers"])
+        p = plan(ask=600000)
+        self.assertIn("NO_AFFORDABLE_WHOLE_IBIT_SHARES_WITHIN_VERIFIED_CASH", p["blockers"])
 
 
 if __name__ == "__main__":

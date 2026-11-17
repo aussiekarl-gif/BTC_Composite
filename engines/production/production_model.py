@@ -92,21 +92,20 @@ DEFAULT_FIXED_DCA_AUD = 1000.0
 # Screenshot-derived step ladder. Risk ceilings are inclusive at each
 # lower band; the next band's multiplier applies exactly at its boundary.
 SCREENSHOT_RISK_LADDER_POINTS = [
-    (0.00, 16.0),
-    (0.01, 10.0),
-    (0.02, 8.0),
-    (0.05, 4.0),
-    (0.10, 3.0),
-    (0.20, 2.0),
-    (0.40, 1.0),
-    (0.50, 0.0),
+    (0.00, 10.0),
+    (0.01, 5.0),
+    (0.02, 3.0),
+    (0.05, 2.0),
+    (0.10, 1.5),
+    (0.20, 1.0),
+    (0.40, 0.0),
 ]
 DEFAULT_ALWAYS_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 
 DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
 
-SMART_DCA_LOW_RISK_WEIGHT = 16.0
+SMART_DCA_LOW_RISK_WEIGHT = 10.0
 SMART_DCA_HIGH_RISK_WEIGHT = 0.0
 SMART_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 

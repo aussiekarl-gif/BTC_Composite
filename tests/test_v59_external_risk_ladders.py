@@ -47,10 +47,9 @@ class ExternalRiskLadderTests(unittest.TestCase):
         self.assertEqual(result["orders"][0]["multiplier"], 16.0)
         self.assertEqual(result["orders"][0]["buy_aud"], 25500.0)
 
-    def test_external_ladders_do_not_change_existing_default(self):
-        self.assertEqual(risk_buy_multiplier(0.05), 3.0)
-        self.assertEqual(risk_buy_multiplier(0.30), 1.5)
-        self.assertEqual(risk_buy_multiplier(0.50), 1.0)
+    def test_active_default_uses_revised_user_risk_ladder(self):
+        self.assertEqual([risk_buy_multiplier(x) for x in (0.0, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.50)],
+                         [10.0, 5.0, 3.0, 2.0, 1.5, 1.0, 0.0, 0.0])
 
     def test_invalid_custom_ladder_rejected(self):
         with self.assertRaises(ValueError):

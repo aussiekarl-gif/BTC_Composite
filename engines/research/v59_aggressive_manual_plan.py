@@ -136,7 +136,7 @@ def manual_ibit_plan(*, saved_portfolio: dict, risk_snapshot: dict,
         multiplier = None
         blocked.append("R2_SIZING_RISK_INVALID")
     if multiplier == 0:
-        blocked.append("RISK_ABOVE_0_50_NO_BUY")
+        blocked.append("RISK_AT_OR_ABOVE_0_40_NO_BUY")
     asx_now = now.astimezone(_ASX_TZ)
     # Market session test is necessary, NOT proof of an ASX holiday/calendar.
     # The user's fresh live Stake ask quote is separately required.
@@ -184,12 +184,14 @@ def manual_ibit_plan(*, saved_portfolio: dict, risk_snapshot: dict,
     investable = max(0.0, min(ledger_cash, cash) - reserve)
     weeks_left = max((review_date - today).days / 7.0, 1.0)
     base = investable / weeks_left
-    ceiling = max(0.0, 0.05 * start_capital)
-    proposed = min(investable, max(0.0, base * (multiplier or 0)), ceiling)
+    # No fixed weekly percentage ceiling: the amount remains constrained by
+    # verified unreserved broker cash and the remaining programme runway.
+    ceiling = investable
+    proposed = min(investable, max(0.0, base * (multiplier or 0)))
     # Size an order to its WORST-CASE *limit* price, not to a market order
     # that may fill higher than the currently observed ask. Decimal arithmetic
     # rounds the allowed programme spend DOWN, and limit price/fee UP to cents,
-    # protecting the 5% weekly and free-cash ceilings at whole-share precision.
+    # protecting the verified free-cash ceiling at whole-share precision.
     try:
         cent = Decimal("0.01")
         limit_price = Decimal(str(ask)).quantize(cent, rounding=ROUND_UP)
@@ -205,7 +207,7 @@ def manual_ibit_plan(*, saved_portfolio: dict, risk_snapshot: dict,
                 "blockers": ["Quote, fee or cash amount cannot be safely represented as an AUD cents limit order"],
                 "order_sent": False}
     if units <= 0:
-        blocked.append("NO_AFFORDABLE_WHOLE_IBIT_SHARES_WITHIN_WEEKLY_BUDGET")
+        blocked.append("NO_AFFORDABLE_WHOLE_IBIT_SHARES_WITHIN_VERIFIED_CASH")
     result = {
         "ready": len(blocked) == 0,
         "status": "MANUAL_ORDER_PLAN_ONLY" if not blocked else "BLOCKED_NO_ORDER_PLAN",

@@ -54,7 +54,7 @@ class ResearchRealPageAcceptance(unittest.TestCase):
     def tearDown(self):
         st.cache_data.clear()
 
-    def test_no_private_portfolio_still_shows_3x_as_research_only(self):
+    def test_no_private_portfolio_still_shows_10x_as_research_only(self):
         prices = synthetic_history()
         fx = pd.Series(.69, index=prices.index)
         def no_writes(*args, **kwargs):
@@ -77,14 +77,14 @@ class ResearchRealPageAcceptance(unittest.TestCase):
             page = AppTest.from_file(str(APP), default_timeout=75).run()
             self.assertFalse(page.exception,
                              repr([x.message for x in page.exception]))
-            # The live screenshot-derived 16x ladder and read-only 3x preview remain separate.
+            # The live revised 10x ladder and read-only research preview remain separate.
             names = [m.label for m in page.metric]
             self.assertIn("Live ordinary multiplier",names)
             self.assertIn("Aggressive research multiplier",names)
             self.assertIn("Actual V5.9 sizing risk",names)
             metrics = {m.label: str(m.value) for m in page.metric}
-            self.assertEqual(metrics["Live ordinary multiplier"],"16.00×")
-            self.assertEqual(metrics["Aggressive research multiplier"],"3.00×")
+            self.assertEqual(metrics["Live ordinary multiplier"],"10.00×")
+            self.assertEqual(metrics["Aggressive research multiplier"],"10.00×")
             self.assertFalse(any("indicative_whole_ibit_units" in str(m.value)
                                  for m in page.metric))
             # Private portfolio intentionally absent; planner explicitly blocks.

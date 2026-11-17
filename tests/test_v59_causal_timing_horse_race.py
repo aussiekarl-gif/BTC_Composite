@@ -26,12 +26,12 @@ def row(i, *, risk=.05, aud=100000., dd=-.5, ratio=.8, rising=True):
 class CausalTimingTests(unittest.TestCase):
     def test_risk_band_and_timing_candidate_gates(self):
         good=row(0)
-        self.assertEqual(policy_multiplier("risk_3x", good), 3.)
+        self.assertEqual(policy_multiplier("risk_3x", good), 2.)
         self.assertEqual(policy_multiplier("risk_1x", good), 1.)
         self.assertEqual(policy_multiplier("risk_2x", good), 2.)
-        self.assertEqual(policy_multiplier("risk_3x_below_200wma", good), 3.)
-        self.assertEqual(policy_multiplier("risk_3x_drawdown_40pct", good), 3.)
-        self.assertEqual(policy_multiplier("risk_3x_50dma_rising", good), 3.)
+        self.assertEqual(policy_multiplier("risk_3x_below_200wma", good), 2.)
+        self.assertEqual(policy_multiplier("risk_3x_drawdown_40pct", good), 2.)
+        self.assertEqual(policy_multiplier("risk_3x_50dma_rising", good), 2.)
         high=row(0, risk=.51)
         self.assertEqual(policy_multiplier("risk_3x", high), 0.)
         self.assertEqual(policy_multiplier("risk_1x", high), 0.)
@@ -172,7 +172,7 @@ class FalseBottomResearchTests(unittest.TestCase):
         a=study.candidate_multiplier("strict_stage_1x_drop10",x,dict(state))
         b=study.candidate_multiplier("strict_stage_1x_drop10",y,dict(state))
         self.assertEqual(a,b)
-        self.assertEqual(a,3.)
+        self.assertEqual(a,2.)
 
     def test_stage_trigger_is_dated_on_next_monday_from_prior_monday_price(self):
         from engines.research import v59_false_bottom_stress as study
@@ -184,7 +184,7 @@ class FalseBottomResearchTests(unittest.TestCase):
         )
         decision=row(2,risk=.05,aud=1000.)
         multiplier=study.candidate_multiplier("strict_stage_1x_drop10",decision,state)
-        self.assertEqual(multiplier,3.)
+        self.assertEqual(multiplier,2.)
         self.assertEqual([e["threshold_pct"] for e in state["trigger_events"]],[10])
         event=state["trigger_events"][0]
         self.assertEqual(event["anchor_monday"],"2021-01-04")
@@ -261,10 +261,10 @@ class WmaProximityResearchTests(unittest.TestCase):
         near=next(g for g in GATES if g.name=="within_10pct")
         below=next(g for g in GATES if g.name=="below_to_plus10")
         near_row=row(0,risk=.05,ratio=1.04)
-        self.assertEqual(gate_weight(near_row,near),3.)
-        self.assertEqual(gate_weight(dict(near_row,btc_price_aud=200.),near),3.)
+        self.assertEqual(gate_weight(near_row,near),2.)
+        self.assertEqual(gate_weight(dict(near_row,btc_price_aud=200.),near),2.)
         self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=.80),near),0.)
-        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=.80),below),3.)
+        self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=.80),below),2.)
         self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=1.11),near),0.)
         self.assertEqual(gate_weight(dict(near_row,risk_score=.51),near),0.)
         self.assertEqual(gate_weight(dict(near_row,ratio_to_200wma=float("nan")),near),0.)
@@ -278,7 +278,7 @@ class WmaProximityResearchTests(unittest.TestCase):
             self.assertEqual(gate_weight(dict(r,ratio_to_200wma=float("nan")),gate),0.)
         under=next(x for x in GATES if x.name=="ten_pct_below")
         within=next(x for x in GATES if x.name=="within_5pct")
-        self.assertEqual(gate_weight(dict(r,ratio_to_200wma=.70),under),3.)
+        self.assertEqual(gate_weight(dict(r,ratio_to_200wma=.70),under),2.)
         self.assertEqual(gate_weight(dict(r,ratio_to_200wma=.70),within),0.)
 
     def test_wma_research_injection_matches_original_when_unrestricted(self):
@@ -342,7 +342,7 @@ class ExternalLadderHorseRaceTests(unittest.TestCase):
 
     def test_external_ladders_do_not_change_original_policy_multipliers(self):
         sample = row(0, risk=.05)
-        self.assertEqual(policy_multiplier("risk_3x", sample), 3.)
+        self.assertEqual(policy_multiplier("risk_3x", sample), 2.)
         self.assertEqual(policy_multiplier("risk_1x", sample), 1.)
         self.assertEqual(policy_multiplier("risk_2x", sample), 2.)
 

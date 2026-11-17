@@ -93,7 +93,7 @@ class ForwardDcaTapeTests(unittest.TestCase):
 
     def test_200wma_proximity_gate_and_high_risk_stop(self):
         cheap=row(date(2026,11,15),risk=.05,ratio=.98)
-        self.assertEqual(t.multipliers(cheap)["below_200wma"],3.)
+        self.assertEqual(t.multipliers(cheap)["below_200wma"],2.)
         above=row(date(2026,11,15),risk=.05,ratio=1.15)
         self.assertEqual(t.multipliers(above)["below_to_plus10"],0.)
         high=row(date(2026,11,15),risk=.51,ratio=.85)

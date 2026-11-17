@@ -27,7 +27,7 @@ class ProspectiveRiskCaptureAcceptance(unittest.TestCase):
         self.assertEqual(s["status"], "RESEARCH_SIGNAL_SNAPSHOT_READY")
         self.assertEqual(s["r2_sizing_risk"], .06)
         self.assertEqual(s["continuous_valuation_risk"], .075)
-        self.assertEqual(s["research_aggressive_risk_band_multiplier"], 3.)
+        self.assertEqual(s["research_aggressive_risk_band_multiplier"], 2.)
         self.assertFalse(s["ready_for_live_aggressive_orders"])
         self.assertFalse(s["personal_portfolio_loaded"])
 
@@ -42,14 +42,14 @@ class ProspectiveRiskCaptureAcceptance(unittest.TestCase):
                                       params=params, fx_latest_date="2026-11-10")
         self.assertEqual(snapshot["status"], "RESEARCH_SIGNAL_SNAPSHOT_READY")
         self.assertEqual(snapshot["fingerprint"], replay["fingerprint"])
-        self.assertEqual(snapshot["research_aggressive_risk_band_multiplier"], 3.)
+        self.assertEqual(snapshot["research_aggressive_risk_band_multiplier"], 2.)
 
     def test_daily_future_row_never_replaces_latest_closed(self):
         a = frame("2026-11-10", risk=.4)
         b = frame("2026-11-11", risk=0.)
         s = snap(pd.concat([a, b]))
         self.assertEqual(s["r2_sizing_risk"], .4)
-        self.assertEqual(s["research_aggressive_risk_band_multiplier"], 1.5)
+        self.assertEqual(s["research_aggressive_risk_band_multiplier"], 0.)
 
     def test_neutral_fallback_not_treated_as_valid_trade_signal(self):
         s = snap(frame("2026-11-10", label="Neutral fallback", risk=.5))
@@ -75,8 +75,8 @@ class ProspectiveRiskCaptureAcceptance(unittest.TestCase):
             snapshot_from_scored(frame("2026-11-10"),
                  now_utc=datetime(2026,11,11), params=live_risk_params())
 
-    def test_risk_above_half_gives_no_buy_even_on_valid_snapshot(self):
-        s = snap(frame("2026-11-10", risk=.501))
+    def test_risk_at_or_above_point_four_gives_no_buy_even_on_valid_snapshot(self):
+        s = snap(frame("2026-11-10", risk=.40))
         self.assertEqual(s["research_aggressive_risk_band_multiplier"], 0.)
 
 

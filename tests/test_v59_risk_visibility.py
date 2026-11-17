@@ -12,8 +12,8 @@ class RiskHighlightAndCandidateTests(unittest.TestCase):
         examples = [
             (-0.1, 0), (0, 1), (.005, 2), (.01, 3),
             (.019, 3), (.02, 4), (.05, 5), (.10, 6),
-            (.20, 7), (.40, 8), (.60, 9), (.80, 10),
-            (1.00, 11), (1.1, 12), (float("inf"), 12),
+            (.20, 7), (.40, 8), (.50, 9), (.60, 10), (.80, 11),
+            (1.00, 12), (1.1, 13), (float("inf"), 13),
             (float("-inf"), 0), (float("nan"), -1), (None, -1),
         ]
         for raw, index in examples:
@@ -36,8 +36,10 @@ class RiskHighlightAndCandidateTests(unittest.TestCase):
 
     def test_aggressive_band_schedule_and_high_risk_pause(self):
         for risk, expected_mult in [
-            (0, 3), (.10, 3), (.10001, 2), (.20, 2),
-            (.20001, 1.5), (.40, 1.5), (.50, 1), (.50001, 0), (1, 0),
+            (0, 10), (.00999, 10), (.01, 5), (.01999, 5),
+            (.02, 3), (.04999, 3), (.05, 2), (.09999, 2),
+            (.10, 1.5), (.19999, 1.5), (.20, 1), (.39999, 1),
+            (.40, 0), (.50, 0), (1, 0),
         ]:
             with self.subTest(risk=risk):
                 r = self.preview(risk)
@@ -46,13 +48,13 @@ class RiskHighlightAndCandidateTests(unittest.TestCase):
                 self.assertTrue(r["research_only"])
                 self.assertTrue(r["not_approved_for_live_trading"])
 
-    def test_max_weekly_and_remaining_cash_caps(self):
+    def test_preview_respects_deployable_cash_without_fixed_weekly_cap(self):
         r = aggressive_candidate_preview(
             sizing_risk=.01, base_weekly_aud=20_000,
             deployable_aud=100_000, starting_capital_aud=500_000,
             risk_observation_age_days=1,
         )
-        self.assertEqual(r["candidate_buy_aud"], 25_000)
+        self.assertEqual(r["candidate_buy_aud"], 100_000)
         r = aggressive_candidate_preview(
             sizing_risk=.01, base_weekly_aud=20_000,
             deployable_aud=8_000, starting_capital_aud=500_000,
@@ -73,33 +75,33 @@ class RiskHighlightAndCandidateTests(unittest.TestCase):
 
 
 class RiskLadderChartLabelTests(unittest.TestCase):
-    LADDER = [(0.00, 16.0), (0.10, 8.0), (0.20, 4.0), (0.30, 2.0), (0.40, 1.0), (0.50, 0.0)]
+    LADDER = [(0.00, 10.0), (0.01, 5.0), (0.02, 3.0), (0.05, 2.0), (0.10, 1.5), (0.20, 1.0), (0.40, 0.0)]
 
-    def test_research_chart_shows_16x_on_zero_and_first_low_risk_buckets(self):
+    def test_research_chart_matches_revised_bands_on_each_histogram_bucket(self):
         labels, multipliers = risk_ladder_chart_labels(
             ["<0.00 (invalid)", "0.000 (floor)", "(0.00, 0.01)", "0.01–0.02",
              "0.02–0.05", "0.05–0.10", "0.10–0.20", "0.20–0.40",
-             "0.40–0.60", "0.60–0.80", "0.80–1.00", "1.000 (cap)", ">1.00 (invalid)"],
+             "0.40–0.50", "0.50–0.60", "0.60–0.80", "0.80–1.00", "1.000 (cap)", ">1.00 (invalid)"],
             [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20,
-             0.40, 0.60, 0.80, 1.00, None],
+             0.40, 0.50, 0.60, 0.80, 1.00, None],
             self.LADDER,
         )
         self.assertIsNone(multipliers[0])
-        self.assertEqual(multipliers[1:6], [16.0] * 5)
-        self.assertEqual(multipliers[6:11], [8.0, 4.0, 1.0, 0.0, 0.0])
-        self.assertEqual(multipliers[11], 0.0)
-        self.assertIsNone(multipliers[12])
-        self.assertIn("16×", labels[1])
-        self.assertIn("16×", labels[2])
+        self.assertEqual(multipliers[1:9], [10.0, 10.0, 5.0, 3.0, 2.0, 1.5, 1.0, 0.0])
+        self.assertEqual(multipliers[9:13], [0.0, 0.0, 0.0, 0.0])
+        self.assertIsNone(multipliers[13])
+        self.assertIn("10×", labels[1])
+        self.assertIn("10×", labels[2])
 
-    def test_production_chart_shows_16x_on_both_first_bars(self):
+    def test_production_chart_matches_new_first_risk_bands(self):
         labels, multipliers = risk_ladder_chart_labels(
             ["0.00–0.01", "0.01–0.02", "0.02–0.05", "0.05–0.10", "0.10–0.20"],
             [0.00, 0.01, 0.02, 0.05, 0.10],
             self.LADDER,
         )
-        self.assertEqual(multipliers, [16.0, 16.0, 16.0, 16.0, 8.0])
-        self.assertTrue(all("16×" in label for label in labels[:4]))
+        self.assertEqual(multipliers, [10.0, 5.0, 3.0, 2.0, 1.5])
+        self.assertIn("10×", labels[0])
+        self.assertIn("5×", labels[1])
 
 
 if __name__ == "__main__":
