@@ -508,10 +508,15 @@ with st.sidebar:
         st.header("DCA Today")
         if not portfolio_verified:
             st.error(
-                "PURCHASE RECOMMENDATION BLOCKED — the authoritative Google/SQLite "
-                "portfolio could not be verified. Browser recovery data is not trusted "
-                "for cash sizing. Market data and risk signals remain available; "
-                "restore or verify the saved portfolio in My Portfolio, then reload."
+                "PURCHASE RECOMMENDATION BLOCKED — the authoritative saved portfolio "
+                "has not passed verification. Cash-based sizing remains disabled."
+            )
+            st.warning(f"Exact verification reason: {portfolio_verification_reason}")
+            st.caption(
+                "To restore DCA Today, open My Portfolio → Current broker holdings and "
+                "deployable reserve, save a dated Stake snapshot, and confirm the "
+                "storage-verified success message. A browser-only recovery copy is "
+                "not sufficient; this safeguard will not be bypassed."
             )
         elif verified_portfolio_positions.get("broker_snapshot"):
             _bs = verified_portfolio_positions["broker_snapshot"]
