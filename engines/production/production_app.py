@@ -553,7 +553,7 @@ with st.sidebar:
     st.divider()
 
     active_smart_dca_curve, custom_curve_active = _multiplier_curve_controls(
-        SMART_DCA_POINTS, "production_multiplier_curve"
+        SMART_DCA_POINTS, "production_multiplier_curve_v2"
     )
 
     st.divider()
