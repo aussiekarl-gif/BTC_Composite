@@ -1,4 +1,5 @@
 name: V5.9 Research Risk Validation
+# Uses the current unit-test suites; no live data or notification credentials are needed.
 
 on:
   pull_request:
