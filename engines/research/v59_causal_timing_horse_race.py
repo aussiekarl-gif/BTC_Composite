@@ -226,7 +226,7 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         weight = (weight_fn(row) if weight_fn is not None else
                   policy_multiplier(policy, row)) if day <= review else 0.
         if not math.isfinite(weight) or not 0 <= weight <= 16.:
-            raise ValueError("Research buy weight must be finite and 0..3")
+            raise ValueError("Research buy weight must be finite and 0..16")
         spend = min(available, max(0., available / weeks_left * weight),
                     capital * max_fraction)
         if spend > fixed_fee + .01:
