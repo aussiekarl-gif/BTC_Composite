@@ -493,10 +493,10 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
     """
     risk = pd.to_numeric(pd.Series(risk_series), errors="coerce").rename("risk")
     residual = pd.to_numeric(pd.Series(residual_series), errors="coerce").rename("residual")
-    frame = pd.concat([risk, residual], axis=1).dropna()
+    frame = pd.concat([risk, residual], axis=1).dropna(subset=["risk"])
     columns = [
         "Cycle", "Weeks", "Floor weeks", "Floor %",
-        "Residual ≤−0.15 %", "Residual ≤−0.20 %",
+        "Residual weeks", "Residual ≤−0.15 %", "Residual ≤−0.20 %",
         "Score/residual mismatches",
     ]
     if frame.empty or not isinstance(frame.index, pd.DatetimeIndex):
@@ -525,15 +525,23 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
     for label, part in groups:
         n = int(len(part))
         floor = part["risk"].eq(0.0)
-        model_floor = part["residual"].le(float(cheap_threshold))
+        residual_valid = part["residual"].notna()
+        residual_weeks = int(residual_valid.sum())
+        model_floor = part.loc[residual_valid, "residual"].le(float(cheap_threshold))
+        mismatches = int((floor.loc[residual_valid].to_numpy() != model_floor.to_numpy()).sum())
         rows.append({
             "Cycle": label,
             "Weeks": n,
             "Floor weeks": int(floor.sum()),
             "Floor %": round(100.0 * float(floor.mean()), 1),
-            "Residual ≤−0.15 %": round(100.0 * float(part["residual"].le(-0.15).mean()), 1),
-            "Residual ≤−0.20 %": round(100.0 * float(part["residual"].le(-0.20).mean()), 1),
-            "Score/residual mismatches": int((floor != model_floor).sum()),
+            "Residual weeks": residual_weeks,
+            "Residual ≤−0.15 %": round(
+                100.0 * float(part.loc[residual_valid, "residual"].le(-0.15).mean()), 1
+            ) if residual_weeks else 0.0,
+            "Residual ≤−0.20 %": round(
+                100.0 * float(part.loc[residual_valid, "residual"].le(-0.20).mean()), 1
+            ) if residual_weeks else 0.0,
+            "Score/residual mismatches": mismatches,
         })
     return pd.DataFrame(rows, columns=columns)
 
