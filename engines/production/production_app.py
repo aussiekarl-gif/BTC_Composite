@@ -1075,7 +1075,7 @@ elif mode == "DCA Today":
     current_price_aud = live_price_aud if np.isfinite(live_price_aud) else historical_price_aud
     price_is_live = bool(np.isfinite(live_price_aud))
 
-    risk_weight = (0.0 if current_risk >= 0.50 else float(interpolate(smart_dca_curve, current_risk)))
+    risk_weight = float(risk_band_multiplier(smart_dca_curve, current_risk))
 
     # Opportunity rarity: use weekly historical risk observations available up
     # to today. This estimates how often BTC has been at least as cheap as now.
