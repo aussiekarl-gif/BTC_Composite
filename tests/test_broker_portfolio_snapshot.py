@@ -9,7 +9,7 @@ from engines.shared.broker_portfolio_snapshot import (
 
 def snapshot(**overrides):
     value = {
-        "as_of": "2026-11-17",
+        "as_of": dt.date.today().isoformat(),
         "starting_capital_aud": 510000.0,
         "aaa_units": 5329,
         "aaa_market_value_aud": 267355.93,
