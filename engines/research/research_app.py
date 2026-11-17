@@ -8,6 +8,7 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.research import research_model as _model
+from engines.shared.dca_purchase_status import dca_purchase_display
 from engines.research.v59_risk_visibility import (
     aggressive_candidate_preview, highlighted_histogram_bucket,
 )
@@ -1321,26 +1322,22 @@ elif mode == "DCA Today":
     deployed = max(float(starting_capital_aud) - float(remaining_capital_aud), 0.0)
     remaining_after = max(float(remaining_capital_aud) - challenger_recommended_buy, 0.0)
 
-    # Separate the risk multiplier from whether cash can actually be deployed.
-    if not portfolio_verified:
-        purchase_status, purchase_pill, purchase_pill_class = "BLOCKED", "PORTFOLIO NOT VERIFIED", "blocked"
-        purchase_sub, allowance_display, remaining_display = "Cash sizing withheld", "Unavailable", "Unavailable"
-        purchase_reason_title, purchase_reason_sub = "Cash sizing blocked", "Authoritative portfolio could not be verified; no purchase amount is available."
-    elif risk_weight <= 0.0:
-        purchase_status, purchase_pill, purchase_pill_class = "A$ 0", "NO BUY THIS WEEK", "blocked"
-        purchase_sub = "Risk score is in the 0.50+ no-buy band"
-        allowance_display, remaining_display = f"A$ {normal_weekly_allowance:,.0f}", f"A$ {remaining_capital_aud:,.0f}"
-        purchase_reason_title, purchase_reason_sub = "Risk policy: NO BUY", "R2 sizing risk is 0.50 or higher; the selected ladder sets the multiplier to 0×."
-    elif challenger_recommended_buy <= 0.0:
-        purchase_status, purchase_pill, purchase_pill_class = "A$ 0", "NO BUY — NO DEPLOYABLE CASH", "blocked"
-        purchase_sub = "No cash is available after the protected reserve"
-        allowance_display, remaining_display = f"A$ {normal_weekly_allowance:,.0f}", f"A$ {remaining_capital_aud:,.0f}"
-        purchase_reason_title, purchase_reason_sub = "No deployable cash", "The verified portfolio has no cash available above the protected reserve."
-    else:
-        purchase_status, purchase_pill, purchase_pill_class = f"A$ {challenger_recommended_buy:,.0f}", "BUY THIS WEEK", "ready"
-        purchase_sub = f"That's {challenger_weight:.2f}× the base Monday allowance"
-        allowance_display, remaining_display = f"A$ {normal_weekly_allowance:,.0f}", f"A$ {remaining_capital_aud:,.0f}"
-        purchase_reason_title, purchase_reason_sub = "Risk policy: BUY BAND", "Portfolio verified, deployable cash available, and risk is below the 0.50 no-buy threshold."
+    _purchase_display = dca_purchase_display(
+        portfolio_verified=portfolio_verified,
+        risk_multiplier=risk_weight,
+        effective_multiplier=challenger_weight,
+        recommended_buy_aud=challenger_recommended_buy,
+        base_allowance_aud=normal_weekly_allowance,
+        remaining_capital_aud=remaining_capital_aud,
+    )
+    purchase_status = _purchase_display["amount"]
+    purchase_pill = _purchase_display["pill"]
+    purchase_pill_class = _purchase_display["pill_class"]
+    purchase_sub = _purchase_display["sub"]
+    allowance_display = _purchase_display["allowance"]
+    remaining_display = _purchase_display["remaining"]
+    purchase_reason_title = _purchase_display["reason_title"]
+    purchase_reason_sub = _purchase_display["reason_sub"]
 
     st.header("DCA Today")
 
