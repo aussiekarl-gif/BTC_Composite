@@ -72,9 +72,13 @@ class AppRiskLadderTests(unittest.TestCase):
 
     def test_production_historical_backtest_executes_16x_and_zero_buy_bands(self):
         for risk, expected_multiplier, expected_buy in (
-            (0.05, 16.0, 16000.0),
-            (0.10, 8.0, 8000.0),
-            (0.50, 0.0, 0.0),
+            (0.00, 10.0, 10000.0),
+            (0.01, 5.0, 5000.0),
+            (0.02, 3.0, 3000.0),
+            (0.05, 2.0, 2000.0),
+            (0.10, 1.5, 1500.0),
+            (0.20, 1.0, 1000.0),
+            (0.40, 0.0, 0.0),
         ):
             with self.subTest(risk=risk):
                 with patch.object(production, "add_risk_indicators", side_effect=lambda df, *_: df):
@@ -104,13 +108,13 @@ class AppRiskLadderTests(unittest.TestCase):
                 self.assertEqual(float(result.iloc[0]["actual_buy_aud"]), expected_buy)
                 self.assertEqual(summary["buy_count"], int(expected_buy > 0))
 
-    def test_dca_today_paths_keep_the_five_percent_weekly_cap_and_stop_at_050(self):
+    def test_dca_today_paths_remove_fixed_weekly_cap_and_stop_at_040(self):
         production_source = Path("engines/production/production_app.py").read_text(encoding="utf-8")
         research_source = Path("engines/research/research_app.py").read_text(encoding="utf-8")
         self.assertIn("risk_band_multiplier(smart_dca_curve, current_risk)", production_source)
         self.assertIn("risk_band_multiplier(smart_dca_curve, current_risk)", research_source)
-        self.assertIn("float(starting_capital_aud) * 0.05", production_source)
-        self.assertIn("float(starting_capital_aud) * 0.05", research_source)
+        self.assertNotIn("float(starting_capital_aud) * 0.05", production_source)
+        self.assertNotIn("float(starting_capital_aud) * 0.05", research_source)
         self.assertIn("and current_risk < 0.50", research_source)
 
     def test_shared_purchase_display_blocks_unverified_portfolio(self):
