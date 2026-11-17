@@ -1,19 +1,41 @@
-name: V5.9 Research Validation
+name: V5.9 Research Risk Validation
+# Uses the current unit-test suites; no live data or notification credentials are needed.
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "engines/research/**"
+      - "engines/shared/**"
+      - "tests/test_app_risk_ladder.py"
+      - "tests/test_risk_occurrence_table.py"
+      - "tests/test_v59_dynamic_risk_policy.py"
+      - "tests/test_v59_risk_visibility.py"
+      - "tests/test_v59_risk_ui_acceptance.py"
+      - ".github/workflows/validation_research_tuning.yml"
   push:
     branches: [main]
     paths:
       - "engines/research/**"
-      - "validation_research_tuning.py"
-      - "requirements.txt"
+      - "engines/shared/**"
+      - "tests/test_app_risk_ladder.py"
+      - "tests/test_risk_occurrence_table.py"
+      - "tests/test_v59_dynamic_risk_policy.py"
+      - "tests/test_v59_risk_visibility.py"
+      - "tests/test_v59_risk_ui_acceptance.py"
       - ".github/workflows/validation_research_tuning.yml"
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    env:
+      BTC_PORTFOLIO_BACKEND: sqlite
+      BTC_PORTFOLIO_DB_PATH: /tmp/v59_risk_validation_tests_only.sqlite3
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -23,9 +45,13 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Run V5.9 validation framework
-        env:
-          BGEOMETRICS_TOKEN: ${{ secrets.BGEOMETRICS_TOKEN }}
-          AUDIT_GITHUB_REPO: ${{ secrets.AUDIT_GITHUB_REPO }}
-          AUDIT_GITHUB_TOKEN: ${{ secrets.AUDIT_GITHUB_TOKEN }}
-        run: python validation_research_tuning.py
+      - name: Validate Production and Research risk ladders and dashboard safety
+        run: python -m unittest discover -s tests -p "test_app_risk_ladder.py" -v
+      - name: Validate weekly risk histogram and Power Law floor audit
+        run: python -m unittest discover -s tests -p "test_risk_occurrence_table.py" -v
+      - name: Validate V5.9 dynamic risk policy
+        run: python -m unittest discover -s tests -p "test_v59_dynamic_risk_policy.py" -v
+      - name: Validate V5.9 risk visibility
+        run: python -m unittest discover -s tests -p "test_v59_risk_visibility.py" -v
+      - name: Validate V5.9 risk UI acceptance
+        run: python -m unittest discover -s tests -p "test_v59_risk_ui_acceptance.py" -v
