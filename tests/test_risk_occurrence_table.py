@@ -22,22 +22,24 @@ class RiskOccurrenceTableTests(unittest.TestCase):
         from engines.research.research_model import completed_weekly_last
 
         dates = pd.to_datetime([
-            "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-17"
+            "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-17", "2026-11-23"
         ], utc=True)
-        values = pd.Series([1.0, 2.0, 3.0, 4.0], index=dates)
-        weekly = completed_weekly_last(values, as_of=dates[-1])
+        values = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0], index=dates)
+        weekly = completed_weekly_last(values, as_of=dates[-2])
 
-        # The Tuesday–Monday bucket containing 17 Nov is labelled 23 Nov,
-        # so it is excluded until Monday 23 Nov has closed.
+        # Nov 10–16 is a partial Tuesday–Monday bucket because the source has
+        # no actual Nov 16 endpoint. Nov 17 belongs to the next future bucket.
         self.assertEqual(list(weekly.index), [pd.Timestamp("2026-11-09", tz="UTC")])
         self.assertEqual(float(weekly.iloc[0]), 1.0)
 
-        completed = completed_weekly_last(values, as_of=pd.Timestamp("2026-11-23", tz="UTC"))
+        # Once an actual Monday 23 Nov observation exists and is the as-of date,
+        # that weekly endpoint is valid and its own value is retained.
+        completed = completed_weekly_last(values, as_of=dates[-1])
         self.assertEqual(list(completed.index), [
             pd.Timestamp("2026-11-09", tz="UTC"),
             pd.Timestamp("2026-11-23", tz="UTC"),
         ])
-        self.assertEqual(float(completed.iloc[-1]), 4.0)
+        self.assertEqual(float(completed.iloc[-1]), 5.0)
 
     def test_power_law_floor_diagnostics_by_halving_cycle(self):
         import pandas as pd
