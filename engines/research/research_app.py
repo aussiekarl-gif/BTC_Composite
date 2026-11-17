@@ -1384,6 +1384,7 @@ elif mode == "DCA Today":
         "HIGH" if current_risk <= 0.80 else
         "VERY HIGH"
     )
+    valuation_risk_label = continuous_valuation_risk_label(current_display_risk)
     deployed = max(float(starting_capital_aud) - float(remaining_capital_aud), 0.0)
     remaining_after = max(float(remaining_capital_aud) - challenger_recommended_buy, 0.0)
 
@@ -1736,7 +1737,7 @@ elif mode == "DCA Today":
     a.metric(
         "BTC Valuation Risk (context)",
         format_continuous_risk(current_display_risk, current_price_usd),
-        risk_label,
+        valuation_risk_label,
         help=(
             "Display-only smooth Power Law valuation context; it does not set the DCA multiplier. "
             f"The separate R2 sizing score is {current_risk:.3f} and controls the DCA multiplier."
