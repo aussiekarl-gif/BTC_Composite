@@ -24,7 +24,7 @@ def snapshot(**overrides):
 
 class BrokerPortfolioSnapshotTests(unittest.TestCase):
     def test_user_snapshot_separates_cash_aaa_reserve_and_ibit(self):
-        result = validate_broker_snapshot(snapshot(), today=dt.date(2026, 11, 17))
+        result = validate_broker_snapshot(snapshot(as_of='2026-11-17'), today=dt.date(2026, 11, 17))
         self.assertEqual(result["cash_aud"], 8500.0)
         self.assertEqual(result["aaa_reserve_aud"], 267355.93)
         self.assertEqual(result["deployable_reserve_aud"], 275855.93)
@@ -33,7 +33,7 @@ class BrokerPortfolioSnapshotTests(unittest.TestCase):
 
     def test_aaa_not_deployable_without_explicit_liquidation_confirmation(self):
         result = validate_broker_snapshot(
-            snapshot(aaa_liquidatable=False), today=dt.date(2026, 11, 17)
+            snapshot(as_of='2026-11-17', aaa_liquidatable=False), today=dt.date(2026, 11, 17)
         )
         self.assertEqual(result["cash_aud"], 8500.0)
         self.assertEqual(result["aaa_reserve_aud"], 0.0)
@@ -41,7 +41,7 @@ class BrokerPortfolioSnapshotTests(unittest.TestCase):
 
     def test_dca_positions_adapter_uses_cash_plus_confirmed_aaa_reserve(self):
         result = snapshot_as_portfolio_positions(
-            snapshot(), today=dt.date(2026, 11, 17)
+            snapshot(as_of='2026-11-17'), today=dt.date(2026, 11, 17)
         )
         self.assertEqual(result["starting_capital_aud"], 510000.0)
         self.assertEqual(result["cash_remaining_aud"], 275855.93)
@@ -55,9 +55,9 @@ class BrokerPortfolioSnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "future-dated"):
             validate_broker_snapshot(snapshot(as_of="2026-11-18"), today=dt.date(2026, 11, 17))
         with self.assertRaisesRegex(ValueError, "non-negative"):
-            validate_broker_snapshot(snapshot(cash_aud=-1), today=dt.date(2026, 11, 17))
+            validate_broker_snapshot(snapshot(as_of='2026-11-17', cash_aud=-1), today=dt.date(2026, 11, 17))
         with self.assertRaisesRegex(ValueError, "explicitly confirmed"):
-            validate_broker_snapshot(snapshot(aaa_liquidatable=None), today=dt.date(2026, 11, 17))
+            validate_broker_snapshot(snapshot(as_of='2026-11-17', aaa_liquidatable=None), today=dt.date(2026, 11, 17))
 
     def test_merge_snapshot_preserves_all_historical_transactions(self):
         existing = {
@@ -80,13 +80,13 @@ class BrokerPortfolioSnapshotTests(unittest.TestCase):
 
     def test_zero_holdings_are_valid_only_when_units_and_value_both_zero(self):
         result = validate_broker_snapshot(
-            snapshot(aaa_units=0, aaa_market_value_aud=0),
+            snapshot(as_of='2026-11-17', aaa_units=0, aaa_market_value_aud=0),
             today=dt.date(2026, 11, 17),
         )
         self.assertEqual(result["aaa_reserve_aud"], 0.0)
         with self.assertRaisesRegex(ValueError, "both be zero or both be positive"):
             validate_broker_snapshot(
-                snapshot(aaa_units=0), today=dt.date(2026, 11, 17)
+                snapshot(as_of='2026-11-17', aaa_units=0), today=dt.date(2026, 11, 17)
             )
 
 
