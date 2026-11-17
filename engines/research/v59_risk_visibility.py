@@ -29,12 +29,12 @@ def highlighted_histogram_bucket(value) -> int:
         return 1
     if x < 0.01:
         return 2
-    for idx, ceiling in enumerate((0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80, 1.00), start=3):
+    for idx, ceiling in enumerate((0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 0.60, 0.80, 1.00), start=3):
         if x < ceiling:
             return idx
     if x == 1:
-        return 11
-    return 12
+        return 12
+    return 13
 
 
 def aggressive_candidate_preview(
