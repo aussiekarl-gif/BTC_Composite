@@ -358,6 +358,7 @@ verified_portfolio_positions = None
 portfolio_verified = False
 broker_snapshot_error = None
 broker_snapshot_ledger_warning = None
+portfolio_ledger_error = None
 if not portfolio_storage_error and isinstance(server_portfolio, dict):
     _broker_snapshot = server_portfolio.get("broker_snapshot")
     if _broker_snapshot:
@@ -393,8 +394,30 @@ if (
     try:
         verified_portfolio_positions = portfolio_positions(server_portfolio)
         portfolio_verified = True
-    except Exception:
+    except Exception as exc:
         verified_portfolio_positions = None
+        portfolio_ledger_error = f"{type(exc).__name__}: {exc}"
+
+if portfolio_verified:
+    portfolio_verification_reason = None
+elif portfolio_storage_error:
+    portfolio_verification_reason = f"Persistent portfolio storage error: {portfolio_storage_error}"
+elif broker_snapshot_error:
+    portfolio_verification_reason = f"Saved broker snapshot is invalid: {broker_snapshot_error}"
+elif portfolio_ledger_error:
+    portfolio_verification_reason = f"Saved transaction ledger is invalid: {portfolio_ledger_error}"
+elif isinstance(browser_portfolio, dict) and browser_portfolio.get("rows") and not server_portfolio.get("rows"):
+    portfolio_verification_reason = (
+        "Only a browser-recovery copy is available. Save the portfolio to persistent server storage "
+        "before DCA Today can calculate a cash-based amount."
+    )
+elif not server_portfolio.get("rows") and not server_portfolio.get("broker_snapshot"):
+    portfolio_verification_reason = (
+        "Persistent storage returned no saved broker snapshot or transaction ledger. "
+        "Open My Portfolio and save the current portfolio to server storage."
+    )
+else:
+    portfolio_verification_reason = "The saved portfolio has not passed authoritative verification."
 
 st.title("Bitcoin Dynamic DCA V5.9 — Three-Pillar Research")
 st.caption("Version 5.9 RESEARCH • R2 Valuation • Exceptional Bottom Zone • Halving Accumulation Zone • Persistent portfolio")
@@ -602,7 +625,7 @@ with st.sidebar:
         st.caption(
             "Custom V5.9 multiplier curve is active."
             if custom_curve_active else
-            "V5.9 default: 16× / 8× / 4× / 2× / 1× across risk bands; 0× from risk 0.50. Weekly purchases remain capped at 5% of starting capital."
+            "V5.9 default: 10× / 5× / 3× / 2× / 1.5× / 1× across risk bands; 0× from risk 0.40. No fixed weekly cap; purchases remain bounded by verified deployable cash and remaining deployment capital."
         )
 
         if portfolio_verified:
@@ -1278,7 +1301,7 @@ elif mode == "DCA Today":
         rarity_source = valid_today["risk_score"].dropna()
     # The first histogram is the DCA risk-band chart, so it must use the
     # historical R2 sizing score (not the separate continuous valuation display).
-    # This keeps its bucket labels and 16x/8x/... multipliers consistent with sizing.
+    # This keeps its bucket labels and current 10x/5x/... multipliers consistent with sizing.
     display_source = rarity_source
     _display_now = current_risk
     _display_txt = f"R2 sizing risk {current_risk:.3f}"
@@ -1372,6 +1395,7 @@ elif mode == "DCA Today":
         recommended_buy_aud=challenger_recommended_buy,
         base_allowance_aud=normal_weekly_allowance,
         remaining_capital_aud=remaining_capital_aud,
+        portfolio_verification_reason=portfolio_verification_reason,
     )
     purchase_status = _purchase_display["amount"]
     purchase_pill = _purchase_display["pill"]
@@ -1494,7 +1518,7 @@ elif mode == "DCA Today":
               <div class="v59-sub">{"Deployable capital unavailable until portfolio verification" if not portfolio_verified else f"Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}"}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × risk-band multiplier, bounded by verified deployable cash and remaining capital. Risk ≥0.40 means no buy.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-off">i</span><div><b>{purchase_reason_title}</b><small>{purchase_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>Valuation display {_display_txt} • R2 sizing score {current_risk:.3f} → {risk_weight:.2f}× risk multiplier</small></div></div>
@@ -1582,9 +1606,9 @@ elif mode == "DCA Today":
         st.caption(
             f"R2 SIZING risk {current_risk:.3f}; observation date {_sizing_observation_date}; "
             f"age {_sizing_observation_age_days} days. Research bands: ≤0.10: 3×, "
-            "≤0.20: 2×, ≤0.40: 1.5×, ≤0.50: 1×, >0.50: NO BUY. "
-            "Illustrative amount capped at the deployable cash and 5% of starting "
-            "capital per week. A recent observation does NOT prove provider timestamp "
+            "≤0.20: 1×; risk ≥0.40: NO BUY. "
+            "Illustrative amount is bounded by verified deployable cash and remaining "
+            "capital, with no fixed weekly percentage cap. A recent observation does NOT prove provider timestamp "
             "provenance or ETF tradeability. No live sizing, portfolio, Streamlit hero "
             "recommendation, or ntfy execution is changed by this preview."
         )
