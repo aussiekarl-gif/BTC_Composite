@@ -91,34 +91,26 @@ DEFAULT_RELATIVE_RISK_WEIGHT = 0.40
 DEFAULT_DRAWDOWN_WINDOW = 365
 DEFAULT_FIXED_DCA_AUD = 1000.0
 
-DEFAULT_ALWAYS_DCA_POINTS = [
-    (0.00, 3.00),
-    (0.10, 2.50),
-    (0.20, 2.00),
-    (0.30, 1.50),
-    (0.40, 1.20),
-    (0.50, 1.00),
-    (0.60, 0.80),
-    (0.70, 0.60),
-    (0.80, 0.40),
-    (0.90, 0.25),
-    (1.00, 0.10),
+# Screenshot-derived step ladder. Risk ceilings are inclusive at each
+# lower band; the next band's multiplier applies exactly at its boundary.
+SCREENSHOT_RISK_LADDER_POINTS = [
+    (0.00, 16.0),
+    (0.10, 8.0),
+    (0.20, 4.0),
+    (0.30, 2.0),
+    (0.40, 1.0),
+    (0.50, 0.0),
 ]
+DEFAULT_ALWAYS_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 
 DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
 
-SMART_DCA_LOW_RISK_WEIGHT = 2.00
-SMART_DCA_HIGH_RISK_WEIGHT = 0.80
+SMART_DCA_LOW_RISK_WEIGHT = 16.0
+SMART_DCA_HIGH_RISK_WEIGHT = 0.0
 
-# V5.9 Research: deliberately moderate, neutral-centred sizing curve.
-# Research candidate is intentionally simple: 2.0x at risk 0, 1.0x at 0.5,
-# and 0.6x at risk 1.0, with linear interpolation between anchors.
-SMART_DCA_POINTS = [
-    (0.00, 2.00),
-    (0.50, 1.00),
-    (1.00, 0.60),
-]
+# V5.9 Research uses the same screenshot risk-band multipliers as Production.
+SMART_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 RESEARCH_PL_REFIT_DAYS = 91
 RESEARCH_PL_MIN_WEEKS = 52
@@ -162,6 +154,19 @@ DEFAULT_TREND_SELL_BEAR = 1.25
 
 def clamp(value, low, high):
     return max(low, min(high, value))
+
+
+def risk_band_multiplier(points, risk):
+    """Apply a discrete risk ladder: each point is the lower bound of its band."""
+    if not np.isfinite(risk) or not 0.0 <= float(risk) <= 1.0:
+        raise ValueError("Risk must be a finite value between 0 and 1")
+    selected = float(points[0][1])
+    for lower_bound, multiplier in sorted(points):
+        if float(risk) >= float(lower_bound):
+            selected = float(multiplier)
+        else:
+            break
+    return selected
 
 
 def interpolate(points, x):
@@ -1838,9 +1843,13 @@ def simulate_dca_backtest(
         if strategy_mode == "Plain DCA":
             multiplier, contribution, signal = 1.0, float(base_dca_aud), "FIXED DCA"
         else:
-            multiplier = float(interpolate(risk_curve, risk)) if np.isfinite(risk) else 1.0
-            recent_peak = float(row.get("recent_peak_365", price_usd))
-            multiplier += drawdown_severity_multiplier(price_usd, recent_peak)
+            # Apply the selected risk-band ladder exactly. The legacy drawdown
+            # bonus is retained as a diagnostic column, but must not alter the
+            # requested multiplier bands or re-enable buying above 0.50 risk.
+            multiplier = (
+                float(interpolate(risk_curve, risk))
+                if np.isfinite(risk) else 1.0
+            )
             contribution = float(base_dca_aud) * multiplier
             signal = "SCALED DCA"
         fee = contribution * float(params.get("fee_pct", 0.0))

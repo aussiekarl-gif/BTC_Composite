@@ -89,39 +89,24 @@ DEFAULT_RELATIVE_RISK_WEIGHT = 0.40
 DEFAULT_DRAWDOWN_WINDOW = 365
 DEFAULT_FIXED_DCA_AUD = 1000.0
 
-DEFAULT_ALWAYS_DCA_POINTS = [
-    (0.00, 3.00),
-    (0.10, 2.50),
-    (0.20, 2.00),
-    (0.30, 1.50),
-    (0.40, 1.20),
-    (0.50, 1.00),
-    (0.60, 0.80),
-    (0.70, 0.60),
-    (0.80, 0.40),
-    (0.90, 0.25),
-    (1.00, 0.10),
+# Screenshot-derived step ladder. Risk ceilings are inclusive at each
+# lower band; the next band's multiplier applies exactly at its boundary.
+SCREENSHOT_RISK_LADDER_POINTS = [
+    (0.00, 16.0),
+    (0.10, 8.0),
+    (0.20, 4.0),
+    (0.30, 2.0),
+    (0.40, 1.0),
+    (0.50, 0.0),
 ]
+DEFAULT_ALWAYS_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 
 DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
 
-SMART_DCA_LOW_RISK_WEIGHT = 2.75
-SMART_DCA_HIGH_RISK_WEIGHT = 0.05
-
-SMART_DCA_POINTS = [
-    (0.00, 2.7500),
-    (0.10, 2.3125),
-    (0.20, 1.8750),
-    (0.30, 1.5250),
-    (0.40, 1.21875),
-    (0.50, 1.0000),
-    (0.60, 0.6305555555),
-    (0.70, 0.3666666666),
-    (0.80, 0.2083333334),
-    (0.90, 0.0711111111),
-    (1.00, 0.0500),
-]
+SMART_DCA_LOW_RISK_WEIGHT = 16.0
+SMART_DCA_HIGH_RISK_WEIGHT = 0.0
+SMART_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 
 DEFAULT_TREND_ER_PERIOD = 20
@@ -143,6 +128,19 @@ DEFAULT_TREND_SELL_BEAR = 1.25
 
 def clamp(value, low, high):
     return max(low, min(high, value))
+
+
+def risk_band_multiplier(points, risk):
+    """Apply a discrete risk ladder: each point is the lower bound of its band."""
+    if not np.isfinite(risk) or not 0.0 <= float(risk) <= 1.0:
+        raise ValueError("Risk must be a finite value between 0 and 1")
+    selected = float(points[0][1])
+    for lower_bound, multiplier in sorted(points):
+        if float(risk) >= float(lower_bound):
+            selected = float(multiplier)
+        else:
+            break
+    return selected
 
 
 def interpolate(points, x):
@@ -1429,7 +1427,7 @@ def simulate_dca_backtest(
         if strategy_mode == "Plain DCA":
             multiplier, contribution, signal = 1.0, float(base_dca_aud), "FIXED DCA"
         else:
-            multiplier = float(interpolate(risk_curve, risk)) if np.isfinite(risk) else 1.0
+            multiplier = float(risk_band_multiplier(risk_curve, risk)) if np.isfinite(risk) else 1.0
             contribution = float(base_dca_aud) * multiplier
             signal = "SCALED DCA"
         fee = contribution * float(params.get("fee_pct", 0.0))

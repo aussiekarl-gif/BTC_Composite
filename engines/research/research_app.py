@@ -258,7 +258,7 @@ def _multiplier_curve_controls(default_curve, storage_key):
             mult = st.number_input(
                 f"Risk {risk:.2f}",
                 min_value=0.0,
-                max_value=10.0,
+                max_value=16.0,
                 value=float(initial),
                 step=0.05,
                 format="%.2f",
@@ -553,7 +553,7 @@ with st.sidebar:
         st.caption(
             "Custom V5.9 multiplier curve is active."
             if custom_curve_active else
-            "V5.9 default: 2.00× at risk 0.00, 1.00× at risk 0.50, and 0.60× at risk 1.00."
+            "V5.9 default: 16× / 8× / 4× / 2× / 1× across risk bands; 0× from risk 0.50. Weekly purchases remain capped at 5% of starting capital."
         )
 
         if portfolio_verified:
@@ -1214,11 +1214,9 @@ elif mode == "DCA Today":
     current_price_aud = live_price_aud if np.isfinite(live_price_aud) else historical_price_aud
     price_is_live = bool(np.isfinite(live_price_aud))
 
-    risk_weight = float(interpolate(smart_dca_curve, current_risk))
-    # Preserve the deployment runway outside a newly confirmed Exceptional
-    # Bottom event. Ordinary low-risk readings may reach the paced 1.00x
-    # allowance, but cannot front-load capital by themselves.
-    paced_risk_weight = min(risk_weight, 1.0)
+    risk_weight = float(risk_band_multiplier(smart_dca_curve, current_risk))
+    # Apply the selected risk-band multiplier without an additional 1.00x clamp.
+    paced_risk_weight = risk_weight
 
     # Opportunity rarity: use weekly historical risk observations available up
     # to today. This estimates how often BTC has been at least as cheap as now.
@@ -1256,11 +1254,11 @@ elif mode == "DCA Today":
     )
     normal_weekly_allowance = deployable_before_review / weeks_remaining
     recommended_buy = (
-        min(deployable_before_review, max(0.0, normal_weekly_allowance * paced_risk_weight))
+        min(deployable_before_review, max(0.0, normal_weekly_allowance * paced_risk_weight), float(starting_capital_aud) * 0.05)
         if portfolio_verified else 0.0
     )
-    # V5.9 sizing: the halving window is context only. Front-loading above the
-    # paced allowance is reserved for a newly confirmed Bottom Challenger event.
+    # The independent Bottom Challenger remains a separate research overlay;
+    # its eligibility is blocked at risk >= 0.50 and its amount keeps the 5% cap.
     current_halving_clock_days = int((pd.Timestamp(now_utc.date()) - pd.Timestamp("2024-04-20")).days)
     current_halving_accumulation_zone = (
         HALVING_ACCUMULATION_START_DAY <= current_halving_clock_days <= HALVING_ACCUMULATION_END_DAY
@@ -1286,13 +1284,14 @@ elif mode == "DCA Today":
         and str(current_challenger_event).strip().upper() in _eligible_challenger_events
         and np.isfinite(_event_multiplier)
         and _event_multiplier > 0
+        and current_risk < 0.50
     )
     challenger_weight = (
         max(paced_risk_weight, _event_multiplier)
         if _event_is_eligible else paced_risk_weight
     )
     challenger_recommended_buy = (
-        min(deployable_before_review, max(0.0, normal_weekly_allowance * challenger_weight))
+        min(deployable_before_review, max(0.0, normal_weekly_allowance * challenger_weight), float(starting_capital_aud) * 0.05)
         if portfolio_verified else 0.0
     )
 
