@@ -1,6 +1,8 @@
 import unittest
 
-from engines.research.research_model import risk_occurrence_table
+from engines.research.research_model import (
+    continuous_valuation_risk_label, risk_occurrence_table,
+)
 
 
 class RiskOccurrenceTableTests(unittest.TestCase):
@@ -38,6 +40,11 @@ class RiskOccurrenceTableTests(unittest.TestCase):
         self.assertEqual(by_cycle.loc["2020–2024 cycle", "Floor weeks"], 2)
         self.assertEqual(by_cycle.loc["2024–current cycle", "Floor weeks"], 1)
         self.assertEqual(by_cycle.loc["All history", "Residual ≤−0.20 %"], 12.5)
+
+    def test_continuous_valuation_label_uses_its_own_score(self):
+        self.assertEqual(continuous_valuation_risk_label(0.030), "VERY LOW")
+        self.assertEqual(continuous_valuation_risk_label(0.50), "NEUTRAL")
+        self.assertEqual(continuous_valuation_risk_label(float("nan")), "n/a")
 
     def test_boundaries_and_empty(self):
         values = [0, .01, .02, .05, .1, .2, .4, .6, .8, 1.]
