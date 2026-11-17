@@ -21,7 +21,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from engines.research import research_model as model
-from engines.research.v59_dynamic_risk_policy import risk_buy_multiplier
+from engines.research.v59_dynamic_risk_policy import BUY_POLICY_BANDS, risk_buy_multiplier
 from engines.research.v59_live_signal_snapshot import live_risk_params
 
 CAPITAL_AUD = 510_000.
@@ -37,6 +37,13 @@ POLICIES = (
     "risk_3x_risk_le_020", "risk_3x_price_above_50dma",
     "risk_3x_50dma_rising", "risk_3x_below_200wma_or_40pct_drawdown",
 )
+EXTERNAL_LADDER_POLICIES = {
+    "screenshot_16x": "screenshot_16x",
+    "cowen_classic": "cowen_classic",
+    "cowen_2026_reported": "cowen_2026_reported",
+}
+# Keep all original policies first; external ladders are comparison-only.
+POLICIES = POLICIES + tuple(EXTERNAL_LADDER_POLICIES)
 # Report separately; no selection or independent-validated claim for partial.
 CASH_YIELDS = (0., .05)
 RESERVE_FRACTIONS = (0., .10)
@@ -56,6 +63,10 @@ def policy_multiplier(policy: str, signal: dict) -> float:
         raise ValueError("Neutral or unknown risk source is not a trade signal")
     if policy == "plain_1x":
         return 1.
+    if policy in EXTERNAL_LADDER_POLICIES:
+        return float(risk_buy_multiplier(
+            risk, BUY_POLICY_BANDS[EXTERNAL_LADDER_POLICIES[policy]]
+        ))
     mult = float(risk_buy_multiplier(risk))
     if policy == "risk_1x":
         return min(mult, 1.)
@@ -214,7 +225,7 @@ def simulate(rows: list[dict], *, policy: str, cash_yield: float,
         # remains the identical frozen PR #259 execution policy.
         weight = (weight_fn(row) if weight_fn is not None else
                   policy_multiplier(policy, row)) if day <= review else 0.
-        if not math.isfinite(weight) or not 0 <= weight <= 3.:
+        if not math.isfinite(weight) or not 0 <= weight <= 16.:
             raise ValueError("Research buy weight must be finite and 0..3")
         spend = min(available, max(0., available / weeks_left * weight),
                     capital * max_fraction)
@@ -417,7 +428,8 @@ def evaluate(rows: list[dict], *, capital: float=CAPITAL_AUD) -> dict:
                     })
     # Predeclared simple TRAIN-only criterion, then test on later historical
     # cohort dates. Historical holdout is not truly independent of 2026 design.
-    considered=[s for s in summary if s["split"]=="TRAIN"
+    considered=[s for s in summary if s["policy"] not in EXTERNAL_LADDER_POLICIES
+                 and s["split"]=="TRAIN"
                  and s["cash_yield"]==.05 and s["reserve_fraction"]==0.
                  and s["median_deployed_frac"]>=.50]
     selected=max(considered,key=lambda x:(x["median_btc_equiv_uplift_pct"],
@@ -431,7 +443,13 @@ def evaluate(rows: list[dict], *, capital: float=CAPITAL_AUD) -> dict:
         "no_promotion_or_trade_authorisation":True,
         "starting_capital_aud":capital,
         "lookback_context": "2012+ continuously computed V5.9 research WF Power Law",
-        "source_risk":"Walk-forward Power Law calculated afresh from public price history",
+        "source_risk":"Walk-forward Power Law calculated afresh from public price history; NOT Cowen proprietary Total Indicator Risk",
+        "external_ladder_comparison":{
+            "status":"RESEARCH_ONLY_NOT_EQUIVALENT_RISK_METRIC",
+            "policies":EXTERNAL_LADDER_POLICIES,
+            "weekly_cap_fraction_of_initial_capital":MAX_WEEKLY_FRACTION,
+            "note":"The 16x/8x/4x/2x/1x screenshot and Cowen reference ladders are applied to this project's own reconstructed V5.9 risk series. They do not reproduce Cowen's risk model.",
+        },
         "signal_timing":"Previous Sunday UTC price/risk/200WMA/365d drawdown/50DMA; hypothetical next Monday BTC/AUD spot price",
         "execution_instrument":"Historical BTC/AUD spot proxy ONLY; no historical ASX:IBIT fills",
         "assumptions":{"cash_yields_annual_before_tax":CASH_YIELDS,
