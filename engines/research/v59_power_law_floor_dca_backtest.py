@@ -145,7 +145,7 @@ def main() -> None:
                 })
 
     summaries = []
-    for cheap in CANDIDATE_CHEAP_FLOORS:
+    for mapping_name, cheap in mappings:
         for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
             for cash_yield in CASH_YIELDS:
                 selected = [
