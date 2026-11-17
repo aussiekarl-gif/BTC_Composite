@@ -1829,13 +1829,13 @@ def simulate_dca_backtest(
         if strategy_mode == "Plain DCA":
             multiplier, contribution, signal = 1.0, float(base_dca_aud), "FIXED DCA"
         else:
-            if np.isfinite(risk) and risk >= 0.50:
-                # The selected ladder explicitly stops buying from the 0.50 band upward.
-                multiplier = 0.0
-            else:
-                multiplier = float(interpolate(risk_curve, risk)) if np.isfinite(risk) else 1.0
-                recent_peak = float(row.get("recent_peak_365", price_usd))
-                multiplier += drawdown_severity_multiplier(price_usd, recent_peak)
+            # Apply the selected risk-band ladder exactly. The legacy drawdown
+            # bonus is retained as a diagnostic column, but must not alter the
+            # requested multiplier bands or re-enable buying above 0.50 risk.
+            multiplier = (
+                float(interpolate(risk_curve, risk))
+                if np.isfinite(risk) else 1.0
+            )
             contribution = float(base_dca_aud) * multiplier
             signal = "SCALED DCA"
         fee = contribution * float(params.get("fee_pct", 0.0))
