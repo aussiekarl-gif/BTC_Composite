@@ -318,5 +318,50 @@ class WmaProximityResearchTests(unittest.TestCase):
         self.assertAlmostEqual(selected["equity_aud"],control["equity_aud"],places=5)
 
 
+class ExternalLadderHorseRaceTests(unittest.TestCase):
+    def test_screenshot_ladder_applies_to_same_v59_risk_score(self):
+        expected = {
+            .05: 16., .099: 16., .10: 8., .199: 8.,
+            .20: 4., .299: 4., .30: 2., .399: 2.,
+            .40: 1., .499: 1., .50: 0., .90: 0.,
+        }
+        for risk, multiplier in expected.items():
+            with self.subTest(risk=risk):
+                self.assertEqual(
+                    policy_multiplier("screenshot_16x", row(0, risk=risk)),
+                    multiplier,
+                )
+
+    def test_cowen_historical_and_2026_reference_ladders_are_distinct(self):
+        classic = [policy_multiplier("cowen_classic", row(0, risk=x))
+                   for x in (.05, .15, .25, .35, .45, .50)]
+        current = [policy_multiplier("cowen_2026_reported", row(0, risk=x))
+                   for x in (.05, .15, .25, .30, .50)]
+        self.assertEqual(classic, [5., 4., 3., 2., 1., 0.])
+        self.assertEqual(current, [4., 3., 2., 0., 0.])
+
+    def test_external_ladders_do_not_change_original_policy_multipliers(self):
+        sample = row(0, risk=.05)
+        self.assertEqual(policy_multiplier("risk_3x", sample), 3.)
+        self.assertEqual(policy_multiplier("risk_1x", sample), 1.)
+        self.assertEqual(policy_multiplier("risk_2x", sample), 2.)
+
+    def test_screenshot_ladder_stays_inside_weekly_cap(self):
+        rows = [row(i, risk=.05) for i in range(WEEKS)]
+        result = simulate(
+            rows, policy="screenshot_16x", cash_yield=0.,
+            reserve_fraction=0., initial_btc_fraction=0.,
+        )
+        self.assertLessEqual(result["net_invested_aud"],
+                             WEEKS * CAPITAL_AUD * .05 + 1e-6)
+        self.assertLessEqual(result["spent_first_26weeks_pct_initial"],
+                             26 * 5. + 1e-6)
+
+    def test_external_policies_are_included_in_matched_comparison_but_not_selection(self):
+        self.assertIn("screenshot_16x", POLICIES)
+        self.assertIn("cowen_classic", POLICIES)
+        self.assertIn("cowen_2026_reported", POLICIES)
+
+
 if __name__ == "__main__":
     unittest.main()
