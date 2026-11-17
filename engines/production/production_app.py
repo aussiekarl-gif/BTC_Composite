@@ -1420,9 +1420,9 @@ elif mode == "DCA Today":
 
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
-            "Normal weekly allowance = capital remaining ÷ weeks remaining. "
-            "That allowance is multiplied only by the fixed Smart DCA weight from today's Risk Score, "
-            "then capped at remaining capital."
+            "Normal weekly allowance = deployable reserve ÷ weeks remaining. "
+            "That allowance is multiplied by today's discrete Risk Score band (16× / 8× / 4× / 2× / 1× / 0×), "
+            "then capped at deployable reserve and 5% of original starting capital per week."
         )
         if portfolio_verified:
             st.write(
