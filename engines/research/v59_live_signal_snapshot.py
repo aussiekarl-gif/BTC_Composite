@@ -59,6 +59,7 @@ def snapshot_from_scored(scored: pd.DataFrame, *, now_utc: datetime, params: dic
     day = stamp.date()
     age = (now_utc.date()-day).days
     score = float(latest.get("risk_score", float("nan")))
+    residual = float(latest.get("power_law_residual", float("nan")))
     source = str(latest.get("risk_score_source", ""))
     spot_usd = float(latest.get("price", float("nan")))
     fx = float(latest.get("usd_per_aud", float("nan")))
@@ -87,7 +88,7 @@ def snapshot_from_scored(scored: pd.DataFrame, *, now_utc: datetime, params: dic
     ratio_to_200wma = spot_usd/wma_usd if wma_ready and spot_valid else None
     fingerprint = hashlib.sha256(
         (json.dumps(params, sort_keys=True, default=str)+"|"+str(stamp)+"|"+
-         str(spot_usd)+"|"+str(score)+"|"+source).encode("utf-8")
+         str(spot_usd)+"|"+str(score)+"|"+str(residual)+"|"+source).encode("utf-8")
     ).hexdigest()
     return {
         "status": ("RESEARCH_SIGNAL_SNAPSHOT_READY" if market_ready else "BLOCKED_SOURCE_OR_FRESHNESS"),
@@ -97,6 +98,9 @@ def snapshot_from_scored(scored: pd.DataFrame, *, now_utc: datetime, params: dic
         "risk_model": params["risk_model"],
         "risk_score_source": source,
         "r2_sizing_risk": score if risk_valid else None,
+        # Raw point-in-time walk-forward Power Law residual. Optional for the
+        # existing tape, but required before the piecewise-tail shadow can act.
+        "power_law_residual": residual if math.isfinite(residual) else None,
         "continuous_valuation_risk": (
             float(latest["continuous_valuation_risk"])
             if "continuous_valuation_risk" in latest and
