@@ -9,6 +9,7 @@ if str(_REPO_ROOT) not in _sys.path:
 
 from engines.production import production_model as _model
 from engines.shared.dca_purchase_status import dca_purchase_display
+from engines.shared.risk_distribution_display import add_lowest_risk_multiplier_label
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
 from engines.shared.ibit_dca_display import show_ibit_dca_equivalent
 from engines.shared.btc_ibit_comparison import show_btc_ibit_comparison
@@ -1352,8 +1353,9 @@ elif mode == "DCA Today":
 
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(rarity_source)
+    occurrence_chart = add_lowest_risk_multiplier_label(occurrence)
     fig_occurrence = go.Figure()
-    # Highlight the bucket that contains today's risk (same edges as risk_occurrence_table).
+    # The first risk bar explicitly carries the lowest-risk 16x DCA multiplier.
     _bucket_edges = [0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.60, 0.80]
     try:
         _cur = float(current_risk)
@@ -1364,10 +1366,10 @@ elif mode == "DCA Today":
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
     ]
     fig_occurrence.add_bar(
-        x=occurrence["Risk range"],
-        y=occurrence["Percent"],
+        x=occurrence_chart["Risk range"],
+        y=occurrence_chart["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks"]],
+        customdata=occurrence_chart[["Weeks"]],
         hovertemplate=(
             "Risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
@@ -1382,6 +1384,7 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
+        "The first bar, 0.00–0.01, carries the 16× DCA multiplier. " 
         f"Current risk {current_risk:.3f} (orange bar). This chart is descriptive: it shows the percentage "
         "of weekly observations that fell inside each Risk Score range. It does NOT assign "
         "Opportunity Rarity to individual buckets. Opportunity Rarity is calculated separately "
