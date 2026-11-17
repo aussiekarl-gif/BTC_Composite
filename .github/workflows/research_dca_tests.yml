@@ -33,3 +33,5 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_bottom_challenger_sizing.py' -v
           python -m unittest discover -s tests -p 'test_below_200wma_carry.py' -v
+          python -m unittest discover -s tests -p 'test_v59_dynamic_risk_policy.py' -v
+          python -m unittest discover -s tests -p 'test_v59_external_risk_ladders.py' -v

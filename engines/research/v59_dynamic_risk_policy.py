@@ -10,14 +10,54 @@ import math
 # (risk ceiling, ordinary weekly buy multiplier); upper bound inclusive.
 BUY_BANDS = ((0.10, 3.0), (0.20, 2.0), (0.40, 1.5),
              (0.50, 1.0), (1.0, 0.0))
+
+# External reference ladders are hypotheses for matched research only.
+# Cowen's proprietary risk formula is not reproduced by these multipliers.
+SCREENSHOT_16X_BANDS = (
+    (math.nextafter(0.10, 0.0), 16.0),
+    (math.nextafter(0.20, 0.0), 8.0),
+    (math.nextafter(0.30, 0.0), 4.0),
+    (math.nextafter(0.40, 0.0), 2.0),
+    (math.nextafter(0.50, 0.0), 1.0), (1.0, 0.0),
+)
+COWEN_CLASSIC_BANDS = (
+    (math.nextafter(0.10, 0.0), 5.0),
+    (math.nextafter(0.20, 0.0), 4.0),
+    (math.nextafter(0.30, 0.0), 3.0),
+    (math.nextafter(0.40, 0.0), 2.0),
+    (math.nextafter(0.50, 0.0), 1.0), (1.0, 0.0),
+)
+COWEN_2026_REPORTED_BANDS = (
+    (math.nextafter(0.10, 0.0), 4.0),
+    (math.nextafter(0.20, 0.0), 3.0),
+    (math.nextafter(0.30, 0.0), 2.0), (1.0, 0.0),
+)
+BUY_POLICY_BANDS = {
+    "v59_current": BUY_BANDS,
+    "screenshot_16x": SCREENSHOT_16X_BANDS,
+    "cowen_classic": COWEN_CLASSIC_BANDS,
+    "cowen_2026_reported": COWEN_2026_REPORTED_BANDS,
+}
 # Selling is disabled by default until independently validated.
 SELL_BANDS = ((0.90, 0.02), (1.0, 0.05))
 
 
-def risk_buy_multiplier(risk):
+def risk_buy_multiplier(risk, bands=None):
+    """Return the multiplier for a validated 0-1 risk score and ladder."""
     if not math.isfinite(risk) or not 0 <= risk <= 1:
         raise ValueError("Risk must be between 0 and 1")
-    return next(mult for ceiling, mult in BUY_BANDS if risk <= ceiling)
+    selected = BUY_BANDS if bands is None else tuple(bands)
+    if not selected or selected[-1][0] != 1.0:
+        raise ValueError("Buy bands must cover the full 0-1 risk range")
+    previous_ceiling = 0.0
+    previous_multiplier = math.inf
+    for ceiling, multiplier in selected:
+        if (not math.isfinite(ceiling) or not math.isfinite(multiplier)
+                or ceiling <= previous_ceiling or ceiling > 1.0
+                or multiplier < 0 or multiplier > previous_multiplier):
+            raise ValueError("Buy bands must have increasing ceilings and non-increasing nonnegative multipliers")
+        previous_ceiling, previous_multiplier = ceiling, multiplier
+    return next(mult for ceiling, mult in selected if risk <= ceiling)
 
 
 def risk_sell_fraction(risk):
@@ -45,7 +85,7 @@ def risk_weekly_ceiling(risk, scenario="fixed_5"):
 def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
                        fee_pct=0.0, slippage_pct=0.0, enable_selling=False,
                        sell_confirmation_weeks=2, max_weekly_fraction=0.05,
-                       ceiling_scenario=None):
+                       ceiling_scenario=None, buy_bands=None):
     """Replay ordered weekly observations, spending only available unreserved cash.
 
     Selling requires consecutive high-risk weekly readings; each sell is a
@@ -67,7 +107,7 @@ def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
             raise ValueError("Dates must be strictly increasing")
         if not math.isfinite(price) or price <= 0:
             raise ValueError("Invalid BTC/AUD price")
-        mult = risk_buy_multiplier(risk)
+        mult = risk_buy_multiplier(risk, buy_bands)
         prev = day
         weeks_left = max((review_date-day).days / 7.0, 1.0)
         high_risk_weeks = high_risk_weeks + 1 if risk > 0.80 else 0

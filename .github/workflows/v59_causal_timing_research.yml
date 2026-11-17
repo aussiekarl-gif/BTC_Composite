@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'engines/research/v59_causal_timing_horse_race.py'
+      - 'engines/research/v59_dynamic_risk_policy.py'
+      - 'tests/test_v59_external_risk_ladders.py'
       - 'engines/research/v59_17week_200wma_episode.py'
       - 'engines/research/v59_four_year_bottoms.py'
       - 'engines/research/v59_three_cycle_entry.py'
