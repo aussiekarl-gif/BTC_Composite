@@ -41,6 +41,35 @@ class RiskOccurrenceTableTests(unittest.TestCase):
         self.assertEqual(by_cycle.loc["2024–current cycle", "Floor weeks"], 1)
         self.assertEqual(by_cycle.loc["All history", "Residual ≤−0.20 %"], 12.5)
 
+
+    def test_walk_forward_power_law_uses_completed_weeks_only(self):
+        import numpy as np
+        import pandas as pd
+        from engines.research.research_model import GENESIS_DATE, walk_forward_power_law
+
+        dates = pd.date_range("2020-01-01", "2020-03-01", freq="D", tz="UTC")
+        elapsed = np.array([(d - GENESIS_DATE).days for d in dates], dtype=float)
+        prices = 5000.0 + np.arange(len(dates), dtype=float) * 37.0
+        data = pd.DataFrame({"price": prices}, index=dates)
+        target = pd.Timestamp("2020-02-09", tz="UTC")  # Sunday: current W-MON bucket is incomplete.
+
+        _, fair, residual, _, _ = walk_forward_power_law(
+            data.loc[:target], cheap=-0.10, expensive=0.20,
+            min_weeks=2, refit_days=1,
+        )
+
+        history = data.loc[data.index < target, "price"]
+        completed = history.resample("W-MON").last().dropna()
+        completed = completed.loc[completed.index < target]
+        days = np.array([(d - GENESIS_DATE).days for d in completed.index], dtype=float)
+        slope, intercept = np.polyfit(np.log10(days), np.log10(completed.to_numpy()), 1)
+        target_days = (target - GENESIS_DATE).days
+        expected_fair = 10 ** (slope * np.log10(target_days) + intercept)
+        expected_residual = np.log10(float(data.loc[target, "price"])) - np.log10(expected_fair)
+
+        self.assertAlmostEqual(float(fair.loc[target]), float(expected_fair), places=8)
+        self.assertAlmostEqual(float(residual.loc[target]), float(expected_residual), places=10)
+
     def test_continuous_valuation_label_uses_its_own_score(self):
         self.assertEqual(continuous_valuation_risk_label(0.030), "VERY LOW")
         self.assertEqual(continuous_valuation_risk_label(0.50), "NEUTRAL")

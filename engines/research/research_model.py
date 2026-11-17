@@ -886,6 +886,10 @@ def walk_forward_power_law(data, cheap=-0.10, expensive=0.20, min_weeks=52, refi
             hist = prices.loc[prices.index < ts].dropna()
             if not hist.empty:
                 weekly = hist.resample("W-MON").last().dropna()
+                # W-MON labels a Tuesday–Monday bucket with its ending Monday.
+                # On dates before that Monday, the bucket is still incomplete;
+                # exclude it so the expanding regression uses completed weeks only.
+                weekly = weekly.loc[weekly.index < ts]
                 days = np.array([(x - GENESIS_DATE).days for x in weekly.index], dtype=float)
                 vals = weekly.to_numpy(dtype=float)
                 ok = (days > 0) & np.isfinite(vals) & (vals > 0)
