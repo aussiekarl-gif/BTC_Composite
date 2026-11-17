@@ -1298,11 +1298,11 @@ elif mode == "DCA Today":
     )
     normal_weekly_allowance = deployable_before_review / weeks_remaining
     recommended_buy = (
-        min(deployable_before_review, max(0.0, normal_weekly_allowance * paced_risk_weight), float(starting_capital_aud) * 0.05)
+        min(deployable_before_review, max(0.0, normal_weekly_allowance * paced_risk_weight))
         if portfolio_verified else 0.0
     )
     # The independent Bottom Challenger remains a separate research overlay;
-    # its eligibility is blocked at risk >= 0.50 and its amount keeps the 5% cap.
+    # its eligibility is blocked at risk >= 0.50 and its amount remains bounded by verified deployable cash.
     current_halving_clock_days = int((pd.Timestamp(now_utc.date()) - pd.Timestamp("2024-04-20")).days)
     current_halving_accumulation_zone = (
         HALVING_ACCUMULATION_START_DAY <= current_halving_clock_days <= HALVING_ACCUMULATION_END_DAY
@@ -1335,7 +1335,7 @@ elif mode == "DCA Today":
         if _event_is_eligible else paced_risk_weight
     )
     challenger_recommended_buy = (
-        min(deployable_before_review, max(0.0, normal_weekly_allowance * challenger_weight), float(starting_capital_aud) * 0.05)
+        min(deployable_before_review, max(0.0, normal_weekly_allowance * challenger_weight))
         if portfolio_verified else 0.0
     )
 
@@ -1690,11 +1690,11 @@ elif mode == "DCA Today":
                     f"maximum limit A${_plan['maximum_buy_limit_price_aud']:,.2f} per share; "
                     f"worst-case cost including fee A${_plan['indicative_order_total_inc_fee_aud']:,.2f}. "
                     f"Risk {current_risk:.3f} → {_plan['multiplier']:.2f}×; "
-                    f"weekly cap A${_plan['weekly_cap_aud']:,.0f}. No order placed."
+                    f"verified spendable cash A${_plan['spendable_aud']:,.0f}. No order placed."
                 )
                 st.caption(
                     "This is an indicative manual BUY LIMIT plan, not an executable quote. "
-                    "A market order could exceed the cash and weekly cap; never convert "
+                    "A market order could exceed verified available cash; never convert "
                     "this quantity into an uncapped MARKET order. Confirm the live Stake "
                     "ask, brokerage, pending orders, available cash and any ASX holiday "
                     "before entering a limit order yourself. If the ask rises above the "
