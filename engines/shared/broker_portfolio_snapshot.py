@@ -95,3 +95,102 @@ def snapshot_as_portfolio_positions(snapshot, *, today=None):
         "broker_snapshot": validated,
         "units_source": "User-entered broker snapshot; separate from historical executed-trade ledger",
     }
+
+
+def render_broker_snapshot_editor(st, portfolio):
+    """Render explicit broker snapshot entry; return a validated snapshot on submit."""
+    import copy
+
+    saved = portfolio.get("broker_snapshot", {}) if isinstance(portfolio, dict) else {}
+    with st.expander("Current broker holdings and deployable reserve", expanded=not bool(saved)):
+        st.caption(
+            "Enter the latest Stake figures. This snapshot is stored separately from "
+            "historical buys/sells; it does not create or alter transactions. "
+            "It is user-entered, not a live brokerage connection."
+        )
+        left, right = st.columns(2)
+        with left:
+            as_of = st.date_input(
+                "Broker snapshot date",
+                value=dt.date.fromisoformat(saved["as_of"]) if saved.get("as_of") else dt.date.today(),
+                key="broker_snapshot_as_of",
+            )
+            starting = st.number_input(
+                "Original starting capital (AUD)",
+                min_value=1.0,
+                value=float(saved.get("starting_capital_aud", portfolio.get("starting_capital_aud", 500000.0))),
+                step=10000.0,
+                key="broker_snapshot_starting_capital",
+            )
+            cash = st.number_input(
+                "Stake cash available now (AUD)",
+                min_value=0.0,
+                value=float(saved.get("cash_aud", 0.0)),
+                step=500.0,
+                key="broker_snapshot_cash",
+            )
+        with right:
+            aaa_units = st.number_input(
+                "AAA units",
+                min_value=0.0,
+                value=float(saved.get("aaa_units", 0.0)),
+                step=1.0,
+                key="broker_snapshot_aaa_units",
+            )
+            aaa_value = st.number_input(
+                "AAA market value (AUD)",
+                min_value=0.0,
+                value=float(saved.get("aaa_market_value_aud", 0.0)),
+                step=1000.0,
+                key="broker_snapshot_aaa_value",
+            )
+            aaa_liquidatable = st.checkbox(
+                "AAA can be sold to release funds for IBIT",
+                value=bool(saved.get("aaa_liquidatable", True)),
+                key="broker_snapshot_aaa_liquidatable",
+            )
+        ibit_left, ibit_right = st.columns(2)
+        with ibit_left:
+            ibit_units = st.number_input(
+                "IBIT units",
+                min_value=0.0,
+                value=float(saved.get("ibit_units", 0.0)),
+                step=1.0,
+                key="broker_snapshot_ibit_units",
+            )
+        with ibit_right:
+            ibit_value = st.number_input(
+                "IBIT market value (AUD)",
+                min_value=0.0,
+                value=float(saved.get("ibit_market_value_aud", 0.0)),
+                step=1000.0,
+                key="broker_snapshot_ibit_value",
+            )
+        if st.button("Save broker snapshot", key="save_broker_snapshot", use_container_width=True):
+            candidate = {
+                "as_of": as_of.isoformat(),
+                "starting_capital_aud": float(starting),
+                "aaa_units": float(aaa_units),
+                "aaa_market_value_aud": float(aaa_value),
+                "aaa_liquidatable": bool(aaa_liquidatable),
+                "ibit_units": float(ibit_units),
+                "ibit_market_value_aud": float(ibit_value),
+                "cash_aud": float(cash),
+            }
+            validate_broker_snapshot(candidate, today=dt.date.today())
+            return copy.deepcopy(candidate)
+    return None
+
+
+def merge_broker_snapshot(fresh_portfolio, snapshot):
+    """Attach a validated current snapshot without touching the trade ledger."""
+    import copy
+
+    validate_broker_snapshot(snapshot)
+    if not isinstance(fresh_portfolio, dict):
+        raise ValueError("Persistent portfolio must be a dictionary")
+    result = copy.deepcopy(fresh_portfolio)
+    result["broker_snapshot"] = copy.deepcopy(snapshot)
+    if not result.get("starting_capital_aud"):
+        result["starting_capital_aud"] = float(snapshot["starting_capital_aud"])
+    return result
