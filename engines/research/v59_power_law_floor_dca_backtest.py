@@ -26,16 +26,22 @@ from engines.research.v59_live_signal_snapshot import live_risk_params
 CANDIDATE_CHEAP_FLOORS = (-0.10, -0.20, -0.24, -0.25, -0.30, -0.31, -0.33, -0.35)
 CASH_YIELDS = (0.0, 0.05)
 EXPENSIVE_FLOOR = model.DEFAULT_PL_EXPENSIVE
-TAIL_STRETCHED_KNOTS = (
-    (-0.32, 0.00),
-    (-0.31, 0.01),
-    (-0.30, 0.02),
-    (-0.25, 0.05),
-    (-0.10, 0.20),
-    (-0.04, 0.30),
-    (0.02, 0.40),
-    (0.20, 1.00),
-)
+TAIL_STRETCHED_VARIANTS = {
+    # 10x is reserved for the deepest tail; moderate undervaluation retains
+    # more buying weight. All variants preserve the no-buy boundary at +0.02.
+    "tail_stretched_aggressive": (
+        (-0.32, 0.00), (-0.31, 0.01), (-0.30, 0.02), (-0.25, 0.05),
+        (-0.10, 0.05), (-0.04, 0.20), (0.02, 0.40), (0.20, 1.00),
+    ),
+    "tail_stretched_balanced": (
+        (-0.32, 0.00), (-0.31, 0.01), (-0.30, 0.02), (-0.25, 0.05),
+        (-0.10, 0.10), (-0.04, 0.25), (0.02, 0.40), (0.20, 1.00),
+    ),
+    "tail_stretched_conservative": (
+        (-0.32, 0.00), (-0.31, 0.01), (-0.30, 0.02), (-0.25, 0.05),
+        (-0.10, 0.20), (-0.04, 0.30), (0.02, 0.40), (0.20, 1.00),
+    ),
+}
 
 
 def main() -> None:
@@ -65,11 +71,15 @@ def main() -> None:
     results = []
     cohort_anchors = None
     mappings = [
-        (f"linear_floor_{cheap:.2f}", cheap)
+        (f"linear_floor_{cheap:.2f}", cheap, None)
         for cheap in CANDIDATE_CHEAP_FLOORS
-    ] + [("piecewise_extreme_tail_-0.32", None)]
+    ] + [
+        (name, None, knots)
+        for name, knots in TAIL_STRETCHED_VARIANTS.items()
+    ]
 
-    for mapping_name, cheap in mappings:
+    mapping_bucket_counts = {}
+    for mapping_name, cheap, knots in mappings:
         candidate = scored.copy()
         residual_values = pd.to_numeric(candidate["power_law_residual"], errors="coerce")
         if cheap is not None:
@@ -82,8 +92,8 @@ def main() -> None:
             # while preserving the existing no-buy boundary at residual +0.02.
             valid = residual_values.notna()
             candidate["risk_score"] = np.nan
-            xp = np.array([x for x, _ in TAIL_STRETCHED_KNOTS], dtype=float)
-            fp = np.array([y for _, y in TAIL_STRETCHED_KNOTS], dtype=float)
+            xp = np.array([x for x, _ in knots], dtype=float)
+            fp = np.array([y for _, y in knots], dtype=float)
             candidate.loc[valid, "risk_score"] = np.interp(
                 residual_values.loc[valid].to_numpy(), xp, fp
             )
@@ -91,6 +101,15 @@ def main() -> None:
         # WF residual, not a fallback risk series.
         candidate["risk_score_source"] = "Walk-forward Power Law"
         rows = build_weekly_rows(candidate, fx)
+        weekly_distribution = model.risk_occurrence_table([row["risk_score"] for row in rows])
+        weekly_by_bucket = weekly_distribution.set_index("Risk range")
+        mapping_bucket_counts[mapping_name] = {
+            "weekly_observations": len(rows),
+            "lowest_bucket_weeks": int(weekly_by_bucket.loc["0.00–0.01", "Weeks"]),
+            "lowest_bucket_percent": float(weekly_by_bucket.loc["0.00–0.01", "Percent"]),
+            "second_bucket_weeks": int(weekly_by_bucket.loc["0.01–0.02", "Weeks"]),
+            "second_bucket_percent": float(weekly_by_bucket.loc["0.01–0.02", "Percent"]),
+        }
         windows = cohort_windows(rows)
         anchors = [w["anchor"] for w in windows]
         if cohort_anchors is None:
@@ -145,7 +164,7 @@ def main() -> None:
                 })
 
     summaries = []
-    for mapping_name, cheap in mappings:
+    for mapping_name, cheap, knots in mappings:
         for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
             for cash_yield in CASH_YIELDS:
                 selected = [
@@ -159,6 +178,7 @@ def main() -> None:
                 summaries.append({
                     "mapping_name": mapping_name,
                     "candidate_cheap_floor": cheap,
+                    "risk_distribution": mapping_bucket_counts[mapping_name],
                     "split": split,
                     "cash_yield": cash_yield,
                     "cohorts": len(selected),
@@ -205,7 +225,8 @@ def main() -> None:
         "flat_fee_aud": 3.0,
         "illustrative_annual_etf_drag": 0.0025,
         "candidate_cheap_floors": CANDIDATE_CHEAP_FLOORS,
-        "piecewise_tail_stretched_knots": TAIL_STRETCHED_KNOTS,
+        "piecewise_tail_stretched_variants": TAIL_STRETCHED_VARIANTS,
+        "risk_bucket_counts_by_mapping": mapping_bucket_counts,
         "expensive_floor": EXPENSIVE_FLOOR,
         "current_score_reconstruction_max_abs_difference": max_diff,
         "signal_execution": "Prior Sunday UTC risk; next Monday BTC/AUD spot proxy execution",
