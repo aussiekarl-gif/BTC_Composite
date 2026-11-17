@@ -26,10 +26,10 @@ class DynamicRiskPolicyTests(unittest.TestCase):
         self.assertEqual(x["btc_held"], 0)
         self.assertEqual(x["cash_aud"], 500000)
 
-    def test_exact_050_buys_but_above_050_pauses(self):
-        at = replay_dynamic_dca(self.rows([0.50]), **self.opts)
-        above = replay_dynamic_dca(self.rows([0.50001]), **self.opts)
-        self.assertGreater(at["btc_held"], 0)
+    def test_risk_040_and_above_pauses(self):
+        at = replay_dynamic_dca(self.rows([0.40]), **self.opts)
+        above = replay_dynamic_dca(self.rows([0.40001]), **self.opts)
+        self.assertEqual(at["btc_held"], 0)
         self.assertEqual(above["btc_held"], 0)
 
     def test_default_policy_has_no_fixed_25000_weekly_ceiling(self):
@@ -85,8 +85,14 @@ class DynamicRiskPolicyTests(unittest.TestCase):
             risk_buy_multiplier(float("nan"))
 
     def test_monotonic_buy_bands(self):
-        self.assertGreater(risk_buy_multiplier(0.05), risk_buy_multiplier(0.3))
-        self.assertGreater(risk_buy_multiplier(0.3), risk_buy_multiplier(0.7))
+        self.assertEqual(risk_buy_multiplier(0.0), 10.0)
+        self.assertEqual(risk_buy_multiplier(0.01), 5.0)
+        self.assertEqual(risk_buy_multiplier(0.02), 3.0)
+        self.assertEqual(risk_buy_multiplier(0.05), 2.0)
+        self.assertEqual(risk_buy_multiplier(0.10), 1.5)
+        self.assertEqual(risk_buy_multiplier(0.20), 1.0)
+        self.assertEqual(risk_buy_multiplier(0.40), 0.0)
+        self.assertEqual(risk_buy_multiplier(0.50), 0.0)
 
     def test_sell_fraction_rises_with_risk(self):
         self.assertLess(risk_sell_fraction(0.85), risk_sell_fraction(0.95))
