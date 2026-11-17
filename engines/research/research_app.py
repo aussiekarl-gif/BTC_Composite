@@ -1449,12 +1449,12 @@ elif mode == "DCA Today":
             <div>
               <div class="v59-title">Effective Risk Multiplier <span class="v59-q" title="Risk-band multiplier including a qualifying staged bottom event. A purchase still requires verified deployable cash.">?</span></div>
               <div class="v59-mult">{challenger_weight:.2f}×</div>
-              <div class="v59-sub"><b>Base Monday DCA</b></div>
+              <div class="v59-sub"><b>Base Monday Allowance</b></div>
               <div class="v59-base">{allowance_display}</div>
-              <div class="v59-sub">Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}</div>
+              <div class="v59-sub">{"Deployable capital unavailable until portfolio verification" if not portfolio_verified else f"Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}"}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Ordinary sizing cannot exceed the paced allowance. Only a newly staged Exceptional Bottom event can front-load capital.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-off">i</span><div><b>{purchase_reason_title}</b><small>{purchase_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>Valuation display {_display_txt} • R2 sizing score {current_risk:.3f} → {risk_weight:.2f}× risk multiplier</small></div></div>
@@ -1485,8 +1485,8 @@ elif mode == "DCA Today":
             </div>
             <div class="v59-card">
               <div class="v59-card-title">Remaining Capital <span class="v59-q" title="Base allowance = (remaining capital − protected post-review reserve) ÷ weeks to strategy review.">?</span></div>
-              <div class="v59-card-value">A$ {remaining_capital_aud:,.0f}</div>
-              <div class="v59-card-sub">~{weeks_remaining:.0f} weeks to review<br>A${preserved_capital_aud:,.0f} protected after {target_deployment_date.strftime('%d %b %Y')}</div>
+              <div class="v59-card-value">{remaining_display}</div>
+              <div class="v59-card-sub">{"Portfolio verification required" if not portfolio_verified else f"~{weeks_remaining:.0f} weeks to review<br>A${preserved_capital_aud:,.0f} protected after {target_deployment_date.strftime('%d %b %Y')}"}</div>
             </div>
           </div>
 
