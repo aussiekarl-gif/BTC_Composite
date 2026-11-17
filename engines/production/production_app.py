@@ -482,6 +482,9 @@ portfolio_snapshots = _load_portfolio_snapshots(browser_state)
 browser_portfolio = _load_shared_portfolio(browser_state)
 server_portfolio, portfolio_storage_error = load_portfolio()
 shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
+if server_portfolio.get("broker_snapshot"):
+    shared_portfolio = dict(shared_portfolio) if isinstance(shared_portfolio, dict) else {}
+    shared_portfolio["broker_snapshot"] = server_portfolio["broker_snapshot"]
 # DCA Today may use only the authoritative durable portfolio. Browser snapshots
 # remain available to My Portfolio recovery, but never authorise a cash recommendation.
 verified_portfolio_positions = None
