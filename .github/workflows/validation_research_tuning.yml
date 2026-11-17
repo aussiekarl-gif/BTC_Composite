@@ -35,8 +35,6 @@ jobs:
     env:
       BTC_PORTFOLIO_BACKEND: sqlite
       BTC_PORTFOLIO_DB_PATH: /tmp/v59_risk_validation_tests_only.sqlite3
-      NTFY_TOPIC: ""
-      GOOGLE_SERVICE_ACCOUNT_JSON: ""
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
