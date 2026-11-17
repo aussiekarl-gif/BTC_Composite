@@ -1302,7 +1302,7 @@ elif mode == "DCA Today":
         if portfolio_verified else 0.0
     )
     # The independent Bottom Challenger remains a separate research overlay;
-    # its eligibility is blocked at risk >= 0.50 and its amount remains bounded by verified deployable cash.
+    # its eligibility is blocked at risk >= 0.40 and its amount remains bounded by verified deployable cash.
     current_halving_clock_days = int((pd.Timestamp(now_utc.date()) - pd.Timestamp("2024-04-20")).days)
     current_halving_accumulation_zone = (
         HALVING_ACCUMULATION_START_DAY <= current_halving_clock_days <= HALVING_ACCUMULATION_END_DAY
@@ -1328,7 +1328,7 @@ elif mode == "DCA Today":
         and str(current_challenger_event).strip().upper() in _eligible_challenger_events
         and np.isfinite(_event_multiplier)
         and _event_multiplier > 0
-        and current_risk < 0.50
+        and current_risk < 0.40
     )
     challenger_weight = (
         max(paced_risk_weight, _event_multiplier)
