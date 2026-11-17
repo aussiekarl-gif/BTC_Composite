@@ -89,39 +89,24 @@ DEFAULT_RELATIVE_RISK_WEIGHT = 0.40
 DEFAULT_DRAWDOWN_WINDOW = 365
 DEFAULT_FIXED_DCA_AUD = 1000.0
 
-DEFAULT_ALWAYS_DCA_POINTS = [
-    (0.00, 3.00),
-    (0.10, 2.50),
-    (0.20, 2.00),
-    (0.30, 1.50),
-    (0.40, 1.20),
-    (0.50, 1.00),
-    (0.60, 0.80),
-    (0.70, 0.60),
-    (0.80, 0.40),
-    (0.90, 0.25),
-    (1.00, 0.10),
+# Screenshot/Digital Asset News-style risk-band ladder.
+# Tiny epsilon-separated anchors create discrete bands under linear interpolation.
+SCREENSHOT_RISK_LADDER_POINTS = [
+    (0.000000, 16.0), (0.099999, 16.0),
+    (0.100000, 8.0), (0.199999, 8.0),
+    (0.200000, 4.0), (0.299999, 4.0),
+    (0.300000, 2.0), (0.399999, 2.0),
+    (0.400000, 1.0), (0.499999, 1.0),
+    (0.500000, 0.0), (1.000000, 0.0),
 ]
+DEFAULT_ALWAYS_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 
 DEFAULT_INTELLIGENT_DCA_BUDGET_AUD = 500000.0
 
-SMART_DCA_LOW_RISK_WEIGHT = 2.75
-SMART_DCA_HIGH_RISK_WEIGHT = 0.05
-
-SMART_DCA_POINTS = [
-    (0.00, 2.7500),
-    (0.10, 2.3125),
-    (0.20, 1.8750),
-    (0.30, 1.5250),
-    (0.40, 1.21875),
-    (0.50, 1.0000),
-    (0.60, 0.6305555555),
-    (0.70, 0.3666666666),
-    (0.80, 0.2083333334),
-    (0.90, 0.0711111111),
-    (1.00, 0.0500),
-]
+SMART_DCA_LOW_RISK_WEIGHT = 16.0
+SMART_DCA_HIGH_RISK_WEIGHT = 0.0
+SMART_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
 
 DEFAULT_TREND_ER_PERIOD = 20
