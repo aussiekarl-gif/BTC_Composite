@@ -11,11 +11,9 @@ from engines.research.v59_dynamic_risk_policy import risk_buy_multiplier
 
 
 def highlighted_histogram_bucket(value) -> int:
-    """Index in research_model.risk_occurrence_table's 14 mutually exclusive bins.
+    """Index in research_model.risk_occurrence_table's 13 mutually exclusive bins.
 
-    Do not use a simple count of edges: the histogram begins with separate
-    invalid, exact-zero, and (0, .01) bins. That omission previously shifted
-    the orange highlight two columns left.
+    Zero is part of the first valid 0.00–0.01 bucket; it is not a separate bin.
     """
     try:
         x = float(value)
@@ -25,16 +23,14 @@ def highlighted_histogram_bucket(value) -> int:
         return -1
     if x < 0:
         return 0
-    if x == 0:
-        return 1
     if x < 0.01:
-        return 2
-    for idx, ceiling in enumerate((0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 0.60, 0.80, 1.00), start=3):
+        return 1
+    for idx, ceiling in enumerate((0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 0.60, 0.80, 1.00), start=2):
         if x < ceiling:
             return idx
     if x == 1:
-        return 12
-    return 13
+        return 11
+    return 12
 
 
 def aggressive_candidate_preview(

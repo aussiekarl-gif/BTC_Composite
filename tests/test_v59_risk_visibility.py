@@ -8,12 +8,12 @@ from engines.research.v59_risk_visibility import (
 
 
 class RiskHighlightAndCandidateTests(unittest.TestCase):
-    def test_histogram_indices_match_13_existing_bucket_labels(self):
+    def test_histogram_indices_match_13_buckets_with_zero_in_lowest_valid_band(self):
         examples = [
-            (-0.1, 0), (0, 1), (.005, 2), (.01, 3),
-            (.019, 3), (.02, 4), (.05, 5), (.10, 6),
-            (.20, 7), (.40, 8), (.50, 9), (.60, 10), (.80, 11),
-            (1.00, 12), (1.1, 13), (float("inf"), 13),
+            (-0.1, 0), (0, 1), (.0004, 1), (.005, 1), (.01, 2),
+            (.019, 2), (.02, 3), (.05, 4), (.10, 5),
+            (.20, 6), (.40, 7), (.50, 8), (.60, 9), (.80, 10),
+            (1.00, 11), (1.1, 12), (float("inf"), 12),
             (float("-inf"), 0), (float("nan"), -1), (None, -1),
         ]
         for raw, index in examples:
@@ -21,9 +21,9 @@ class RiskHighlightAndCandidateTests(unittest.TestCase):
                 self.assertEqual(highlighted_histogram_bucket(raw), index)
 
     def test_current_orange_bin_was_shifted(self):
-        # Previously a continuous valuation risk of .075 highlighted bin 3
-        # (the 0.01-.02 bar) rather than its correct .05-.10 bar (bin 5).
-        self.assertEqual(highlighted_histogram_bucket(.075), 5)
+        # The merged zero bucket shifts all valid bins one place left.
+        self.assertEqual(highlighted_histogram_bucket(.075), 4)
+        self.assertEqual(highlighted_histogram_bucket(0.0), 1)
 
     def preview(self, risk, age=1):
         return aggressive_candidate_preview(
@@ -79,19 +79,18 @@ class RiskLadderChartLabelTests(unittest.TestCase):
 
     def test_research_chart_matches_revised_bands_on_each_histogram_bucket(self):
         labels, multipliers = risk_ladder_chart_labels(
-            ["<0.00 (invalid)", "0.000 (floor)", "(0.00, 0.01)", "0.01–0.02",
+            ["<0.00 (invalid)", "0.00–0.01", "0.01–0.02",
              "0.02–0.05", "0.05–0.10", "0.10–0.20", "0.20–0.40",
              "0.40–0.50", "0.50–0.60", "0.60–0.80", "0.80–1.00", "1.000 (cap)", ">1.00 (invalid)"],
-            [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20,
+            [None, 0.00, 0.01, 0.02, 0.05, 0.10, 0.20,
              0.40, 0.50, 0.60, 0.80, 1.00, None],
             self.LADDER,
         )
         self.assertIsNone(multipliers[0])
-        self.assertEqual(multipliers[1:9], [10.0, 10.0, 5.0, 3.0, 2.0, 1.5, 1.0, 0.0])
-        self.assertEqual(multipliers[9:13], [0.0, 0.0, 0.0, 0.0])
-        self.assertIsNone(multipliers[13])
+        self.assertEqual(multipliers[1:8], [10.0, 5.0, 3.0, 2.0, 1.5, 1.0, 0.0])
+        self.assertEqual(multipliers[8:12], [0.0, 0.0, 0.0, 0.0])
+        self.assertIsNone(multipliers[12])
         self.assertIn("10×", labels[1])
-        self.assertIn("10×", labels[2])
 
     def test_production_chart_matches_new_first_risk_bands(self):
         labels, multipliers = risk_ladder_chart_labels(
