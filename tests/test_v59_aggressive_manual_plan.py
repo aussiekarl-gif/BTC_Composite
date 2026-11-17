@@ -174,7 +174,7 @@ class ManualAggressivePlanTests(unittest.TestCase):
                 self.assertGreater(units, 0)
 
     def test_quote_larger_than_budget_no_whole_units(self):
-        p = plan(ask=30000)
+        p = plan(ask=600000)
         self.assertIn("NO_AFFORDABLE_WHOLE_IBIT_SHARES_WITHIN_VERIFIED_CASH", p["blockers"])
 
 
