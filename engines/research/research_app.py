@@ -2093,6 +2093,24 @@ elif mode == "DCA Today":
         "Opportunity Rarity is calculated separately and does not change the multiplier."
     )
 
+    with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
+        _weekly_pl_residual = valid_today["power_law_residual"].resample("W-MON").last().dropna()
+        _floor_audit = power_law_floor_diagnostics(
+            display_source, _weekly_pl_residual, cheap_threshold=pl_cheap_threshold
+        )
+        if not _floor_audit.empty:
+            st.dataframe(_floor_audit, width="stretch", hide_index=True)
+            _cheap_ratio = 10.0 ** pl_cheap_threshold
+            st.caption(
+                f"The default floor is reached when BTC is at or below {_cheap_ratio:.1%} "
+                f"of the walk-forward Power Law fair value (residual ≤{pl_cheap_threshold:.2f}). "
+                "The tighter −0.15 and −0.20 columns are sensitivity checks only; they do not "
+                "change the active model. Zero is a clipped valuation score, not zero market risk. "
+                "Mismatches should be zero; any non-zero count needs investigation."
+            )
+        else:
+            st.info("Not enough aligned weekly risk and Power Law residual observations for this audit.")
+
     with st.expander("Chance of a lower-risk entry — current + previous 2 cycles", expanded=False):
         if opportunity["samples"] >= 1:
             st.write(
