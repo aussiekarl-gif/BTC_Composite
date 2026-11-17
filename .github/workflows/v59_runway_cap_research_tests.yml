@@ -14,6 +14,9 @@ on:
       - 'tests/test_v59_input_readiness.py'
       - 'engines/research/v59_risk_visibility.py'
       - 'tests/test_v59_risk_visibility.py'
+      - 'engines/shared/risk_distribution_display.py'
+      - 'tests/test_risk_distribution_display.py'
+      - 'engines/production/production_app.py'
       - 'engines/research/research_app.py'
       - 'engines/research/v59_aggressive_manual_plan.py'
       - 'tests/test_v59_aggressive_manual_plan.py'
@@ -29,11 +32,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: python -m pip install pandas
       - run: python -m unittest discover -s tests -p 'test_v59_runway_cap_replay.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_dynamic_risk_policy.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_adaptive_ceiling_backtest.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_disjoint_risk_band_proxy.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_input_readiness.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_risk_visibility.py' -v
+      - run: python -m unittest discover -s tests -p 'test_risk_distribution_display.py' -v
       - run: python -m unittest discover -s tests -p 'test_v59_aggressive_manual_plan.py' -v
-      - run: python -m py_compile engines/research/research_app.py engines/research/v59_risk_visibility.py
+      - run: python -m py_compile engines/research/research_app.py engines/production/production_app.py engines/shared/risk_distribution_display.py engines/research/v59_risk_visibility.py

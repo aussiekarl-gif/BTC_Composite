@@ -9,6 +9,7 @@ if str(_REPO_ROOT) not in _sys.path:
 
 from engines.research import research_model as _model
 from engines.shared.dca_purchase_status import dca_purchase_display
+from engines.shared.risk_distribution_display import add_lowest_risk_multiplier_label
 from engines.research.v59_risk_visibility import (
     aggressive_candidate_preview, highlighted_histogram_bucket,
 )
@@ -2034,18 +2035,20 @@ elif mode == "DCA Today":
 
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(display_source)
+    occurrence_chart = add_lowest_risk_multiplier_label(occurrence)
     fig_occurrence = go.Figure()
-    # The histogram has separate invalid, zero and (0, .01) categories.
-    # Former edge counting highlighted a bar two places to the left.
+    # The exact-zero and (0, .01) source bins are combined for display:
+    # both belong to the lowest 16x DCA band.
     _cur_idx = highlighted_histogram_bucket(_display_now)
+    _cur_idx = 1 if _cur_idx in (1, 2) else (_cur_idx - 1 if _cur_idx > 2 else _cur_idx)
     _bar_colors = [
-        "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
+        "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence_chart))
     ]
     fig_occurrence.add_bar(
-        x=occurrence["Risk range"],
-        y=occurrence["Percent"],
+        x=occurrence_chart["Risk range"],
+        y=occurrence_chart["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks"]],
+        customdata=occurrence_chart[["Weeks"]],
         hovertemplate=(
             "Risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
@@ -2060,6 +2063,7 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
+        "The first valid risk bar is 0.00–0.01 and carries the 16× DCA multiplier; exact zero is included. " 
         f"Current valuation risk {_display_txt} (orange bar). This chart is descriptive: it shows the percentage "
         "of weekly observations that fell inside each continuous valuation-risk range. The R2 sizing score "
         f"({current_risk:.3f}) is separate and still controls the DCA multiplier. It does NOT assign "
