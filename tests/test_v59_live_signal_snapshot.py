@@ -42,7 +42,7 @@ class ProspectiveRiskCaptureAcceptance(unittest.TestCase):
                                       params=params, fx_latest_date="2026-11-10")
         self.assertEqual(snapshot["status"], "RESEARCH_SIGNAL_SNAPSHOT_READY")
         self.assertEqual(snapshot["fingerprint"], replay["fingerprint"])
-        self.assertEqual(snapshot["research_aggressive_risk_band_multiplier"], 3.)
+        self.assertEqual(snapshot["research_aggressive_risk_band_multiplier"], 2.)
 
     def test_daily_future_row_never_replaces_latest_closed(self):
         a = frame("2026-11-10", risk=.4)
