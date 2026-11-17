@@ -18,8 +18,6 @@ def add_lowest_risk_multiplier_label(occurrence):
         result = result.drop(index=2).reset_index(drop=True)
     elif len(result) and labels[0] == "0.00–0.01":
         result.loc[0, "Risk range"] = "0.00–0.01 · 16×"
-    elif len(result) and labels[0] == "0.00–0.01":
-        result.loc[0, "Risk range"] = "0.00–0.01 · 16×"
     else:
         raise ValueError("Unexpected risk occurrence bucket layout; refusing to mislabel DCA multiplier")
     return result
