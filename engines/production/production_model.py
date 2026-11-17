@@ -89,15 +89,15 @@ DEFAULT_RELATIVE_RISK_WEIGHT = 0.40
 DEFAULT_DRAWDOWN_WINDOW = 365
 DEFAULT_FIXED_DCA_AUD = 1000.0
 
-# Screenshot/Digital Asset News-style risk-band ladder.
-# Tiny epsilon-separated anchors create discrete bands under linear interpolation.
+# Screenshot-derived step ladder. Risk ceilings are inclusive at each
+# lower band; the next band's multiplier applies exactly at its boundary.
 SCREENSHOT_RISK_LADDER_POINTS = [
-    (0.000000, 16.0), (0.099999, 16.0),
-    (0.100000, 8.0), (0.199999, 8.0),
-    (0.200000, 4.0), (0.299999, 4.0),
-    (0.300000, 2.0), (0.399999, 2.0),
-    (0.400000, 1.0), (0.499999, 1.0),
-    (0.500000, 0.0), (1.000000, 0.0),
+    (0.00, 16.0),
+    (0.10, 8.0),
+    (0.20, 4.0),
+    (0.30, 2.0),
+    (0.40, 1.0),
+    (0.50, 0.0),
 ]
 DEFAULT_ALWAYS_DCA_POINTS = SCREENSHOT_RISK_LADDER_POINTS.copy()
 
@@ -128,6 +128,19 @@ DEFAULT_TREND_SELL_BEAR = 1.25
 
 def clamp(value, low, high):
     return max(low, min(high, value))
+
+
+def risk_band_multiplier(points, risk):
+    """Apply a discrete risk ladder: each point is the lower bound of its band."""
+    if not np.isfinite(risk) or not 0.0 <= float(risk) <= 1.0:
+        raise ValueError("Risk must be a finite value between 0 and 1")
+    selected = float(points[0][1])
+    for lower_bound, multiplier in sorted(points):
+        if float(risk) >= float(lower_bound):
+            selected = float(multiplier)
+        else:
+            break
+    return selected
 
 
 def interpolate(points, x):
@@ -1414,7 +1427,7 @@ def simulate_dca_backtest(
         if strategy_mode == "Plain DCA":
             multiplier, contribution, signal = 1.0, float(base_dca_aud), "FIXED DCA"
         else:
-            multiplier = float(interpolate(risk_curve, risk)) if np.isfinite(risk) else 1.0
+            multiplier = float(risk_band_multiplier(risk_curve, risk)) if np.isfinite(risk) else 1.0
             contribution = float(base_dca_aud) * multiplier
             signal = "SCALED DCA"
         fee = contribution * float(params.get("fee_pct", 0.0))
