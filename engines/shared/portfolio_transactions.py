@@ -260,11 +260,15 @@ def merge_legacy_purchase_editor(original,fresh,*,edited_buys,starting_capital_a
     """
     prior_buys,prior_sells=_read_ledger(original)
     current_buys,current_sells=_read_ledger(fresh)
-    if prior_buys!=current_buys or prior_sells!=current_sells:
+    # Explicit first-time recovery: the durable store is genuinely empty and
+    # the user has submitted the reviewed browser snapshot. Never use this
+    # path when any durable BUY or SELL exists.
+    first_time_recovery = not current_buys and not current_sells and bool(prior_buys or prior_sells)
+    if not first_time_recovery and (prior_buys!=current_buys or prior_sells!=current_sells):
         raise ValueError("Portfolio changed elsewhere; refresh before saving legacy purchase edits")
     if not isinstance(edited_buys,list):
         raise ValueError("Edited purchases must be a list")
-    result=copy.deepcopy(fresh)
+    result=copy.deepcopy(original if first_time_recovery else fresh)
     retained=copy.deepcopy(edited_buys)
     # Old six-column Streamlit editor omits execution IDs/Notes.
     # Preserve those metadata fields when this is demonstrably the
