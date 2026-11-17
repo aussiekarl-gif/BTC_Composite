@@ -8,8 +8,15 @@ from datetime import date
 import math
 
 # (risk ceiling, ordinary weekly buy multiplier); upper bound inclusive.
-BUY_BANDS = ((0.10, 3.0), (0.20, 2.0), (0.40, 1.5),
-             (0.50, 1.0), (1.0, 0.0))
+BUY_BANDS = (
+    (math.nextafter(0.01, 0.0), 10.0),
+    (math.nextafter(0.02, 0.0), 5.0),
+    (math.nextafter(0.05, 0.0), 3.0),
+    (math.nextafter(0.10, 0.0), 2.0),
+    (math.nextafter(0.20, 0.0), 1.5),
+    (math.nextafter(0.40, 0.0), 1.0),
+    (1.0, 0.0),
+)
 
 # External reference ladders are hypotheses for matched research only.
 # Cowen's proprietary risk formula is not reproduced by these multipliers.
