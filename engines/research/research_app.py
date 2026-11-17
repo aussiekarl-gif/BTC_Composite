@@ -1605,8 +1605,8 @@ elif mode == "DCA Today":
         _preview_cols[2].metric("Hypothetical weekly allocation", _preview_text)
         st.caption(
             f"R2 SIZING risk {current_risk:.3f}; observation date {_sizing_observation_date}; "
-            f"age {_sizing_observation_age_days} days. Research bands: ≤0.10: 3×, "
-            "≤0.20: 1×; risk ≥0.40: NO BUY. "
+            f"age {_sizing_observation_age_days} days. Candidate multiplier {_aggressive_preview['candidate_multiplier']:.2f}×. "
+            "The preview uses the current research risk-band schedule; risk ≥0.40 maps to 0×. "
             "Illustrative amount is bounded by verified deployable cash and remaining "
             "capital, with no fixed weekly percentage cap. A recent observation does NOT prove provider timestamp "
             "provenance or ETF tradeability. No live sizing, portfolio, Streamlit hero "
