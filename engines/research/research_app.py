@@ -258,7 +258,7 @@ def _multiplier_curve_controls(default_curve, storage_key):
             mult = st.number_input(
                 f"Risk {risk:.2f}",
                 min_value=0.0,
-                max_value=10.0,
+                max_value=16.0,
                 value=float(initial),
                 step=0.05,
                 format="%.2f",
