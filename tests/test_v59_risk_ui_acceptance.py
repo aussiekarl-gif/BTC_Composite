@@ -77,13 +77,13 @@ class ResearchRealPageAcceptance(unittest.TestCase):
             page = AppTest.from_file(str(APP), default_timeout=75).run()
             self.assertFalse(page.exception,
                              repr([x.message for x in page.exception]))
-            # The live 1x and read-only 3x must remain clearly separated.
+            # The live screenshot-derived 16x ladder and read-only 3x preview remain separate.
             names = [m.label for m in page.metric]
             self.assertIn("Live ordinary multiplier",names)
             self.assertIn("Aggressive research multiplier",names)
             self.assertIn("Actual V5.9 sizing risk",names)
             metrics = {m.label: str(m.value) for m in page.metric}
-            self.assertEqual(metrics["Live ordinary multiplier"],"1.00×")
+            self.assertEqual(metrics["Live ordinary multiplier"],"16.00×")
             self.assertEqual(metrics["Aggressive research multiplier"],"3.00×")
             self.assertFalse(any("indicative_whole_ibit_units" in str(m.value)
                                  for m in page.metric))
