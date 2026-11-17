@@ -63,7 +63,7 @@ class RiskOccurrenceTableTests(unittest.TestCase):
         self.assertEqual(by_cycle.loc["2016–2020 cycle", "Floor weeks"], 1)
         self.assertEqual(by_cycle.loc["2020–2024 cycle", "Floor weeks"], 2)
         self.assertEqual(by_cycle.loc["2024–current cycle", "Floor weeks"], 1)
-        self.assertEqual(by_cycle.loc["All history", "Residual ≤−0.20 %"], 12.5)
+        self.assertEqual(by_cycle.loc["All history", "Residual ≤-0.20 %"], 12.5)
         self.assertEqual(by_cycle.loc["All history", "Residual ≤-0.15 weeks"], 3)
         self.assertEqual(by_cycle.loc["All history", "Residual ≤-0.20 weeks"], 1)
         self.assertEqual(by_cycle.loc["All history", "Residual ≤-0.25 weeks"], 1)
