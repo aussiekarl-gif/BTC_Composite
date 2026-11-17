@@ -1847,7 +1847,7 @@ def simulate_dca_backtest(
             # bonus is retained as a diagnostic column, but must not alter the
             # requested multiplier bands or re-enable buying above 0.50 risk.
             multiplier = (
-                float(interpolate(risk_curve, risk))
+                float(risk_band_multiplier(risk_curve, risk))
                 if np.isfinite(risk) else 1.0
             )
             contribution = float(base_dca_aud) * multiplier
