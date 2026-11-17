@@ -17,6 +17,28 @@ class RiskOccurrenceTableTests(unittest.TestCase):
         self.assertEqual(by_label.loc[">1.00 (invalid)", "Weeks"], 2)
         self.assertEqual(by_label.loc["<0.00 (invalid)", "Weeks"], 2)
 
+    def test_completed_weekly_last_excludes_partial_future_label(self):
+        import pandas as pd
+        from engines.research.research_model import completed_weekly_last
+
+        dates = pd.to_datetime([
+            "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-17"
+        ], utc=True)
+        values = pd.Series([1.0, 2.0, 3.0, 4.0], index=dates)
+        weekly = completed_weekly_last(values, as_of=dates[-1])
+
+        # The Tuesday–Monday bucket containing 17 Nov is labelled 23 Nov,
+        # so it is excluded until Monday 23 Nov has closed.
+        self.assertEqual(list(weekly.index), [pd.Timestamp("2026-11-09", tz="UTC")])
+        self.assertEqual(float(weekly.iloc[0]), 1.0)
+
+        completed = completed_weekly_last(values, as_of=pd.Timestamp("2026-11-23", tz="UTC"))
+        self.assertEqual(list(completed.index), [
+            pd.Timestamp("2026-11-09", tz="UTC"),
+            pd.Timestamp("2026-11-23", tz="UTC"),
+        ])
+        self.assertEqual(float(completed.iloc[-1]), 4.0)
+
     def test_power_law_floor_diagnostics_by_halving_cycle(self):
         import pandas as pd
         from engines.research.research_model import power_law_floor_diagnostics
