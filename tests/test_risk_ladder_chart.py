@@ -16,14 +16,20 @@ class RiskLadderChartTests(unittest.TestCase):
         self.assertIn("16×", labels[0])
         self.assertIn("16×", labels[1])
 
-    def test_research_exact_zero_and_zero_to_point_zero_one_show_16x(self):
+    def test_research_full_bucket_order_maps_zero_and_point_zero_one_correctly(self):
         labels, multipliers = risk_ladder_chart_labels(
-            ["<0.00 (invalid)", "0.000 (floor)", "(0.00, 0.01)", "0.01–0.02", "0.05–0.10", "0.10–0.20"],
-            [None, 0.00, 0.000000001, 0.01, 0.05, 0.10], LADDER,
+            ["<0.00 (invalid)", "0.000 (floor)", "(0.00, 0.01)", "0.01–0.02",
+             "0.02–0.05", "0.05–0.10", "0.10–0.20", "0.20–0.40",
+             "0.40–0.60", "0.60–0.80", "0.80–1.00", "1.000 (cap)", ">1.00 (invalid)"],
+            [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20,
+             0.40, 0.60, 0.80, 1.00, None],
+            LADDER,
         )
         self.assertIsNone(multipliers[0])
-        self.assertEqual(multipliers[1:5], [16.0, 16.0, 16.0, 16.0])
-        self.assertEqual(multipliers[5], 8.0)
+        self.assertEqual(multipliers[1:6], [16.0, 16.0, 16.0, 16.0, 16.0])
+        self.assertEqual(multipliers[6:11], [8.0, 4.0, 1.0, 0.0, 0.0])
+        self.assertEqual(multipliers[11], 0.0)
+        self.assertIsNone(multipliers[12])
         self.assertNotIn("×", labels[0])
         self.assertIn("16×", labels[1])
         self.assertIn("16×", labels[2])
