@@ -1126,10 +1126,9 @@ if mode == "DCA Backtest":
 
     with st.expander("How Smart DCA works", expanded=False):
         st.write(
-            "Smart DCA always buys, but conviction is intentionally asymmetric. "
-            "Low-risk periods can receive many times more capital than high-risk periods. "
-            "You control only the two endpoints; risk 0.50 stays anchored at 1.00x. "
-            "The total budget is still normalized to exactly the same amount as Plain DCA."
+            "Smart DCA concentrates purchases in lower-risk periods rather than buying the same amount every week. "
+            "Under the default curve, risk 0.40 and above receives a 0× multiplier. "
+            "The backtest normalizes total deployment to the same budget as Plain DCA; this is a historical comparison, not a live cash recommendation."
         )
         curve_df = pd.DataFrame(smart_dca_curve, columns=["Risk", "Relative Weight"])
         curve_df["Relative Weight"] = curve_df["Relative Weight"].map(lambda x: f"{x:.2f}x")
@@ -1566,7 +1565,7 @@ elif mode == "DCA Today":
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
             <div><div class="v59-info-title">How this week's amount is calculated</div>
-            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or cash caps.</div></div>
+            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, bounded by verified deployable cash and remaining deployment capital. Risk ≥0.40 means no buy under the default curve. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or verified-cash limit.</div></div>
           </div>
 
           <div class="v59-explain-grid">
@@ -2146,15 +2145,15 @@ elif mode == "DCA Today":
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
             "Normal weekly allowance = (deployable reserve − protected capital) ÷ weeks remaining. "
-            "The ordinary Risk Score multiplier follows the discrete 16× / 8× / 4× / 2× / 1× / 0× ladder. "
+            "The ordinary Risk Score multiplier follows the active 10× / 5× / 3× / 2× / 1.5× / 1× / 0× ladder. "
             "Only a newly confirmed, eligible Exceptional Bottom event may increase the separate research challenger amount; "
             "the Halving Accumulation Zone is context only. "
-            "The final purchase is capped at deployable reserve and 5% of original starting capital per week."
+            "The ordinary amount is bounded by verified deployable reserve and remaining deployment capital; there is no fixed weekly percentage cap."
         )
         st.write(
             f"(A${remaining_capital_aud:,.0f} − A${preserved_capital_aud:,.0f} protected) ÷ {weeks_remaining:.1f} weeks "
             f"× {paced_risk_weight:.2f} effective ordinary multiplier "
-            f"(raw risk weight {risk_weight:.2f}x; capped at 1.00x) "
+            f"(raw risk weight {risk_weight:.2f}x) "
             f"= A${recommended_buy:,.0f}"
         )
         if np.isfinite(rarity["percentile"]):
