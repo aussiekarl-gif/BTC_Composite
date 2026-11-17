@@ -622,6 +622,17 @@ with st.sidebar:
                 "for cash sizing. Market data and risk signals remain available; "
                 "restore or verify the saved portfolio in My Portfolio, then reload."
             )
+        elif verified_portfolio_positions.get("broker_snapshot"):
+            _bs = verified_portfolio_positions["broker_snapshot"]
+            st.info(
+                f"Broker snapshot {_bs['as_of']}: A${_bs['cash_aud']:,.2f} cash now + "
+                f"A${_bs['aaa_reserve_aud']:,.2f} AAA reserve "
+                f"= A${_bs['deployable_reserve_aud']:,.2f} deployable. "
+                "AAA is counted only because liquidation was explicitly confirmed. "
+                "Snapshot is user-entered, not a live brokerage feed."
+            )
+        elif broker_snapshot_error:
+            st.warning(f"Saved broker snapshot cannot authorise sizing: {broker_snapshot_error}")
 
         saved_today = browser_state.get("today", {}) if isinstance(browser_state, dict) else {}
         saved_portfolio = server_portfolio if portfolio_verified else {}
@@ -646,7 +657,7 @@ with st.sidebar:
         )
 
         remaining_capital_aud = st.number_input(
-            "Capital Remaining (AUD)",
+            "Deployable Reserve (cash + sellable AAA, AUD)" if verified_portfolio_positions and verified_portfolio_positions.get("broker_snapshot") else "Capital Remaining (AUD)",
             min_value=0.0, max_value=float(starting_capital_aud),
             value=min(float(starting_capital_aud), float(remaining_default)),
             step=5_000.0, format="%.0f",
