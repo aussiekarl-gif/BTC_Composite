@@ -52,11 +52,11 @@ class ManualAggressivePlanTests(unittest.TestCase):
         self.assertLessEqual(p["indicative_order_total_inc_fee_aud"], p["proposed_max_spend_aud"])
         self.assertFalse(p["order_sent"])
 
-    def test_no_buy_above_point_five(self):
-        risk = dict(RISK, r2_sizing_risk=.500001)
+    def test_no_buy_at_or_above_point_four(self):
+        risk = dict(RISK, r2_sizing_risk=.40)
         p = plan(risk=risk)
         self.assertFalse(p["ready"])
-        self.assertIn("RISK_ABOVE_0_50_NO_BUY", p["blockers"])
+        self.assertIn("RISK_AT_OR_ABOVE_0_40_NO_BUY", p["blockers"])
         self.assertIsNone(p["proposed_max_spend_aud"])
 
     def test_cash_reserve_and_broker_cash_reduce_allowance(self):
@@ -160,7 +160,7 @@ class ManualAggressivePlanTests(unittest.TestCase):
             p = plan(cash=cash, reserve=reserve, ask=ask,
                      risk=dict(RISK, r2_sizing_risk=risk))
             self.assertFalse(p["order_sent"])
-            if risk > .5 or not p["ready"]:
+            if risk >= .4 or not p["ready"]:
                 self.assertIsNone(p["indicative_whole_ibit_units"])
                 continue
             with self.subTest(n=n):
