@@ -11,7 +11,7 @@ from engines.research.v59_dynamic_risk_policy import risk_buy_multiplier
 
 
 def highlighted_histogram_bucket(value) -> int:
-    """Index in research_model.risk_occurrence_table's 13 mutually exclusive bins.
+    """Index in research_model.risk_occurrence_table's 14 mutually exclusive bins.
 
     Do not use a simple count of edges: the histogram begins with separate
     invalid, exact-zero, and (0, .01) bins. That omission previously shifted
@@ -44,7 +44,7 @@ def aggressive_candidate_preview(
     deployable_aud: float,
     starting_capital_aud: float,
     risk_observation_age_days: int,
-    weekly_cap_fraction: float = 0.05,
+    weekly_cap_fraction: float = 1.0,
 ) -> dict:
     """Preview the separate research risk-band hypothesis without changing live buys.
 
