@@ -232,7 +232,11 @@ def multipliers(row:dict) -> dict:
     if residual is not None:
         try:
             mapped_risk=piecewise_tail_risk(float(residual))
-            tail_multiplier=risk_buy_multiplier(mapped_risk)
+            # Preserve the current universal high-risk stop as a safety veto;
+            # the residual mapping can only increase sizing below that boundary.
+            tail_multiplier=(
+                0.0 if risk>=.40 else risk_buy_multiplier(mapped_risk)
+            )
         except (TypeError,ValueError,OverflowError):
             tail_multiplier=0.0
     return {
