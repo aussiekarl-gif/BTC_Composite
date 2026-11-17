@@ -1734,12 +1734,12 @@ elif mode == "DCA Today":
 
     a, b, c, d = st.columns(4)
     a.metric(
-        "BTC Valuation Risk",
+        "BTC Valuation Risk (context)",
         format_continuous_risk(current_display_risk, current_price_usd),
         risk_label,
         help=(
-            "Continuous display risk. 0.000 is reserved for a BTC price of zero. "
-            f"The frozen R2 sizing score is {current_risk:.3f} and still controls the DCA multiplier."
+            "Display-only smooth Power Law valuation context; it does not set the DCA multiplier. "
+            f"The separate R2 sizing score is {current_risk:.3f} and controls the DCA multiplier."
         ),
     )
     b.metric(
@@ -2054,15 +2054,14 @@ elif mode == "DCA Today":
 
     st.subheader("Historical Weekly Risk Distribution")
     occurrence = risk_occurrence_table(display_source)
-    _research_bucket_lowers = [None, 0.00, 0.000000001, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 0.60, 0.80, 1.00, None]
+    _research_bucket_lowers = [None, 0.00, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 0.60, 0.80, 1.00, None]
     _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
         occurrence["Risk range"].tolist(), _research_bucket_lowers,
         active_smart_dca_curve,
     )
     fig_occurrence = go.Figure()
-    # Separate invalid and exact-zero buckets are preserved. The histogram is
-    # now explicitly based on R2 sizing risk, with each valid bucket labelled
-    # using the exact same discrete ladder as DCA Today.
+    # Invalid values remain separate. Exact-zero scores are included in the
+    # lowest valid 0.00–0.01 R2 sizing bucket, matching the DCA ladder.
     _cur_idx = highlighted_histogram_bucket(current_risk)
     _bar_colors = [
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
@@ -2089,7 +2088,8 @@ elif mode == "DCA Today":
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current R2 sizing risk {current_risk:.3f} (orange bar). The orange bar, risk bucket labels "
+        f"Current R2 sizing risk {current_risk:.3f} (orange bar). Zero scores are grouped into the 0.00–0.01 band. "
+        "The orange bar, risk bucket labels "
         "and displayed multipliers all use the same active DCA sizing score and multiplier curve. "
         "Opportunity Rarity is calculated separately and does not change the multiplier."
     )
