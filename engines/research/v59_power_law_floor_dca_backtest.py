@@ -1,0 +1,216 @@
+"""Matched V5.9 DCA backtest for alternative Power Law cheap floors.
+
+Research-only. Same causal BTC/USD + prior FX weekly signal / next-Monday BTC/AUD
+proxy execution as the existing V5.9 timing horse race. No live or Production writes.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from engines.research import research_model as model
+from engines.research.v59_causal_timing_horse_race import (
+    CAPITAL_AUD,
+    build_weekly_rows,
+    cohort_windows,
+    simulate,
+)
+from engines.research.v59_dynamic_risk_policy import risk_buy_multiplier
+from engines.research.v59_live_signal_snapshot import live_risk_params
+
+
+CANDIDATE_CHEAP_FLOORS = (-0.10, -0.20, -0.24, -0.25, -0.30, -0.31, -0.33, -0.35)
+CASH_YIELDS = (0.0, 0.05)
+EXPENSIVE_FLOOR = model.DEFAULT_PL_EXPENSIVE
+
+
+def main() -> None:
+    now = datetime.now(timezone.utc)
+    start = model.RESEARCH_PL_HISTORY_START.to_pydatetime()
+    btc = model.fetch_btc_history(start, now)
+    fx = model.fetch_aud_usd_rates(start, now)
+    if btc is None or btc.empty or fx is None or fx.empty:
+        raise RuntimeError("BTC or historical AUD/USD FX unavailable; no synthetic fallback")
+
+    priced = model.merge_bgeometrics(btc.copy(), pd.DataFrame())
+    scored = model.add_risk_indicators(priced, "Research WF Power Law", live_risk_params())
+    if "power_law_residual" not in scored or "risk_score" not in scored:
+        raise RuntimeError("Required V5.9 walk-forward risk/residual columns missing")
+
+    # Prove the −0.10 candidate exactly reproduces the current score before
+    # comparing alternative cheap floors.
+    residual = pd.to_numeric(scored["power_law_residual"], errors="coerce")
+    current_score = pd.to_numeric(scored["risk_score"], errors="coerce")
+    reconstructed = ((residual - model.DEFAULT_PL_CHEAP) /
+                     (EXPENSIVE_FLOOR - model.DEFAULT_PL_CHEAP)).clip(0.0, 1.0)
+    aligned = current_score.notna() & reconstructed.notna()
+    max_diff = float((current_score.loc[aligned] - reconstructed.loc[aligned]).abs().max())
+    if not np.isfinite(max_diff) or max_diff > 1e-9:
+        raise AssertionError(f"−0.10 reconstruction did not match live R2 score: {max_diff}")
+
+    results = []
+    cohort_anchors = None
+    for cheap in CANDIDATE_CHEAP_FLOORS:
+        candidate = scored.copy()
+        candidate["risk_score"] = (
+            (pd.to_numeric(candidate["power_law_residual"], errors="coerce") - cheap)
+            / (EXPENSIVE_FLOOR - cheap)
+        ).clip(0.0, 1.0)
+        # Keep the validated source label; the candidate is a transformation
+        # of the same causal WF residual, not a fallback risk series.
+        candidate["risk_score_source"] = "Walk-forward Power Law"
+        rows = build_weekly_rows(candidate, fx)
+        windows = cohort_windows(rows)
+        anchors = [w["anchor"] for w in windows]
+        if cohort_anchors is None:
+            cohort_anchors = anchors
+        elif anchors != cohort_anchors:
+            raise AssertionError("Candidate floors changed the matched cohort sample")
+
+        for w in windows:
+            baseline = None
+            for cash_yield in CASH_YIELDS:
+                baseline = simulate(
+                    w["rows"], policy="plain_1x", cash_yield=cash_yield,
+                    reserve_fraction=0.0, capital=CAPITAL_AUD,
+                    review_date=w["review_date"], max_fraction=1.0,
+                )
+                candidate_result = simulate(
+                    w["rows"], policy="plain_1x", cash_yield=cash_yield,
+                    reserve_fraction=0.0, capital=CAPITAL_AUD,
+                    review_date=w["review_date"], max_fraction=1.0,
+                    weight_fn=lambda row: risk_buy_multiplier(float(row["risk_score"])),
+                )
+                results.append({
+                    "candidate_cheap_floor": cheap,
+                    "anchor": w["anchor"],
+                    "start": w["start"],
+                    "end": w["end"],
+                    "split": w["split"],
+                    "cash_yield": cash_yield,
+                    "weekly_cap_fraction": 1.0,
+                    "baseline_policy": "fixed_1x",
+                    "candidate_policy": "current_10x_5x_3x_2x_1.5x_1x_ladder_on_remapped_risk",
+                    "equity_uplift_vs_fixed_1x_pct": (
+                        100.0 * (candidate_result["equity_aud"] / baseline["equity_aud"] - 1.0)
+                    ),
+                    "btc_equivalent_uplift_vs_fixed_1x_pct": (
+                        100.0 * (
+                            candidate_result["terminal_btc_equivalent"]
+                            / baseline["terminal_btc_equivalent"] - 1.0
+                        )
+                    ),
+                    "btc_units": candidate_result["btc_units"],
+                    "terminal_btc_equivalent": candidate_result["terminal_btc_equivalent"],
+                    "equity_aud": candidate_result["equity_aud"],
+                    "cash_aud": candidate_result["cash_aud"],
+                    "net_invested_aud": candidate_result["net_invested_aud"],
+                    "deployed_fraction_of_initial": candidate_result["deployed_fraction_of_initial"],
+                    "drawdown_pct": candidate_result["drawdown_pct"],
+                    "buy_count": candidate_result["buy_count"],
+                    "spent_first_26weeks_pct_initial": (
+                        100.0 * candidate_result["spent_first_26weeks_pct_initial"]
+                    ),
+                })
+
+    summaries = []
+    for cheap in CANDIDATE_CHEAP_FLOORS:
+        for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
+            for cash_yield in CASH_YIELDS:
+                selected = [
+                    r for r in results
+                    if r["candidate_cheap_floor"] == cheap
+                    and r["split"] == split
+                    and r["cash_yield"] == cash_yield
+                ]
+                if not selected:
+                    continue
+                summaries.append({
+                    "candidate_cheap_floor": cheap,
+                    "split": split,
+                    "cash_yield": cash_yield,
+                    "cohorts": len(selected),
+                    "median_equity_uplift_vs_fixed_1x_pct": float(np.median([
+                        r["equity_uplift_vs_fixed_1x_pct"] for r in selected
+                    ])),
+                    "worst_equity_uplift_vs_fixed_1x_pct": min(
+                        r["equity_uplift_vs_fixed_1x_pct"] for r in selected
+                    ),
+                    "equity_win_fraction": sum(
+                        r["equity_uplift_vs_fixed_1x_pct"] > 0 for r in selected
+                    ) / len(selected),
+                    "median_btc_equivalent_uplift_vs_fixed_1x_pct": float(np.median([
+                        r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
+                    ])),
+                    "worst_btc_equivalent_uplift_vs_fixed_1x_pct": min(
+                        r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
+                    ),
+                    "median_deployed_fraction": float(np.median([
+                        r["deployed_fraction_of_initial"] for r in selected
+                    ])),
+                    "median_drawdown_pct": float(np.median([
+                        r["drawdown_pct"] for r in selected
+                    ])),
+                    "median_buy_count": float(np.median([r["buy_count"] for r in selected])),
+                    "median_first_26w_spend_pct_initial": float(np.median([
+                        r["spent_first_26weeks_pct_initial"] for r in selected
+                    ])),
+                })
+
+    report = {
+        "status": "RESEARCH_ONLY_MATCHED_COHORT_THRESHOLD_BACKTEST",
+        "generated_at_utc": now.isoformat(),
+        "btc_history_first_last": [str(btc.index.min()), str(btc.index.max())],
+        "fx_history_first_last": [str(fx.index.min()), str(fx.index.max())],
+        "starting_capital_aud": CAPITAL_AUD,
+        "cohort_weeks": 104,
+        "completed_cohorts": len(cohort_anchors or []),
+        "cohort_anchors": cohort_anchors,
+        "cash_yield_scenarios": CASH_YIELDS,
+        "protected_reserve_fraction": 0.0,
+        "weekly_cap_fraction": 1.0,
+        "entry_cost_fraction": 0.003,
+        "flat_fee_aud": 3.0,
+        "illustrative_annual_etf_drag": 0.0025,
+        "candidate_cheap_floors": CANDIDATE_CHEAP_FLOORS,
+        "expensive_floor": EXPENSIVE_FLOOR,
+        "current_score_reconstruction_max_abs_difference": max_diff,
+        "signal_execution": "Prior Sunday UTC risk; next Monday BTC/AUD spot proxy execution",
+        "buy_ladder": "10x / 5x / 3x / 2x / 1.5x / 1x / 0x (same ladder for every candidate)",
+        "results_vs_fixed_1x": summaries,
+        "cohort_results": results,
+        "caveats": [
+            "Retrospective public BTC/USD and AUD/USD data; provider publication vintages are not attested.",
+            "Historical holdout cohorts are not truly untouched because model research has examined these cycles.",
+            "Jan/Jul 104-week cohorts overlap and are not independent cycle observations.",
+            "BTC/AUD spot proxy only; no executable ASX:IBIT fills, tracking, spreads or market-hours effects.",
+            "5% cash yield and 0.25% annual ETF drag are illustrative assumptions, not guaranteed returns.",
+            "No taxes, AAA distributions, personal cash constraints or live portfolio data are modelled.",
+            "No claim of optimality or live-trading authorisation.",
+        ],
+        "safety": {
+            "changes_live_model": False,
+            "changes_dca_sizing": False,
+            "changes_production": False,
+            "portfolio_or_order_writes": False,
+            "notifications_sent": False,
+        },
+    }
+    output = Path("artifacts/v59_power_law_floor_dca_backtest.json")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, default=str, allow_nan=False) + "\n", encoding="utf-8")
+    print(json.dumps({
+        "status": report["status"],
+        "completed_cohorts": report["completed_cohorts"],
+        "score_reconstruction_max_abs_difference": max_diff,
+        "summary_rows": len(summaries),
+        "output": str(output),
+    }, indent=2))
+
+
+if __name__ == "__main__":
+    main()
