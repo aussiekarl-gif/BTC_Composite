@@ -8,6 +8,7 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.production import production_model as _model
+from engines.shared.dca_purchase_status import dca_purchase_display
 from engines.shared.portfolio_store import load_portfolio, save_portfolio
 from engines.shared.ibit_dca_display import show_ibit_dca_equivalent
 from engines.shared.btc_ibit_comparison import show_btc_ibit_comparison
@@ -1140,6 +1141,23 @@ elif mode == "DCA Today":
         if opportunity["cycles_used"] >= 1 else "n/a"
     )
 
+    _purchase_display = dca_purchase_display(
+        portfolio_verified=portfolio_verified,
+        risk_multiplier=risk_weight,
+        effective_multiplier=risk_weight,
+        recommended_buy_aud=recommended_buy,
+        base_allowance_aud=normal_weekly_allowance,
+        remaining_capital_aud=remaining_capital_aud,
+    )
+    purchase_status = _purchase_display["amount"]
+    purchase_pill = _purchase_display["pill"]
+    purchase_pill_class = _purchase_display["pill_class"]
+    purchase_sub = _purchase_display["sub"]
+    allowance_display = _purchase_display["allowance"]
+    remaining_display = _purchase_display["remaining"]
+    purchase_reason_title = _purchase_display["reason_title"]
+    purchase_reason_sub = _purchase_display["reason_sub"]
+
     st.markdown(
         """
         <style>
@@ -1147,7 +1165,7 @@ elif mode == "DCA Today":
         .v58-hero{display:grid;grid-template-columns:1.35fr .72fr 1.15fr;border:1.5px solid #19e894;border-radius:13px;background:linear-gradient(135deg,#062a29,#071c2d 58%,#062a29);overflow:hidden;box-shadow:0 0 24px rgba(25,232,148,.09)}
         .v58-hero>div{padding:18px 22px;min-height:178px}.v58-hero>div+div{border-left:1px solid rgba(69,216,196,.30)}
         .v58-title{font-size:1rem;font-weight:900;color:#f4f8fb}.v58-big{font-size:3.35rem;line-height:1.05;font-weight:950;color:#18e89a;margin:12px 0 14px}.v58-mult{font-size:3.0rem;line-height:1.05;font-weight:950;color:#4fb8ff;margin:12px 0 12px}
-        .v58-buy-pill{display:inline-block;border-radius:8px;background:#18e89a;color:#04281b;font-weight:950;padding:9px 16px;font-size:.82rem}.v58-sub{font-size:.82rem;color:#cad7e2}.v58-base{font-size:1.45rem;font-weight:900;color:#f4f8fb;margin-top:4px}
+        .v58-buy-pill{display:inline-block;border-radius:8px;background:#18e89a;color:#04281b;font-weight:950;padding:9px 16px;font-size:.82rem}.v58-buy-pill.blocked{background:#3a4653;color:#e4ebf2}.v58-buy-pill.ready{background:#18e89a;color:#04281b}.v58-sub{font-size:.82rem;color:#cad7e2}.v58-base{font-size:1.45rem;font-weight:900;color:#f4f8fb;margin-top:4px}
         .v58-reason{display:flex;gap:10px;margin:10px 0;align-items:flex-start;color:#f0f4f8}.v58-check,.v58-off{width:24px;height:24px;flex:0 0 24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;margin-top:1px}.v58-check{background:#19e894;color:#052b1e}.v58-off{border:1.5px solid #718397;color:#718397}.v58-reason b{display:block;font-size:.95rem}.v58-reason small{display:block;color:#b8c6d4;margin-top:1px}
         .v58-q{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border:1px solid #57c8ff;border-radius:50%;color:#57c8ff;font-size:.68rem;font-weight:800;margin-left:5px;vertical-align:2px;cursor:help}
         .v58-cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:10px}.v58-card{border:1px solid #29506b;border-radius:11px;padding:13px 15px;background:linear-gradient(180deg,#092337,#081a2b);min-height:110px}.v58-card-title{font-size:.82rem;color:#eaf1f7;font-weight:800}.v58-card-value{font-size:1.45rem;color:#f3f7fb;font-weight:900;margin-top:5px}.v58-card-value.good{color:#24e894}.v58-card-value.warn{color:#ffb43b}.v58-card-value.bad{color:#ff6476}.v58-card-sub{font-size:.80rem;color:#c1ccd8;margin-top:5px;line-height:1.35}
@@ -1165,20 +1183,20 @@ elif mode == "DCA Today":
         <div class="v58-wrap">
           <div class="v58-hero">
             <div>
-              <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's V5.8.2 production buy amount. Base Weekly Allowance × Smart DCA risk multiplier, capped by remaining capital.">?</span></div>
-              <div class="v58-big">{"A$ " + format(recommended_buy, ",.0f") if portfolio_verified else "BLOCKED"}</div>
-              <span class="v58-buy-pill">{"₿ &nbsp; BUY THIS WEEK" if portfolio_verified else "PORTFOLIO NOT VERIFIED"}</span>
-              <span class="v58-sub" style="margin-left:10px;">{"That's " + format(risk_weight, ".2f") + "× your base weekly amount" if portfolio_verified else "Cash sizing withheld"}</span>
+              <div class="v58-title">🛒 &nbsp; Recommended DCA This Week <span class="v58-q" title="This week's purchase amount after applying the risk-band multiplier, portfolio verification, deployable-cash limit and 5% weekly cap.">?</span></div>
+              <div class="v58-big">{purchase_status}</div>
+              <span class="v58-buy-pill {purchase_pill_class}">{purchase_pill}</span>
+              <span class="v58-sub" style="margin-left:10px;">{purchase_sub}</span>
             </div>
             <div>
-              <div class="v58-title">Current Multiplier <span class="v58-q" title="Production Smart DCA multiplier determined only by the V5.8.2 Risk Score curve.">?</span></div>
+              <div class="v58-title">Risk Multiplier <span class="v58-q" title="Risk-band multiplier only. It determines sizing when the authoritative portfolio is verified and deployable cash exists.">?</span></div>
               <div class="v58-mult">{risk_weight:.2f}×</div>
               <div class="v58-sub"><b>Base Weekly Allowance</b></div>
-              <div class="v58-base">A$ {normal_weekly_allowance:,.0f}</div>
+              <div class="v58-base">{allowance_display}</div>
             </div>
             <div>
               <div class="v58-title">Reason for This Week's Amount <span class="v58-q" title="Only the V5.8.2 Risk Score changes the production buy multiplier. Opportunity Rarity and Better Entry Evidence are context only.">?</span></div>
-              <div class="v58-reason"><span class="v58-check">✓</span><div><b>Production signal: BUY</b><small>V5.8.2 always buys; size changes with valuation risk.</small></div></div>
+              <div class="v58-reason"><span class="v58-off">i</span><div><b>{purchase_reason_title}</b><small>{purchase_reason_sub}</small></div></div>
               <div class="v58-reason"><span class="v58-check">✓</span><div><b>BTC risk: {risk_tone_label}</b><small>Risk {current_risk:.3f} → {risk_weight:.2f}× weekly base multiplier</small></div></div>
               <div class="v58-reason"><span class="v58-off">i</span><div><b>Cycle evidence: Context only</b><small>Rarity / Better Entry do not alter this week's amount.</small></div></div>
             </div>
@@ -1189,10 +1207,10 @@ elif mode == "DCA Today":
             <div class="v58-card"><div class="v58-card-title">BTC Risk <span class="v58-q" title="Production composite Risk Score. Lower risk produces a larger Smart DCA multiplier.">?</span></div><div class="v58-card-value {risk_tone}">{risk_tone_label}</div><div class="v58-card-sub">Risk score: {current_risk:.3f}<br>Multiplier: <b>{risk_weight:.2f}×</b></div></div>
             <div class="v58-card"><div class="v58-card-title">Opportunity Rarity <span class="v58-q" title="Cycle-based context comparing today's risk with comparable cycle ages. It does not change production sizing.">?</span></div><span class="v58-badge context">{rarity['rarity_label']}</span><div class="v58-card-sub">Context only<br>Does not change buy amount</div></div>
             <div class="v58-card"><div class="v58-card-title">Better Entry Evidence <span class="v58-q" title="Limited cycle evidence about whether comparable periods later produced lower risk. Context only.">?</span></div><span class="v58-badge context">{better_entry_text}</span><div class="v58-card-sub">Context only<br>No sizing override</div></div>
-            <div class="v58-card"><div class="v58-card-title">Remaining Capital <span class="v58-q" title="Capital still scheduled for deployment. Base Weekly Allowance = remaining capital ÷ remaining weeks.">?</span></div><div class="v58-card-value">A$ {remaining_capital_aud:,.0f}</div><div class="v58-card-sub">~{weeks_remaining:.0f} weeks remaining<br>until {target_deployment_date.strftime('%d %b %Y')}</div></div>
+            <div class="v58-card"><div class="v58-card-title">Remaining Capital <span class="v58-q" title="Capital still scheduled for deployment. Base Weekly Allowance = remaining capital ÷ remaining weeks.">?</span></div><div class="v58-card-value">{remaining_display}</div><div class="v58-card-sub">{"Portfolio verification required" if not portfolio_verified else f"~{weeks_remaining:.0f} weeks remaining until {target_deployment_date.strftime('%d %b %Y')}"}</div></div>
           </div>
 
-          <div class="v58-info"><span class="v58-info-icon">i</span><div><div class="v58-info-title">How this week's amount is calculated</div><div class="v58-info-text">This week's production DCA amount is your Base Weekly Allowance multiplied by the fixed V5.8.2 Smart DCA risk multiplier, capped by remaining capital. Opportunity Rarity, Better Entry Evidence and the Historical Weekly Risk Distribution are context only and do not independently change the buy amount.</div></div></div>
+          <div class="v58-info"><span class="v58-info-icon">i</span><div><div class="v58-info-title">How this week's amount is calculated</div><div class="v58-info-text">This week's production DCA amount is the Base Weekly Allowance multiplied by the V5.8.2 risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy. Cash sizing is blocked until the authoritative portfolio is verified. Opportunity Rarity, Better Entry Evidence and the Historical Weekly Risk Distribution are context only and do not independently change the buy amount.</div></div></div>
 
           <div class="v58-explain-grid">
             <div class="v58-explain"><h4>📈 Risk Score <span class="v58-q" title="The production sizing engine. It is not cycle-adjusted.">?</span></h4><p>Combines the production valuation/risk components into one 0–1 Risk Score.</p><span class="v58-affects">Affects buy amount</span><p>Lower risk = larger weekly multiplier.<br>Higher risk = smaller weekly multiplier.</p></div>

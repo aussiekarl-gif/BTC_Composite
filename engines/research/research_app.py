@@ -8,6 +8,7 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.research import research_model as _model
+from engines.shared.dca_purchase_status import dca_purchase_display
 from engines.research.v59_risk_visibility import (
     aggressive_candidate_preview, highlighted_histogram_bucket,
 )
@@ -1321,6 +1322,23 @@ elif mode == "DCA Today":
     deployed = max(float(starting_capital_aud) - float(remaining_capital_aud), 0.0)
     remaining_after = max(float(remaining_capital_aud) - challenger_recommended_buy, 0.0)
 
+    _purchase_display = dca_purchase_display(
+        portfolio_verified=portfolio_verified,
+        risk_multiplier=risk_weight,
+        effective_multiplier=challenger_weight,
+        recommended_buy_aud=challenger_recommended_buy,
+        base_allowance_aud=normal_weekly_allowance,
+        remaining_capital_aud=remaining_capital_aud,
+    )
+    purchase_status = _purchase_display["amount"]
+    purchase_pill = _purchase_display["pill"]
+    purchase_pill_class = _purchase_display["pill_class"]
+    purchase_sub = _purchase_display["sub"]
+    allowance_display = _purchase_display["allowance"]
+    remaining_display = _purchase_display["remaining"]
+    purchase_reason_title = _purchase_display["reason_title"]
+    purchase_reason_sub = _purchase_display["reason_sub"]
+
     st.header("DCA Today")
 
     # ------------------------------------------------------------------
@@ -1421,21 +1439,22 @@ elif mode == "DCA Today":
           <div class="v59-hero">
             <div>
               <div class="v59-title">🛒 &nbsp; Recommended DCA This Week <span class="v59-q" title="This week's research-challenger buy amount. Base weekly allowance × effective V5.9 multiplier, capped by remaining capital. No automatic all-in.">?</span></div>
-              <div class="v59-big">{"A$ " + format(challenger_recommended_buy, ",.0f") if portfolio_verified else "BLOCKED"}</div>
-              <span class="v59-buy-pill">{"₿ &nbsp; BUY THIS WEEK" if portfolio_verified else "PORTFOLIO NOT VERIFIED"}</span>
-              <span class="v59-sub" style="margin-left:10px;">That's {challenger_weight:.2f}× your base weekly amount</span>
+              <div class="v59-big">{purchase_status}</div>
+              <span class="v59-buy-pill {purchase_pill_class}">{purchase_pill}</span>
+              <span class="v59-sub" style="margin-left:10px;">{purchase_sub}</span>
             </div>
             <div>
-              <div class="v59-title">Current Multiplier <span class="v59-q" title="Effective V5.9 multiplier after the runway guard and any newly staged Exceptional Bottom event.">?</span></div>
+              <div class="v59-title">Effective Risk Multiplier <span class="v59-q" title="Risk-band multiplier including a qualifying staged bottom event. A purchase still requires verified deployable cash.">?</span></div>
               <div class="v59-mult">{challenger_weight:.2f}×</div>
-              <div class="v59-sub"><b>Base Monday DCA</b></div>
-              <div class="v59-base">A$ {normal_weekly_allowance:,.0f}</div>
-              <div class="v59-sub">Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}</div>
+              <div class="v59-sub"><b>Base Monday Allowance</b></div>
+              <div class="v59-base">{allowance_display}</div>
+              <div class="v59-sub">{"Deployable capital unavailable until portfolio verification" if not portfolio_verified else f"Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}"}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Ordinary sizing cannot exceed the paced allowance. Only a newly staged Exceptional Bottom event can front-load capital.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
-              <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>Valuation risk {_display_txt} • R2 sizing score {current_risk:.3f} → {risk_weight:.2f}× base multiplier</small></div></div>
+              <div class="v59-reason"><span class="v59-off">i</span><div><b>{purchase_reason_title}</b><small>{purchase_reason_sub}</small></div></div>
+              <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>Valuation display {_display_txt} • R2 sizing score {current_risk:.3f} → {risk_weight:.2f}× risk multiplier</small></div></div>
               <div class="v59-reason"><span class="{bottom_reason_cls}">{bottom_reason_icon}</span><div><b>{bottom_reason_title}</b><small>{bottom_reason_sub}</small></div></div>
             </div>
           </div>
@@ -1454,7 +1473,7 @@ elif mode == "DCA Today":
             <div class="v59-card">
               <div class="v59-card-title">Halving Accumulation Zone <span class="v59-q" title="Causal timing context from day +800 to +1000 after the prior halving. It does not alter this week's amount.">?</span></div>
               <span class="v59-badge {halving_badge_cls}">{halving_badge_text}</span>
-              <div class="v59-card-sub">Day +{current_halving_clock_days} (in +{HALVING_ACCUMULATION_START_DAY}–+{HALVING_ACCUMULATION_END_DAY} range)<br>R2 raised to at least {HALVING_ACCUMULATION_FLOOR_MULT:.2f}×</div>
+              <div class="v59-card-sub">Day +{current_halving_clock_days} (in +{HALVING_ACCUMULATION_START_DAY}–+{HALVING_ACCUMULATION_END_DAY} range)<br>Context only — no sizing adjustment</div>
             </div>
             <div class="v59-card">
               <div class="v59-card-title">Exceptional Bottom Zone <span class="v59-q" title="Independent capitulation/confluence layer. Only a new staged event changes sizing: 3× initial, 4× deeper capitulation, 3× recovery.">?</span></div>
@@ -1463,8 +1482,8 @@ elif mode == "DCA Today":
             </div>
             <div class="v59-card">
               <div class="v59-card-title">Remaining Capital <span class="v59-q" title="Base allowance = (remaining capital − protected post-review reserve) ÷ weeks to strategy review.">?</span></div>
-              <div class="v59-card-value">A$ {remaining_capital_aud:,.0f}</div>
-              <div class="v59-card-sub">~{weeks_remaining:.0f} weeks to review<br>A${preserved_capital_aud:,.0f} protected after {target_deployment_date.strftime('%d %b %Y')}</div>
+              <div class="v59-card-value">{remaining_display}</div>
+              <div class="v59-card-sub">{"Portfolio verification required" if not portfolio_verified else f"~{weeks_remaining:.0f} weeks to review<br>A${preserved_capital_aud:,.0f} protected after {target_deployment_date.strftime('%d %b %Y')}"}</div>
             </div>
           </div>
 
@@ -1480,7 +1499,7 @@ elif mode == "DCA Today":
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
             <div><div class="v59-info-title">How this week's amount is calculated</div>
-            <div class="v59-info-text">Monday's ordinary DCA cannot exceed the Base Monday DCA, preserving the target-date runway. The Halving Accumulation Zone, exact +500-day marker, Opportunity Rarity, Better Entry Evidence, Bull Age and other cycle indicators are context only. Only a newly confirmed Exceptional Bottom stage can front-load at 3× / 4× / 3×.</div></div>
+            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or cash caps.</div></div>
           </div>
 
           <div class="v59-explain-grid">
@@ -1501,10 +1520,11 @@ elif mode == "DCA Today":
 
 
     st.info(
-        f"Why only 1×? The R2 sizing risk is {current_risk:.3f}, giving the selected "
-        f"curve {risk_weight:.2f}×, but the ordinary V5.9 live runway guard caps "
-        f"it at {paced_risk_weight:.2f}×. The orange histogram uses a DIFFERENT "
-        "continuous valuation-risk reading and does not set this week's buy."
+        f"R2 sizing score {current_risk:.3f} selects a {risk_weight:.2f}× risk-band "
+        f"multiplier. The effective research multiplier is {challenger_weight:.2f}×. "
+        f"The cash recommendation is {purchase_status}; portfolio verification "
+        "and deployable cash determine whether a purchase can be made. The "
+        "continuous valuation display is separate from the R2 sizing score."
     )
     with st.expander("Aggressive risk-band DCA — research preview, NOT the live buy", expanded=False):
         _preview_amount = _aggressive_preview["candidate_buy_aud"] if portfolio_verified else None

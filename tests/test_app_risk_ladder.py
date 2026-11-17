@@ -6,6 +6,7 @@ import pandas as pd
 
 from engines.production import production_model as production
 from engines.research import research_model as research
+from engines.shared.dca_purchase_status import dca_purchase_display
 
 
 EXPECTED = [
@@ -111,6 +112,55 @@ class AppRiskLadderTests(unittest.TestCase):
         self.assertIn("float(starting_capital_aud) * 0.05", production_source)
         self.assertIn("float(starting_capital_aud) * 0.05", research_source)
         self.assertIn("and current_risk < 0.50", research_source)
+
+    def test_shared_purchase_display_blocks_unverified_portfolio(self):
+        result = dca_purchase_display(
+            portfolio_verified=False, risk_multiplier=0.05,
+            effective_multiplier=16.0, recommended_buy_aud=0.0,
+            base_allowance_aud=1000.0, remaining_capital_aud=50000.0,
+        )
+        self.assertEqual(result["amount"], "BLOCKED")
+        self.assertEqual(result["pill"], "PORTFOLIO NOT VERIFIED")
+        self.assertEqual(result["allowance"], "Unavailable")
+        self.assertEqual(result["remaining"], "Unavailable")
+
+    def test_shared_purchase_display_does_not_show_buy_when_cash_is_zero(self):
+        result = dca_purchase_display(
+            portfolio_verified=True, risk_multiplier=0.05,
+            effective_multiplier=16.0, recommended_buy_aud=0.0,
+            base_allowance_aud=0.0, remaining_capital_aud=0.0,
+        )
+        self.assertEqual(result["amount"], "A$ 0")
+        self.assertEqual(result["pill"], "NO BUY — NO DEPLOYABLE CASH")
+        self.assertEqual(result["pill_class"], "blocked")
+
+    def test_shared_purchase_display_obeys_risk_no_buy_band(self):
+        result = dca_purchase_display(
+            portfolio_verified=True, risk_multiplier=0.0,
+            effective_multiplier=0.0, recommended_buy_aud=0.0,
+            base_allowance_aud=1000.0, remaining_capital_aud=10000.0,
+        )
+        self.assertEqual(result["pill"], "NO BUY THIS WEEK")
+        self.assertEqual(result["reason_title"], "Risk policy: NO BUY")
+
+    def test_shared_purchase_display_shows_buy_only_for_positive_verified_amount(self):
+        result = dca_purchase_display(
+            portfolio_verified=True, risk_multiplier=0.05,
+            effective_multiplier=16.0, recommended_buy_aud=25000.0,
+            base_allowance_aud=2000.0, remaining_capital_aud=50000.0,
+        )
+        self.assertEqual(result["pill"], "BUY THIS WEEK")
+        self.assertEqual(result["amount"], "A$ 25,000")
+        self.assertEqual(result["pill_class"], "ready")
+
+    def test_both_dashboards_use_shared_status_and_no_obsolete_claims(self):
+        production_source = Path("engines/production/production_app.py").read_text(encoding="utf-8")
+        research_source = Path("engines/research/research_app.py").read_text(encoding="utf-8")
+        for source in (production_source, research_source):
+            self.assertIn("dca_purchase_display(", source)
+            self.assertNotIn("V5.8.2 always buys", source)
+            self.assertNotIn("Why only 1×?", source)
+            self.assertNotIn("R2 raised to at least", source)
 
 
 if __name__ == "__main__":
