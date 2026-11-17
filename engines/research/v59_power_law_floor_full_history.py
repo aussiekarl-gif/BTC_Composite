@@ -105,6 +105,80 @@ def main() -> None:
         for cutoff in episode_cutoffs
     }
 
+    # Re-map the exact same causal residual series under candidate cheap floors.
+    # This is a sensitivity study only; the live V5.9 threshold remains −0.10.
+    candidate_cheap_floors = tuple(round(-0.20 - 0.01 * i, 2) for i in range(21))
+    candidate_sweep = []
+    for cheap in candidate_cheap_floors:
+        candidate_score = (
+            (weekly_frame["residual"] - cheap)
+            / (model.DEFAULT_PL_EXPENSIVE - cheap)
+        ).clip(0.0, 1.0)
+        candidate_distribution = model.risk_occurrence_table(candidate_score)
+        def candidate_count(label: str) -> int:
+            return int(candidate_distribution.loc[
+                candidate_distribution["Risk range"] == label, "Weeks"
+            ].sum())
+        by_cycle = {}
+        for cycle in (
+            "Pre-2016 halving (partial history)",
+            "2016–2020 cycle",
+            "2020–2024 cycle",
+            "2024–current cycle",
+        ):
+            cycle_mask = pd.Series(
+                [cycle_for(ts) == cycle for ts in weekly_frame.index],
+                index=weekly_frame.index,
+            )
+            cycle_score = candidate_score.loc[cycle_mask]
+            cycle_dist = model.risk_occurrence_table(cycle_score)
+            by_cycle[cycle] = int(cycle_dist.loc[
+                cycle_dist["Risk range"] == "0.00–0.01", "Weeks"
+            ].sum())
+        candidate_sweep.append({
+            "candidate_pl_cheap": cheap,
+            "zero_score_weeks": int(candidate_score.eq(0.0).sum()),
+            "lowest_bucket_weeks": candidate_count("0.00–0.01"),
+            "lowest_bucket_percent": (
+                100.0 * candidate_count("0.00–0.01") / len(candidate_score)
+                if len(candidate_score) else 0.0
+            ),
+            "second_bucket_weeks": candidate_count("0.01–0.02"),
+            "second_bucket_percent": (
+                100.0 * candidate_count("0.01–0.02") / len(candidate_score)
+                if len(candidate_score) else 0.0
+            ),
+            "by_cycle_lowest_bucket_weeks": by_cycle,
+        })
+
+    bottom_anchors = [
+        {"label": "2015 bear-market low", "date": "2015-01-14", "type": "cycle bottom"},
+        {"label": "2018 bear-market low", "date": "2018-12-15", "type": "cycle bottom"},
+        {"label": "2020 COVID crash low", "date": "2020-03-13", "type": "external shock"},
+        {"label": "2022 bear-market low", "date": "2022-11-21", "type": "cycle bottom"},
+        {"label": "2026 user-supplied cycle low", "date": "2026-06-30", "type": "user-supplied anchor"},
+    ]
+    bottom_capture = []
+    for anchor in bottom_anchors:
+        target = pd.Timestamp(anchor["date"], tz="UTC")
+        nearest = min(weekly_frame.index, key=lambda ts: abs(ts - target))
+        row = weekly_frame.loc[nearest]
+        fair = float(row["fair_value_usd"])
+        price = float(row["price_usd"])
+        bottom_capture.append({
+            **anchor,
+            "nearest_completed_week_utc": nearest.isoformat(),
+            "distance_days": int(abs((nearest - target).days)),
+            "residual": float(row["residual"]),
+            "btc_price_usd": price,
+            "power_law_fair_value_usd": fair,
+            "price_as_pct_of_fair_value": 100.0 * price / fair if fair > 0 else None,
+            "captured_by_cutoff": {
+                f"{cutoff:.2f}": bool(row["residual"] <= cutoff)
+                for cutoff in candidate_cheap_floors
+            },
+        })
+
     def bucket(label: str) -> dict:
         row = distribution.loc[distribution["Risk range"] == label]
         return {
@@ -126,6 +200,8 @@ def main() -> None:
         "risk_distribution": distribution.to_dict(orient="records"),
         "power_law_floor_by_cycle": audit.to_dict(orient="records"),
         "threshold_episodes": episodes,
+        "candidate_cheap_floor_sweep": candidate_sweep,
+        "historical_bottom_capture": bottom_capture,
         "threshold_episode_summary": {
             f"{cutoff:.2f}": {
                 "episodes": len(episodes[f"{cutoff:.2f}"]),
