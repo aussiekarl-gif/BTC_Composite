@@ -692,7 +692,7 @@ with st.sidebar:
         st.caption(
             "Custom V5.8.2 multiplier curve is active."
             if custom_curve_active else
-            "V5.8.2 default: 2.75× at risk 0.00, 1.00× at risk 0.50, and 0.05× at risk 1.00."
+            "V5.8.2 default: 16× / 8× / 4× / 2× / 1× across risk bands; 0× from risk 0.50."
         )
 
         if portfolio_verified:
@@ -1075,7 +1075,7 @@ elif mode == "DCA Today":
     current_price_aud = live_price_aud if np.isfinite(live_price_aud) else historical_price_aud
     price_is_live = bool(np.isfinite(live_price_aud))
 
-    risk_weight = float(interpolate(smart_dca_curve, current_risk))
+    risk_weight = (0.0 if current_risk >= 0.50 else float(interpolate(smart_dca_curve, current_risk)))
 
     # Opportunity rarity: use weekly historical risk observations available up
     # to today. This estimates how often BTC has been at least as cheap as now.
@@ -1099,7 +1099,7 @@ elif mode == "DCA Today":
 
     normal_weekly_allowance = float(remaining_capital_aud) / weeks_remaining
     recommended_buy = (
-        min(float(remaining_capital_aud), max(0.0, normal_weekly_allowance * risk_weight))
+        min(float(remaining_capital_aud), max(0.0, normal_weekly_allowance * risk_weight), float(starting_capital_aud) * 0.05)
         if portfolio_verified else 0.0
     )
 
@@ -1120,7 +1120,7 @@ elif mode == "DCA Today":
     st.header("DCA Today")
     st.caption(
         ("Uses your custom V5.8.2 Risk Score multiplier curve. " if custom_curve_active else
-         "Uses the default walk-forward-tested V5.8.2 Smart DCA curve. ") +
+         "Uses the default 16× / 8× / 4× / 2× / 1× risk-band ladder; no buys at risk ≥0.50. ") +
         "Opportunity Rarity and Better Entry Evidence are informational only."
     )
 
