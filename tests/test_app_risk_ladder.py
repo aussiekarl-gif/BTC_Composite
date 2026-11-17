@@ -180,8 +180,8 @@ class AppRiskLadderTests(unittest.TestCase):
             self.assertNotIn("V5.8.2 always buys", source)
             self.assertNotIn("Why only 1×?", source)
             self.assertNotIn("R2 raised to at least", source)
-            self.assertNotIn("16× / 8× / 4×", source)
-            self.assertNotIn("5% of starting capital per week", source)
+        self.assertNotIn("16× / 8× / 4×", research_source)
+        self.assertNotIn("5% of starting capital per week", research_source)
 
 
 if __name__ == "__main__":
