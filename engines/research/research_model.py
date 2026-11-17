@@ -452,6 +452,27 @@ def lower_risk_opportunity_stats(risk_series, current_risk, horizon_weeks):
     }
 
 
+def completed_weekly_last(series, as_of=None):
+    """Return W-MON last values, excluding any week not completed by as_of.
+
+    W-MON buckets cover Tuesday through Monday. Before that Monday closes,
+    pandas still assigns the partial bucket its future Monday label.
+    """
+    values = pd.to_numeric(pd.Series(series), errors="coerce").dropna()
+    if values.empty:
+        return values
+    weekly = values.resample("W-MON").last().dropna()
+    if as_of is None:
+        as_of = values.index.max()
+    cutoff = pd.Timestamp(as_of)
+    if isinstance(weekly.index, pd.DatetimeIndex):
+        if weekly.index.tz is not None and cutoff.tzinfo is None:
+            cutoff = cutoff.tz_localize(weekly.index.tz)
+        elif weekly.index.tz is None and cutoff.tzinfo is not None:
+            cutoff = cutoff.tz_convert("UTC").tz_localize(None)
+    return weekly.loc[weekly.index <= cutoff]
+
+
 def risk_occurrence_table(risk_series):
     """Descriptive weekly risk distribution with mutually exclusive buckets.
 
