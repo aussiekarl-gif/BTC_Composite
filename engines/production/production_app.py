@@ -490,12 +490,30 @@ if server_portfolio.get("broker_snapshot"):
 verified_portfolio_positions = None
 portfolio_verified = False
 broker_snapshot_error = None
+broker_snapshot_ledger_warning = None
 if not portfolio_storage_error and isinstance(server_portfolio, dict):
     _broker_snapshot = server_portfolio.get("broker_snapshot")
     if _broker_snapshot:
         try:
             verified_portfolio_positions = snapshot_as_portfolio_positions(_broker_snapshot)
             portfolio_verified = True
+            _ledger_candidate = server_portfolio
+            if not _ledger_candidate.get("rows") and isinstance(browser_portfolio, dict):
+                _ledger_candidate = browser_portfolio
+            if _ledger_candidate.get("rows"):
+                try:
+                    _ledger_positions = portfolio_positions(_ledger_candidate)
+                    if abs(float(_ledger_positions["ibit_units"]) - float(verified_portfolio_positions["ibit_units"])) > 0.5:
+                        broker_snapshot_ledger_warning = (
+                            f"Broker snapshot shows {verified_portfolio_positions['ibit_units']:,.0f} IBIT units; "
+                            f"the selected transaction ledger records {_ledger_positions['ibit_units']:,.0f}. "
+                            "Current cash sizing uses the dated broker snapshot; reconcile the historical ledger separately."
+                        )
+                except (ValueError, TypeError, KeyError) as ledger_exc:
+                    broker_snapshot_ledger_warning = (
+                        f"The historical transaction ledger is not currently reconcilable ({ledger_exc}). "
+                        "Current cash sizing uses the separate dated broker snapshot."
+                    )
         except (ValueError, TypeError, KeyError) as exc:
             broker_snapshot_error = str(exc)
 if (
@@ -634,6 +652,8 @@ with st.sidebar:
                 "AAA is counted only because liquidation was explicitly confirmed. "
                 "Snapshot is user-entered, not a live brokerage feed."
             )
+            if broker_snapshot_ledger_warning:
+                st.warning(broker_snapshot_ledger_warning)
         elif broker_snapshot_error:
             st.warning(f"Saved broker snapshot cannot authorise sizing: {broker_snapshot_error}")
 
