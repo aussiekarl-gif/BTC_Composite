@@ -1214,7 +1214,7 @@ elif mode == "DCA Today":
     current_price_aud = live_price_aud if np.isfinite(live_price_aud) else historical_price_aud
     price_is_live = bool(np.isfinite(live_price_aud))
 
-    risk_weight = (0.0 if current_risk >= 0.50 else float(interpolate(smart_dca_curve, current_risk)))
+    risk_weight = float(risk_band_multiplier(smart_dca_curve, current_risk))
     # Preserve the deployment runway outside a newly confirmed Exceptional
     # Bottom event. Ordinary low-risk readings may reach the paced 1.00x
     # allowance, but cannot front-load capital by themselves.
@@ -1286,6 +1286,7 @@ elif mode == "DCA Today":
         and str(current_challenger_event).strip().upper() in _eligible_challenger_events
         and np.isfinite(_event_multiplier)
         and _event_multiplier > 0
+        and current_risk < 0.50
     )
     challenger_weight = (
         max(paced_risk_weight, _event_multiplier)
