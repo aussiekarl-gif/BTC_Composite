@@ -10,7 +10,7 @@ NOW = datetime(2026, 11, 11, 10, 45, tzinfo=timezone.utc)
 
 def frame(stamp, *, risk=.06, label="Walk-forward Power Law", price=75_000, fx=.69):
     return pd.DataFrame(
-        {"price": [price], "risk_score": [risk],
+        {"price": [price], "risk_score": [risk], "power_law_residual": [-.31],
          "risk_score_source": [label], "usd_per_aud": [fx],
          "continuous_valuation_risk": [.075]},
         index=pd.DatetimeIndex([stamp], tz="UTC"),
@@ -26,6 +26,7 @@ class ProspectiveRiskCaptureAcceptance(unittest.TestCase):
         s = snap(frame("2026-11-10"))
         self.assertEqual(s["status"], "RESEARCH_SIGNAL_SNAPSHOT_READY")
         self.assertEqual(s["r2_sizing_risk"], .06)
+        self.assertEqual(s["power_law_residual"], -.31)
         self.assertEqual(s["continuous_valuation_risk"], .075)
         self.assertEqual(s["research_aggressive_risk_band_multiplier"], 2.)
         self.assertFalse(s["ready_for_live_aggressive_orders"])
