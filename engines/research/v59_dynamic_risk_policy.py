@@ -84,7 +84,7 @@ def risk_weekly_ceiling(risk, scenario="fixed_5"):
 
 def replay_dynamic_dca(rows, *, capital_aud, reserve_aud, review_date,
                        fee_pct=0.0, slippage_pct=0.0, enable_selling=False,
-                       sell_confirmation_weeks=2, max_weekly_fraction=0.05,
+                       sell_confirmation_weeks=2, max_weekly_fraction=1.0,
                        ceiling_scenario=None, buy_bands=None):
     """Replay ordered weekly observations, spending only available unreserved cash.
 
