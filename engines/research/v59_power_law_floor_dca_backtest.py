@@ -200,54 +200,54 @@ def main() -> None:
             for cash_yield in CASH_YIELDS:
                 for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
                     for buy_ladder_name in BUY_POLICY_BANDS:
-                            selected = [
-                            r for r in results
-                            if r["mapping_name"] == mapping_name
-                            and r["split"] == split
-                            and r["cash_yield"] == cash_yield
-                            and r["weekly_cap_fraction"] == weekly_cap_fraction
-                            and r["buy_ladder_name"] == buy_ladder_name
+                        selected = [
+                        r for r in results
+                        if r["mapping_name"] == mapping_name
+                        and r["split"] == split
+                        and r["cash_yield"] == cash_yield
+                        and r["weekly_cap_fraction"] == weekly_cap_fraction
+                        and r["buy_ladder_name"] == buy_ladder_name
                         ]
                         if not selected:
-                            continue
+                        continue
                         summaries.append({
-                            "mapping_name": mapping_name,
-                            "candidate_cheap_floor": cheap,
-                            "risk_distribution": mapping_bucket_counts[mapping_name],
-                            "split": split,
-                            "cash_yield": cash_yield,
-                            "weekly_cap_fraction": weekly_cap_fraction,
-                            "buy_ladder_name": buy_ladder_name,
+                        "mapping_name": mapping_name,
+                        "candidate_cheap_floor": cheap,
+                        "risk_distribution": mapping_bucket_counts[mapping_name],
+                        "split": split,
+                        "cash_yield": cash_yield,
+                        "weekly_cap_fraction": weekly_cap_fraction,
+                        "buy_ladder_name": buy_ladder_name,
                         "cohorts": len(selected),
                         "median_equity_uplift_vs_fixed_1x_pct": float(np.median([
-                            r["equity_uplift_vs_fixed_1x_pct"] for r in selected
+                        r["equity_uplift_vs_fixed_1x_pct"] for r in selected
                         ])),
                         "worst_equity_uplift_vs_fixed_1x_pct": min(
-                            r["equity_uplift_vs_fixed_1x_pct"] for r in selected
+                        r["equity_uplift_vs_fixed_1x_pct"] for r in selected
                         ),
                         "equity_win_fraction": sum(
-                            r["equity_uplift_vs_fixed_1x_pct"] > 0 for r in selected
+                        r["equity_uplift_vs_fixed_1x_pct"] > 0 for r in selected
                         ) / len(selected),
                         "median_btc_equivalent_uplift_vs_fixed_1x_pct": float(np.median([
-                            r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
+                        r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
                         ])),
                         "worst_btc_equivalent_uplift_vs_fixed_1x_pct": min(
-                            r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
+                        r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
                         ),
                         "median_deployed_fraction": float(np.median([
-                            r["deployed_fraction_of_initial"] for r in selected
+                        r["deployed_fraction_of_initial"] for r in selected
                         ])),
                         "median_drawdown_pct": float(np.median([
-                            r["drawdown_pct"] for r in selected
+                        r["drawdown_pct"] for r in selected
                         ])),
                         "median_buy_count": float(np.median([r["buy_count"] for r in selected])),
                         "median_first_26w_spend_pct_initial": float(np.median([
-                            r["spent_first_26weeks_pct_initial"] for r in selected
+                        r["spent_first_26weeks_pct_initial"] for r in selected
                         ])),
-                    })
-
-    report = {
-        "status": "RESEARCH_ONLY_MATCHED_COHORT_THRESHOLD_BACKTEST",
+                        })
+                        
+                        report = {
+                        "status": "RESEARCH_ONLY_MATCHED_COHORT_THRESHOLD_BACKTEST",
         "generated_at_utc": now.isoformat(),
         "btc_history_first_last": [str(btc.index.min()), str(btc.index.max())],
         "fx_history_first_last": [str(fx.index.min()), str(fx.index.max())],
