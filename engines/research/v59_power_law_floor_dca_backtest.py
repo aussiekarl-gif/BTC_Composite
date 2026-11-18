@@ -116,12 +116,18 @@ def main() -> None:
         rows = build_weekly_rows(candidate, fx)
         weekly_distribution = model.risk_occurrence_table([row["risk_score"] for row in rows])
         weekly_by_bucket = weekly_distribution.set_index("Risk range")
+        multiplier_counts = {}
+        for row in rows:
+            multiplier = risk_buy_multiplier(float(row["risk_score"]))
+            key = f"{multiplier:g}x"
+            multiplier_counts[key] = multiplier_counts.get(key, 0) + 1
         mapping_bucket_counts[mapping_name] = {
             "weekly_observations": len(rows),
             "lowest_bucket_weeks": int(weekly_by_bucket.loc["0.00–0.01", "Weeks"]),
             "lowest_bucket_percent": float(weekly_by_bucket.loc["0.00–0.01", "Percent"]),
             "second_bucket_weeks": int(weekly_by_bucket.loc["0.01–0.02", "Weeks"]),
             "second_bucket_percent": float(weekly_by_bucket.loc["0.01–0.02", "Percent"]),
+            "buy_multiplier_counts": dict(sorted(multiplier_counts.items(), key=lambda item: float(item[0][:-1]), reverse=True)),
         }
         windows = cohort_windows(rows)
         anchors = [w["anchor"] for w in windows]
