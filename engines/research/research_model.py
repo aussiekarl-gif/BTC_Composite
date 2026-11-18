@@ -510,16 +510,13 @@ def risk_occurrence_table(risk_series):
 
 
 
-def power_law_floor_diagnostics(risk_series, residual_series, zero_risk_threshold=None):
-    """Audit active zero-risk observations by halving cycle and residual depth.
+def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0.10):
+    """Audit clipped zero-risk observations by halving cycle and residual depth.
 
-    V5.9 Research uses the tail-stretched mapping. Its zero-risk boundary is the
-    first residual knot (normally -0.32), not the legacy linear -0.10 floor.
-    Tighter residual cutoffs are shown for context only; this function never
-    changes the active score or sizing policy.
+    The current score is zero when its walk-forward Power Law residual is at or
+    below cheap_threshold. Tighter residual cutoffs are shown for sensitivity
+    only; this function never changes the live score or sizing policy.
     """
-    if zero_risk_threshold is None:
-        zero_risk_threshold = RESEARCH_TAIL_RISK_KNOTS[0][0]
     risk = pd.to_numeric(pd.Series(risk_series), errors="coerce").rename("risk")
     residual = pd.to_numeric(pd.Series(residual_series), errors="coerce").rename("residual")
     frame = pd.concat([risk, residual], axis=1).dropna(subset=["risk"])
@@ -535,7 +532,7 @@ def power_law_floor_diagnostics(risk_series, residual_series, zero_risk_threshol
                 f"Residual ≤{cutoff:.2f} %",
             )
         ],
-        "Active mapping mismatches",
+        "Score/residual mismatches",
     ]
     if frame.empty or not isinstance(frame.index, pd.DatetimeIndex):
         return pd.DataFrame(columns=columns)
@@ -565,7 +562,7 @@ def power_law_floor_diagnostics(risk_series, residual_series, zero_risk_threshol
         floor = part["risk"].eq(0.0)
         residual_valid = part["residual"].notna()
         residual_weeks = int(residual_valid.sum())
-        model_floor = part.loc[residual_valid, "residual"].le(float(zero_risk_threshold))
+        model_floor = part.loc[residual_valid, "residual"].le(float(cheap_threshold))
         mismatches = int((floor.loc[residual_valid].to_numpy() != model_floor.to_numpy()).sum())
         rows.append({
             "Cycle": label,
@@ -591,7 +588,7 @@ def power_law_floor_diagnostics(risk_series, residual_series, zero_risk_threshol
                     f"Residual ≤{cutoff:.2f} %",
                 )
             },
-            "Active mapping mismatches": mismatches,
+            "Score/residual mismatches": mismatches,
         })
     return pd.DataFrame(rows, columns=columns)
 
@@ -1812,28 +1809,27 @@ def add_risk_indicators(data, risk_model, params):
         axis=1,
     ).max(axis=1).clip(0, 1)
 
-    # V5.9 Research sizing uses the causal walk-forward residual with the
-    # tail-stretched map validated on matched historical cohorts. Keep the old
-    # linear score as an explicit diagnostic so its broad zero-floor frequency
-    # remains visible. This is Research-only; Production is not changed.
+    # V5.9 Research sizing uses the causal Power Law score directly. The legacy
+    # percentile/drawdown calibration is retained above for diagnostics only.
     if risk_model == "Research WF Power Law":
+        # Preserve the calculated score separately, but use a neutral 0.50 fallback
+        # whenever the walk-forward fit is not yet available. Missing data must never
+        # be interpreted as maximum cheapness (risk 0.0).
+        # Keep the active, reconstructed linear risk score unchanged. The
+        # tail-stretched mapping is diagnostic-only until matched prospective
+        # and execution validation supports a model change.
         result["power_law_risk_calculated"] = result["power_law_score"].clip(0, 1)
         result["power_law_risk_tail_stretched_candidate"] = result["power_law_residual"].map(
             research_tail_stretched_power_law_risk
         ).clip(0, 1)
         result["risk_score_source"] = np.where(
-            result["power_law_risk_tail_stretched_candidate"].notna(),
+            result["power_law_risk_calculated"].notna(),
             "Walk-forward Power Law",
             "Neutral fallback",
         )
-        result["risk_score_mapping"] = np.where(
-            result["power_law_risk_tail_stretched_candidate"].notna(),
-            "Tail-stretched Research",
-            "Neutral fallback",
-        )
-        result["risk_score"] = result["power_law_risk_tail_stretched_candidate"].fillna(0.50).clip(0, 1)
+        result["risk_score"] = result["power_law_risk_calculated"].fillna(0.50).clip(0, 1)
         result["raw_risk_score"] = result["risk_score"]
-        result["risk_components_available"] = result["power_law_risk_tail_stretched_candidate"].notna().astype(int)
+        result["risk_components_available"] = result["power_law_risk_calculated"].notna().astype(int)
 
     # -------------------------
     # Context kept separate
