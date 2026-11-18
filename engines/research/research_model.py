@@ -1815,11 +1815,11 @@ def add_risk_indicators(data, risk_model, params):
         # Preserve the calculated score separately, but use a neutral 0.50 fallback
         # whenever the walk-forward fit is not yet available. Missing data must never
         # be interpreted as maximum cheapness (risk 0.0).
-        # Use raw WF residual on a tail-stretched scale. The former linear
-        # [-0.10,+0.20] clamp assigned 0.000 to every observation below -0.10,
-        # producing a misleadingly large 0.00 bucket (37.3% in the reported
-        # dashboard). Raw linear score remains available as power_law_score.
-        result["power_law_risk_calculated"] = result["power_law_residual"].map(
+        # Keep the active, reconstructed linear risk score unchanged. The
+        # tail-stretched mapping is diagnostic-only until matched prospective
+        # and execution validation supports a model change.
+        result["power_law_risk_calculated"] = result["power_law_score"].clip(0, 1)
+        result["power_law_risk_tail_stretched_candidate"] = result["power_law_residual"].map(
             research_tail_stretched_power_law_risk
         ).clip(0, 1)
         result["risk_score_source"] = np.where(
