@@ -75,6 +75,57 @@ TAIL_STRETCHED_VARIANTS = {
 }
 
 
+
+def causal_rolling_percentile_risk(residual: pd.Series, *, lookback_days: int = 1461,
+                                    minimum_history: int = 365,
+                                    zero_tail_fraction: float = 0.05) -> pd.Series:
+    """Map WF residuals to trailing empirical percentiles using prior data only.
+
+    The current observation is ranked against valid residuals in the preceding
+    four calendar years. The lowest 5% of that prior distribution maps to zero;
+    the remainder is stretched linearly to [0, 1]. No future observations enter.
+    """
+    if lookback_days < minimum_history or minimum_history < 30:
+        raise ValueError("Invalid rolling percentile history window")
+    if not 0 < zero_tail_fraction < 0.5:
+        raise ValueError("zero_tail_fraction must be between 0 and 0.5")
+    values = pd.to_numeric(residual, errors="coerce")
+    if not isinstance(values.index, pd.DatetimeIndex):
+        raise TypeError("Residual series must have a DatetimeIndex")
+    if values.index.has_duplicates or not values.index.is_monotonic_increasing:
+        raise ValueError("Residual dates must be unique and ordered")
+    output = pd.Series(np.nan, index=values.index, dtype=float)
+    dates = values.index
+    raw = values.to_numpy(dtype=float)
+    for i, current in enumerate(raw):
+        if not np.isfinite(current):
+            continue
+        left = dates.searchsorted(dates[i] - pd.Timedelta(days=lookback_days), side="left")
+        prior = raw[left:i]
+        prior = prior[np.isfinite(prior)]
+        if len(prior) < minimum_history:
+            continue
+        rank = np.searchsorted(np.sort(prior), current, side="right") / len(prior)
+        output.iloc[i] = float(np.clip((rank - zero_tail_fraction) /
+                                       (1.0 - zero_tail_fraction), 0.0, 1.0))
+    return output
+
+
+def validate_causal_percentile_mapping() -> None:
+    """Small deterministic checks: chronology, boundedness and no look-ahead."""
+    idx = pd.date_range("2020-01-01", periods=500, freq="D", tz="UTC")
+    base = pd.Series(np.linspace(-0.2, 0.2, len(idx)), index=idx)
+    first = causal_rolling_percentile_risk(base, lookback_days=400, minimum_history=365)
+    changed_future = base.copy()
+    changed_future.iloc[-1] = 99.0
+    second = causal_rolling_percentile_risk(changed_future, lookback_days=400, minimum_history=365)
+    if not first.iloc[:-1].equals(second.iloc[:-1]):
+        raise AssertionError("Rolling percentile risk leaked future residuals")
+    valid = first.dropna()
+    if valid.empty or not valid.between(0.0, 1.0).all():
+        raise AssertionError("Rolling percentile risk is empty or outside [0, 1]")
+
+
 def main() -> None:
     now = datetime.now(timezone.utc)
     start = model.RESEARCH_PL_HISTORY_START.to_pydatetime()
@@ -99,6 +150,7 @@ def main() -> None:
     if not np.isfinite(max_diff) or max_diff > 1e-9:
         raise AssertionError(f"−0.10 reconstruction did not match live R2 score: {max_diff}")
 
+    validate_causal_percentile_mapping()
     results = []
     cohort_anchors = None
     mappings = [
@@ -107,6 +159,8 @@ def main() -> None:
     ] + [
         (name, None, knots)
         for name, knots in TAIL_STRETCHED_VARIANTS.items()
+    ] + [
+        ("causal_4y_empirical_percentile_5pct_tail", None, "causal_4y_empirical_percentile")
     ]
 
     mapping_bucket_counts = {}
@@ -117,6 +171,10 @@ def main() -> None:
             candidate["risk_score"] = (
                 (residual_values - cheap) / (EXPENSIVE_FLOOR - cheap)
             ).clip(0.0, 1.0)
+        elif knots == "causal_4y_empirical_percentile":
+            # Dynamic, strictly trailing distribution; the current day's
+            # residual is ranked only against the preceding four years.
+            candidate["risk_score"] = causal_rolling_percentile_risk(residual_values)
         else:
             # Candidate nonlinear mapping: only the deepest residual tail gets
             # the 10x/5x bands. Above −0.10 the ordinary risk scale is stretched
@@ -281,6 +339,13 @@ def main() -> None:
         "illustrative_annual_etf_drag": 0.0025,
         "candidate_cheap_floors": CANDIDATE_CHEAP_FLOORS,
         "piecewise_tail_stretched_variants": TAIL_STRETCHED_VARIANTS,
+        "causal_empirical_percentile_candidate": {
+            "name": "causal_4y_empirical_percentile_5pct_tail",
+            "lookback_days": 1461,
+            "minimum_history_observations": 365,
+            "zero_tail_fraction": 0.05,
+            "method": "Current daily WF residual ranked against valid residuals in prior four calendar years only; rank <=5th percentile maps to zero; no future data.",
+        },
         "research_extra_buy_ladders": RESEARCH_EXTRA_BUY_LADDERS,
         "risk_bucket_counts_by_mapping": mapping_bucket_counts,
         "buy_ladders_compared": {
