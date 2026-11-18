@@ -508,10 +508,15 @@ with st.sidebar:
         st.header("DCA Today")
         if not portfolio_verified:
             st.error(
-                "PURCHASE RECOMMENDATION BLOCKED — the authoritative Google/SQLite "
-                "portfolio could not be verified. Browser recovery data is not trusted "
-                "for cash sizing. Market data and risk signals remain available; "
-                "restore or verify the saved portfolio in My Portfolio, then reload."
+                "PURCHASE RECOMMENDATION BLOCKED — the authoritative saved portfolio "
+                "has not passed verification. Cash-based sizing remains disabled."
+            )
+            st.warning(f"Exact verification reason: {portfolio_verification_reason}")
+            st.caption(
+                "To restore DCA Today, open My Portfolio → Current broker holdings and "
+                "deployable reserve, save a dated Stake snapshot, and confirm the "
+                "storage-verified success message. A browser-only recovery copy is "
+                "not sufficient; this safeguard will not be bypassed."
             )
         elif verified_portfolio_positions.get("broker_snapshot"):
             _bs = verified_portfolio_positions["broker_snapshot"]
@@ -2096,6 +2101,77 @@ elif mode == "DCA Today":
         "and displayed multipliers all use the same active DCA sizing score and multiplier curve. "
         "Opportunity Rarity is calculated separately and does not change the multiplier."
     )
+
+    # Diagnostic comparison only: same weeks and bucket boundaries, alternate
+    # Power Law mapping kept out of active sizing and purchase recommendations.
+    _candidate_col = "power_law_risk_tail_stretched_candidate"
+    if _candidate_col in valid_today.columns:
+        if isinstance(valid_today.index, pd.DatetimeIndex):
+            _candidate_weekly = _model.completed_weekly_last(
+                valid_today[_candidate_col], as_of=valid_today.index[-1]
+            )
+        elif "date" in valid_today.columns:
+            _candidate_weekly = (
+                valid_today.set_index("date")[_candidate_col]
+                .resample("W-MON").last().dropna()
+            )
+        else:
+            _candidate_weekly = valid_today[_candidate_col].dropna()
+        # Compare only weeks where both active and candidate scores exist.
+        # This keeps percentages on an identical denominator.
+        _matched_weekly = pd.concat(
+            [
+                display_source.rename("active"),
+                _candidate_weekly.rename("candidate"),
+            ],
+            axis=1,
+        ).dropna()
+        _active_matched_occurrence = risk_occurrence_table(_matched_weekly["active"])
+        _candidate_occurrence = risk_occurrence_table(_matched_weekly["candidate"])
+        _candidate_compare = _active_matched_occurrence[[
+            "Risk range", "Weeks", "Percent"
+        ]].merge(
+            _candidate_occurrence.rename(columns={
+                "Weeks": "Candidate weeks", "Percent": "Candidate percent"
+            }),
+            on="Risk range",
+            how="left",
+        )
+        st.subheader("Risk Distribution — Active vs Research Candidate")
+        st.caption(
+            "Diagnostic only. The candidate is calculated from the tail-stretched residual mapping "
+            "and is not used for DCA multipliers, sizing, or recommendations."
+        )
+        _compare_fig = go.Figure()
+        _compare_fig.add_bar(
+            x=_candidate_compare["Risk range"],
+            y=_candidate_compare["Percent"],
+            name="Active V5.9",
+        )
+        _compare_fig.add_bar(
+            x=_candidate_compare["Risk range"],
+            y=_candidate_compare["Candidate percent"],
+            name="Tail-stretched candidate",
+        )
+        _compare_fig.update_layout(
+            barmode="group",
+            xaxis_title="BTC Risk Range",
+            yaxis_title="Historical Weekly Frequency (%)",
+            margin=dict(l=20, r=20, t=20, b=20),
+            height=380,
+        )
+        st.plotly_chart(_compare_fig, width="stretch")
+        st.dataframe(
+            _candidate_compare.rename(columns={
+                "Weeks": "Active weeks", "Percent": "Active percent"
+            }),
+            width="stretch",
+            hide_index=True,
+        )
+        st.caption(
+            "Both distributions use the same matched weekly observations and bucket boundaries. "
+            "Any change to active sizing requires separate prospective validation and review."
+        )
 
     with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
         _weekly_pl_residual = _model.completed_weekly_last(

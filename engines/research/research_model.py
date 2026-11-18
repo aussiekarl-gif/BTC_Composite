@@ -962,6 +962,29 @@ def walk_forward_power_law(data, cheap=-0.10, expensive=0.20, min_weeks=52, refi
     return scores, fair, residuals, slopes, intercepts
 
 
+# V5.9 Research tail-stretched Power Law sizing map. This is isolated from
+# Production and preserves the raw linear score as a diagnostic. The knots
+# were selected and retrospectively compared in PR #302; prospective shadow
+# validation remains mandatory before any Production adoption.
+RESEARCH_TAIL_RISK_KNOTS = (
+    (-0.32, 0.00), (-0.31, 0.01), (-0.30, 0.02), (-0.25, 0.03),
+    (-0.10, 0.049), (-0.04, 0.20), (0.02, 0.40), (0.20, 1.00),
+)
+
+
+def research_tail_stretched_power_law_risk(residual):
+    """Map a finite raw WF residual to the V5.9 tail-stretched risk scale."""
+    try:
+        value = float(residual)
+    except (TypeError, ValueError):
+        return np.nan
+    if not np.isfinite(value):
+        return np.nan
+    xs = [point[0] for point in RESEARCH_TAIL_RISK_KNOTS]
+    ys = [point[1] for point in RESEARCH_TAIL_RISK_KNOTS]
+    return float(np.interp(value, xs, ys))
+
+
 def continuous_pl_display_risk(price, fair_value, cheap=-0.10, expensive=0.20):
     """Continuous valuation-risk display that reserves 0.000 for a zero BTC price.
 
@@ -1792,7 +1815,13 @@ def add_risk_indicators(data, risk_model, params):
         # Preserve the calculated score separately, but use a neutral 0.50 fallback
         # whenever the walk-forward fit is not yet available. Missing data must never
         # be interpreted as maximum cheapness (risk 0.0).
+        # Keep the active, reconstructed linear risk score unchanged. The
+        # tail-stretched mapping is diagnostic-only until matched prospective
+        # and execution validation supports a model change.
         result["power_law_risk_calculated"] = result["power_law_score"].clip(0, 1)
+        result["power_law_risk_tail_stretched_candidate"] = result["power_law_residual"].map(
+            research_tail_stretched_power_law_risk
+        ).clip(0, 1)
         result["risk_score_source"] = np.where(
             result["power_law_risk_calculated"].notna(),
             "Walk-forward Power Law",
