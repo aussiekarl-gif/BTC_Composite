@@ -360,6 +360,11 @@ def scorecard(rows:list[dict], new_record_added:bool) -> dict:
         "simulation_policy_version":SIMULATION_POLICY_VERSION,
         "weekly_purchase_cap_aud":None,
         "purchase_limit_policy":"No fixed weekly cap; limited by available cash and remaining deployment runway.",
+        "strategy_key_legend":{
+            "risk_1x":"Current risk ladder capped at 1x.",
+            "risk_3x":"Legacy key name; uses the full current 10x/5x/3x/2x/1.5x/1x/0x risk ladder, not a fixed 3x multiplier.",
+            "risk_3x_risk_le_020":"Legacy key name; same current risk ladder, enabled only when the captured raw risk is <=0.20.",
+        },
         "observations":len(rows),
         "first_actual_capture":rows[0]["captured_at_utc"] if rows else None,
         "last_signal_day":rows[-1]["signal_date"] if rows else None,
