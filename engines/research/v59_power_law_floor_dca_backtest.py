@@ -160,7 +160,10 @@ def main() -> None:
         (name, None, knots)
         for name, knots in TAIL_STRETCHED_VARIANTS.items()
     ] + [
-        ("causal_4y_empirical_percentile_5pct_tail", None, "causal_4y_empirical_percentile")
+        (f"causal_{years}y_empirical_percentile_{int(tail * 100)}pct_tail", None,
+         ("causal_percentile", years * 365, max(365, int(years * 365 * 0.75)), tail))
+        for years in (2, 3, 4)
+        for tail in (0.05, 0.10, 0.15)
     ]
 
     mapping_bucket_counts = {}
@@ -171,10 +174,15 @@ def main() -> None:
             candidate["risk_score"] = (
                 (residual_values - cheap) / (EXPENSIVE_FLOOR - cheap)
             ).clip(0.0, 1.0)
-        elif knots == "causal_4y_empirical_percentile":
-            # Dynamic, strictly trailing distribution; the current day's
-            # residual is ranked only against the preceding four years.
-            candidate["risk_score"] = causal_rolling_percentile_risk(residual_values)
+        elif isinstance(knots, tuple) and knots[0] == "causal_percentile":
+            # Dynamic, strictly trailing distribution; current residual is
+            # ranked only against the selected prior window. Parameter grid
+            # tests whether the 4y/5% result was an over-restrictive choice.
+            _, lookback_days, minimum_history, tail_fraction = knots
+            candidate["risk_score"] = causal_rolling_percentile_risk(
+                residual_values, lookback_days=lookback_days,
+                minimum_history=minimum_history, zero_tail_fraction=tail_fraction,
+            )
         else:
             # Candidate nonlinear mapping: only the deepest residual tail gets
             # the 10x/5x bands. Above −0.10 the ordinary risk scale is stretched
@@ -339,13 +347,16 @@ def main() -> None:
         "illustrative_annual_etf_drag": 0.0025,
         "candidate_cheap_floors": CANDIDATE_CHEAP_FLOORS,
         "piecewise_tail_stretched_variants": TAIL_STRETCHED_VARIANTS,
-        "causal_empirical_percentile_candidate": {
-            "name": "causal_4y_empirical_percentile_5pct_tail",
-            "lookback_days": 1461,
-            "minimum_history_observations": 365,
-            "zero_tail_fraction": 0.05,
-            "method": "Current daily WF residual ranked against valid residuals in prior four calendar years only; rank <=5th percentile maps to zero; no future data.",
-        },
+        "causal_empirical_percentile_candidates": [
+            {
+                "name": f"causal_{years}y_empirical_percentile_{int(tail * 100)}pct_tail",
+                "lookback_days": years * 365,
+                "minimum_history_observations": max(365, int(years * 365 * 0.75)),
+                "zero_tail_fraction": tail,
+                "method": "Current daily WF residual ranked against valid residuals in prior window only; lower tail maps to zero; no future data.",
+            }
+            for years in (2, 3, 4) for tail in (0.05, 0.10, 0.15)
+        ],
         "research_extra_buy_ladders": RESEARCH_EXTRA_BUY_LADDERS,
         "risk_bucket_counts_by_mapping": mapping_bucket_counts,
         "buy_ladders_compared": {
