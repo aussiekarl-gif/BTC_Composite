@@ -2102,9 +2102,9 @@ elif mode == "DCA Today":
         "Opportunity Rarity is calculated separately and does not change the multiplier."
     )
 
-    # Diagnostic comparison only: same weeks and bucket boundaries, alternate
-    # Power Law mapping kept out of active sizing and purchase recommendations.
-    _candidate_col = "power_law_risk_tail_stretched_candidate"
+    # Side-by-side diagnostic: active tail-stretched Research sizing score
+    # versus the legacy clipped linear score that caused the broad 0.00 bucket.
+    _candidate_col = "power_law_risk_calculated"
     if _candidate_col in valid_today.columns:
         if isinstance(valid_today.index, pd.DatetimeIndex):
             _candidate_weekly = _model.completed_weekly_last(
@@ -2137,21 +2137,22 @@ elif mode == "DCA Today":
             on="Risk range",
             how="left",
         )
-        st.subheader("Risk Distribution — Active vs Research Candidate")
+        st.subheader("Risk Distribution — Active Research vs Legacy Linear")
         st.caption(
-            "Diagnostic only. The candidate is calculated from the tail-stretched residual mapping "
-            "and is not used for DCA multipliers, sizing, or recommendations."
+            "Active sizing now uses the validated tail-stretched walk-forward residual map. "
+            "The legacy linear score is shown only to explain the previously broad zero-risk bucket; "
+            "it does not drive the Research DCA multiplier."
         )
         _compare_fig = go.Figure()
         _compare_fig.add_bar(
             x=_candidate_compare["Risk range"],
             y=_candidate_compare["Percent"],
-            name="Active V5.9",
+            name="Active tail-stretched Research",
         )
         _compare_fig.add_bar(
             x=_candidate_compare["Risk range"],
             y=_candidate_compare["Candidate percent"],
-            name="Tail-stretched candidate",
+            name="Legacy linear diagnostic",
         )
         _compare_fig.update_layout(
             barmode="group",
@@ -2170,7 +2171,8 @@ elif mode == "DCA Today":
         )
         st.caption(
             "Both distributions use the same matched weekly observations and bucket boundaries. "
-            "Any change to active sizing requires separate prospective validation and review."
+            "This change is confined to Research; Production sizing and live execution are unchanged. "
+            "Prospective shadow validation remains required before any Production adoption."
         )
 
     with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
