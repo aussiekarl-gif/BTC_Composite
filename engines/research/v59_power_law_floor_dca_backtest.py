@@ -88,24 +88,16 @@ def main() -> None:
     if "power_law_residual" not in scored or "risk_score" not in scored:
         raise RuntimeError("Required V5.9 walk-forward risk/residual columns missing")
 
-    # Prove the active Research score exactly reproduces the validated
-    # tail-stretched residual mapping, while retaining the legacy clipped
-    # linear score as a separately auditable diagnostic.
+    # Prove the −0.10 candidate exactly reproduces the current score before
+    # comparing alternative cheap floors.
     residual = pd.to_numeric(scored["power_law_residual"], errors="coerce")
     current_score = pd.to_numeric(scored["risk_score"], errors="coerce")
-    reconstructed = residual.map(model.research_tail_stretched_power_law_risk).clip(0.0, 1.0)
+    reconstructed = ((residual - model.DEFAULT_PL_CHEAP) /
+                     (EXPENSIVE_FLOOR - model.DEFAULT_PL_CHEAP)).clip(0.0, 1.0)
     aligned = current_score.notna() & reconstructed.notna()
     max_diff = float((current_score.loc[aligned] - reconstructed.loc[aligned]).abs().max())
     if not np.isfinite(max_diff) or max_diff > 1e-9:
-        raise AssertionError(f"Tail-stretched reconstruction did not match active Research risk: {max_diff}")
-    legacy_linear = ((residual - model.DEFAULT_PL_CHEAP) /
-                     (EXPENSIVE_FLOOR - model.DEFAULT_PL_CHEAP)).clip(0.0, 1.0)
-    legacy_actual = pd.to_numeric(scored["power_law_risk_calculated"], errors="coerce")
-    legacy_aligned = legacy_actual.notna() & legacy_linear.notna()
-    legacy_max_diff = float((legacy_actual.loc[legacy_aligned] -
-                             legacy_linear.loc[legacy_aligned]).abs().max())
-    if not np.isfinite(legacy_max_diff) or legacy_max_diff > 1e-9:
-        raise AssertionError(f"Legacy linear diagnostic reconstruction failed: {legacy_max_diff}")
+        raise AssertionError(f"−0.10 reconstruction did not match live R2 score: {max_diff}")
 
     results = []
     cohort_anchors = None
@@ -297,7 +289,6 @@ def main() -> None:
         },
         "expensive_floor": EXPENSIVE_FLOOR,
         "current_score_reconstruction_max_abs_difference": max_diff,
-        "legacy_linear_reconstruction_max_abs_difference": legacy_max_diff,
         "signal_execution": "Prior Sunday UTC risk; next Monday BTC/AUD spot proxy execution",
         "results_vs_fixed_1x": summaries,
         "cohort_results": results,
