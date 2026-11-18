@@ -23,6 +23,22 @@ from engines.research.v59_dynamic_risk_policy import BUY_POLICY_BANDS, risk_buy_
 from engines.research.v59_live_signal_snapshot import live_risk_params
 
 
+# Additional research-only ladders: 16x is restricted to the lowest risk bucket.
+# The first candidate changes only the current ladder's lowest multiplier;
+# the second tapers more aggressively after the exceptional tail.
+RESEARCH_EXTRA_BUY_LADDERS = {
+    "v59_16x_lowest_bucket_only": (
+        (0.01, 16.0), (0.02, 5.0), (0.05, 3.0), (0.10, 2.0),
+        (0.20, 1.5), (0.40, 1.0), (1.0, 0.0),
+    ),
+    "deep_tail_16x_tapered": (
+        (0.01, 16.0), (0.02, 10.0), (0.05, 5.0), (0.10, 3.0),
+        (0.20, 1.5), (0.40, 1.0), (1.0, 0.0),
+    ),
+}
+BUY_LADDERS = {**BUY_POLICY_BANDS, **RESEARCH_EXTRA_BUY_LADDERS}
+
+
 CANDIDATE_CHEAP_FLOORS = (-0.10, -0.20, -0.24, -0.25, -0.30, -0.31, -0.33, -0.35)
 CASH_YIELDS = (0.0, 0.05)
 # 100% reproduces the unconstrained timing study; 5% is the ordinary weekly cap.
@@ -119,7 +135,7 @@ def main() -> None:
         weekly_distribution = model.risk_occurrence_table([row["risk_score"] for row in rows])
         weekly_by_bucket = weekly_distribution.set_index("Risk range")
         multiplier_counts_by_ladder = {}
-        for ladder_name, ladder_bands in BUY_POLICY_BANDS.items():
+        for ladder_name, ladder_bands in BUY_LADDERS.items():
             multiplier_counts = {}
             for row in rows:
                 multiplier = risk_buy_multiplier(float(row["risk_score"]), bands=ladder_bands)
@@ -146,7 +162,7 @@ def main() -> None:
         for w in windows:
             for cash_yield in CASH_YIELDS:
                 for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
-                    for buy_ladder_name, buy_bands in BUY_POLICY_BANDS.items():
+                    for buy_ladder_name, buy_bands in BUY_LADDERS.items():
                         baseline = simulate(
                             w["rows"], policy="plain_1x", cash_yield=cash_yield,
                             reserve_fraction=0.0, capital=CAPITAL_AUD,
@@ -199,7 +215,7 @@ def main() -> None:
         for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
             for cash_yield in CASH_YIELDS:
                 for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
-                    for buy_ladder_name in BUY_POLICY_BANDS:
+                    for buy_ladder_name in BUY_LADDERS:
                         selected = [
                             r for r in results
                             if r["mapping_name"] == mapping_name
@@ -265,10 +281,11 @@ def main() -> None:
         "illustrative_annual_etf_drag": 0.0025,
         "candidate_cheap_floors": CANDIDATE_CHEAP_FLOORS,
         "piecewise_tail_stretched_variants": TAIL_STRETCHED_VARIANTS,
+        "research_extra_buy_ladders": RESEARCH_EXTRA_BUY_LADDERS,
         "risk_bucket_counts_by_mapping": mapping_bucket_counts,
         "buy_ladders_compared": {
             name: [[float(ceiling), float(multiplier)] for ceiling, multiplier in bands]
-            for name, bands in BUY_POLICY_BANDS.items()
+            for name, bands in BUY_LADDERS.items()
         },
         "expensive_floor": EXPENSIVE_FLOOR,
         "current_score_reconstruction_max_abs_difference": max_diff,
