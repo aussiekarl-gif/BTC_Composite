@@ -79,15 +79,23 @@ class ForwardDcaTapeTests(unittest.TestCase):
         sc=t.scorecard(r,True)
         self.assertEqual(sc["prospective_shadow"]["matched_prospective_monday_fills"],0)
         self.assertEqual(sc["matured_paper_BTC_AUD_returns"]["84d"]["observed_exact_horizon_pairs"],0)
+        self.assertEqual(sc["simulation_policy_version"],t.SIMULATION_POLICY_VERSION)
+        self.assertIsNone(sc["weekly_purchase_cap_aud"])
 
     def test_paper_monday_requires_previous_sunday_and_monday_capture(self):
-        r=[row(date(2026,11,15)),row(date(2026,11,16),price=95000.)]
+        r=[row(date(2026,11,15),risk=.005),row(date(2026,11,16),price=95000.)]
         stats=t.paper_portfolios(r)
         self.assertEqual(stats["matched_prospective_monday_fills"],1)
         strict=stats["strategies"]["risk_3x_risk_le_020"]
         self.assertEqual(strict["paper_buy_count"],1)
         self.assertGreater(strict["additional_purchase_aud"],0)
-        self.assertLessEqual(strict["additional_purchase_aud"],25500.)
+        self.assertGreater(strict["additional_purchase_aud"],25500.)
+        self.assertLessEqual(
+            strict["additional_purchase_aud"],
+            t.CAPITAL*(1-t.INITIAL_BTC_FRACTION),
+        )
+        self.assertIsNone(stats["weekly_purchase_cap_aud"])
+        self.assertIn("No fixed weekly cap",stats["purchase_limit_policy"])
         self.assertFalse(stats["broker_fills_verified"])
         only_monday=t.paper_portfolios(r[1:])
         self.assertEqual(only_monday["matched_prospective_monday_fills"],0)
@@ -189,7 +197,10 @@ class ForwardDcaTapeTests(unittest.TestCase):
         for p in out["strategies"].values():
             self.assertGreaterEqual(p["remaining_cash_aud"],0.)
             self.assertGreaterEqual(p["paper_btc_reference_units"],0.)
-            self.assertLessEqual(p["additional_purchase_aud"],14*25500.+1e-6)
+            self.assertLessEqual(
+                p["additional_purchase_aud"],
+                t.CAPITAL*(1-t.INITIAL_BTC_FRACTION)+1e-6,
+            )
         self.assertAlmostEqual(out["strategies"]["risk_3x"]["portfolio_aud"],
                                out["strategies"]["below_200wma"]["portfolio_aud"],places=5)
 
