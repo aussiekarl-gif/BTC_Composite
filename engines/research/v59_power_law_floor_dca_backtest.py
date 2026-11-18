@@ -25,6 +25,8 @@ from engines.research.v59_live_signal_snapshot import live_risk_params
 
 CANDIDATE_CHEAP_FLOORS = (-0.10, -0.20, -0.24, -0.25, -0.30, -0.31, -0.33, -0.35)
 CASH_YIELDS = (0.0, 0.05)
+# 100% reproduces the unconstrained timing study; 5% is the ordinary weekly cap.
+WEEKLY_CAP_FRACTIONS = (1.0, 0.05)
 EXPENSIVE_FLOOR = model.DEFAULT_PL_EXPENSIVE
 TAIL_STRETCHED_VARIANTS = {
     # 10x is reserved for the deepest tail; moderate undervaluation retains
@@ -138,26 +140,27 @@ def main() -> None:
 
         for w in windows:
             for cash_yield in CASH_YIELDS:
-                baseline = simulate(
-                    w["rows"], policy="plain_1x", cash_yield=cash_yield,
-                    reserve_fraction=0.0, capital=CAPITAL_AUD,
-                    review_date=w["review_date"], max_fraction=1.0,
-                )
-                candidate_result = simulate(
-                    w["rows"], policy="plain_1x", cash_yield=cash_yield,
-                    reserve_fraction=0.0, capital=CAPITAL_AUD,
-                    review_date=w["review_date"], max_fraction=1.0,
-                    weight_fn=lambda row: risk_buy_multiplier(float(row["risk_score"])),
-                )
-                results.append({
-                    "mapping_name": mapping_name,
-                    "candidate_cheap_floor": cheap,
-                    "anchor": w["anchor"],
-                    "start": w["start"],
-                    "end": w["end"],
-                    "split": w["split"],
-                    "cash_yield": cash_yield,
-                    "weekly_cap_fraction": 1.0,
+                for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
+                    baseline = simulate(
+                        w["rows"], policy="plain_1x", cash_yield=cash_yield,
+                        reserve_fraction=0.0, capital=CAPITAL_AUD,
+                        review_date=w["review_date"], max_fraction=weekly_cap_fraction,
+                    )
+                    candidate_result = simulate(
+                        w["rows"], policy="plain_1x", cash_yield=cash_yield,
+                        reserve_fraction=0.0, capital=CAPITAL_AUD,
+                        review_date=w["review_date"], max_fraction=weekly_cap_fraction,
+                        weight_fn=lambda row: risk_buy_multiplier(float(row["risk_score"])),
+                    )
+                    results.append({
+                        "mapping_name": mapping_name,
+                        "candidate_cheap_floor": cheap,
+                        "anchor": w["anchor"],
+                        "start": w["start"],
+                        "end": w["end"],
+                        "split": w["split"],
+                        "cash_yield": cash_yield,
+                        "weekly_cap_fraction": weekly_cap_fraction,
                     "baseline_policy": "fixed_1x",
                     "candidate_policy": "current_10x_5x_3x_2x_1.5x_1x_ladder_on_remapped_risk",
                     "equity_uplift_vs_fixed_1x_pct": (
@@ -186,20 +189,23 @@ def main() -> None:
     for mapping_name, cheap, knots in mappings:
         for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
             for cash_yield in CASH_YIELDS:
-                selected = [
-                    r for r in results
-                    if r["mapping_name"] == mapping_name
-                    and r["split"] == split
-                    and r["cash_yield"] == cash_yield
-                ]
-                if not selected:
-                    continue
-                summaries.append({
-                    "mapping_name": mapping_name,
-                    "candidate_cheap_floor": cheap,
-                    "risk_distribution": mapping_bucket_counts[mapping_name],
-                    "split": split,
-                    "cash_yield": cash_yield,
+                for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
+                    selected = [
+                        r for r in results
+                        if r["mapping_name"] == mapping_name
+                        and r["split"] == split
+                        and r["cash_yield"] == cash_yield
+                        and r["weekly_cap_fraction"] == weekly_cap_fraction
+                    ]
+                    if not selected:
+                        continue
+                    summaries.append({
+                        "mapping_name": mapping_name,
+                        "candidate_cheap_floor": cheap,
+                        "risk_distribution": mapping_bucket_counts[mapping_name],
+                        "split": split,
+                        "cash_yield": cash_yield,
+                        "weekly_cap_fraction": weekly_cap_fraction,
                     "cohorts": len(selected),
                     "median_equity_uplift_vs_fixed_1x_pct": float(np.median([
                         r["equity_uplift_vs_fixed_1x_pct"] for r in selected
@@ -239,7 +245,7 @@ def main() -> None:
         "cohort_anchors": cohort_anchors,
         "cash_yield_scenarios": CASH_YIELDS,
         "protected_reserve_fraction": 0.0,
-        "weekly_cap_fraction": 1.0,
+        "weekly_cap_fractions": WEEKLY_CAP_FRACTIONS,
         "entry_cost_fraction": 0.003,
         "flat_fee_aud": 3.0,
         "illustrative_annual_etf_drag": 0.0025,
