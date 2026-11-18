@@ -8,7 +8,10 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.research import research_model as _model
-from engines.research.v59_risk_display import display_research_risk, display_research_risk_series
+from engines.research.v59_risk_display import (
+    display_research_risk, display_research_risk_series,
+    display_band_multiplier_range,
+)
 from engines.shared.dca_purchase_status import dca_purchase_display
 from engines.research.v59_risk_visibility import (
     aggressive_candidate_preview, highlighted_histogram_bucket,
@@ -1820,7 +1823,7 @@ elif mode == "DCA Today":
     )
 
     st.info(
-        f"Frozen R2: display risk {current_research_display_risk:.3f}/0.400 (raw sizing score retained internally) → {risk_weight:.2f}×. "
+        f"Frozen R2: display risk {current_research_display_risk:.3f}/0.400; raw sizing risk {current_risk:.3f} → {risk_weight:.2f}×. "
         f"Three-Pillar Challenger today: {challenger_weight:.2f}×"
         + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event this week)")
         + ". Production V5.8.2 and the R2 control are unchanged."
@@ -2077,17 +2080,22 @@ elif mode == "DCA Today":
         _weeks = int((_display_counts == _i).sum())
         _lower = float(_display_edges[_i])
         _upper = float(_display_edges[_i + 1])
-        _raw_lower = (_lower / 0.4) ** 2
-        _multiplier = float(risk_band_multiplier(active_smart_dca_curve, _raw_lower))
+        _multiplier_min, _multiplier_max = display_band_multiplier_range(
+            _lower, _upper, active_smart_dca_curve, risk_band_multiplier
+        )
+        _multiplier_label = (
+            f"{_multiplier_min:g}×" if _multiplier_min == _multiplier_max
+            else f"{_multiplier_min:g}–{_multiplier_max:g}×"
+        )
         _display_rows.append({
             "Risk range": f"{_lower:.2f}–{_upper:.2f}",
             "Weeks": _weeks,
             "Percent": 100.0 * _weeks / len(_display_values) if len(_display_values) else 0.0,
-            "Buy multiplier": _multiplier,
+            "Buy multiplier range": _multiplier_label,
         })
     occurrence = pd.DataFrame(_display_rows)
     _chart_labels = [
-        f"{row['Risk range']}<br>{row['Buy multiplier']:g}×"
+        f"{row['Risk range']}<br>{row['Buy multiplier range']}"
         for row in _display_rows
     ]
     fig_occurrence = go.Figure()
@@ -2101,11 +2109,11 @@ elif mode == "DCA Today":
         x=_chart_labels,
         y=occurrence["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks", "Buy multiplier"]].to_numpy(),
+        customdata=occurrence[["Weeks", "Buy multiplier range"]].to_numpy(),
         hovertemplate=(
             "Display risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
-            "<br>Buy multiplier: %{customdata[1]}×"
+            "<br>Buy multiplier range: %{customdata[1]}"
             "<extra></extra>"
         ),
     )
@@ -2119,13 +2127,14 @@ elif mode == "DCA Today":
     st.caption(
         f"Current Research display risk {current_research_display_risk:.3f}/0.400 (orange band). "
         "This is a nonlinear, display-only rescaling of the full R2 0.00–1.00 score. "
-        "All historical weeks are retained. The underlying raw R2 score still controls the "
-        "existing multiplier and >0.50 stop-buy protection; no sizing or backtest inputs changed."
+        "All historical weeks are retained. Exact raw zeros remain zero; this transform spreads "
+        "non-zero display values only. The raw R2 score still controls the multiplier and "
+        ">0.50 stop-buy protection; no sizing or backtest inputs changed."
     )
 
-    # Side-by-side diagnostic: active tail-stretched Research sizing score
-    # versus the legacy clipped linear score that caused the broad 0.00 bucket.
-    _candidate_col = "power_law_risk_calculated"
+    # Diagnostic comparison only: same weeks and bucket boundaries, alternate
+    # Power Law mapping kept out of active sizing and purchase recommendations.
+    _candidate_col = "power_law_risk_tail_stretched_candidate"
     if _candidate_col in valid_today.columns:
         if isinstance(valid_today.index, pd.DatetimeIndex):
             _candidate_weekly = _model.completed_weekly_last(
@@ -2158,22 +2167,21 @@ elif mode == "DCA Today":
             on="Risk range",
             how="left",
         )
-        st.subheader("Risk Distribution — Active Research vs Legacy Linear")
+        st.subheader("Risk Distribution — Active vs Research Candidate")
         st.caption(
-            "Active sizing now uses the validated tail-stretched walk-forward residual map. "
-            "The legacy linear score is shown only to explain the previously broad zero-risk bucket; "
-            "it does not drive the Research DCA multiplier."
+            "Diagnostic only. The candidate is calculated from the tail-stretched residual mapping "
+            "and is not used for DCA multipliers, sizing, or recommendations."
         )
         _compare_fig = go.Figure()
         _compare_fig.add_bar(
             x=_candidate_compare["Risk range"],
             y=_candidate_compare["Percent"],
-            name="Active tail-stretched Research",
+            name="Active V5.9",
         )
         _compare_fig.add_bar(
             x=_candidate_compare["Risk range"],
             y=_candidate_compare["Candidate percent"],
-            name="Legacy linear diagnostic",
+            name="Tail-stretched candidate",
         )
         _compare_fig.update_layout(
             barmode="group",
@@ -2192,8 +2200,7 @@ elif mode == "DCA Today":
         )
         st.caption(
             "Both distributions use the same matched weekly observations and bucket boundaries. "
-            "This change is confined to Research; Production sizing and live execution are unchanged. "
-            "Prospective shadow validation remains required before any Production adoption."
+            "Any change to active sizing requires separate prospective validation and review."
         )
 
     with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
@@ -2201,20 +2208,19 @@ elif mode == "DCA Today":
             valid_today["power_law_residual"], as_of=valid_today.index[-1]
         )
         _floor_audit = power_law_floor_diagnostics(
-            rarity_source, _weekly_pl_residual
+            rarity_source, _weekly_pl_residual, cheap_threshold=pl_cheap_threshold
         )
         if not _floor_audit.empty:
             st.dataframe(_floor_audit, width="stretch", hide_index=True)
-            _zero_risk_residual = _model.RESEARCH_TAIL_RISK_KNOTS[0][0]
-            _zero_risk_ratio = 10.0 ** _zero_risk_residual
+            _cheap_ratio = 10.0 ** pl_cheap_threshold
             st.caption(
-                f"The active tail-stretched Research mapping reaches zero risk only when "
-                f"the walk-forward Power Law residual is ≤{_zero_risk_residual:.2f} "
-                f"(BTC at or below {_zero_risk_ratio:.1%} of fair value). "
-                "The −0.15 through −0.40 columns show week counts and percentages at "
-                "progressively deeper valuation discounts. Zero is a score boundary, not "
-                "zero market risk. Active-mapping mismatches should be zero; any non-zero "
-                "count needs investigation. Production remains unchanged."
+                f"The default floor is reached when BTC is at or below {_cheap_ratio:.1%} "
+                f"of the walk-forward Power Law fair value (residual ≤{pl_cheap_threshold:.2f}). "
+                "The −0.15 through −0.40 columns show both week counts and percentages at "
+                "progressively deeper valuation discounts. They are diagnostic comparisons only; "
+                "they do not change the active model. The current −0.10 floor is a broad clipping "
+                "boundary, not a rare-bottom signal. Zero is a clipped valuation score, not zero "
+                "market risk. Mismatches should be zero; any non-zero count needs investigation."
             )
         else:
             st.info("Not enough aligned weekly risk and Power Law residual observations for this audit.")
