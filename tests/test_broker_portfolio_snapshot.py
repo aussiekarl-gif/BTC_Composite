@@ -51,7 +51,7 @@ class BrokerPortfolioSnapshotTests(unittest.TestCase):
 
     def test_stale_future_dated_and_invalid_snapshots_fail_closed(self):
         with self.assertRaisesRegex(ValueError, "stale"):
-            validate_broker_snapshot(snapshot(), today=dt.date(2026, 11, 25))
+            validate_broker_snapshot(snapshot(as_of="2026-11-17"), today=dt.date(2026, 11, 25))
         with self.assertRaisesRegex(ValueError, "future-dated"):
             validate_broker_snapshot(snapshot(as_of="2026-11-18"), today=dt.date(2026, 11, 17))
         with self.assertRaisesRegex(ValueError, "non-negative"):
