@@ -81,6 +81,7 @@ class ForwardDcaTapeTests(unittest.TestCase):
         self.assertEqual(sc["matured_paper_BTC_AUD_returns"]["84d"]["observed_exact_horizon_pairs"],0)
         self.assertEqual(sc["simulation_policy_version"],t.SIMULATION_POLICY_VERSION)
         self.assertIsNone(sc["weekly_purchase_cap_aud"])
+        self.assertIn("Legacy key name",sc["strategy_key_legend"]["risk_3x"])
 
     def test_paper_monday_requires_previous_sunday_and_monday_capture(self):
         r=[row(date(2026,11,15),risk=.005),row(date(2026,11,16),price=95000.)]
