@@ -1,6 +1,6 @@
 {
   "first_actual_capture": "2026-11-12T11:19:52.234443+00:00",
-  "last_signal_day": "2026-11-16",
+  "last_signal_day": "2026-11-17",
   "legacy_realized_rows_not_scored": 3,
   "matured_paper_BTC_AUD_returns": {
     "28d": {
@@ -10,6 +10,10 @@
           "mean_pct": null
         },
         "below_to_plus10": {
+          "count": 0,
+          "mean_pct": null
+        },
+        "piecewise_tail_3x_mid": {
           "count": 0,
           "mean_pct": null
         },
@@ -42,6 +46,10 @@
           "count": 0,
           "mean_pct": null
         },
+        "piecewise_tail_3x_mid": {
+          "count": 0,
+          "mean_pct": null
+        },
         "realized110_and_risk050": {
           "count": 0,
           "mean_pct": null
@@ -71,6 +79,10 @@
           "count": 0,
           "mean_pct": null
         },
+        "piecewise_tail_3x_mid": {
+          "count": 0,
+          "mean_pct": null
+        },
         "realized110_and_risk050": {
           "count": 0,
           "mean_pct": null
@@ -94,7 +106,8 @@
   "new_day_appended": true,
   "no_live_recommendations_orders_notifications": true,
   "not_asx_ibit_execution_or_personal_portfolio": true,
-  "observations": 6,
+  "observations": 7,
+  "piecewise_tail_shadow_eligible_observations": 1,
   "prospective_shadow": {
     "broker_fills_verified": false,
     "first_paper_monday": "2026-11-16",
@@ -123,6 +136,16 @@
         "portfolio_aud": 509920.509,
         "remaining_cash_aud": 275400.00000000006,
         "value_gap_vs_strict020_pct": 0.0
+      },
+      "piecewise_tail_3x_mid": {
+        "additional_purchase_aud": 0.0,
+        "cash_interest_aud": 0.0,
+        "max_drawdown_pct": 0.0,
+        "paper_btc_reference_units": 2.1726987077003255,
+        "paper_buy_count": 0,
+        "portfolio_aud": 510000.0,
+        "remaining_cash_aud": 300900.00000000006,
+        "value_gap_vs_strict020_pct": 0.015588900347607293
       },
       "realized110_and_risk050": {
         "additional_purchase_aud": 0.0,
@@ -167,7 +190,7 @@
     }
   },
   "realized_current_signal_is_tradeable": false,
-  "realized_gate_eligible_observations": 2,
+  "realized_gate_eligible_observations": 3,
   "realized_gate_method_version": "explore21_same_day_close_v2",
   "realized_observation_status": "VALID_DATED_RESEARCH_REFERENCE",
   "realized_reference_is_research_only": true,
