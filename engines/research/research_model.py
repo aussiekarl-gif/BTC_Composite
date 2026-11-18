@@ -1820,7 +1820,12 @@ def add_risk_indicators(data, risk_model, params):
         ).clip(0, 1)
         result["risk_score_source"] = np.where(
             result["power_law_risk_tail_stretched_candidate"].notna(),
-            "Walk-forward Power Law (tail-stretched Research)",
+            "Walk-forward Power Law",
+            "Neutral fallback",
+        )
+        result["risk_score_mapping"] = np.where(
+            result["power_law_risk_tail_stretched_candidate"].notna(),
+            "Tail-stretched Research",
             "Neutral fallback",
         )
         result["risk_score"] = result["power_law_risk_tail_stretched_candidate"].fillna(0.50).clip(0, 1)
