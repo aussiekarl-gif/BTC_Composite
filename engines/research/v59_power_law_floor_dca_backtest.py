@@ -19,7 +19,7 @@ from engines.research.v59_causal_timing_horse_race import (
     cohort_windows,
     simulate,
 )
-from engines.research.v59_dynamic_risk_policy import risk_buy_multiplier
+from engines.research.v59_dynamic_risk_policy import BUY_POLICY_BANDS, risk_buy_multiplier
 from engines.research.v59_live_signal_snapshot import live_risk_params
 
 
@@ -118,18 +118,23 @@ def main() -> None:
         rows = build_weekly_rows(candidate, fx)
         weekly_distribution = model.risk_occurrence_table([row["risk_score"] for row in rows])
         weekly_by_bucket = weekly_distribution.set_index("Risk range")
-        multiplier_counts = {}
-        for row in rows:
-            multiplier = risk_buy_multiplier(float(row["risk_score"]))
-            key = f"{multiplier:g}x"
-            multiplier_counts[key] = multiplier_counts.get(key, 0) + 1
+        multiplier_counts_by_ladder = {}
+        for ladder_name, ladder_bands in BUY_POLICY_BANDS.items():
+            multiplier_counts = {}
+            for row in rows:
+                multiplier = risk_buy_multiplier(float(row["risk_score"]), bands=ladder_bands)
+                key = f"{multiplier:g}x"
+                multiplier_counts[key] = multiplier_counts.get(key, 0) + 1
+            multiplier_counts_by_ladder[ladder_name] = dict(sorted(
+                multiplier_counts.items(), key=lambda item: float(item[0][:-1]), reverse=True
+            ))
         mapping_bucket_counts[mapping_name] = {
             "weekly_observations": len(rows),
             "lowest_bucket_weeks": int(weekly_by_bucket.loc["0.00–0.01", "Weeks"]),
             "lowest_bucket_percent": float(weekly_by_bucket.loc["0.00–0.01", "Percent"]),
             "second_bucket_weeks": int(weekly_by_bucket.loc["0.01–0.02", "Weeks"]),
             "second_bucket_percent": float(weekly_by_bucket.loc["0.01–0.02", "Percent"]),
-            "buy_multiplier_counts": dict(sorted(multiplier_counts.items(), key=lambda item: float(item[0][:-1]), reverse=True)),
+            "buy_multiplier_counts_by_ladder": multiplier_counts_by_ladder,
         }
         windows = cohort_windows(rows)
         anchors = [w["anchor"] for w in windows]
@@ -141,6 +146,7 @@ def main() -> None:
         for w in windows:
             for cash_yield in CASH_YIELDS:
                 for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
+                    for buy_ladder_name, buy_bands in BUY_POLICY_BANDS.items():
                     baseline = simulate(
                         w["rows"], policy="plain_1x", cash_yield=cash_yield,
                         reserve_fraction=0.0, capital=CAPITAL_AUD,
@@ -150,7 +156,9 @@ def main() -> None:
                         w["rows"], policy="plain_1x", cash_yield=cash_yield,
                         reserve_fraction=0.0, capital=CAPITAL_AUD,
                         review_date=w["review_date"], max_fraction=weekly_cap_fraction,
-                        weight_fn=lambda row: risk_buy_multiplier(float(row["risk_score"])),
+                        weight_fn=lambda row, bands=buy_bands: risk_buy_multiplier(
+                            float(row["risk_score"]), bands=bands
+                        ),
                     )
                     results.append({
                         "mapping_name": mapping_name,
@@ -161,8 +169,9 @@ def main() -> None:
                         "split": w["split"],
                         "cash_yield": cash_yield,
                         "weekly_cap_fraction": weekly_cap_fraction,
+                        "buy_ladder_name": buy_ladder_name,
                     "baseline_policy": "fixed_1x",
-                    "candidate_policy": "current_10x_5x_3x_2x_1.5x_1x_ladder_on_remapped_risk",
+                    "candidate_policy": f"{buy_ladder_name}_ladder_on_remapped_risk",
                     "equity_uplift_vs_fixed_1x_pct": (
                         100.0 * (candidate_result["equity_aud"] / baseline["equity_aud"] - 1.0)
                     ),
@@ -190,12 +199,14 @@ def main() -> None:
         for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
             for cash_yield in CASH_YIELDS:
                 for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
-                    selected = [
+                    for buy_ladder_name in BUY_POLICY_BANDS:
+                        selected = [
                         r for r in results
                         if r["mapping_name"] == mapping_name
                         and r["split"] == split
                         and r["cash_yield"] == cash_yield
                         and r["weekly_cap_fraction"] == weekly_cap_fraction
+                        and r["buy_ladder_name"] == buy_ladder_name
                     ]
                     if not selected:
                         continue
@@ -206,6 +217,7 @@ def main() -> None:
                         "split": split,
                         "cash_yield": cash_yield,
                         "weekly_cap_fraction": weekly_cap_fraction,
+                        "buy_ladder_name": buy_ladder_name,
                     "cohorts": len(selected),
                     "median_equity_uplift_vs_fixed_1x_pct": float(np.median([
                         r["equity_uplift_vs_fixed_1x_pct"] for r in selected
@@ -255,7 +267,10 @@ def main() -> None:
         "expensive_floor": EXPENSIVE_FLOOR,
         "current_score_reconstruction_max_abs_difference": max_diff,
         "signal_execution": "Prior Sunday UTC risk; next Monday BTC/AUD spot proxy execution",
-        "buy_ladder": "10x / 5x / 3x / 2x / 1.5x / 1x / 0x (same ladder for every candidate)",
+        "buy_ladders_compared": {
+            name: [[float(ceiling), float(multiplier)] for ceiling, multiplier in bands]
+            for name, bands in BUY_POLICY_BANDS.items()
+        },
         "results_vs_fixed_1x": summaries,
         "cohort_results": results,
         "caveats": [
