@@ -8,7 +8,10 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.research import research_model as _model
-from engines.research.v59_risk_display import display_research_risk, display_research_risk_series
+from engines.research.v59_risk_display import (
+    display_research_risk, display_research_risk_series,
+    display_band_multiplier_range,
+)
 from engines.shared.dca_purchase_status import dca_purchase_display
 from engines.research.v59_risk_visibility import (
     aggressive_candidate_preview, highlighted_histogram_bucket,
@@ -2077,17 +2080,22 @@ elif mode == "DCA Today":
         _weeks = int((_display_counts == _i).sum())
         _lower = float(_display_edges[_i])
         _upper = float(_display_edges[_i + 1])
-        _raw_lower = (_lower / 0.4) ** 2
-        _multiplier = float(risk_band_multiplier(active_smart_dca_curve, _raw_lower))
+        _multiplier_min, _multiplier_max = display_band_multiplier_range(
+            _lower, _upper, active_smart_dca_curve, risk_band_multiplier
+        )
+        _multiplier_label = (
+            f"{_multiplier_min:g}×" if _multiplier_min == _multiplier_max
+            else f"{_multiplier_min:g}–{_multiplier_max:g}×"
+        )
         _display_rows.append({
             "Risk range": f"{_lower:.2f}–{_upper:.2f}",
             "Weeks": _weeks,
             "Percent": 100.0 * _weeks / len(_display_values) if len(_display_values) else 0.0,
-            "Buy multiplier": _multiplier,
+            "Buy multiplier range": _multiplier_label,
         })
     occurrence = pd.DataFrame(_display_rows)
     _chart_labels = [
-        f"{row['Risk range']}<br>{row['Buy multiplier']:g}×"
+        f"{row['Risk range']}<br>{row['Buy multiplier range']}"
         for row in _display_rows
     ]
     fig_occurrence = go.Figure()
@@ -2101,11 +2109,11 @@ elif mode == "DCA Today":
         x=_chart_labels,
         y=occurrence["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks", "Buy multiplier"]].to_numpy(),
+        customdata=occurrence[["Weeks", "Buy multiplier range"]].to_numpy(),
         hovertemplate=(
             "Display risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
-            "<br>Buy multiplier: %{customdata[1]}×"
+            "<br>Buy multiplier range: %{customdata[1]}"
             "<extra></extra>"
         ),
     )
@@ -2119,8 +2127,9 @@ elif mode == "DCA Today":
     st.caption(
         f"Current Research display risk {current_research_display_risk:.3f}/0.400 (orange band). "
         "This is a nonlinear, display-only rescaling of the full R2 0.00–1.00 score. "
-        "All historical weeks are retained. The underlying raw R2 score still controls the "
-        "existing multiplier and >0.50 stop-buy protection; no sizing or backtest inputs changed."
+        "All historical weeks are retained. Exact raw zeros remain zero; this transform spreads "
+        "non-zero display values only. The raw R2 score still controls the multiplier and "
+        ">0.50 stop-buy protection; no sizing or backtest inputs changed."
     )
 
     # Diagnostic comparison only: same weeks and bucket boundaries, alternate
