@@ -510,13 +510,16 @@ def risk_occurrence_table(risk_series):
 
 
 
-def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0.10):
-    """Audit clipped zero-risk observations by halving cycle and residual depth.
+def power_law_floor_diagnostics(risk_series, residual_series, zero_risk_threshold=None):
+    """Audit active zero-risk observations by halving cycle and residual depth.
 
-    The current score is zero when its walk-forward Power Law residual is at or
-    below cheap_threshold. Tighter residual cutoffs are shown for sensitivity
-    only; this function never changes the live score or sizing policy.
+    V5.9 Research uses the tail-stretched mapping. Its zero-risk boundary is the
+    first residual knot (normally -0.32), not the legacy linear -0.10 floor.
+    Tighter residual cutoffs are shown for context only; this function never
+    changes the active score or sizing policy.
     """
+    if zero_risk_threshold is None:
+        zero_risk_threshold = RESEARCH_TAIL_RISK_KNOTS[0][0]
     risk = pd.to_numeric(pd.Series(risk_series), errors="coerce").rename("risk")
     residual = pd.to_numeric(pd.Series(residual_series), errors="coerce").rename("residual")
     frame = pd.concat([risk, residual], axis=1).dropna(subset=["risk"])
@@ -532,7 +535,7 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
                 f"Residual ≤{cutoff:.2f} %",
             )
         ],
-        "Score/residual mismatches",
+        "Active mapping mismatches",
     ]
     if frame.empty or not isinstance(frame.index, pd.DatetimeIndex):
         return pd.DataFrame(columns=columns)
@@ -562,7 +565,7 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
         floor = part["risk"].eq(0.0)
         residual_valid = part["residual"].notna()
         residual_weeks = int(residual_valid.sum())
-        model_floor = part.loc[residual_valid, "residual"].le(float(cheap_threshold))
+        model_floor = part.loc[residual_valid, "residual"].le(float(zero_risk_threshold))
         mismatches = int((floor.loc[residual_valid].to_numpy() != model_floor.to_numpy()).sum())
         rows.append({
             "Cycle": label,
@@ -588,7 +591,7 @@ def power_law_floor_diagnostics(risk_series, residual_series, cheap_threshold=-0
                     f"Residual ≤{cutoff:.2f} %",
                 )
             },
-            "Score/residual mismatches": mismatches,
+            "Active mapping mismatches": mismatches,
         })
     return pd.DataFrame(rows, columns=columns)
 

@@ -2180,19 +2180,20 @@ elif mode == "DCA Today":
             valid_today["power_law_residual"], as_of=valid_today.index[-1]
         )
         _floor_audit = power_law_floor_diagnostics(
-            display_source, _weekly_pl_residual, cheap_threshold=pl_cheap_threshold
+            display_source, _weekly_pl_residual
         )
         if not _floor_audit.empty:
             st.dataframe(_floor_audit, width="stretch", hide_index=True)
-            _cheap_ratio = 10.0 ** pl_cheap_threshold
+            _zero_risk_residual = _model.RESEARCH_TAIL_RISK_KNOTS[0][0]
+            _zero_risk_ratio = 10.0 ** _zero_risk_residual
             st.caption(
-                f"The default floor is reached when BTC is at or below {_cheap_ratio:.1%} "
-                f"of the walk-forward Power Law fair value (residual ≤{pl_cheap_threshold:.2f}). "
-                "The −0.15 through −0.40 columns show both week counts and percentages at "
-                "progressively deeper valuation discounts. They are diagnostic comparisons only; "
-                "they do not change the active model. The current −0.10 floor is a broad clipping "
-                "boundary, not a rare-bottom signal. Zero is a clipped valuation score, not zero "
-                "market risk. Mismatches should be zero; any non-zero count needs investigation."
+                f"The active tail-stretched Research mapping reaches zero risk only when "
+                f"the walk-forward Power Law residual is ≤{_zero_risk_residual:.2f} "
+                f"(BTC at or below {_zero_risk_ratio:.1%} of fair value). "
+                "The −0.15 through −0.40 columns show week counts and percentages at "
+                "progressively deeper valuation discounts. Zero is a score boundary, not "
+                "zero market risk. Active-mapping mismatches should be zero; any non-zero "
+                "count needs investigation. Production remains unchanged."
             )
         else:
             st.info("Not enough aligned weekly risk and Power Law residual observations for this audit.")
