@@ -2105,8 +2105,19 @@ elif mode == "DCA Today":
     # Diagnostic comparison only: same weeks and bucket boundaries, alternate
     # Power Law mapping kept out of active sizing and purchase recommendations.
     _candidate_col = "power_law_risk_tail_stretched_candidate"
-    if _candidate_col in display_source.columns:
-        _candidate_occurrence = risk_occurrence_table(display_source[_candidate_col])
+    if _candidate_col in valid_today.columns:
+        if isinstance(valid_today.index, pd.DatetimeIndex):
+            _candidate_weekly = _model.completed_weekly_last(
+                valid_today[_candidate_col], as_of=valid_today.index[-1]
+            )
+        elif "date" in valid_today.columns:
+            _candidate_weekly = (
+                valid_today.set_index("date")[_candidate_col]
+                .resample("W-MON").last().dropna()
+            )
+        else:
+            _candidate_weekly = valid_today[_candidate_col].dropna()
+        _candidate_occurrence = risk_occurrence_table(_candidate_weekly)
         _candidate_compare = occurrence[["Risk range", "Weeks", "Percent"]].merge(
             _candidate_occurrence.rename(columns={
                 "Weeks": "Candidate weeks", "Percent": "Candidate percent"
