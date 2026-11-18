@@ -2162,13 +2162,6 @@ elif mode == "DCA Today":
         )
 
     with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
-
-        "The orange bar, risk bucket labels "
-        "and displayed multipliers all use the same active DCA sizing score and multiplier curve. "
-        "Opportunity Rarity is calculated separately and does not change the multiplier."
-    )
-
-    with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
         _weekly_pl_residual = _model.completed_weekly_last(
             valid_today["power_law_residual"], as_of=valid_today.index[-1]
         )
