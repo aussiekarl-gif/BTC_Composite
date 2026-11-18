@@ -8,6 +8,7 @@ if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
 from engines.research import research_model as _model
+from engines.research.v59_risk_display import display_research_risk, display_research_risk_series
 from engines.shared.dca_purchase_status import dca_purchase_display
 from engines.research.v59_risk_visibility import (
     aggressive_candidate_preview, highlighted_histogram_bucket,
@@ -1228,6 +1229,7 @@ elif mode == "DCA Today":
 
     latest = valid_today.iloc[-1]
     current_risk = float(latest["risk_score"])
+    current_research_display_risk = display_research_risk(current_risk)
     current_display_risk = float(latest.get("continuous_valuation_risk", np.nan))
     current_bottom_zone = float(latest.get("bottom_zone_score", np.nan))
     current_bottom_confidence = float(latest.get("bottom_confidence_score", np.nan))
@@ -1308,9 +1310,11 @@ elif mode == "DCA Today":
     # The first histogram is the DCA risk-band chart, so it must use the
     # historical R2 sizing score (not the separate continuous valuation display).
     # This keeps its bucket labels and current 10x/5x/... multipliers consistent with sizing.
-    display_source = rarity_source
-    _display_now = current_risk
-    _display_txt = f"R2 sizing risk {current_risk:.3f}"
+    # Display-only nonlinear scale: compress the full 0..1 R2 score into 0..0.40.
+    # The raw score remains authoritative for sizing, rarity, backtests and safety gates.
+    display_source = display_research_risk_series(rarity_source)
+    _display_now = current_research_display_risk
+    _display_txt = f"Research display risk {current_research_display_risk:.3f}/0.400"
     rarity = opportunity_rarity_from_history(rarity_source, current_risk)
     # V5.9 Research: rarity is decision-support context only. Risk Score alone controls sizing.
     effective_weight = risk_weight
@@ -1817,7 +1821,7 @@ elif mode == "DCA Today":
     )
 
     st.info(
-        f"Frozen R2: sizing score {current_risk:.3f} (valuation risk {_display_txt}) → {risk_weight:.2f}×. "
+        f"Frozen R2: display risk {current_research_display_risk:.3f}/0.400 (raw sizing score retained internally) → {risk_weight:.2f}×. "
         f"Three-Pillar Challenger today: {challenger_weight:.2f}×"
         + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event this week)")
         + ". Production V5.8.2 and the R2 control are unchanged."
@@ -2061,45 +2065,61 @@ elif mode == "DCA Today":
     )
 
     st.subheader("Historical Weekly Risk Distribution")
-    occurrence = risk_occurrence_table(display_source)
-    _research_bucket_lowers = [None, 0.00, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 0.60, 0.80, 1.00, None]
-    _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
-        occurrence["Risk range"].tolist(), _research_bucket_lowers,
-        active_smart_dca_curve,
+    # Eight equal-width display bands cover the full transformed 0.00–0.40 scale.
+    # Every valid historical week remains in the denominator; no high-risk weeks are discarded.
+    _display_values = pd.to_numeric(display_source, errors="coerce").dropna().clip(0.0, 0.4)
+    _display_edges = np.linspace(0.0, 0.4, 9)
+    _display_counts = pd.cut(
+        _display_values, bins=_display_edges, labels=False, include_lowest=True,
+        right=True,
     )
+    _display_rows = []
+    for _i in range(8):
+        _weeks = int((_display_counts == _i).sum())
+        _lower = float(_display_edges[_i])
+        _upper = float(_display_edges[_i + 1])
+        _raw_lower = (_lower / 0.4) ** 2
+        _multiplier = float(risk_band_multiplier(active_smart_dca_curve, _raw_lower))
+        _display_rows.append({
+            "Risk range": f"{_lower:.2f}–{_upper:.2f}",
+            "Weeks": _weeks,
+            "Percent": 100.0 * _weeks / len(_display_values) if len(_display_values) else 0.0,
+            "Buy multiplier": _multiplier,
+        })
+    occurrence = pd.DataFrame(_display_rows)
+    _chart_labels = [
+        f"{row['Risk range']}<br>{row['Buy multiplier']:g}×"
+        for row in _display_rows
+    ]
     fig_occurrence = go.Figure()
-    # Invalid values remain separate. Exact-zero scores are included in the
-    # lowest valid 0.00–0.01 R2 sizing bucket, matching the DCA ladder.
-    _cur_idx = highlighted_histogram_bucket(current_risk)
+    _cur_idx = min(7, max(0, int(np.floor(current_research_display_risk / 0.05))))
     _bar_colors = [
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
     ]
-    _chart_custom = occurrence[["Weeks"]].copy()
-    _chart_custom["Buy multiplier"] = _chart_multipliers
     fig_occurrence.add_bar(
         x=_chart_labels,
         y=occurrence["Percent"],
         marker_color=_bar_colors,
-        customdata=_chart_custom.to_numpy(),
+        customdata=occurrence[["Weeks", "Buy multiplier"]].to_numpy(),
         hovertemplate=(
-            "Risk %{x}<br>%{y:.1f}% of weekly observations"
+            "Display risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
             "<br>Buy multiplier: %{customdata[1]}×"
             "<extra></extra>"
         ),
     )
     fig_occurrence.update_layout(
-        xaxis_title="BTC Risk Range",
+        xaxis_title="Research Display Risk (0.00–0.40)",
         yaxis_title="Historical Weekly Frequency (%)",
         margin=dict(l=20, r=20, t=20, b=20),
         height=380,
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current R2 sizing risk {current_risk:.3f} (orange bar). Zero scores are grouped into the 0.00–0.01 band. "
-        "The orange bar, risk bucket labels "
-        "and displayed multipliers all use the same active DCA sizing score and multiplier curve. "
-        "Opportunity Rarity is calculated separately and does not change the multiplier."
+        f"Current Research display risk {current_research_display_risk:.3f}/0.400 (orange band). "
+        "This is a nonlinear, display-only rescaling of the full R2 0.00–1.00 score. "
+        "All historical weeks are retained. The underlying raw R2 score still controls the "
+        "existing multiplier and >0.50 stop-buy protection; no sizing or backtest inputs changed."
     )
 
     # Side-by-side diagnostic: active tail-stretched Research sizing score
@@ -2121,7 +2141,7 @@ elif mode == "DCA Today":
         # This keeps percentages on an identical denominator.
         _matched_weekly = pd.concat(
             [
-                display_source.rename("active"),
+                rarity_source.rename("active"),
                 _candidate_weekly.rename("candidate"),
             ],
             axis=1,
