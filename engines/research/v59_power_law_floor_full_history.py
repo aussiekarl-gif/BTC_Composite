@@ -23,10 +23,7 @@ def main() -> None:
     params = {
         "risk_model": "Research WF Power Law",
         "pl_cheap": model.DEFAULT_PL_CHEAP,
-        "legacy_linear_pl_cheap": model.DEFAULT_PL_CHEAP,
         "pl_expensive": model.DEFAULT_PL_EXPENSIVE,
-        "active_risk_mapping": "Tail-stretched Research",
-        "active_zero_risk_residual_threshold": model.RESEARCH_TAIL_RISK_KNOTS[0][0],
         "research_pl_min_weeks": model.RESEARCH_PL_MIN_WEEKS,
         "research_pl_refit_days": model.RESEARCH_PL_REFIT_DAYS,
     }
@@ -45,7 +42,7 @@ def main() -> None:
         closed["power_law_residual"].dropna(), as_of=as_of
     )
     audit = model.power_law_floor_diagnostics(
-        weekly_risk, weekly_residual
+        weekly_risk, weekly_residual, cheap_threshold=model.DEFAULT_PL_CHEAP
     )
     distribution = model.risk_occurrence_table(weekly_risk)
     weekly_price = model.completed_weekly_last(valid_risk["price"], as_of=as_of)
@@ -109,8 +106,7 @@ def main() -> None:
     }
 
     # Re-map the exact same causal residual series under candidate cheap floors.
-    # This is a legacy linear-floor sensitivity study only. Active Research
-    # risk uses the tail-stretched mapping and its separate zero-risk boundary.
+    # This is a sensitivity study only; the live V5.9 threshold remains −0.10.
     candidate_cheap_floors = tuple(round(-0.20 - 0.01 * i, 2) for i in range(21))
     candidate_sweep = []
     for cheap in candidate_cheap_floors:
@@ -198,10 +194,8 @@ def main() -> None:
         "source": "Blockchain.com public BTC/USD daily market-price history",
         "model": "V5.9 Research WF Power Law",
         "history_start": str(model.RESEARCH_PL_HISTORY_START),
-        "legacy_linear_pl_cheap": model.DEFAULT_PL_CHEAP,
+        "pl_cheap": model.DEFAULT_PL_CHEAP,
         "pl_expensive": model.DEFAULT_PL_EXPENSIVE,
-        "active_risk_mapping": "Tail-stretched Research",
-        "active_zero_risk_residual_threshold": model.RESEARCH_TAIL_RISK_KNOTS[0][0],
         "weekly_observations": int(len(weekly_risk)),
         "risk_distribution": distribution.to_dict(orient="records"),
         "power_law_floor_by_cycle": audit.to_dict(orient="records"),
