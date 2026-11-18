@@ -1307,9 +1307,8 @@ elif mode == "DCA Today":
     else:
         # Safe fallback: use observations in their existing chronological order.
         rarity_source = valid_today["risk_score"].dropna()
-    # The first histogram is the DCA risk-band chart, so it must use the
-    # historical R2 sizing score (not the separate continuous valuation display).
-    # This keeps its bucket labels and current 10x/5x/... multipliers consistent with sizing.
+    # The historical R2 score is transformed only for the Research display;
+    # all calculations and rarity comparisons continue to use the raw score.
     # Display-only nonlinear scale: compress the full 0..1 R2 score into 0..0.40.
     # The raw score remains authoritative for sizing, rarity, backtests and safety gates.
     display_source = display_research_risk_series(rarity_source)
@@ -2092,7 +2091,9 @@ elif mode == "DCA Today":
         for row in _display_rows
     ]
     fig_occurrence = go.Figure()
-    _cur_idx = min(7, max(0, int(np.floor(current_research_display_risk / 0.05))))
+    _cur_idx = min(7, int(np.searchsorted(
+        _display_edges[1:], current_research_display_risk, side="left"
+    )))
     _bar_colors = [
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
     ]
