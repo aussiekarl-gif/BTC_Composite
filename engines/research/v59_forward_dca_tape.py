@@ -26,7 +26,7 @@ CASH_YIELD = .05
 ETF_DRAG = .0025
 FRICTION = .003
 FIXED_FEE = 3.
-WEEKLY_CAP = .05*CAPITAL
+SIMULATION_POLICY_VERSION = "v59_current_ladder_no_fixed_weekly_cap_v1"
 ILLUSTRATIVE_REVIEW = date(2027,12,31)
 HORIZONS=(7,28,84)
 REQUIRED_SNAPSHOT_STATUS="RESEARCH_SIGNAL_SNAPSHOT_READY"
@@ -318,7 +318,7 @@ def paper_portfolios(rows:list[dict]) -> dict:
             prev=day
             weight=multipliers(sun)[name] if day<=ILLUSTRATIVE_REVIEW else 0.
             remaining=max((ILLUSTRATIVE_REVIEW-day).days/7.,1.)
-            proposed=min(cash,cash/remaining*weight,WEEKLY_CAP)
+            proposed=min(cash,cash/remaining*weight)
             if proposed>FIXED_FEE+.01:
                 cash-=proposed
                 btc+=(proposed-FIXED_FEE)*(1-FRICTION)/price
@@ -326,8 +326,8 @@ def paper_portfolios(rows:list[dict]) -> dict:
             equity=cash+btc*price
             peak=max(peak,equity)
             worst=min(worst,equity/peak-1)
-            if cash < -1e-6 or proposed>WEEKLY_CAP+1e-6:
-                raise AssertionError("No leverage and cap must hold")
+            if cash < -1e-6 or proposed < -1e-6:
+                raise AssertionError("No leverage or negative paper purchase")
         output[name]={
             "portfolio_aud":cash+btc*pairs[-1][1],
             "additional_purchase_aud":spent,
@@ -342,9 +342,12 @@ def paper_portfolios(rows:list[dict]) -> dict:
         "first_paper_monday":pairs[0][0].isoformat(),
         "last_paper_monday":pairs[-1][0].isoformat(),
         "status":"PROSPECTIVE_PAPER_ONLY_NOT_BROKER_EXECUTABLE",
+        "simulation_policy_version":SIMULATION_POLICY_VERSION,
+        "weekly_purchase_cap_aud":None,
+        "purchase_limit_policy":"No fixed weekly cap; limited by available cash and remaining deployment runway.",
         "illustrative_review_date_not_hard_user_deadline":ILLUSTRATIVE_REVIEW.isoformat(),
         "broker_fills_verified":False,"strategies":output,
-        "note":"Uses immutable prior-Sunday signals and next captured Monday BTC/USD proxy with Sunday prior FX. Existing holdings virtualised at first paired Monday. No historical backfill.",
+        "note":"Uses immutable prior-Sunday signals and next captured Monday BTC/AUD proxy execution with Sunday prior FX. Existing holdings are virtualised at the first matched Monday. Purchases have no fixed weekly cap and cannot exceed available paper cash. No historical market-data backfill; no broker fills.",
     }
 
 
@@ -354,6 +357,14 @@ def scorecard(rows:list[dict], new_record_added:bool) -> dict:
     missed=sum((b-a).days-1 for a,b in zip(days,days[1:]))
     return {
         "status":"RESEARCH_ONLY_FORWARD_DATA",
+        "simulation_policy_version":SIMULATION_POLICY_VERSION,
+        "weekly_purchase_cap_aud":None,
+        "purchase_limit_policy":"No fixed weekly cap; limited by available cash and remaining deployment runway.",
+        "strategy_key_legend":{
+            "risk_1x":"Current risk ladder capped at 1x.",
+            "risk_3x":"Legacy key name; uses the full current 10x/5x/3x/2x/1.5x/1x/0x risk ladder, not a fixed 3x multiplier.",
+            "risk_3x_risk_le_020":"Legacy key name; same current risk ladder, enabled only when the captured raw risk is <=0.20.",
+        },
         "observations":len(rows),
         "first_actual_capture":rows[0]["captured_at_utc"] if rows else None,
         "last_signal_day":rows[-1]["signal_date"] if rows else None,
