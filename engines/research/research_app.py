@@ -2200,7 +2200,7 @@ elif mode == "DCA Today":
             valid_today["power_law_residual"], as_of=valid_today.index[-1]
         )
         _floor_audit = power_law_floor_diagnostics(
-            display_source, _weekly_pl_residual
+            rarity_source, _weekly_pl_residual
         )
         if not _floor_audit.empty:
             st.dataframe(_floor_audit, width="stretch", hide_index=True)
