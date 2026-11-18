@@ -1809,27 +1809,23 @@ def add_risk_indicators(data, risk_model, params):
         axis=1,
     ).max(axis=1).clip(0, 1)
 
-    # V5.9 Research sizing uses the causal Power Law score directly. The legacy
-    # percentile/drawdown calibration is retained above for diagnostics only.
+    # V5.9 Research sizing uses the causal walk-forward residual with the
+    # tail-stretched map validated on matched historical cohorts. Keep the old
+    # linear score as an explicit diagnostic so its broad zero-floor frequency
+    # remains visible. This is Research-only; Production is not changed.
     if risk_model == "Research WF Power Law":
-        # Preserve the calculated score separately, but use a neutral 0.50 fallback
-        # whenever the walk-forward fit is not yet available. Missing data must never
-        # be interpreted as maximum cheapness (risk 0.0).
-        # Keep the active, reconstructed linear risk score unchanged. The
-        # tail-stretched mapping is diagnostic-only until matched prospective
-        # and execution validation supports a model change.
         result["power_law_risk_calculated"] = result["power_law_score"].clip(0, 1)
         result["power_law_risk_tail_stretched_candidate"] = result["power_law_residual"].map(
             research_tail_stretched_power_law_risk
         ).clip(0, 1)
         result["risk_score_source"] = np.where(
-            result["power_law_risk_calculated"].notna(),
-            "Walk-forward Power Law",
+            result["power_law_risk_tail_stretched_candidate"].notna(),
+            "Walk-forward Power Law (tail-stretched Research)",
             "Neutral fallback",
         )
-        result["risk_score"] = result["power_law_risk_calculated"].fillna(0.50).clip(0, 1)
+        result["risk_score"] = result["power_law_risk_tail_stretched_candidate"].fillna(0.50).clip(0, 1)
         result["raw_risk_score"] = result["risk_score"]
-        result["risk_components_available"] = result["power_law_risk_calculated"].notna().astype(int)
+        result["risk_components_available"] = result["power_law_risk_tail_stretched_candidate"].notna().astype(int)
 
     # -------------------------
     # Context kept separate
