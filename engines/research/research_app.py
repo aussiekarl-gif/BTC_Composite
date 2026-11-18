@@ -2102,6 +2102,61 @@ elif mode == "DCA Today":
         "Opportunity Rarity is calculated separately and does not change the multiplier."
     )
 
+    # Diagnostic comparison only: same weeks and bucket boundaries, alternate
+    # Power Law mapping kept out of active sizing and purchase recommendations.
+    _candidate_col = "power_law_risk_tail_stretched_candidate"
+    if _candidate_col in display_source.columns:
+        _candidate_occurrence = risk_occurrence_table(display_source[_candidate_col])
+        _candidate_compare = occurrence[["Risk range", "Weeks", "Percent"]].merge(
+            _candidate_occurrence.rename(columns={
+                "Weeks": "Candidate weeks", "Percent": "Candidate percent"
+            }),
+            on="Risk range",
+            how="left",
+        )
+        st.subheader("Risk Distribution — Active vs Research Candidate")
+        st.caption(
+            "Diagnostic only. The candidate is calculated from the tail-stretched residual mapping "
+            "and is not used for DCA multipliers, sizing, or recommendations."
+        )
+        _compare_fig = go.Figure()
+        _compare_fig.add_bar(
+            x=_candidate_compare["Risk range"],
+            y=_candidate_compare["Percent"],
+            name="Active V5.9",
+        )
+        _compare_fig.add_bar(
+            x=_candidate_compare["Risk range"],
+            y=_candidate_compare["Candidate percent"],
+            name="Tail-stretched candidate",
+        )
+        _compare_fig.update_layout(
+            barmode="group",
+            xaxis_title="BTC Risk Range",
+            yaxis_title="Historical Weekly Frequency (%)",
+            margin=dict(l=20, r=20, t=20, b=20),
+            height=380,
+        )
+        st.plotly_chart(_compare_fig, width="stretch")
+        st.dataframe(
+            _candidate_compare.rename(columns={
+                "Weeks": "Active weeks", "Percent": "Active percent"
+            }),
+            width="stretch",
+            hide_index=True,
+        )
+        st.caption(
+            "Both distributions use the same historical observation window and bucket boundaries. "
+            "Any change to active sizing requires separate prospective validation and review."
+        )
+
+    with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
+
+        "The orange bar, risk bucket labels "
+        "and displayed multipliers all use the same active DCA sizing score and multiplier curve. "
+        "Opportunity Rarity is calculated separately and does not change the multiplier."
+    )
+
     with st.expander("Why does the risk score hit 0.000? — Power Law floor audit", expanded=False):
         _weekly_pl_residual = _model.completed_weekly_last(
             valid_today["power_law_residual"], as_of=valid_today.index[-1]
