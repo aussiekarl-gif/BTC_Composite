@@ -19,7 +19,7 @@ from engines.research.v59_causal_timing_horse_race import (
     cohort_windows,
     simulate,
 )
-from engines.research.v59_dynamic_risk_policy import risk_buy_multiplier
+from engines.research.v59_dynamic_risk_policy import BUY_POLICY_BANDS, risk_buy_multiplier
 from engines.research.v59_live_signal_snapshot import live_risk_params
 
 
@@ -118,18 +118,23 @@ def main() -> None:
         rows = build_weekly_rows(candidate, fx)
         weekly_distribution = model.risk_occurrence_table([row["risk_score"] for row in rows])
         weekly_by_bucket = weekly_distribution.set_index("Risk range")
-        multiplier_counts = {}
-        for row in rows:
-            multiplier = risk_buy_multiplier(float(row["risk_score"]))
-            key = f"{multiplier:g}x"
-            multiplier_counts[key] = multiplier_counts.get(key, 0) + 1
+        multiplier_counts_by_ladder = {}
+        for ladder_name, ladder_bands in BUY_POLICY_BANDS.items():
+            multiplier_counts = {}
+            for row in rows:
+                multiplier = risk_buy_multiplier(float(row["risk_score"]), bands=ladder_bands)
+                key = f"{multiplier:g}x"
+                multiplier_counts[key] = multiplier_counts.get(key, 0) + 1
+            multiplier_counts_by_ladder[ladder_name] = dict(sorted(
+                multiplier_counts.items(), key=lambda item: float(item[0][:-1]), reverse=True
+            ))
         mapping_bucket_counts[mapping_name] = {
             "weekly_observations": len(rows),
             "lowest_bucket_weeks": int(weekly_by_bucket.loc["0.00–0.01", "Weeks"]),
             "lowest_bucket_percent": float(weekly_by_bucket.loc["0.00–0.01", "Percent"]),
             "second_bucket_weeks": int(weekly_by_bucket.loc["0.01–0.02", "Weeks"]),
             "second_bucket_percent": float(weekly_by_bucket.loc["0.01–0.02", "Percent"]),
-            "buy_multiplier_counts": dict(sorted(multiplier_counts.items(), key=lambda item: float(item[0][:-1]), reverse=True)),
+            "buy_multiplier_counts_by_ladder": multiplier_counts_by_ladder,
         }
         windows = cohort_windows(rows)
         anchors = [w["anchor"] for w in windows]
@@ -141,98 +146,107 @@ def main() -> None:
         for w in windows:
             for cash_yield in CASH_YIELDS:
                 for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
-                    baseline = simulate(
-                        w["rows"], policy="plain_1x", cash_yield=cash_yield,
-                        reserve_fraction=0.0, capital=CAPITAL_AUD,
-                        review_date=w["review_date"], max_fraction=weekly_cap_fraction,
-                    )
-                    candidate_result = simulate(
-                        w["rows"], policy="plain_1x", cash_yield=cash_yield,
-                        reserve_fraction=0.0, capital=CAPITAL_AUD,
-                        review_date=w["review_date"], max_fraction=weekly_cap_fraction,
-                        weight_fn=lambda row: risk_buy_multiplier(float(row["risk_score"])),
-                    )
-                    results.append({
-                        "mapping_name": mapping_name,
-                        "candidate_cheap_floor": cheap,
-                        "anchor": w["anchor"],
-                        "start": w["start"],
-                        "end": w["end"],
-                        "split": w["split"],
-                        "cash_yield": cash_yield,
-                        "weekly_cap_fraction": weekly_cap_fraction,
-                    "baseline_policy": "fixed_1x",
-                    "candidate_policy": "current_10x_5x_3x_2x_1.5x_1x_ladder_on_remapped_risk",
-                    "equity_uplift_vs_fixed_1x_pct": (
-                        100.0 * (candidate_result["equity_aud"] / baseline["equity_aud"] - 1.0)
-                    ),
-                    "btc_equivalent_uplift_vs_fixed_1x_pct": (
-                        100.0 * (
-                            candidate_result["terminal_btc_equivalent"]
-                            / baseline["terminal_btc_equivalent"] - 1.0
+                    for buy_ladder_name, buy_bands in BUY_POLICY_BANDS.items():
+                        baseline = simulate(
+                            w["rows"], policy="plain_1x", cash_yield=cash_yield,
+                            reserve_fraction=0.0, capital=CAPITAL_AUD,
+                            review_date=w["review_date"], max_fraction=weekly_cap_fraction,
                         )
-                    ),
-                    "btc_units": candidate_result["btc_units"],
-                    "terminal_btc_equivalent": candidate_result["terminal_btc_equivalent"],
-                    "equity_aud": candidate_result["equity_aud"],
-                    "cash_aud": candidate_result["cash_aud"],
-                    "net_invested_aud": candidate_result["net_invested_aud"],
-                    "deployed_fraction_of_initial": candidate_result["deployed_fraction_of_initial"],
-                    "drawdown_pct": candidate_result["drawdown_pct"],
-                    "buy_count": candidate_result["buy_count"],
-                    "spent_first_26weeks_pct_initial": (
-                        100.0 * candidate_result["spent_first_26weeks_pct_initial"]
-                    ),
-                })
+                        candidate_result = simulate(
+                            w["rows"], policy="plain_1x", cash_yield=cash_yield,
+                            reserve_fraction=0.0, capital=CAPITAL_AUD,
+                            review_date=w["review_date"], max_fraction=weekly_cap_fraction,
+                            weight_fn=lambda row, bands=buy_bands: risk_buy_multiplier(
+                                float(row["risk_score"]), bands=bands
+                            ),
+                        )
+                        results.append({
+                            "mapping_name": mapping_name,
+                            "candidate_cheap_floor": cheap,
+                            "anchor": w["anchor"],
+                            "start": w["start"],
+                            "end": w["end"],
+                            "split": w["split"],
+                            "cash_yield": cash_yield,
+                            "weekly_cap_fraction": weekly_cap_fraction,
+                            "buy_ladder_name": buy_ladder_name,
+                        "baseline_policy": "fixed_1x",
+                        "candidate_policy": f"{buy_ladder_name}_ladder_on_remapped_risk",
+                        "equity_uplift_vs_fixed_1x_pct": (
+                            100.0 * (candidate_result["equity_aud"] / baseline["equity_aud"] - 1.0)
+                        ),
+                        "btc_equivalent_uplift_vs_fixed_1x_pct": (
+                            100.0 * (
+                                candidate_result["terminal_btc_equivalent"]
+                                / baseline["terminal_btc_equivalent"] - 1.0
+                            )
+                        ),
+                        "btc_units": candidate_result["btc_units"],
+                        "terminal_btc_equivalent": candidate_result["terminal_btc_equivalent"],
+                        "equity_aud": candidate_result["equity_aud"],
+                        "cash_aud": candidate_result["cash_aud"],
+                        "net_invested_aud": candidate_result["net_invested_aud"],
+                        "deployed_fraction_of_initial": candidate_result["deployed_fraction_of_initial"],
+                        "drawdown_pct": candidate_result["drawdown_pct"],
+                        "buy_count": candidate_result["buy_count"],
+                        "spent_first_26weeks_pct_initial": (
+                            100.0 * candidate_result["spent_first_26weeks_pct_initial"]
+                        ),
+                    })
 
     summaries = []
     for mapping_name, cheap, knots in mappings:
         for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
             for cash_yield in CASH_YIELDS:
                 for weekly_cap_fraction in WEEKLY_CAP_FRACTIONS:
-                    selected = [
-                        r for r in results
-                        if r["mapping_name"] == mapping_name
-                        and r["split"] == split
-                        and r["cash_yield"] == cash_yield
-                        and r["weekly_cap_fraction"] == weekly_cap_fraction
-                    ]
-                    if not selected:
-                        continue
-                    summaries.append({
-                        "mapping_name": mapping_name,
-                        "candidate_cheap_floor": cheap,
-                        "risk_distribution": mapping_bucket_counts[mapping_name],
-                        "split": split,
-                        "cash_yield": cash_yield,
-                        "weekly_cap_fraction": weekly_cap_fraction,
-                    "cohorts": len(selected),
-                    "median_equity_uplift_vs_fixed_1x_pct": float(np.median([
-                        r["equity_uplift_vs_fixed_1x_pct"] for r in selected
-                    ])),
-                    "worst_equity_uplift_vs_fixed_1x_pct": min(
-                        r["equity_uplift_vs_fixed_1x_pct"] for r in selected
-                    ),
-                    "equity_win_fraction": sum(
-                        r["equity_uplift_vs_fixed_1x_pct"] > 0 for r in selected
-                    ) / len(selected),
-                    "median_btc_equivalent_uplift_vs_fixed_1x_pct": float(np.median([
-                        r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
-                    ])),
-                    "worst_btc_equivalent_uplift_vs_fixed_1x_pct": min(
-                        r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
-                    ),
-                    "median_deployed_fraction": float(np.median([
-                        r["deployed_fraction_of_initial"] for r in selected
-                    ])),
-                    "median_drawdown_pct": float(np.median([
-                        r["drawdown_pct"] for r in selected
-                    ])),
-                    "median_buy_count": float(np.median([r["buy_count"] for r in selected])),
-                    "median_first_26w_spend_pct_initial": float(np.median([
-                        r["spent_first_26weeks_pct_initial"] for r in selected
-                    ])),
-                })
+                    for buy_ladder_name in BUY_POLICY_BANDS:
+                        selected = [
+                            r for r in results
+                            if r["mapping_name"] == mapping_name
+                            and r["split"] == split
+                            and r["cash_yield"] == cash_yield
+                            and r["weekly_cap_fraction"] == weekly_cap_fraction
+                            and r["buy_ladder_name"] == buy_ladder_name
+                        ]
+                        if not selected:
+                            continue
+                        summaries.append({
+                            "mapping_name": mapping_name,
+                            "candidate_cheap_floor": cheap,
+                            "risk_distribution": mapping_bucket_counts[mapping_name],
+                            "split": split,
+                            "cash_yield": cash_yield,
+                            "weekly_cap_fraction": weekly_cap_fraction,
+                            "buy_ladder_name": buy_ladder_name,
+                            "cohorts": len(selected),
+                            "median_equity_uplift_vs_fixed_1x_pct": float(np.median([
+                                r["equity_uplift_vs_fixed_1x_pct"] for r in selected
+                            ])),
+                            "worst_equity_uplift_vs_fixed_1x_pct": min(
+                                r["equity_uplift_vs_fixed_1x_pct"] for r in selected
+                            ),
+                            "equity_win_fraction": sum(
+                                r["equity_uplift_vs_fixed_1x_pct"] > 0 for r in selected
+                            ) / len(selected),
+                            "median_btc_equivalent_uplift_vs_fixed_1x_pct": float(np.median([
+                                r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
+                            ])),
+                            "worst_btc_equivalent_uplift_vs_fixed_1x_pct": min(
+                                r["btc_equivalent_uplift_vs_fixed_1x_pct"] for r in selected
+                            ),
+                            "median_deployed_fraction": float(np.median([
+                                r["deployed_fraction_of_initial"] for r in selected
+                            ])),
+                            "median_drawdown_pct": float(np.median([
+                                r["drawdown_pct"] for r in selected
+                            ])),
+                            "median_buy_count": float(np.median([
+                                r["buy_count"] for r in selected
+                            ])),
+                            "median_first_26w_spend_pct_initial": float(np.median([
+                                r["spent_first_26weeks_pct_initial"] for r in selected
+                            ])),
+                        })
 
     report = {
         "status": "RESEARCH_ONLY_MATCHED_COHORT_THRESHOLD_BACKTEST",
@@ -252,10 +266,13 @@ def main() -> None:
         "candidate_cheap_floors": CANDIDATE_CHEAP_FLOORS,
         "piecewise_tail_stretched_variants": TAIL_STRETCHED_VARIANTS,
         "risk_bucket_counts_by_mapping": mapping_bucket_counts,
+        "buy_ladders_compared": {
+            name: [[float(ceiling), float(multiplier)] for ceiling, multiplier in bands]
+            for name, bands in BUY_POLICY_BANDS.items()
+        },
         "expensive_floor": EXPENSIVE_FLOOR,
         "current_score_reconstruction_max_abs_difference": max_diff,
         "signal_execution": "Prior Sunday UTC risk; next Monday BTC/AUD spot proxy execution",
-        "buy_ladder": "10x / 5x / 3x / 2x / 1.5x / 1x / 0x (same ladder for every candidate)",
         "results_vs_fixed_1x": summaries,
         "cohort_results": results,
         "caveats": [
