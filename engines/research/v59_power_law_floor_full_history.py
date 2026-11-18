@@ -22,6 +22,7 @@ def main() -> None:
     frame = model.merge_bgeometrics(btc.copy(), pd.DataFrame())
     params = {
         "risk_model": "Research WF Power Law",
+        "pl_cheap": model.DEFAULT_PL_CHEAP,
         "legacy_linear_pl_cheap": model.DEFAULT_PL_CHEAP,
         "pl_expensive": model.DEFAULT_PL_EXPENSIVE,
         "active_risk_mapping": "Tail-stretched Research",
