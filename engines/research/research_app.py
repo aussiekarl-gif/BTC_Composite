@@ -2117,8 +2117,20 @@ elif mode == "DCA Today":
             )
         else:
             _candidate_weekly = valid_today[_candidate_col].dropna()
-        _candidate_occurrence = risk_occurrence_table(_candidate_weekly)
-        _candidate_compare = occurrence[["Risk range", "Weeks", "Percent"]].merge(
+        # Compare only weeks where both active and candidate scores exist.
+        # This keeps percentages on an identical denominator.
+        _matched_weekly = pd.concat(
+            [
+                display_source.rename("active"),
+                _candidate_weekly.rename("candidate"),
+            ],
+            axis=1,
+        ).dropna()
+        _active_matched_occurrence = risk_occurrence_table(_matched_weekly["active"])
+        _candidate_occurrence = risk_occurrence_table(_matched_weekly["candidate"])
+        _candidate_compare = _active_matched_occurrence[[
+            "Risk range", "Weeks", "Percent"
+        ]].merge(
             _candidate_occurrence.rename(columns={
                 "Weeks": "Candidate weeks", "Percent": "Candidate percent"
             }),
@@ -2157,7 +2169,7 @@ elif mode == "DCA Today":
             hide_index=True,
         )
         st.caption(
-            "Both distributions use the same historical observation window and bucket boundaries. "
+            "Both distributions use the same matched weekly observations and bucket boundaries. "
             "Any change to active sizing requires separate prospective validation and review."
         )
 
