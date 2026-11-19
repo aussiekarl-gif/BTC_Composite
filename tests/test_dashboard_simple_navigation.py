@@ -55,6 +55,14 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertIn("trade_executable", source)
 
 
+
+    def test_v60_paper_tape_module_exists_and_compiles_without_legacy_imports(self):
+        paper = ROOT / "engines" / "research" / "v60_200wma_paper_tape.py"
+        source = paper.read_text(encoding="utf-8")
+        compile(source, str(paper), "exec")
+        self.assertNotIn("v59_", source)
+        self.assertNotIn("cycle_trading_dashboard_model", source)
+
     def test_v60_snapshot_discloses_sparse_tiers_and_stress_limits(self):
         snapshot_path = ROOT / "data" / "research_forward_validation" / "v60_dashboard_snapshot_2026-11-19.json"
         snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
