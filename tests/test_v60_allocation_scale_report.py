@@ -34,7 +34,8 @@ class V60AllocationScaleReportTests(unittest.TestCase):
         self.assertEqual(len(fixed), 20)
         for _, row in results.loc[results["policy"] == "measured"].iterrows():
             peers = fixed.loc[
-                (fixed["protected_cash_floor_pct_initial_cash"] == row["protected_cash_floor_pct_initial_cash"])
+                (fixed["cash_yield"] == row["cash_yield"])
+                & (fixed["protected_cash_floor_pct_initial_cash"] == row["protected_cash_floor_pct_initial_cash"])
                 & (
                     fixed["max_cumulative_buy_spend_pct_initial_cash"].fillna(-1)
                     == (-1 if __import__("pandas").isna(row["max_cumulative_buy_spend_pct_initial_cash"])
