@@ -1577,7 +1577,7 @@ elif mode == "DCA Today":
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
             <div><div class="v59-info-title">How this week's amount is calculated</div>
-            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, bounded by verified deployable cash and remaining deployment capital. Risk ≥0.40 means no buy under the default curve. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or verified-cash limit.</div></div>
+            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, bounded by verified deployable cash and remaining deployment capital. The active risk curve determines the zero-buy threshold. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or verified-cash limit.</div></div>
           </div>
 
           <div class="v59-explain-grid">
