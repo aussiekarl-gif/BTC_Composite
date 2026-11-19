@@ -44,7 +44,7 @@ MODEL_LABEL = "v59_200wma_distance_A_measured_percent_cash_v1"
 
 SIGNAL_COLUMNS_PAPER = (
     "btc_observation_date_utc", "btc_captured_at_utc",
-    "signal_date_utc", "expected_next_asx_weekday_sydney",
+    "signal_date_utc", "expected_next_asx_session_sydney",
     "btc_usd_sunday_close", "prior_200wma_usd",
     "discount_below_200wma_pct", "ratio_to_200wma",
     "current_baseline_buy_pct_available_cash",
@@ -65,11 +65,37 @@ EXECUTION_COLUMNS = (
 )
 
 
-def _next_weekday(day: dt.date) -> dt.date:
+# ASX Trade full-closure dates from the official ASX 2026 and 2027 calendars.
+# Early-close days remain trading sessions and are intentionally NOT excluded.
+# Refuse years without a reviewed calendar instead of guessing weekdays.
+ASX_FULL_CLOSURES = {
+    2026: frozenset({
+        "2026-01-01", "2026-01-26", "2026-04-03", "2026-04-06",
+        "2026-06-08", "2026-12-25", "2026-12-28",
+    }),
+    2027: frozenset({
+        "2027-01-01", "2027-01-26", "2027-03-26", "2027-03-29",
+        "2027-06-14", "2027-12-27", "2027-12-28",
+    }),
+}
+ASX_CALENDAR_SOURCE = (
+    "ASX Trade official trading calendar 2026/2027; reviewed 2026-11-19"
+)
+
+
+def _next_asx_session(day: dt.date) -> dt.date:
+    """Next known ASX trading date after a Sydney-local capture date."""
     candidate = day + dt.timedelta(days=1)
-    while candidate.weekday() >= 5:
+    while True:
+        if candidate.year not in ASX_FULL_CLOSURES:
+            raise ValueError(
+                f"No reviewed ASX trading calendar for {candidate.year}; "
+                "refuse to infer next session"
+            )
+        if (candidate.weekday() < 5
+                and candidate.isoformat() not in ASX_FULL_CLOSURES[candidate.year]):
+            return candidate
         candidate += dt.timedelta(days=1)
-    return candidate
 
 
 def _sha_file(path: Path) -> str:
@@ -133,7 +159,7 @@ def build_paper_signal(btc_row: dict, *, model_sha256: str) -> dict:
         a_pct = 2.5
     # The 30% reserve is a research overlay. Buy % is applied only to
     # deployable cash above that reserve, not to total cash.
-    expected_asx = _next_weekday(captured.astimezone(SYDNEY).date())
+    expected_asx = _next_asx_session(captured.astimezone(SYDNEY).date())
     return {
         "btc_observation_date_utc": observation.isoformat(),
         "btc_captured_at_utc": captured.isoformat(),
