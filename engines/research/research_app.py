@@ -2078,16 +2078,33 @@ elif mode == "DCA Today":
         _lower = float(_display_edges[_i])
         _upper = float(_display_edges[_i + 1])
         _raw_lower = (_lower / 0.4) ** 2
-        _multiplier = float(risk_band_multiplier(active_smart_dca_curve, _raw_lower))
+        _raw_upper = (_upper / 0.4) ** 2
+        # pd.cut uses (lower, upper] except for the first inclusive bin.
+        # Probe just above non-first lower edges so boundary tiers are not
+        # incorrectly attributed to the preceding display bucket.
+        _raw_probe = (
+            _raw_lower if _i == 0 else float(np.nextafter(_raw_lower, 1.0))
+        )
+        _multiplier_low_risk = float(
+            risk_band_multiplier(active_smart_dca_curve, _raw_probe)
+        )
+        _multiplier_high_risk = float(
+            risk_band_multiplier(active_smart_dca_curve, _raw_upper)
+        )
+        _multiplier_range = (
+            f"{_multiplier_low_risk:g}×"
+            if _multiplier_low_risk == _multiplier_high_risk else
+            f"{_multiplier_low_risk:g}×→{_multiplier_high_risk:g}×"
+        )
         _display_rows.append({
             "Risk range": f"{_lower:.2f}–{_upper:.2f}",
             "Weeks": _weeks,
             "Percent": 100.0 * _weeks / len(_display_values) if len(_display_values) else 0.0,
-            "Buy multiplier": _multiplier,
+            "Buy multiplier range": _multiplier_range,
         })
     occurrence = pd.DataFrame(_display_rows)
     _chart_labels = [
-        f"{row['Risk range']}<br>{row['Buy multiplier']:g}×"
+        f"{row['Risk range']}<br>{row['Buy multiplier range']}"
         for row in _display_rows
     ]
     fig_occurrence = go.Figure()
@@ -2101,11 +2118,11 @@ elif mode == "DCA Today":
         x=_chart_labels,
         y=occurrence["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks", "Buy multiplier"]].to_numpy(),
+        customdata=occurrence[["Weeks", "Buy multiplier range"]].to_numpy(),
         hovertemplate=(
             "Display risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
-            "<br>Buy multiplier: %{customdata[1]}×"
+            "<br>Buy multiplier range: %{customdata[1]}"
             "<extra></extra>"
         ),
     )
@@ -2119,7 +2136,7 @@ elif mode == "DCA Today":
     st.caption(
         f"Current Research display risk {current_research_display_risk:.3f}/0.400 (orange band). "
         "This is a nonlinear, display-only rescaling of the full R2 0.00–1.00 score. "
-        "All historical weeks are retained. The underlying raw R2 score still controls the "
+        "Arrow labels show multiplier changes from lower to higher risk within a display band. All historical weeks are retained. The underlying raw R2 score still controls the "
         "existing multiplier and >0.50 stop-buy protection; no sizing or backtest inputs changed."
     )
 
