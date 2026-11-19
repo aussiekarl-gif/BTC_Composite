@@ -86,7 +86,7 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
          "max_cumulative_buy_spend_pct_initial_cash", "threshold_set", "dynamic_allocation_scale"],
         dropna=False,
     ):
-        split, cash_yield, floor, cap, scale = label
+        split, cash_yield, floor, cap, threshold_set, scale = label
         peers = []
         for row in group.itertuples(index=False):
             key = (str(row.cohort_start), float(cash_yield), float(floor), _cap_key(cap))
@@ -107,8 +107,8 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
             "cash_yield_annual_pct": float(cash_yield) * 100.0,
             "protected_cash_floor_pct_initial_cash": float(floor),
             "cumulative_spend_cap_pct_initial_cash": _cap_key(cap),
-            "threshold_set": str(group["threshold_set"].iloc[0]),
-            "discount_thresholds_pct": list(THRESHOLD_SETS[str(group["threshold_set"].iloc[0])]),
+            "threshold_set": str(threshold_set),
+            "discount_thresholds_pct": list(THRESHOLD_SETS[str(threshold_set)]),
             "dynamic_allocation_scale": float(scale),
             "base_buy_pct_deployable_cash": 2.5 * float(scale),
             "top_tier_buy_pct_deployable_cash": 7.5 * float(scale),
