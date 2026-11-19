@@ -741,7 +741,7 @@ with st.sidebar:
         st.caption(
             "Custom V5.8.2 multiplier curve is active."
             if custom_curve_active else
-            "V5.8.2 default: 16× / 8× / 4× / 2× / 1× across risk bands; 0× from risk 0.50."
+            "V5.8.2 uses its configured default risk multiplier curve; the zero-buy threshold is determined by that curve."
         )
 
         if portfolio_verified:
@@ -1462,7 +1462,7 @@ elif mode == "DCA Today":
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
             "Normal weekly allowance = deployable reserve ÷ weeks remaining. "
-            "That allowance is multiplied by today's discrete Risk Score band (16× / 8× / 4× / 2× / 1× / 0×), "
+            "That allowance is multiplied by today's discrete Risk Score band from the active V5.8.2 curve, "
             "then capped at deployable reserve and 5% of original starting capital per week."
         )
         if portfolio_verified:
