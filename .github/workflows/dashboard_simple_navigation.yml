@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'app.py'
+      - 'engines/research/v60_research_app.py'
+      - 'data/research_forward_validation/v60_dashboard_snapshot_2026-11-19.json'
       - 'tests/test_dashboard_simple_navigation.py'
       - '.github/workflows/dashboard_simple_navigation.yml'
   workflow_dispatch:
