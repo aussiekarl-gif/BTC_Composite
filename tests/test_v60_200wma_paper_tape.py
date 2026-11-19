@@ -4,7 +4,7 @@ import unittest
 
 from engines.research.v60_200wma_paper_tape import (
     PAPER_START_AFTER_UTC, BTC_COLUMNS, ASX_COLUMNS, SIGNAL_COLUMNS,
-    EXECUTION_COLUMNS, _append, _dump_rows, _next_asx_session,
+    EXECUTION_COLUMNS, _append, _dump_rows, _read_rows, _next_asx_session,
     build_paper_signal, build_asx_observation, process_tapes,
 )
 
@@ -75,6 +75,11 @@ class V60ProspectivePaperTapeTests(unittest.TestCase):
 
     def test_asx_observation_requires_exact_expected_session_and_is_not_fill(self):
         signal = build_paper_signal(sample_btc_row(), model_sha256="c" * 64)
+        signal_text, added = _append(
+            _dump_rows([], SIGNAL_COLUMNS), signal, SIGNAL_COLUMNS, "btc_observation_date_utc"
+        )
+        self.assertTrue(added)
+        signal = _read_rows(signal_text, SIGNAL_COLUMNS, date_key="btc_observation_date_utc")[0]
         self.assertEqual(signal["expected_next_asx_session_sydney"], "2026-11-25")
         asx = {
             "market_session_date_sydney": "2026-11-25",
