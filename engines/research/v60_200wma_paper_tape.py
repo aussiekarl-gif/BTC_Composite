@@ -98,7 +98,7 @@ EXECUTION_TAPE = DATA / "v60_200wma_paper_asx_observations.csv"
 STATUS_FILE = DATA / "v60_200wma_paper_status.json"
 SYDNEY = ZoneInfo("Australia/Sydney")
 PAPER_START_AFTER_UTC = dt.datetime.fromisoformat("2026-11-19T09:05:02+00:00")
-MODEL_LABEL = "v60_200wma_measured_threshold_sensitivity_paper_v1"
+MODEL_LABEL = "v60_200wma_measured_threshold_sensitivity_scale_paper_v2"
 PROTECTED_CASH_VARIANTS = (0.0, 30.0, 50.0)
 CUMULATIVE_CAP_VARIANTS = (40.0, 50.0, 60.0)
 
@@ -109,6 +109,8 @@ SIGNAL_COLUMNS = (
     "ratio_to_200wma", "discount_below_200wma_pct",
     "baseline_buy_pct_available_cash",
     "measured_20_25_30_buy_pct_deployable_cash",
+    "measured_20_25_30_scale_0_5_buy_pct_deployable_cash",
+    "measured_20_25_30_scale_0_75_buy_pct_deployable_cash",
     "measured_10_15_20_buy_pct_deployable_cash",
     "protected_cash_floor_variants_pct_initial_cash",
     "cumulative_spend_cap_variants_pct_initial_cash",
@@ -249,6 +251,12 @@ def build_paper_signal(btc_row: dict, *, model_sha256: str,
         "baseline_buy_pct_available_cash": "2.500000",
         "measured_20_25_30_buy_pct_deployable_cash": (
             f"{allocation_for_discount(ratio, candidate='measured', thresholds=THRESHOLD_SETS['20_25_30']):.6f}"
+        ),
+        "measured_20_25_30_scale_0_5_buy_pct_deployable_cash": (
+            f"{0.5 * allocation_for_discount(ratio, candidate='measured', thresholds=THRESHOLD_SETS['20_25_30']):.6f}"
+        ),
+        "measured_20_25_30_scale_0_75_buy_pct_deployable_cash": (
+            f"{0.75 * allocation_for_discount(ratio, candidate='measured', thresholds=THRESHOLD_SETS['20_25_30']):.6f}"
         ),
         "measured_10_15_20_buy_pct_deployable_cash": (
             f"{allocation_for_discount(ratio, candidate='measured', thresholds=THRESHOLD_SETS['10_15_20']):.6f}"
