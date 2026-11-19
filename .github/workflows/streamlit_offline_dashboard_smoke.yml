@@ -7,6 +7,7 @@ on:
       - '.github/workflows/streamlit_offline_dashboard_smoke.yml'
       - 'app.py'
       - 'engines/research/v60_research_app.py'
+      - 'data/research_forward_validation/v60_dashboard_snapshot_2026-11-19.json'
       - 'engines/research/cycle_trading_app.py'
       - 'engines/research/cycle_trade_decision.py'
       - 'engines/research/cycle_single_screen_brief.py'
