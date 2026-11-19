@@ -223,7 +223,8 @@ def build_paper_signal(btc_row: dict, *, model_sha256: str,
     crosscheck = float(btc_row["source_crosscheck_max_diff_pct"])
     if not math.isfinite(crosscheck) or crosscheck > 1.0:
         raise ValueError("BTC source cross-check exceeds 1%; refuse paper observation")
-    if not btc_row["market_data_provider"] or len(btc_row["row_hash"]) != 64:
+    if (not btc_row["market_data_provider"] or len(btc_row["row_hash"]) != 64
+            or any(c not in "0123456789abcdef" for c in btc_row["row_hash"])):
         raise ValueError("BTC source provenance or row hash missing")
     ratio = float(btc_row["prior_close_div_200wma"])
     if not all(math.isfinite(x) and x > 0 for x in (close, prior_wma, ratio)):
@@ -284,7 +285,8 @@ def build_asx_observation(signal_row: dict, asx_row: dict) -> dict:
     volume = int(asx_row["daily_volume"])
     if (not all(math.isfinite(x) and x > 0 for x in (close, low, high))
             or high < low or not low - 0.02 <= close <= high + 0.02 or volume < 0
-            or len(asx_row["row_hash"]) != 64):
+            or len(asx_row["row_hash"]) != 64
+            or any(c not in "0123456789abcdef" for c in asx_row["row_hash"])):
         raise ValueError("Invalid indicative ASX:IBIT close or source hash")
     return {
         "btc_observation_date_utc": signal_row["btc_observation_date_utc"],
