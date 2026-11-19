@@ -166,6 +166,11 @@ def replay(rows: list[dict], *, risk_key: str, capital: float = CAPITAL_AUD,
 
 
 def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
+    research_ladder = tuple(tuple(map(float, point))
+                             for point in research_model.SMART_DCA_POINTS)
+    production_ladder = tuple(tuple(map(float, point)) for point in PROD_LADDER)
+    if research_ladder != production_ladder:
+        raise ValueError("V5.8.2 and V5.9 default ladders differ; matched default-ladder comparison is invalid")
     windows = cohort_windows(rows)
     trials = []
     for window in windows:
