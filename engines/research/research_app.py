@@ -1820,7 +1820,7 @@ elif mode == "DCA Today":
     )
 
     st.info(
-        f"Frozen R2: display risk {current_research_display_risk:.3f}/0.400 (raw sizing score retained internally) → {risk_weight:.2f}×. "
+        f"Frozen R2: display risk {current_research_display_risk:.3f}/0.400; raw sizing risk {current_risk:.3f}/1.000 → {risk_weight:.2f}×. "
         f"Three-Pillar Challenger today: {challenger_weight:.2f}×"
         + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event this week)")
         + ". Production V5.8.2 and the R2 control are unchanged."
