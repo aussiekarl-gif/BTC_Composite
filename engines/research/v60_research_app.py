@@ -105,6 +105,78 @@ st.caption(
     "cumulative cap has been selected."
 )
 
+
+PACING_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "data" / "research_forward_validation"
+    / "v60_historical_pacing_summary_2026-11-19.json"
+)
+pacing = json.loads(PACING_PATH.read_text(encoding="utf-8"))
+
+st.subheader("Historical cash-pacing holdout — matched budgets")
+st.caption(
+    f"{pacing['holdout_cohort_count']} overlapping 104-week holdout windows • "
+    f"{pacing['cash_yield_gross_annual_pct']:.0f}% gross cash-yield scenario • "
+    "measured 20/25/30 ladder • same cap and reserve applied to fixed weekly DCA"
+)
+pacing_frame = pd.DataFrame(pacing["historical_holdout"])
+pacing_frame = pacing_frame.rename(columns={
+    "reserve_pct_initial_cash": "Protected cash reserve",
+    "cumulative_spend_cap": "Cumulative spend cap",
+    "median_equity_uplift_pct": "Median final equity uplift",
+    "p10_equity_uplift_pct": "10th-percentile equity uplift",
+    "worst_equity_uplift_pct": "Worst equity uplift",
+    "median_btc_uplift_pct": "Median BTC-unit uplift",
+    "win_rate_pct": "Cohort wins",
+    "median_spend_difference_pct": "Median spend difference",
+    "median_max_drawdown_difference_pp": "Max drawdown difference (pp)",
+})
+for column in (
+    "Median final equity uplift", "10th-percentile equity uplift",
+    "Worst equity uplift", "Median BTC-unit uplift", "Cohort wins",
+    "Median spend difference",
+):
+    pacing_frame[column] = pacing_frame[column].map(lambda x: f"{x:+.2f}%")
+pacing_frame["Protected cash reserve"] = pacing_frame["Protected cash reserve"].map(lambda x: f"{x:.0f}%")
+pacing_frame["Max drawdown difference (pp)"] = pacing_frame["Max drawdown difference (pp)"].map(lambda x: f"{x:+.2f}")
+st.dataframe(pacing_frame, hide_index=True, width="stretch")
+st.caption(
+    "The matched fixed-DCA comparator has the same starting capital, reserve, "
+    "cash-yield assumption and cumulative spend cap. Actual spend can still differ; "
+    "that difference is shown. Negative drawdown differences mean the dynamic "
+    "policy had a deeper maximum drawdown."
+)
+
+st.subheader("Synthetic prolonged-bear stress — 30% cash reserve")
+bear_rows = [
+    row for row in pacing["synthetic_stress"]
+    if row["scenario"] == "prolonged_bear_70pct"
+]
+bear_frame = pd.DataFrame(bear_rows).rename(columns={
+    "cumulative_spend_cap": "Cumulative spend cap",
+    "fixed_return_pct": "Fixed weekly DCA return",
+    "measured_return_pct": "Measured 20/25/30 return",
+    "measured_minus_fixed_pp": "Measured minus fixed (pp)",
+})
+for column in ("Fixed weekly DCA return", "Measured 20/25/30 return"):
+    bear_frame[column] = bear_frame[column].map(lambda x: f"{x:+.2f}%")
+bear_frame["Measured minus fixed (pp)"] = bear_frame["Measured minus fixed (pp)"].map(lambda x: f"{x:+.2f}")
+st.dataframe(
+    bear_frame[["Cumulative spend cap", "Fixed weekly DCA return",
+                "Measured 20/25/30 return", "Measured minus fixed (pp)"]],
+    hide_index=True, width="stretch",
+)
+st.warning(
+    "The measured policy still underperformed fixed DCA in every synthetic "
+    "prolonged-bear cap tested. It did better in false-bottom and rapid-V recovery "
+    "scenarios. This path dependence is why no spending cap or reserve is selected."
+)
+st.caption(
+    "The historical results are retrospective, not prospective proof: the BTC "
+    "export ends 2026-10-05, and the 146 holdout windows overlap heavily with "
+    "discount-tier activations concentrated in 2022–2023."
+)
+
 st.subheader("Validation status")
 st.info(
     "Historical replay and synthetic stress testing are complete. "
