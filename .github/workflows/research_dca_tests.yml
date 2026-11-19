@@ -37,4 +37,5 @@ jobs:
           python -m unittest discover -s tests -p 'test_v59_external_risk_ladders.py' -v
           python -m unittest discover -s tests -p 'test_app_risk_ladder.py' -v
           python -m unittest discover -s tests -p 'test_v59_risk_ui_acceptance.py' -v
-          python -m py_compile engines/shared/dca_purchase_status.py engines/production/production_model.py engines/research/research_model.py engines/production/production_app.py engines/research/research_app.py
+          python -m unittest discover -s tests -p 'test_v59_200wma_distance_dynamic_dca.py' -v
+          python -m py_compile engines/research/v59_200wma_distance_dynamic_dca.py engines/shared/dca_purchase_status.py engines/production/production_model.py engines/research/research_model.py engines/production/production_app.py engines/research/research_app.py
