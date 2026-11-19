@@ -1,4 +1,5 @@
 import datetime as dt
+import inspect
 import unittest
 
 from engines.research.v60_200wma_paper_tape import (
@@ -99,6 +100,14 @@ class V60ProspectivePaperTapeTests(unittest.TestCase):
         unchanged, duplicate_added = _append(updated, row, SIGNAL_COLUMNS, "btc_observation_date_utc")
         self.assertFalse(duplicate_added)
         self.assertEqual(unchanged, updated)
+
+
+    def test_v60_paper_tape_has_no_v59_or_legacy_dashboard_imports(self):
+        import engines.research.v60_200wma_paper_tape as tape
+        source = inspect.getsource(tape)
+        self.assertNotIn("v59_", source)
+        self.assertNotIn("cycle_forward_signal_tape", source)
+        self.assertNotIn("cycle_trading_dashboard_model", source)
 
     def test_empty_tape_does_not_create_historical_signals(self):
         btc_text = _dump_rows([], BTC_COLUMNS)
