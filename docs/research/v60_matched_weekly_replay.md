@@ -15,7 +15,7 @@ This stage adds a standalone replay engine. It imports only the V6.0 policy modu
 - Optional protected reserve is a percentage of initial cash.
 - Maximum weekly buy is 5% of original capital.
 - Fees and buy friction are modelled separately.
-- Fixed weekly DCA and all V6.0 candidates use identical 104-week cohorts.
+- Fixed weekly DCA and all V6.0 candidates use identical 104-week cohorts. The reference 20% / 25% / 30% discount thresholds are compared with a 10% / 15% / 20% sensitivity; fixed DCA and the base 2.5% policy are emitted once per cohort.
 
 ## Required reporting
 - Final AUD equity, BTC held, cash remaining, total spend, buy count and drawdown.
