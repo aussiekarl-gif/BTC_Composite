@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from engines.research.v60_200wma_policy import (
-    CANDIDATE_LADDERS, DISCOUNT_THRESHOLDS_PCT,
+    CANDIDATE_LADDERS,
 )
 
 st.title("Bitcoin Dynamic DCA V6.0 — 200WMA Research")
