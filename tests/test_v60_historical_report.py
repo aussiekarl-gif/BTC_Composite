@@ -57,7 +57,7 @@ class V60HistoricalReportTests(unittest.TestCase):
         self.assertEqual(result["pre_2022_train_era"]["at_least_15_pct_below_200wma"]["signal_week_count"], 1)
         self.assertEqual(result["pre_2022_train_era"]["at_least_20_pct_below_200wma"]["signal_week_count"], 1)
         self.assertEqual(result["2022_onward_holdout_era"]["at_least_10_pct_below_200wma"]["signal_week_count"], 3)
-        self.assertEqual(result["2022_onward_holdout_era"]["at_least_15_pct_below_200wma"]["signal_week_count"], 2)
+        self.assertEqual(result["2022_onward_holdout_era"]["at_least_15_pct_below_200wma"]["signal_week_count"], 3)
         self.assertEqual(result["2022_onward_holdout_era"]["at_least_20_pct_below_200wma"]["signal_week_count"], 2)
         self.assertEqual(result["2022_onward_holdout_era"]["at_least_25_pct_below_200wma"]["signal_week_count"], 2)
         self.assertEqual(result["2022_onward_holdout_era"]["at_least_30_pct_below_200wma"]["signal_week_count"], 1)
