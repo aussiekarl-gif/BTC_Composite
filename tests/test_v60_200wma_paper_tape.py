@@ -129,6 +129,8 @@ class V60ProspectivePaperTapeTests(unittest.TestCase):
         self.assertEqual(new_signal, signal_text)
         self.assertEqual(new_execution, execution_text)
         self.assertEqual(status["signal_rows"], 0)
+        self.assertEqual(status["signal_schema_version"], 2)
+        self.assertEqual(status["allocation_scale_candidates"], [0.5, 0.75, 1.0])
         self.assertFalse(status["trade_executable"])
 
 
