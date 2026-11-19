@@ -14,7 +14,7 @@ SCENARIOS = ("prolonged_bear_70pct", "false_bottom_recovery", "rapid_v_recovery"
 CASH_YIELDS = (0.0, 0.05)
 CASH_FLOORS = (0.0, 30.0, 50.0)
 CUMULATIVE_CAPS = (None, 40.0, 50.0, 60.0, 70.0)
-POLICIES = ("fixed_weekly", "baseline", "measured", "aggressive")
+POLICIES = ("fixed_weekly", "baseline", "measured", "stepped", "aggressive")
 
 
 def build_deployment_cap_report(output_dir: Path) -> dict:
