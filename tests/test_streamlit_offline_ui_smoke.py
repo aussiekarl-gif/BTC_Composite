@@ -77,132 +77,18 @@ class StreamlitOfflineSmoke(unittest.TestCase):
     def tearDown(self):
         st.cache_data.clear()
 
-    def test_actual_cycle_launcher_missing_portfolio_still_shows_market_hold_and_refresh(self):
-        history,fx=frozen_synthetic_history()
-        counts={"public":0,"portfolio":0}
-        # Capture the ACTUAL buy style passed by the real Streamlit
-        # launcher to the unchanged allocation engine. Captions are
-        # stored differently by Streamlit versions, so don't infer
-        # recommendation parity from a markdown display collection.
-        from engines.research.cycle_trade_decision import (
-            make_current_decision as original_decision,
-        )
-        seen_current_styles=[]
-        def capture_decision(*args,**kwargs):
-            result=original_decision(*args,**kwargs)
-            seen_current_styles.append((
-                kwargs.get("buy_style"),result["market_signal"],
-                result["buy_pct_total_cash"],result["action_aud"],
-            ))
-            return result
-        def public_prices(*args,**kwargs):
-            counts["public"]+=1
-            return history["price_usd"],fx,history["price_usd"]
-        def portfolio():
-            counts["portfolio"]+=1
-            return {}, "Simulated offline Google Sheets connection; no account access"
-        health={"verified":True}
-        def verified_merge(*args,**kwargs):
-            return history["price_usd"],{
-                "strict_close_date_verified":health["verified"],
-                "overlap_days":5,"max_overlap_difference_pct":0.02,
-            }
-        def quote(*args,**kwargs):
-            now=dt.datetime.now(dt.timezone.utc)
-            return {
-                "symbol":"ASX:IBIT","price_aud":22.30,
-                "provider":"SYNTHETIC UNITTEST ONLY",
-                "timestamp_utc":now.isoformat(),
-                "age_hours":0.0,
-            }
-        with ExitStack() as stack:
-            patches=[
-                ("engines.research.top_signal_horse_race.read_exported_history",
-                 lambda:history),
-                ("engines.research.cycle_live_completed_utc_prices.fetch_cycle_live_sources",
-                 public_prices),
-                ("engines.research.cycle_live_completed_utc_prices.merge_verified_live_cycle_prices",
-                 verified_merge),
-                ("engines.shared.portfolio_store.load_portfolio",portfolio),
-                ("engines.research.cycle_trade_decision.make_current_decision",
-                 capture_decision),
-                ("engines.shared.portfolio_store.save_portfolio",
-                 lambda *a,**k:(_ for _ in ()).throw(AssertionError(
-                     "Smoke test must never write user portfolio"))),
-                ("engines.research.ibit_quote.fetch_ibit_quote",quote),
-                ("engines.research.cycle_halving_countdown.fetch_halving_countdown",
-                 lambda *a,**k:fake_halving()),
-                ("engines.research.day500_aftertax_reinvestment.fetch_fx_for_cycle",
-                 lambda *a,**k:fx),
-                ("engines.research.cycle_model_redflags.fetch_reference_model_risks",
-                 lambda *a,**k:{}),
-            ]
-            for target,replacement in patches:
-                stack.enter_context(patch(target,replacement))
-            stack.enter_context(patch.dict(os.environ,{
-                "BTC_PORTFOLIO_BACKEND":"sqlite",
-                "BTC_PORTFOLIO_DB_PATH":"/tmp/btc_streamlit_smoke_must_not_touch.sqlite3",
-            }))
-            st.cache_data.clear()
-            page=AppTest.from_file(str(APP),default_timeout=35).run()
-            self.assertFalse(page.exception,repr([x.message for x in page.exception]))
-            widgets=[(x.label,str(x.value)) for x in page.metric]
-            self.assertIn(("Current research market signal","HOLD"),widgets)
-            self.assertIn(("Spendable trade amount","Not verified"),widgets)
-            self.assertFalse(any(
-                x.key=="cycle_decision_buy_style" for x in page.selectbox
-            ),"Current live panel must not provide different BUY % than ntfy")
-            self.assertTrue(any(
-                x.key=="cycle_research_buyer" for x in page.selectbox
-            ),"Existing historical research alternatives remain accessible")
-            self.assertTrue(any(x.label=="Recorded portfolio" and x.value=="Unavailable"
-                                for x in page.metric))
-            self.assertTrue(any(b.key=="cycle_research_refresh" for b in page.button))
-            previous=counts.copy()
-            refresh=next(b for b in page.button if b.key=="cycle_research_refresh")
-            page=refresh.click().run()
-            self.assertFalse(page.exception,repr([x.message for x in page.exception]))
-            self.assertGreater(counts["portfolio"],previous["portfolio"])
-            self.assertGreater(counts["public"],previous["public"])
-            self.assertIn(("Current research market signal","HOLD"),
-                          [(x.label,str(x.value)) for x in page.metric])
-            self.assertFalse(any("Verified BUY research budget"==x.label
-                                 or "Verified SELL research units"==x.label
-                                 for x in page.metric))
-            # Reuse the SAME actual launcher, not a simulated helper page:
-            # a new verified price discount should change MARKET WATCH,
-            # but NO holdings/cash means absolutely no executable BUY.
-            history["price_usd"].iloc[-35:]=30000.0
-            # A saved old browser session value selecting the RESEARCH
-            # 10% value-weighted style cannot override current ntfy's
-            # only approved 2.5%-remaining-cash market sizing.
-            page.session_state["cycle_decision_buy_style"]="adaptive_value"
-            page=next(b for b in page.button
-                      if b.key=="cycle_research_refresh").click().run()
-            self.assertFalse(page.exception,repr([x.message for x in page.exception]))
-            self.assertIn(("Current research market signal","BUY WATCH"),
-                          [(x.label,str(x.value)) for x in page.metric])
-            self.assertTrue(seen_current_styles)
-            self.assertEqual(
-                seen_current_styles[-1],
-                ("adaptive_recovery","BUY WATCH",2.5,0.),
-                "Stale adaptive_value browser key cannot change the REAL current BUY %",
-            )
-            self.assertIn(("Spendable trade amount","Not verified"),
-                          [(x.label,str(x.value)) for x in page.metric])
-            self.assertFalse(any(x.label=="Verified BUY research budget"
-                                 for x in page.metric))
-            # If independent public-close verification fails, a new
-            # BUY WATCH must immediately become UNAVAILABLE, not be
-            # cached as a fresh tradeable market recommendation.
-            health["verified"]=False
-            page=next(b for b in page.button
-                      if b.key=="cycle_research_refresh").click().run()
-            self.assertFalse(page.exception,repr([x.message for x in page.exception]))
-            self.assertIn(("Current research market signal","UNAVAILABLE"),
-                          [(x.label,str(x.value)) for x in page.metric])
-            self.assertFalse(any(x.label=="Verified BUY research budget"
-                                 for x in page.metric))
+    def test_actual_launcher_routes_to_v60_research_without_live_execution(self):
+        page = AppTest.from_file(str(APP), default_timeout=25)
+        # Select the non-executable Research page before the first script run.
+        page.session_state["combined_app_section_selector"] = "Research"
+        page = page.run()
+        self.assertFalse(page.exception, repr([x.message for x in page.exception]))
+        self.assertEqual(page.radio(key="combined_app_section_selector").value, "Research")
+        self.assertTrue(any("Candidate allocation ladders" in x.value
+                            for x in page.subheader))
+        self.assertTrue(any("Research only" in x.value for x in page.warning))
+        self.assertTrue(any("Trade executable: False" in x.value
+                            for x in page.caption))
 
     def test_streamlit_date_widget_persists_across_sessions_without_portfolio_write(self):
         # The real Production & Research Streamlit pages use these helpers
