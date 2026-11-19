@@ -62,6 +62,13 @@ class V60HistoricalReportTests(unittest.TestCase):
         self.assertEqual(result["2022_onward_holdout_era"]["at_least_25_pct_below_200wma"]["signal_week_count"], 2)
         self.assertEqual(result["2022_onward_holdout_era"]["at_least_30_pct_below_200wma"]["signal_week_count"], 1)
 
+    def test_threshold_candidates_are_available_to_historical_replay(self):
+        from engines.research.v60_200wma_policy import THRESHOLD_SETS
+        self.assertEqual(THRESHOLD_SETS["10_15_20"], (10.0, 15.0, 20.0))
+        self.assertEqual(THRESHOLD_SETS["15_20_30"], (15.0, 20.0, 30.0))
+        self.assertEqual(THRESHOLD_SETS["20_25_30"], (20.0, 25.0, 30.0))
+        self.assertEqual(THRESHOLD_SETS["20_25_35"], (20.0, 25.0, 35.0))
+
     def test_v60_report_has_no_v59_or_production_imports(self):
         from pathlib import Path
         import inspect
