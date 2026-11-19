@@ -7,7 +7,7 @@ from engines.research.cycle_forward_signal_tape import (
 from engines.research.ibit_asx_forward_close_tape import COLUMNS as IBIT_COLUMNS
 from engines.research.v59_200wma_prospective_paper_tape import (
     SIGNAL_COLUMNS_PAPER, EXECUTION_COLUMNS, PAPER_START_AFTER_UTC,
-    build_paper_signal, build_asx_observation, process_tapes,
+    build_paper_signal, build_asx_observation, process_tapes, _append,
 )
 
 UTC = dt.timezone.utc
@@ -97,6 +97,9 @@ class Prospective200WmaPaperTapeTests(unittest.TestCase):
 
     def test_asx_quote_must_be_exact_expected_weekday_and_not_fill(self):
         signal = build_paper_signal(btc_row(), model_sha256="b" * 64)
+        stored, _ = _append("", signal, SIGNAL_COLUMNS_PAPER, "btc_observation_date_utc")
+        from engines.research.cycle_forward_signal_tape import _read_rows
+        signal = _read_rows(stored, SIGNAL_COLUMNS_PAPER, date_key="btc_observation_date_utc")[0]
         obs = build_asx_observation(signal, asx_row())
         self.assertEqual(obs["reported_close_aud"], "20.500000")
         self.assertEqual(obs["is_confirmed_broker_fill"], "False")
