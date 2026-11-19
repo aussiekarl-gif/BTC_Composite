@@ -233,10 +233,10 @@ button[data-testid="stSidebarCollapseButton"] {
 # Sidebar priority does not promote or validate the research trading rules.
 section = st.sidebar.radio(
     "Model",
-    ["Cycle Trading — Research", "Production", "Research", "Bottom Signal Timeline"],
+    ["Production", "Research", "Bottom Signal Timeline"],
     index=0,
     key="combined_app_section_selector",
-    help="Cycle Trading opens by default as the primary dashboard (still research-only). Production V5.8.2 and Research V5.9 remain independently available.",
+    help="Production is frozen at V5.8.2. Research is the independent V6.0 200WMA programme. V5.9 is archived and retained outside active navigation.",
 )
 
 # Ensure audit quota guards never leak into either user-facing model.
@@ -244,8 +244,7 @@ uninstall_bgeometrics_guard()
 
 engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
-    "Research": Path(__file__).parent / "engines" / "research" / "research_app.py",
-    "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
+    "Research": Path(__file__).parent / "engines" / "research" / "v60_research_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
 }[section]
 
