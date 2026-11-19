@@ -79,6 +79,39 @@ def assign_validation_split(row: dict) -> str:
     return "bridge_excluded"
 
 
+def discount_activation_counts(weekly_rows: list[dict]) -> dict:
+    """Count distinct completed signal weeks reaching each 200WMA discount."""
+    periods = {
+        "pre_2022_train_era": [
+            r for r in weekly_rows
+            if r["execution_date"] < HOLDOUT_START
+        ],
+        "2022_onward_holdout_era": [
+            r for r in weekly_rows
+            if r["execution_date"] >= HOLDOUT_START
+        ],
+    }
+    result = {}
+    for period, rows in periods.items():
+        counts = {}
+        for threshold in (20, 25, 30):
+            hits = [
+                r for r in rows
+                if float(r["ratio_to_200wma"]) <= 1.0 - threshold / 100.0
+            ]
+            counts[f"at_least_{threshold}_pct_below_200wma"] = {
+                "signal_week_count": len(hits),
+                "execution_dates": sorted(
+                    str(r["execution_date"]) for r in hits
+                ),
+                "calendar_years": sorted({
+                    r["execution_date"].year for r in hits
+                }),
+            }
+        result[period] = counts
+    return result
+
+
 def summarise(results: list[dict]) -> pd.DataFrame:
     frame = pd.DataFrame(results)
     if frame.empty:
@@ -190,6 +223,15 @@ def build_report(output_dir: Path) -> dict:
             "fixed_fee_aud": 3.0,
             "weekly_cap_pct_original_capital": 5.0,
         },
+        "discount_activation_counts": discount_activation_counts(weekly),
+        "unmodelled_factors": [
+            "ASX:IBIT tracking premium/discount and intraday execution timing",
+            "Actual ASX brokerage, bid/ask spread and market impact beyond the generic friction assumption",
+            "Tax on cash yield, ETF distributions and realised capital gains",
+            "Personal contributions, withdrawals and actual portfolio cash movements",
+        ],
+        "cash_yield_caveat": "0% and 5% gross annual scenarios; the 5% case is not guaranteed and is not tax-adjusted",
+        "btc_drag_caveat": "0.25% annual generic holding drag; this is a modelling assumption, not an observed ASX:IBIT tracking result",
         "cohort_count_total": int(len(cohort_frame)),
         "summary_rows": int(len(summary_frame)),
         "artifacts": [cohort_path.name, summary_path.name, metadata_path.name],
