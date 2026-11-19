@@ -157,7 +157,7 @@ def replay(rows: list[dict], *, risk_key: str, capital: float = CAPITAL_AUD,
         "btc_equivalent": round(btc + cash / terminal_price, 10),
         "cash_remaining_aud": round(cash, 2),
         "cash_remaining_pct": round(100.0 * cash / capital, 2),
-        "capital_deployed_aud": round(invested, 2),
+        "gross_buy_outlay_aud": round(invested, 2),
         "fills": fills,
         "fees_and_slippage_aud": round(fees, 2),
         "max_drawdown_pct": round(100.0 * max_dd, 2),
@@ -187,7 +187,8 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
                 "start": window["start"], "end": window["end"],
                 "strategy": name, **{k: v for k, v in result.items() if k != "orders"},
                 "equity_vs_v582_pct": 100.0 * (result["final_equity_aud"] / base["final_equity_aud"] - 1.0),
-                "btc_vs_v582_pct": 100.0 * (result["btc_equivalent"] / base["btc_equivalent"] - 1.0),
+                "btc_units_vs_v582_pct": 100.0 * (result["btc_accumulated"] / base["btc_accumulated"] - 1.0) if base["btc_accumulated"] else 0.0,
+                "btc_equivalent_vs_v582_pct": 100.0 * (result["btc_equivalent"] / base["btc_equivalent"] - 1.0) if base["btc_equivalent"] else 0.0,
             })
     summaries = []
     for split in ("TRAIN", "BRIDGE_EXCLUDED", "HISTORICAL_HOLDOUT"):
@@ -205,6 +206,10 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
                 "median_fills": float(np.median([r["fills"] for r in subset])),
                 "median_equity_vs_v582_pct": float(np.median([r["equity_vs_v582_pct"] for r in subset])),
                 "worst_equity_vs_v582_pct": min(r["equity_vs_v582_pct"] for r in subset),
+                "median_btc_units_vs_v582_pct": float(np.median([r["btc_units_vs_v582_pct"] for r in subset])),
+                "worst_btc_units_vs_v582_pct": min(r["btc_units_vs_v582_pct"] for r in subset),
+                "wins_btc_units_vs_v582": sum(r["btc_units_vs_v582_pct"] > 0 for r in subset),
+                "median_btc_equivalent_vs_v582_pct": float(np.median([r["btc_equivalent_vs_v582_pct"] for r in subset])),
                 "wins_vs_v582": sum(r["equity_vs_v582_pct"] > 0 for r in subset),
             })
     return {
