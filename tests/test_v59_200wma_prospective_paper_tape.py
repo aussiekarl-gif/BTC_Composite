@@ -76,6 +76,7 @@ class Prospective200WmaPaperTapeTests(unittest.TestCase):
         self.assertAlmostEqual(float(signal["discount_below_200wma_pct"]), 26.0)
         self.assertEqual(signal["A_measured_buy_pct_deployable_cash"], "5.000000")
         self.assertEqual(signal["A_measured_protected_cash_floor_pct_initial_cash"], "0.000000")
+        self.assertEqual(signal["A_measured_30pct_protected_cash_floor_pct_initial_cash"], "30.000000")
         self.assertEqual(signal["A_measured_30pct_floor_buy_pct_deployable_cash"], "5.000000")
         self.assertEqual(signal["expected_next_asx_weekday_sydney"], "2026-11-25")
 
