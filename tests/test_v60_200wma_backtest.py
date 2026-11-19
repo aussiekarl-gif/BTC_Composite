@@ -105,11 +105,11 @@ class V60BacktestTests(unittest.TestCase):
 
     def test_dynamic_allocation_scale_changes_only_dynamic_spend(self):
         rows = flat_rows(price=100_000, ratio=0.70)
-        fixed_default = simulate_weekly_cohort(rows, policy="fixed_weekly")
+        fixed_default = simulate_weekly_cohort(rows, policy="fixed_weekly", cash_yield=0.0)
         fixed_scaled = simulate_weekly_cohort(
             rows, policy="fixed_weekly", dynamic_allocation_scale=0.5, cash_yield=0.0
         )
-        measured_default = simulate_weekly_cohort(rows, policy="measured")
+        measured_default = simulate_weekly_cohort(rows, policy="measured", cash_yield=0.0)
         measured_half = simulate_weekly_cohort(
             rows, policy="measured", dynamic_allocation_scale=0.5, cash_yield=0.0
         )
