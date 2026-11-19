@@ -76,6 +76,16 @@ class V60PolicyTests(unittest.TestCase):
         self.assertNotEqual(last["prior_200wma_usd"],
                             weekly.iloc[pos-199:pos+1].mean())
 
+
+    def test_missing_sunday_is_not_relabelled_as_a_weekly_close(self):
+        index = pd.date_range("2014-01-05", periods=400*7+1, freq="D", tz="UTC")
+        prices = pd.Series([100.0+i for i in range(len(index))], index=index)
+        missing_sunday = index[300*7]
+        prices = prices.drop(missing_sunday)
+        result = policy.weekly_prior_200wma_signals(prices)
+        self.assertNotIn(missing_sunday, set(result["signal_date"]))
+        self.assertTrue(all(pd.Timestamp(x).weekday() == 6 for x in result["signal_date"]))
+
     def test_no_v59_or_production_imports(self):
         import inspect
         source = inspect.getsource(policy)
