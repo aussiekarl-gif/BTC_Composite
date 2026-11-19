@@ -1,4 +1,5 @@
 import unittest
+import pandas as pd
 from datetime import date, timedelta
 
 from engines.research import v59_200wma_distance_dynamic_dca as study
@@ -42,17 +43,28 @@ class DynamicWmaDcaTests(unittest.TestCase):
         self.assertGreater(result["buy_count"], 1)
         self.assertGreaterEqual(result["cash_aud"], 0.0)
 
-    def test_200wma_signal_is_independent_of_risk_columns(self):
-        rows = []
-        start = date(2020, 1, 6)
-        for i in range(104):
-            day = start + timedelta(weeks=i)
-            rows.append({"date": day, "signal_date": day-timedelta(days=1),
-                         "btc_price_aud": 100000.0, "ratio_to_200wma": .75,
-                         "risk_score": 0.99, "risk_score_source": "untrusted"})
-        with self.assertRaises(TypeError):
-            # No risk arguments are accepted or consulted by this API.
-            study.allocation_pct(.75, study.LADDERS["A_measured"], risk=.99)
+    def test_allocation_is_a_pure_wma_input_not_a_risk_input(self):
+        # Arbitrary unrelated risk metadata cannot change the pure WMA decision.
+        first = {"ratio_to_200wma": .75, "risk_score": 0.99}
+        second = {"ratio_to_200wma": .75, "risk_score": 0.00}
+        self.assertEqual(
+            study.allocation_pct(first["ratio_to_200wma"], study.LADDERS["A_measured"]),
+            study.allocation_pct(second["ratio_to_200wma"], study.LADDERS["A_measured"]),
+        )
+
+    def test_wma_excludes_the_signal_sunday_close(self):
+        index = pd.date_range("2013-01-06", periods=400 * 7 + 2, freq="D", tz="UTC")
+        prices = pd.Series([100.0 + i for i in range(len(index))], index=index)
+        btc = pd.DataFrame({"price": prices})
+        fx = pd.Series(0.65, index=index)
+        rows = study.build_weekly_rows(btc, fx)
+        row = rows[-1]
+        weekly = prices.resample("W-SUN").last()
+        signal = pd.Timestamp(row["signal_date"], tz="UTC")
+        position = weekly.index.get_loc(signal)
+        expected = weekly.iloc[position-200:position].mean()
+        self.assertAlmostEqual(row["prior_200wma_usd"], expected)
+        self.assertNotEqual(row["prior_200wma_usd"], weekly.iloc[position-199:position+1].mean())
 
 
 if __name__ == "__main__":
