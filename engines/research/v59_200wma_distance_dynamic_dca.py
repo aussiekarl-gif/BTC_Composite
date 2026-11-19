@@ -22,6 +22,7 @@ from engines.research import v59_causal_timing_horse_race as base
 CAPITAL_AUD = 510_000.0
 INITIAL_BTC_FRACTION = 0.41
 CASH_YIELD = 0.05
+CASH_YIELDS = (0.0, 0.05)  # zero-yield stress and AAA-like reference case
 ETF_DRAG = 0.0025
 BUY_FRICTION = 0.003
 FIXED_FEE_AUD = 3.0
@@ -206,12 +207,15 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
     windows = base.cohort_windows(rows)
     trials = []
     for cohort in windows:
-        for policy in (*LADDERS, "fixed_weekly"):
-            result = simulate(cohort["rows"], policy=policy, capital=capital)
-            trials.append({k: cohort[k] for k in ("anchor", "start", "end", "split")} | result)
-    lookup = {(r["anchor"], r["policy"]): r for r in trials}
+        for cash_yield in CASH_YIELDS:
+            for policy in (*LADDERS, "fixed_weekly"):
+                result = simulate(cohort["rows"], policy=policy, capital=capital,
+                                  cash_yield=cash_yield)
+                trials.append({k: cohort[k] for k in ("anchor", "start", "end", "split")} |
+                              {"cash_yield_annual": cash_yield} | result)
+    lookup = {(r["anchor"], r["cash_yield_annual"], r["policy"]): r for r in trials}
     for result in trials:
-        control = lookup[(result["anchor"], "current_2_5pct")]
+        control = lookup[(result["anchor"], result["cash_yield_annual"], "current_2_5pct")]
         result["equity_uplift_vs_current_pct"] = 100.0 * (
             result["equity_aud"] / control["equity_aud"] - 1.0)
         result["btc_equivalent_uplift_vs_current_pct"] = 100.0 * (
@@ -219,12 +223,14 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
 
     summary = []
     for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
+      for cash_yield in CASH_YIELDS:
         for policy in (*LADDERS, "fixed_weekly"):
-            selected = [r for r in trials if r["split"] == split and r["policy"] == policy]
+            selected = [r for r in trials if r["split"] == split and
+                        r["cash_yield_annual"] == cash_yield and r["policy"] == policy]
             if not selected:
                 continue
             summary.append({
-                "split": split, "policy": policy, "cohorts": len(selected),
+                "split": split, "cash_yield_annual": cash_yield, "policy": policy, "cohorts": len(selected),
                 "median_equity_uplift_vs_current_pct": median(
                     r["equity_uplift_vs_current_pct"] for r in selected),
                 "worst_equity_uplift_vs_current_pct": min(
@@ -250,7 +256,7 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
         "weekly_hard_cap": "5% of original contributed capital",
         "minimum_ticket_aud": MIN_TICKET_AUD,
         "cooldown_calendar_days": COOLDOWN_DAYS,
-        "cash_yield_annual": CASH_YIELD,
+        "cash_yield_scenarios_annual": list(CASH_YIELDS),
         "initial_btc_fraction": INITIAL_BTC_FRACTION,
         "weekly_rows": len(rows),
         "completed_cohorts": len(windows),
