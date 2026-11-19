@@ -57,10 +57,7 @@ class DynamicWmaDcaTests(unittest.TestCase):
             rows.append({"date": day, "signal_date": day-timedelta(days=1),
                          "btc_price_aud": 100000.0, "ratio_to_200wma": .24})
         result = study.simulate(rows, policy="C_aggressive", cash_floor_fraction=.20)
-        self.assertGreaterEqual(
-            result["cash_aud"] + 1e-6,
-            result["protected_cash_floor_aud"],
-        )
+        self.assertGreaterEqual(result["remaining_cash_pct_initial_cash"], 20.0 - 1e-6)
         self.assertEqual(result["cash_floor_fraction_initial_cash"], .20)
 
     def test_zero_cash_floor_preserves_existing_baseline_behaviour(self):
