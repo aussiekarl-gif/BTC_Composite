@@ -103,6 +103,20 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertIn("Synthetic prolonged-bear stress", source)
         self.assertIn("no spending cap or reserve is selected", source)
 
+
+    def test_v60_dashboard_shows_scaled_allocation_yield_and_stress_evidence(self):
+        evidence_path = ROOT / "data" / "research_forward_validation" / "v60_allocation_scale_summary_2026-11-19.json"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        self.assertEqual(evidence["cash_yield_scenarios_annual_pct"], [0.0, 5.0])
+        self.assertEqual(evidence["prospective_paper_tape"]["schema_version"], 2)
+        self.assertEqual(evidence["prospective_paper_tape"]["allocation_scale_candidates"], [0.5, 0.75, 1.0])
+        self.assertEqual(len(evidence["historical_scale_comparison"]), 12)
+        self.assertEqual(len(evidence["synthetic_stress_cap_50"]), 10)
+        app = (ROOT / "engines" / "research" / "v60_research_app.py").read_text(encoding="utf-8")
+        self.assertIn("Slower allocation sensitivity", app)
+        self.assertIn("Synthetic path comparison", app)
+        self.assertIn("not proven superior", app)
+
     def test_retired_tier_page_remains_unlinked(self):
         source = APP.read_text(encoding="utf-8")
         self.assertNotIn('"200WMA Trading Model"', source)
