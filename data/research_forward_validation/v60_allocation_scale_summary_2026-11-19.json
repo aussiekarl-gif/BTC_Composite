@@ -1,0 +1,58 @@
+{
+  "model_version": "V6.0",
+  "research_only": true,
+  "trade_executable": false,
+  "source_run_id": 44510591726,
+  "source_commit": "a9af8597e5027c469ba158fc88e12752bf6b8302",
+  "artifact_sha256": "ee591ad65d827ee10ed1fb9ea52d908db628edf6c41b664520a60ee5cefbf636",
+  "btc_data_cutoff": "2026-10-05",
+  "cash_yield_scenarios_annual_pct": [0.0, 5.0],
+  "protected_cash_floor_pct_initial_cash": 30.0,
+  "cumulative_spend_cap_pct_initial_cash": "50%",
+  "benchmark": "Fixed weekly DCA matched by cohort, yield, protected reserve and cumulative spend cap",
+  "historical_scale_comparison": [
+    {"split":"train","cash_yield_pct":0.0,"scale":0.5,"base_buy_pct":1.25,"top_tier_buy_pct":3.75,"cohorts":158,"median_equity_uplift_pct":-0.3781,"p10_equity_uplift_pct":-3.7048,"worst_equity_uplift_pct":-5.8004,"median_btc_uplift_pct":-0.4411,"win_rate_pct":39.8734,"median_drawdown_difference_pp":0.2260},
+    {"split":"train","cash_yield_pct":0.0,"scale":0.75,"base_buy_pct":1.875,"top_tier_buy_pct":5.625,"cohorts":158,"median_equity_uplift_pct":2.9075,"p10_equity_uplift_pct":-2.9515,"worst_equity_uplift_pct":-6.2236,"median_btc_uplift_pct":3.2973,"win_rate_pct":79.7468,"median_drawdown_difference_pp":-1.0909},
+    {"split":"train","cash_yield_pct":0.0,"scale":1.0,"base_buy_pct":2.5,"top_tier_buy_pct":7.5,"cohorts":158,"median_equity_uplift_pct":4.8997,"p10_equity_uplift_pct":-5.8709,"worst_equity_uplift_pct":-12.2883,"median_btc_uplift_pct":5.7886,"win_rate_pct":79.1139,"median_drawdown_difference_pp":-1.6307},
+    {"split":"train","cash_yield_pct":5.0,"scale":0.5,"base_buy_pct":1.25,"top_tier_buy_pct":3.75,"cohorts":158,"median_equity_uplift_pct":0.1283,"p10_equity_uplift_pct":-2.7094,"worst_equity_uplift_pct":-4.6546,"median_btc_uplift_pct":0.1434,"win_rate_pct":52.5316,"median_drawdown_difference_pp":0.0731},
+    {"split":"train","cash_yield_pct":5.0,"scale":0.75,"base_buy_pct":1.875,"top_tier_buy_pct":5.625,"cohorts":158,"median_equity_uplift_pct":2.8721,"p10_equity_uplift_pct":-3.6604,"worst_equity_uplift_pct":-7.0403,"median_btc_uplift_pct":3.7902,"win_rate_pct":80.3797,"median_drawdown_difference_pp":-1.2444},
+    {"split":"train","cash_yield_pct":5.0,"scale":1.0,"base_buy_pct":2.5,"top_tier_buy_pct":7.5,"cohorts":158,"median_equity_uplift_pct":4.8204,"p10_equity_uplift_pct":-6.2886,"worst_equity_uplift_pct":-12.5011,"median_btc_uplift_pct":5.9803,"win_rate_pct":77.8481,"median_drawdown_difference_pp":-1.9074},
+    {"split":"holdout","cash_yield_pct":0.0,"scale":0.5,"base_buy_pct":1.25,"top_tier_buy_pct":3.75,"cohorts":146,"median_equity_uplift_pct":1.1159,"p10_equity_uplift_pct":-0.0957,"worst_equity_uplift_pct":-0.1571,"median_btc_uplift_pct":1.5487,"win_rate_pct":77.3973,"median_drawdown_difference_pp":0.1564},
+    {"split":"holdout","cash_yield_pct":0.0,"scale":0.75,"base_buy_pct":1.875,"top_tier_buy_pct":5.625,"cohorts":146,"median_equity_uplift_pct":4.2758,"p10_equity_uplift_pct":1.5536,"worst_equity_uplift_pct":-0.5600,"median_btc_uplift_pct":4.7877,"win_rate_pct":97.2603,"median_drawdown_difference_pp":-0.2865},
+    {"split":"holdout","cash_yield_pct":0.0,"scale":1.0,"base_buy_pct":2.5,"top_tier_buy_pct":7.5,"cohorts":146,"median_equity_uplift_pct":5.9751,"p10_equity_uplift_pct":1.4034,"worst_equity_uplift_pct":-5.1485,"median_btc_uplift_pct":7.0834,"win_rate_pct":93.1507,"median_drawdown_difference_pp":-0.3743},
+    {"split":"holdout","cash_yield_pct":5.0,"scale":0.5,"base_buy_pct":1.25,"top_tier_buy_pct":3.75,"cohorts":146,"median_equity_uplift_pct":1.0205,"p10_equity_uplift_pct":0.2015,"worst_equity_uplift_pct":0.0409,"median_btc_uplift_pct":1.4637,"win_rate_pct":100.0,"median_drawdown_difference_pp":0.0131},
+    {"split":"holdout","cash_yield_pct":5.0,"scale":0.75,"base_buy_pct":1.875,"top_tier_buy_pct":5.625,"cohorts":146,"median_equity_uplift_pct":4.3599,"p10_equity_uplift_pct":1.1656,"worst_equity_uplift_pct":-1.2114,"median_btc_uplift_pct":5.0945,"win_rate_pct":95.2055,"median_drawdown_difference_pp":-0.3913},
+    {"split":"holdout","cash_yield_pct":5.0,"scale":1.0,"base_buy_pct":2.5,"top_tier_buy_pct":7.5,"cohorts":146,"median_equity_uplift_pct":5.6264,"p10_equity_uplift_pct":0.8828,"worst_equity_uplift_pct":-5.9227,"median_btc_uplift_pct":7.2030,"win_rate_pct":91.7808,"median_drawdown_difference_pp":-0.4963}
+  ],
+  "synthetic_stress_cap_50": [
+    {"scenario":"prolonged_bear_70pct","scale":0.5,"base_buy_pct":1.25,"measured_minus_fixed_return_pp":-0.955,"measured_btc_uplift_vs_fixed_pct":-3.231},
+    {"scenario":"prolonged_bear_70pct","scale":1.0,"base_buy_pct":2.5,"measured_minus_fixed_return_pp":-2.591,"measured_btc_uplift_vs_fixed_pct":-8.399},
+    {"scenario":"false_bottom_recovery","scale":0.5,"base_buy_pct":1.25,"measured_minus_fixed_return_pp":0.750,"measured_btc_uplift_vs_fixed_pct":0.974},
+    {"scenario":"false_bottom_recovery","scale":1.0,"base_buy_pct":2.5,"measured_minus_fixed_return_pp":2.141,"measured_btc_uplift_vs_fixed_pct":3.397},
+    {"scenario":"extended_bear_then_recovery","scale":0.5,"base_buy_pct":1.25,"measured_minus_fixed_return_pp":-1.617,"measured_btc_uplift_vs_fixed_pct":-1.187},
+    {"scenario":"extended_bear_then_recovery","scale":1.0,"base_buy_pct":2.5,"measured_minus_fixed_return_pp":-4.321,"measured_btc_uplift_vs_fixed_pct":-4.039},
+    {"scenario":"rapid_v_recovery","scale":0.5,"base_buy_pct":1.25,"measured_minus_fixed_return_pp":7.508,"measured_btc_uplift_vs_fixed_pct":8.879},
+    {"scenario":"rapid_v_recovery","scale":1.0,"base_buy_pct":2.5,"measured_minus_fixed_return_pp":16.082,"measured_btc_uplift_vs_fixed_pct":19.184},
+    {"scenario":"extended_above_wma_rally","scale":0.5,"base_buy_pct":1.25,"measured_minus_fixed_return_pp":0.034,"measured_btc_uplift_vs_fixed_pct":0.024},
+    {"scenario":"extended_above_wma_rally","scale":1.0,"base_buy_pct":2.5,"measured_minus_fixed_return_pp":2.284,"measured_btc_uplift_vs_fixed_pct":2.847}
+  ],
+  "prospective_paper_tape": {
+    "schema_version": 2,
+    "model_name": "v60_200wma_measured_threshold_sensitivity_scale_paper_v2",
+    "allocation_scale_candidates": [0.5, 0.75, 1.0],
+    "paper_start_after_utc": "2026-11-19T09:05:02+00:00",
+    "first_eligible_sunday_close_utc": "2026-11-22",
+    "signal_rows": 0,
+    "asx_observation_rows": 0,
+    "trade_executable": false
+  },
+  "interpretation": "Slower allocations reduce downside in the synthetic prolonged-bear path but also reduce BTC accumulation and rapid-recovery upside. At 50% spend cap and 30% reserve, the 0.5x scale has a modest historical holdout uplift under both 0% and 5% gross cash-yield assumptions. It is a candidate for prospective paper comparison only, not an approved setting.",
+  "limitations": [
+    "BTC historical export ends 2026-10-05 and is not a point-in-time vintage.",
+    "The 5% cash yield is gross, not guaranteed and not tax-adjusted.",
+    "Historical rolling 104-week cohorts overlap heavily and are not independent.",
+    "The 200WMA discount triggers were concentrated in 2022-2023.",
+    "Synthetic paths are not forecasts or probability-weighted scenarios.",
+    "No strategy candidate is approved for live investing."
+  ]
+}
