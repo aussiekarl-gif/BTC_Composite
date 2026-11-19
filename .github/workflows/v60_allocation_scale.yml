@@ -1,0 +1,53 @@
+name: V6.0 base-allocation scale historical report
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/v60_allocation_scale_report.py"
+      - "engines/research/v60_allocation_scale_stress_report.py"
+      - "engines/research/v60_synthetic_stress.py"
+      - "tests/test_v60_allocation_scale_stress_report.py"
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_historical_report.py"
+      - "tests/test_v60_allocation_scale_report.py"
+      - ".github/workflows/v60_allocation_scale.yml"
+  push:
+    branches: [main]
+    paths:
+      - "engines/research/v60_allocation_scale_report.py"
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_historical_report.py"
+      - "tests/test_v60_allocation_scale_report.py"
+      - ".github/workflows/v60_allocation_scale.yml"
+  workflow_dispatch:
+
+jobs:
+  scale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run allocation scale regression tests
+        run: |
+          python -m unittest discover -s tests -p 'test_v60_200wma_backtest.py' -v
+          python -m unittest discover -s tests -p 'test_v60_allocation_scale_report.py' -v
+          python -m unittest discover -s tests -p 'test_v60_allocation_scale_stress_report.py' -v
+      - name: Run matched historical allocation-scale report
+        run: python -m engines.research.v60_allocation_scale_report --output-dir artifacts/v60_allocation_scale
+      - name: Run matched-cap synthetic allocation-scale stress
+        run: python -m engines.research.v60_allocation_scale_stress_report --output-dir artifacts/v60_allocation_scale_stress
+      - name: Upload V6.0 allocation-scale evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v60-allocation-scale-evidence
+          path: |
+            artifacts/v60_allocation_scale/
+            artifacts/v60_allocation_scale_stress/
+          if-no-files-found: error

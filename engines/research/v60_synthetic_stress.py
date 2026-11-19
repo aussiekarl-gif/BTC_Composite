@@ -106,17 +106,20 @@ def build_stress_report(output_dir: Path) -> dict:
                     results.append(result)
                 for threshold_set, thresholds in THRESHOLD_SETS.items():
                     for policy in ("measured", "stepped", "aggressive"):
-                        result = simulate_weekly_cohort(
-                            rows, policy=policy, cash_yield=cash_yield,
-                            protected_cash_floor_pct_initial_cash=floor,
-                            thresholds=thresholds, threshold_set=threshold_set,
-                        )
-                        result.update({
-                            "scenario": name,
-                            "cash_yield": cash_yield,
-                            "threshold_set": threshold_set,
-                        })
-                        results.append(result)
+                        scales = (0.5, 0.75, 1.0, 1.25, 1.5) if policy == "measured" else (1.0,)
+                        for scale in scales:
+                            result = simulate_weekly_cohort(
+                                rows, policy=policy, cash_yield=cash_yield,
+                                protected_cash_floor_pct_initial_cash=floor,
+                                thresholds=thresholds, threshold_set=threshold_set,
+                                dynamic_allocation_scale=scale,
+                            )
+                            result.update({
+                                "scenario": name,
+                                "cash_yield": cash_yield,
+                                "threshold_set": threshold_set,
+                            })
+                            results.append(result)
     frame = pd.DataFrame(results)
     output_dir.mkdir(parents=True, exist_ok=True)
     result_path = output_dir / "v60_synthetic_stress_results.csv"
@@ -134,6 +137,8 @@ def build_stress_report(output_dir: Path) -> dict:
         "protected_cash_floors_pct_initial_cash": list(CASH_FLOORS),
         "threshold_sets": {k: list(v) for k, v in THRESHOLD_SETS.items()},
         "policies": ["fixed_weekly", "baseline", "measured", "stepped", "aggressive"],
+        "measured_dynamic_allocation_scales": [0.5, 0.75, 1.0, 1.25, 1.5],
+        "scale_definition": "Proportionally scales every measured candidate tier; fixed DCA is unchanged.",
         "result_rows": len(frame),
         "warning": "Synthetic paths are stress tests, not historical evidence, forecasts or probability-weighted outcomes.",
         "wma_method": "Each signal uses the mean of the 200 prior weekly closes; current signal week excluded.",

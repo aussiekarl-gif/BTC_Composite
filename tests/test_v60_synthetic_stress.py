@@ -45,6 +45,25 @@ class V60SyntheticStressTests(unittest.TestCase):
         ]
         self.assertEqual(spends, sorted(spends, reverse=True))
 
+
+    def test_slower_measured_scale_preserves_cash_in_prolonged_bear(self):
+        rows = build_scenario_rows(scenario_price_paths()["prolonged_bear_70pct"]["prices"])
+        normal = simulate_weekly_cohort(
+            rows, policy="measured", cash_yield=0.05,
+            protected_cash_floor_pct_initial_cash=30.0,
+            dynamic_allocation_scale=1.0,
+        )
+        slower = simulate_weekly_cohort(
+            rows, policy="measured", cash_yield=0.05,
+            protected_cash_floor_pct_initial_cash=30.0,
+            dynamic_allocation_scale=0.5,
+        )
+        self.assertLess(slower["total_buy_spend_aud"], normal["total_buy_spend_aud"])
+        self.assertGreater(slower["cash_remaining_aud"], normal["cash_remaining_aud"])
+        self.assertGreaterEqual(
+            slower["cash_remaining_aud"], slower["protected_cash_floor_aud"] - 1e-6
+        )
+
     def test_false_bottom_does_not_break_guardrails(self):
         rows = build_scenario_rows(scenario_price_paths()["false_bottom_recovery"]["prices"])
         for policy in ("baseline", "measured", "stepped", "aggressive"):

@@ -23,8 +23,8 @@ def flat_rows(price=100_000.0, ratio=0.70, count=104):
 class V60BacktestTests(unittest.TestCase):
     def test_fixed_weekly_and_dynamic_run_same_cohort(self):
         rows = flat_rows()
-        fixed = simulate_weekly_cohort(rows, policy="fixed_weekly")
-        measured = simulate_weekly_cohort(rows, policy="measured")
+        fixed = simulate_weekly_cohort(rows, policy="fixed_weekly", cash_yield=0.0)
+        measured = simulate_weekly_cohort(rows, policy="measured", cash_yield=0.0)
         self.assertEqual(fixed["cohort_start"], measured["cohort_start"])
         self.assertEqual(fixed["observations"], 104)
         self.assertTrue(fixed["research_only"])
@@ -101,6 +101,33 @@ class V60BacktestTests(unittest.TestCase):
                 flat_rows(), policy="measured",
                 max_cumulative_buy_spend_pct_initial_cash=101.0,
             )
+
+
+    def test_dynamic_allocation_scale_changes_only_dynamic_spend(self):
+        rows = flat_rows(price=100_000, ratio=0.70)
+        fixed_default = simulate_weekly_cohort(rows, policy="fixed_weekly", cash_yield=0.0)
+        fixed_scaled = simulate_weekly_cohort(
+            rows, policy="fixed_weekly", dynamic_allocation_scale=0.5, cash_yield=0.0
+        )
+        measured_default = simulate_weekly_cohort(rows, policy="measured", cash_yield=0.0)
+        measured_half = simulate_weekly_cohort(
+            rows, policy="measured", dynamic_allocation_scale=0.5, cash_yield=0.0
+        )
+        measured_one_half = simulate_weekly_cohort(
+            rows, policy="measured", dynamic_allocation_scale=1.5, cash_yield=0.0
+        )
+        self.assertAlmostEqual(fixed_default["total_buy_spend_aud"], fixed_scaled["total_buy_spend_aud"])
+        self.assertAlmostEqual(measured_half["dynamic_allocation_scale"], 0.5)
+        self.assertLess(measured_half["total_buy_spend_aud"], measured_default["total_buy_spend_aud"])
+        self.assertGreater(measured_one_half["total_buy_spend_aud"], measured_default["total_buy_spend_aud"])
+
+    def test_invalid_dynamic_allocation_scale_fails_closed(self):
+        for scale in (0, -0.1, 3.01, float("nan")):
+            with self.subTest(scale=scale):
+                with self.assertRaises(ValueError):
+                    simulate_weekly_cohort(
+                        flat_rows(), policy="measured", dynamic_allocation_scale=scale
+                    )
 
     def test_invalid_inputs_fail_closed(self):
         rows = flat_rows()
