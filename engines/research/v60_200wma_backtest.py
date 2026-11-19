@@ -120,6 +120,7 @@ def simulate_weekly_cohort(
     min_ticket_aud: float = DEFAULT_MIN_TICKET_AUD,
     thresholds: tuple[float, float, float] = DISCOUNT_THRESHOLDS_PCT,
     threshold_set: str = "20_25_30",
+    max_cumulative_buy_spend_pct_initial_cash: float | None = None,
 ) -> dict:
     """Replay one 104-week cohort with cash yield, BTC drag and buy friction."""
     validate_weekly_cohort(rows)
@@ -144,6 +145,10 @@ def simulate_weekly_cohort(
         raise ValueError("Weekly cap must be in (0, 100]")
     if fixed_fee_aud < 0 or min_ticket_aud < 0:
         raise ValueError("Fees and minimum ticket cannot be negative")
+    if max_cumulative_buy_spend_pct_initial_cash is not None:
+        cap_pct = float(max_cumulative_buy_spend_pct_initial_cash)
+        if not math.isfinite(cap_pct) or not 0 <= cap_pct <= 100:
+            raise ValueError("Cumulative spend cap must be between 0 and 100% of initial cash")
 
     initial_cash = capital_aud * (1.0 - initial_btc_fraction)
     cash = initial_cash
@@ -153,6 +158,10 @@ def simulate_weekly_cohort(
     starting_equity = capital_aud
     weekly_cap = capital_aud * weekly_cap_pct_original_capital / 100.0
     fixed_weekly_spend = max(0.0, initial_cash - reserve) / COHORT_WEEKS
+    cumulative_budget = (
+        initial_cash * float(max_cumulative_buy_spend_pct_initial_cash) / 100.0
+        if max_cumulative_buy_spend_pct_initial_cash is not None else None
+    )
     total_spend = 0.0
     net_btc_bought = 0.0
     buy_count = 0
@@ -182,7 +191,11 @@ def simulate_weekly_cohort(
                 float(row["ratio_to_200wma"]), candidate=policy, thresholds=thresholds
             )
             target_spend = deployable * pct / 100.0
-        spend = min(deployable, target_spend, weekly_cap)
+        remaining_cumulative_budget = (
+            max(0.0, cumulative_budget - total_spend)
+            if cumulative_budget is not None else float("inf")
+        )
+        spend = min(deployable, target_spend, weekly_cap, remaining_cumulative_budget)
         if spend >= min_ticket_aud and spend > fixed_fee_aud:
             net_consideration = (spend - fixed_fee_aud) * (1.0 - buy_friction)
             units = net_consideration / price
@@ -198,6 +211,10 @@ def simulate_weekly_cohort(
         peak_equity = max(peak_equity, equity)
         max_drawdown = min(max_drawdown, equity / peak_equity - 1.0)
         if cash < reserve - 1e-6 or btc < 0 or spend > weekly_cap + 1e-6:
+            raise AssertionError("V6.0 cash reserve or weekly capital guardrail violated")
+        if cumulative_budget is not None and total_spend > cumulative_budget + 1e-6:
+            raise AssertionError("V6.0 cumulative buy budget violated")
+        if False:
             raise AssertionError("V6.0 cash reserve or weekly capital guardrail violated")
 
     terminal_price = execution_prices[-1]
@@ -235,6 +252,11 @@ def simulate_weekly_cohort(
         "biggest_buy_pct_original_capital": 100.0 * biggest_buy / capital_aud,
         "protected_cash_floor_pct_initial_cash": protected_cash_floor_pct_initial_cash,
         "protected_cash_floor_aud": reserve,
+        "max_cumulative_buy_spend_pct_initial_cash": max_cumulative_buy_spend_pct_initial_cash,
+        "max_cumulative_buy_budget_aud": cumulative_budget,
+        "cumulative_buy_budget_remaining_aud": (
+            max(0.0, cumulative_budget - total_spend) if cumulative_budget is not None else None
+        ),
         "max_drawdown_pct": 100.0 * max_drawdown,
         "same_spend_same_count_btc_timing_uplift_pct_hindsight": same_spend_timing_uplift,
         "research_only": True,
