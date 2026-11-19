@@ -741,7 +741,7 @@ with st.sidebar:
         st.caption(
             "Custom V5.8.2 multiplier curve is active."
             if custom_curve_active else
-            "V5.8.2 default: 16× / 8× / 4× / 2× / 1× across risk bands; 0× from risk 0.50."
+            "V5.8.2 uses its configured default risk multiplier curve; the zero-buy threshold is determined by that curve."
         )
 
         if portfolio_verified:
@@ -1167,10 +1167,21 @@ elif mode == "DCA Today":
     remaining_after = max(float(remaining_capital_aud) - recommended_buy, 0.0)
 
     st.header("DCA Today")
+    _curve_description = " / ".join(
+        f"{float(mult):g}× from {float(bound):.2f}"
+        for bound, mult in sorted(active_smart_dca_curve)
+    )
+    _zero_bands = [float(bound) for bound, mult in sorted(active_smart_dca_curve)
+                   if float(mult) == 0.0]
+    _zero_description = (
+        f" Zero-buy band begins at risk {_zero_bands[0]:.2f}."
+        if _zero_bands else " The active curve has no zero-buy band."
+    )
     st.caption(
-        ("Uses your custom V5.8.2 Risk Score multiplier curve. " if custom_curve_active else
-         "Uses the default 16× / 8× / 4× / 2× / 1× risk-band ladder; no buys at risk ≥0.50. ") +
-        "Opportunity Rarity and Better Entry Evidence are informational only."
+        ("Saved custom V5.8.2 curve: " if custom_curve_active else
+         "Default V5.8.2 curve: ")
+        + _curve_description + "." + _zero_description
+        + " Opportunity Rarity and Better Entry Evidence are informational only."
     )
 
     # Decision-first production dashboard. UI only: the calculation above is unchanged.
@@ -1258,7 +1269,7 @@ elif mode == "DCA Today":
             <div class="v58-card"><div class="v58-card-title">Remaining Capital <span class="v58-q" title="Capital still scheduled for deployment. Base Weekly Allowance = remaining capital ÷ remaining weeks.">?</span></div><div class="v58-card-value">{remaining_display}</div><div class="v58-card-sub">{"Portfolio verification required" if not portfolio_verified else f"~{weeks_remaining:.0f} weeks remaining until {target_deployment_date.strftime('%d %b %Y')}"}</div></div>
           </div>
 
-          <div class="v58-info"><span class="v58-info-icon">i</span><div><div class="v58-info-title">How this week's amount is calculated</div><div class="v58-info-text">This week's production DCA amount is the Base Weekly Allowance multiplied by the V5.8.2 risk-band multiplier, capped by deployable cash and 5% of starting capital. Risk ≥0.50 means no buy. Cash sizing is blocked until the authoritative portfolio is verified. Opportunity Rarity, Better Entry Evidence and the Historical Weekly Risk Distribution are context only and do not independently change the buy amount.</div></div></div>
+          <div class="v58-info"><span class="v58-info-icon">i</span><div><div class="v58-info-title">How this week's amount is calculated</div><div class="v58-info-text">This week's production DCA amount is the Base Weekly Allowance multiplied by the V5.8.2 risk-band multiplier, capped by deployable cash and 5% of starting capital. The active risk curve determines the multiplier, including any zero-buy band. Cash sizing is blocked until the authoritative portfolio is verified. Opportunity Rarity, Better Entry Evidence and the Historical Weekly Risk Distribution are context only and do not independently change the buy amount.</div></div></div>
 
           <div class="v58-explain-grid">
             <div class="v58-explain"><h4>📈 Risk Score <span class="v58-q" title="The production sizing engine. It is not cycle-adjusted.">?</span></h4><p>Combines the production valuation/risk components into one 0–1 Risk Score.</p><span class="v58-affects">Affects buy amount</span><p>Lower risk = larger weekly multiplier.<br>Higher risk = smaller weekly multiplier.</p></div>
@@ -1451,7 +1462,7 @@ elif mode == "DCA Today":
     with st.expander("How this amount is calculated", expanded=False):
         st.write(
             "Normal weekly allowance = deployable reserve ÷ weeks remaining. "
-            "That allowance is multiplied by today's discrete Risk Score band (16× / 8× / 4× / 2× / 1× / 0×), "
+            "That allowance is multiplied by today's discrete Risk Score band from the active V5.8.2 curve, "
             "then capped at deployable reserve and 5% of original starting capital per week."
         )
         if portfolio_verified:

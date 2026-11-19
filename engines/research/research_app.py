@@ -1529,7 +1529,7 @@ elif mode == "DCA Today":
               <div class="v59-sub">{"Deployable capital unavailable until portfolio verification" if not portfolio_verified else f"Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}"}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × risk-band multiplier, bounded by verified deployable cash and remaining capital. Risk ≥0.40 means no buy.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × active risk-band multiplier, bounded by verified deployable cash and remaining capital. The active curve determines the zero-buy band.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-off">i</span><div><b>{purchase_reason_title}</b><small>{purchase_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>Valuation display {_display_txt} • R2 sizing score {current_risk:.3f} → {risk_weight:.2f}× risk multiplier</small></div></div>
@@ -1577,7 +1577,7 @@ elif mode == "DCA Today":
           <div class="v59-info">
             <span class="v59-info-icon">i</span>
             <div><div class="v59-info-title">How this week's amount is calculated</div>
-            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, bounded by verified deployable cash and remaining deployment capital. Risk ≥0.40 means no buy under the default curve. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or verified-cash limit.</div></div>
+            <div class="v59-info-text">Ordinary Monday DCA = Base Monday allowance × the selected risk-band multiplier, bounded by verified deployable cash and remaining deployment capital. The active risk curve determines the zero-buy threshold. Halving timing and Opportunity Rarity are context only. A qualifying Exceptional Bottom stage may increase the multiplier, but cannot bypass the no-buy threshold or verified-cash limit.</div></div>
           </div>
 
           <div class="v59-explain-grid">
@@ -1820,7 +1820,7 @@ elif mode == "DCA Today":
     )
 
     st.info(
-        f"Frozen R2: display risk {current_research_display_risk:.3f}/0.400 (raw sizing score retained internally) → {risk_weight:.2f}×. "
+        f"Frozen R2: display risk {current_research_display_risk:.3f}/0.400; raw sizing risk {current_risk:.3f}/1.000 → {risk_weight:.2f}×. "
         f"Three-Pillar Challenger today: {challenger_weight:.2f}×"
         + (f" ({current_challenger_event})" if current_challenger_event != "NONE" else " (no staged event this week)")
         + ". Production V5.8.2 and the R2 control are unchanged."
@@ -2078,16 +2078,33 @@ elif mode == "DCA Today":
         _lower = float(_display_edges[_i])
         _upper = float(_display_edges[_i + 1])
         _raw_lower = (_lower / 0.4) ** 2
-        _multiplier = float(risk_band_multiplier(active_smart_dca_curve, _raw_lower))
+        _raw_upper = (_upper / 0.4) ** 2
+        # pd.cut uses (lower, upper] except for the first inclusive bin.
+        # Probe just above non-first lower edges so boundary tiers are not
+        # incorrectly attributed to the preceding display bucket.
+        _raw_probe = (
+            _raw_lower if _i == 0 else float(np.nextafter(_raw_lower, 1.0))
+        )
+        _band_multipliers = [
+            float(risk_band_multiplier(active_smart_dca_curve, _raw_probe))
+        ]
+        for _threshold, _ in sorted(active_smart_dca_curve):
+            _threshold = float(_threshold)
+            if _raw_lower < _threshold <= _raw_upper:
+                _band_multipliers.append(float(
+                    risk_band_multiplier(active_smart_dca_curve, _threshold)
+                ))
+        _band_multipliers = list(dict.fromkeys(_band_multipliers))
+        _multiplier_range = "→".join(f"{x:g}×" for x in _band_multipliers)
         _display_rows.append({
             "Risk range": f"{_lower:.2f}–{_upper:.2f}",
             "Weeks": _weeks,
             "Percent": 100.0 * _weeks / len(_display_values) if len(_display_values) else 0.0,
-            "Buy multiplier": _multiplier,
+            "Buy multiplier range": _multiplier_range,
         })
     occurrence = pd.DataFrame(_display_rows)
     _chart_labels = [
-        f"{row['Risk range']}<br>{row['Buy multiplier']:g}×"
+        f"{row['Risk range']}<br>{row['Buy multiplier range']}"
         for row in _display_rows
     ]
     fig_occurrence = go.Figure()
@@ -2101,11 +2118,11 @@ elif mode == "DCA Today":
         x=_chart_labels,
         y=occurrence["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks", "Buy multiplier"]].to_numpy(),
+        customdata=occurrence[["Weeks", "Buy multiplier range"]].to_numpy(),
         hovertemplate=(
             "Display risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
-            "<br>Buy multiplier: %{customdata[1]}×"
+            "<br>Buy multiplier range: %{customdata[1]}"
             "<extra></extra>"
         ),
     )
@@ -2119,7 +2136,7 @@ elif mode == "DCA Today":
     st.caption(
         f"Current Research display risk {current_research_display_risk:.3f}/0.400 (orange band). "
         "This is a nonlinear, display-only rescaling of the full R2 0.00–1.00 score. "
-        "All historical weeks are retained. The underlying raw R2 score still controls the "
+        "Arrow labels show multiplier changes from lower to higher risk within a display band. All historical weeks are retained. The underlying raw R2 score still controls the "
         "existing multiplier and >0.50 stop-buy protection; no sizing or backtest inputs changed."
     )
 
