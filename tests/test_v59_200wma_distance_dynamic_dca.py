@@ -73,6 +73,17 @@ class DynamicWmaDcaTests(unittest.TestCase):
             study.allocation_pct(second["ratio_to_200wma"], study.LADDERS["A_measured"]),
         )
 
+    def test_synthetic_stress_covers_false_bottoms_and_missed_rally(self):
+        results = study.synthetic_stress_scenarios()
+        self.assertEqual(len(results), 35)
+        rally = [r for r in results if r["scenario"] == "missed_rally_no_discount"]
+        by_policy = {r["policy"]: r for r in rally}
+        for policy in ("A_measured", "B_stepped", "C_aggressive"):
+            self.assertAlmostEqual(by_policy[policy]["equity_uplift_vs_current_pct"], 0.0, places=8)
+        for row in results:
+            self.assertGreaterEqual(row["remaining_cash_pct_initial_cash"], 0.0)
+            self.assertLessEqual(row["max_drawdown_pct"], 0.0)
+
     def test_wma_excludes_the_signal_sunday_close(self):
         index = pd.date_range("2013-01-06", periods=400 * 7 + 2, freq="D", tz="UTC")
         prices = pd.Series([100.0 + i for i in range(len(index))], index=index)
