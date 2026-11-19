@@ -1,0 +1,38 @@
+name: V6.0 cumulative deployment-cap sensitivity
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_deployment_cap_report.py"
+      - "engines/research/v60_synthetic_stress.py"
+      - "tests/test_v60_200wma_backtest.py"
+      - "tests/test_v60_deployment_cap.py"
+      - ".github/workflows/v60_deployment_cap_report.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-cap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run V6.0 cumulative cap tests
+        run: python -m unittest discover -s tests -p "test_v60_deployment_cap.py" -v
+      - name: Generate cumulative deployment sensitivity report
+        run: python -m engines.research.v60_deployment_cap_report --output-dir artifacts/v60_deployment_cap
+      - name: Upload deployment-cap report
+        uses: actions/upload-artifact@v4
+        with:
+          name: v60-cumulative-deployment-cap-report
+          path: artifacts/v60_deployment_cap/
+          if-no-files-found: error
+          retention-days: 90
