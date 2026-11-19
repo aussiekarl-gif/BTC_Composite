@@ -53,17 +53,18 @@ def build_scale_results(weekly_rows: list[dict]) -> pd.DataFrame:
                     fixed.update(common)
                     fixed["split"] = assign_validation_split(fixed)
                     output.append(fixed)
-                    for scale in SCALES:
-                        dynamic = simulate_weekly_cohort(
-                            cohort, policy="measured", cash_yield=cash_yield,
-                            protected_cash_floor_pct_initial_cash=floor,
-                            max_cumulative_buy_spend_pct_initial_cash=cap,
-                            thresholds=THRESHOLDS, threshold_set="20_25_30",
-                            dynamic_allocation_scale=scale,
-                        )
-                        dynamic.update(common)
-                        dynamic["split"] = assign_validation_split(dynamic)
-                        output.append(dynamic)
+                    for threshold_name, thresholds in THRESHOLD_SETS.items():
+                        for scale in SCALES:
+                            dynamic = simulate_weekly_cohort(
+                                cohort, policy="measured", cash_yield=cash_yield,
+                                protected_cash_floor_pct_initial_cash=floor,
+                                max_cumulative_buy_spend_pct_initial_cash=cap,
+                                thresholds=thresholds, threshold_set=threshold_name,
+                                dynamic_allocation_scale=scale,
+                            )
+                            dynamic.update(common)
+                            dynamic["split"] = assign_validation_split(dynamic)
+                            output.append(dynamic)
     return pd.DataFrame(output)
 
 
