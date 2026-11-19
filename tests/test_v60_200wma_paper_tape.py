@@ -1,14 +1,10 @@
 import datetime as dt
 import unittest
 
-from engines.research.cycle_forward_signal_tape import (
-    SIGNAL_COLUMNS as BTC_COLUMNS, _dump_rows as dump_btc_rows,
-)
-from engines.research.ibit_asx_forward_close_tape import COLUMNS as ASX_COLUMNS
 from engines.research.v60_200wma_paper_tape import (
-    PAPER_START_AFTER_UTC, SIGNAL_COLUMNS, EXECUTION_COLUMNS,
-    _append, _next_asx_session, build_paper_signal, build_asx_observation,
-    process_tapes,
+    PAPER_START_AFTER_UTC, BTC_COLUMNS, ASX_COLUMNS, SIGNAL_COLUMNS,
+    EXECUTION_COLUMNS, _append, _dump_rows, _next_asx_session,
+    build_paper_signal, build_asx_observation, process_tapes,
 )
 
 
@@ -97,7 +93,7 @@ class V60ProspectivePaperTapeTests(unittest.TestCase):
 
     def test_hash_chained_signal_tape_is_append_only(self):
         row = build_paper_signal(sample_btc_row(), model_sha256="c" * 64)
-        empty = dump_btc_rows([], SIGNAL_COLUMNS)
+        empty = _dump_rows([], SIGNAL_COLUMNS)
         updated, added = _append(empty, row, SIGNAL_COLUMNS, "btc_observation_date_utc")
         self.assertTrue(added)
         unchanged, duplicate_added = _append(updated, row, SIGNAL_COLUMNS, "btc_observation_date_utc")
@@ -105,10 +101,10 @@ class V60ProspectivePaperTapeTests(unittest.TestCase):
         self.assertEqual(unchanged, updated)
 
     def test_empty_tape_does_not_create_historical_signals(self):
-        btc_text = dump_btc_rows([], BTC_COLUMNS)
-        asx_text = dump_btc_rows([], ASX_COLUMNS)
+        btc_text = _dump_rows([], BTC_COLUMNS)
+        asx_text = _dump_rows([], ASX_COLUMNS)
         signal_text = dump_btc_rows([], SIGNAL_COLUMNS)
-        execution_text = dump_btc_rows([], EXECUTION_COLUMNS)
+        execution_text = _dump_rows([], EXECUTION_COLUMNS)
         new_signal, new_execution, status = process_tapes(
             btc_text, asx_text, signal_text, execution_text,
             model_sha256="c" * 64,
