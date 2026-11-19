@@ -1,6 +1,7 @@
 """Regression tests for matched-budget historical V6.0 pacing analysis."""
 from datetime import date, timedelta
 import unittest
+import pandas as pd
 
 from engines.research.v60_historical_pacing_report import (
     build_pacing_results, summarise_pacing,
@@ -41,7 +42,7 @@ class V60HistoricalPacingTests(unittest.TestCase):
                 & (fixed["protected_cash_floor_pct_initial_cash"] == row["protected_cash_floor_pct_initial_cash"])
                 & (
                     fixed["max_cumulative_buy_spend_pct_initial_cash"].fillna(-1)
-                    == (-1 if row["max_cumulative_buy_spend_pct_initial_cash"] is None
+                    == (-1 if pd.isna(row["max_cumulative_buy_spend_pct_initial_cash"])
                         else row["max_cumulative_buy_spend_pct_initial_cash"])
                 )
             ]
