@@ -13,14 +13,81 @@ import math
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from engines.research.cycle_forward_signal_tape import (
-    GENESIS, SIGNAL_COLUMNS as BTC_COLUMNS,
-    _read_rows, _dump_rows, _signature, _clean_input,
-)
-from engines.research.ibit_asx_forward_close_tape import COLUMNS as ASX_COLUMNS
 from engines.research.v60_200wma_policy import (
     THRESHOLD_SETS, allocation_for_discount,
 )
+
+GENESIS = "0" * 64
+BTC_COLUMNS = (
+    "observation_date_utc", "captured_at_utc",
+    "signal_input_last_prior_close_date_utc", "btc_usd_observed_close",
+    "prior_btc_usd_close", "prior_200wma_usd", "prior_close_div_200wma",
+    "fx_observed_prior_aud_per_usd", "fx_prior_date_utc",
+    "verified_halving_date", "days_after_halving", "signal",
+    "buy_pct_of_remaining_available_cash", "sell_pct_of_current_holdings",
+    "trailing_90day_drawdown_prior_pct", "prior_50dma_declining",
+    "lagged_30d_annualised_volatility_pct", "market_data_provider",
+    "source_crosscheck_max_diff_pct", "model_name", "model_code_sha256",
+    "point_in_time_onchain_risk_status", "trade_executable",
+    "prior_row_hash", "row_hash",
+)
+ASX_COLUMNS = (
+    "market_session_date_sydney", "captured_at_utc",
+    "provider_daily_candle_timestamp_utc", "symbol", "currency",
+    "reported_close_aud", "daily_low_aud", "daily_high_aud",
+    "daily_volume", "provider", "single_provider_unverified_execution",
+    "is_confirmed_broker_fill", "prior_row_hash", "row_hash",
+)
+
+
+def _canonical(row: dict, columns: tuple[str, ...]) -> str:
+    obj = {c: str(row[c]) for c in columns if c != "row_hash"}
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _signature(row: dict, columns: tuple[str, ...]) -> str:
+    return hashlib.sha256(_canonical(row, columns).encode("utf-8")).hexdigest()
+
+
+def _clean_input(row: dict, columns: tuple[str, ...]) -> dict:
+    if set(row) != set(columns) - {"prior_row_hash", "row_hash"}:
+        raise ValueError("Unexpected immutable V6.0 tape schema")
+    return {k: str(row[k]) for k in columns if k not in ("prior_row_hash", "row_hash")}
+
+
+def _read_rows(content: str, columns: tuple[str, ...], *, date_key: str | None = None) -> list[dict]:
+    import csv
+    import io
+    if not content:
+        return []
+    reader = csv.DictReader(io.StringIO(content))
+    if reader.fieldnames != list(columns):
+        raise ValueError("Historical input tape columns changed; refuse migration")
+    rows = list(reader)
+    previous = GENESIS
+    seen = set()
+    for row in rows:
+        if None in row or any(v is None for v in row.values()):
+            raise ValueError("Corrupted immutable tape columns")
+        if row["prior_row_hash"] != previous or row["row_hash"] != _signature(row, columns):
+            raise ValueError("Modified, reordered or corrupted input tape")
+        if date_key:
+            key = row[date_key]
+            if key in seen:
+                raise ValueError("Duplicate immutable tape observation date")
+            seen.add(key)
+        previous = row["row_hash"]
+    return rows
+
+
+def _dump_rows(rows: list[dict], columns: tuple[str, ...]) -> str:
+    import csv
+    import io
+    stream = io.StringIO(newline="")
+    writer = csv.DictWriter(stream, fieldnames=list(columns), lineterminator="\\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return stream.getvalue()
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "data" / "research_forward_validation"
@@ -153,6 +220,11 @@ def build_paper_signal(btc_row: dict, *, model_sha256: str,
         raise ValueError("Sunday close must be captured after signal date")
     close = float(btc_row["prior_btc_usd_close"])
     prior_wma = float(btc_row["prior_200wma_usd"])
+    crosscheck = float(btc_row["source_crosscheck_max_diff_pct"])
+    if not math.isfinite(crosscheck) or crosscheck > 1.0:
+        raise ValueError("BTC source cross-check exceeds 1%; refuse paper observation")
+    if not btc_row["market_data_provider"] or len(btc_row["row_hash"]) != 64:
+        raise ValueError("BTC source provenance or row hash missing")
     ratio = float(btc_row["prior_close_div_200wma"])
     if not all(math.isfinite(x) and x > 0 for x in (close, prior_wma, ratio)):
         raise ValueError("Invalid Sunday close or prior 200WMA")
@@ -203,11 +275,17 @@ def build_asx_observation(signal_row: dict, asx_row: dict) -> dict:
     if local.date() != observed or local.time() < dt.time(17, 0):
         raise ValueError("ASX close must be captured after 17:00 Sydney on exact session")
     if (asx_row["symbol"] != "ASX:IBIT" or asx_row["currency"] != "AUD"
-            or asx_row["is_confirmed_broker_fill"] != "False"):
-        raise ValueError("Refuse non-AUD ASX:IBIT or fabricated broker fill")
+            or asx_row["is_confirmed_broker_fill"] != "False"
+            or asx_row["single_provider_unverified_execution"] != "True"
+            or asx_row["provider"] != "Yahoo_Finance_IBIT.AX_daily_candle_indicative"):
+        raise ValueError("Refuse non-AUD ASX:IBIT, wrong provider or fabricated broker fill")
     close = float(asx_row["reported_close_aud"])
-    if not math.isfinite(close) or close <= 0:
-        raise ValueError("Invalid indicative ASX:IBIT close")
+    low, high = float(asx_row["daily_low_aud"]), float(asx_row["daily_high_aud"])
+    volume = int(asx_row["daily_volume"])
+    if (not all(math.isfinite(x) and x > 0 for x in (close, low, high))
+            or high < low or not low - 0.02 <= close <= high + 0.02 or volume < 0
+            or len(asx_row["row_hash"]) != 64):
+        raise ValueError("Invalid indicative ASX:IBIT close or source hash")
     return {
         "btc_observation_date_utc": signal_row["btc_observation_date_utc"],
         "expected_asx_session_date_sydney": expected.isoformat(),
