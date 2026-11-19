@@ -114,18 +114,21 @@ def build_weekly_rows(btc: pd.DataFrame, fx: pd.Series) -> list[dict]:
 
 def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
              cash_yield: float = CASH_YIELD, initial_btc_fraction: float = INITIAL_BTC_FRACTION,
-             max_weekly_fraction: float = MAX_WEEKLY_CAPITAL_FRACTION) -> dict:
-    """Self-financing 104-week replay with percentage-of-remaining-cash sizing."""
+             max_weekly_fraction: float = MAX_WEEKLY_CAPITAL_FRACTION,
+             cash_floor_fraction: float = 0.0) -> dict:
+    """Self-financing replay; protected cash is excluded from deployable cash."""
     if policy not in (*LADDERS, "fixed_weekly"):
         raise ValueError("Unknown policy")
     if len(rows) != HORIZON_WEEKS:
         raise ValueError("A complete 104-week cohort is required")
     if not (capital > 0 and 0 <= cash_yield < 1 and
-            0 <= initial_btc_fraction <= 1 and 0 < max_weekly_fraction <= 1):
+            0 <= initial_btc_fraction <= 1 and 0 < max_weekly_fraction <= 1 and
+            0 <= cash_floor_fraction < 1):
         raise ValueError("Invalid account or guardrail input")
 
     starting_cash = capital * (1.0 - initial_btc_fraction)
     cash = starting_cash
+    protected_cash_floor = starting_cash * cash_floor_fraction
     first_price = float(rows[0]["btc_price_aud"])
     if not math.isfinite(first_price) or first_price <= 0:
         raise ValueError("Invalid first execution price")
@@ -161,12 +164,15 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
         if last_buy_date is not None and (day - last_buy_date).days < COOLDOWN_DAYS:
             target_pct = 0.0
         elif policy == "fixed_weekly":
-            target_pct = min(1.0, starting_cash / HORIZON_WEEKS / max(cash, 1e-12))
+            deployable_cash = max(0.0, cash - protected_cash_floor)
+            target_pct = min(1.0, starting_cash / HORIZON_WEEKS / max(deployable_cash, 1e-12))
         else:
+            deployable_cash = max(0.0, cash - protected_cash_floor)
             target_pct = allocation_pct(ratio, LADDERS[policy])
 
-        target_spend = cash * target_pct
-        spend = min(cash, target_spend, weekly_cap)
+        deployable_cash = max(0.0, cash - protected_cash_floor)
+        target_spend = deployable_cash * target_pct
+        spend = min(deployable_cash, target_spend, weekly_cap)
         if spend >= MIN_TICKET_AUD and spend > FIXED_FEE_AUD:
             net = (spend - FIXED_FEE_AUD) * (1.0 - BUY_FRICTION)
             cash -= spend
@@ -210,6 +216,7 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
     )
     return {
         "policy": policy,
+        "cash_floor_fraction_initial_cash": cash_floor_fraction,
         "equity_aud": equity,
         "btc_units": btc,
         "terminal_btc_equivalent": btc + cash / terminal_price,
@@ -296,6 +303,7 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
         "summary": summary,
         "cohort_results": trials,
         "synthetic_stress_scenarios": synthetic_stress_scenarios(capital=capital),
+        "cash_floor_sensitivity": evaluate_cash_floor_sensitivity(rows, capital=capital),
         "limitations": [
             "Historical BTC/AUD spot is a proxy, not executable ASX:IBIT pricing.",
             "Historical provider publication vintages are not independently attested.",
@@ -303,6 +311,7 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
             "Candidate thresholds were proposed after reviewing BTC history; holdout is not pristine.",
             "Same-spend equal-sized/equal-transaction-count BTC comparison is a hindsight attribution diagnostic, not a deployable policy.",
             "Synthetic false-bottom and rally paths are deterministic stress tests, not probability-weighted forecasts.",
+            "Cash-floor sensitivity is a separate research overlay; no floor is approved for live use.",
             "Cash yield, ETF drag, spread and fee assumptions are illustrative.",
             "No Production, live V5.9, portfolio, dashboard, notification, brokerage or order changes.",
         ],
@@ -310,7 +319,78 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
 
 
 
-def synthetic_stress_scenarios(*, capital: float = CAPITAL_AUD) -> list[dict]:
+
+def evaluate_cash_floor_sensitivity(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
+    """Matched cohort replay across protected-cash floors, all expressed as initial-cash %."""
+    windows = base.cohort_windows(rows)
+    floors = (0.0, 0.10, 0.20, 0.30)
+    trials = []
+    for cohort in windows:
+        for cash_yield in CASH_YIELDS:
+            for floor in floors:
+                for policy in (*LADDERS, "fixed_weekly"):
+                    result = simulate(
+                        cohort["rows"], policy=policy, capital=capital,
+                        cash_yield=cash_yield, cash_floor_fraction=floor,
+                    )
+                    trials.append({
+                        k: cohort[k] for k in ("anchor", "start", "end", "split")
+                    } | {"cash_yield_annual": cash_yield} | result)
+    lookup = {
+        (r["anchor"], r["cash_yield_annual"], r["cash_floor_fraction_initial_cash"], r["policy"]): r
+        for r in trials
+    }
+    for row in trials:
+        same_floor = lookup[(
+            row["anchor"], row["cash_yield_annual"],
+            row["cash_floor_fraction_initial_cash"], "current_2_5pct"
+        )]
+        no_floor_current = lookup[(row["anchor"], row["cash_yield_annual"], 0.0, "current_2_5pct")]
+        row["equity_uplift_vs_current_same_floor_pct"] = 100.0 * (
+            row["equity_aud"] / same_floor["equity_aud"] - 1.0
+        )
+        row["equity_uplift_vs_no_floor_current_pct"] = 100.0 * (
+            row["equity_aud"] / no_floor_current["equity_aud"] - 1.0
+        )
+
+    summary = []
+    for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
+        for cash_yield in CASH_YIELDS:
+            for floor in floors:
+                for policy in (*LADDERS, "fixed_weekly"):
+                    selected = [
+                        r for r in trials if r["split"] == split
+                        and r["cash_yield_annual"] == cash_yield
+                        and r["cash_floor_fraction_initial_cash"] == floor
+                        and r["policy"] == policy
+                    ]
+                    if not selected:
+                        continue
+                    summary.append({
+                        "split": split, "cash_yield_annual": cash_yield,
+                        "cash_floor_fraction_initial_cash": floor,
+                        "policy": policy, "cohorts": len(selected),
+                        "median_equity_uplift_vs_current_same_floor_pct": median(
+                            r["equity_uplift_vs_current_same_floor_pct"] for r in selected
+                        ),
+                        "worst_equity_uplift_vs_current_same_floor_pct": min(
+                            r["equity_uplift_vs_current_same_floor_pct"] for r in selected
+                        ),
+                        "median_equity_uplift_vs_no_floor_current_pct": median(
+                            r["equity_uplift_vs_no_floor_current_pct"] for r in selected
+                        ),
+                        "median_remaining_cash_pct_initial_cash": median(
+                            r["remaining_cash_pct_initial_cash"] for r in selected
+                        ),
+                        "median_drawdown_pct": median(r["max_drawdown_pct"] for r in selected),
+                        "median_buy_count": median(r["buy_count"] for r in selected),
+                    })
+    return {"floors": list(floors), "summary": summary, "cohort_results": trials}
+
+
+
+def synthetic_stress_scenarios(*, capital: float = CAPITAL_AUD,
+                               cash_floor_fractions: tuple[float, ...] = (0.0, 0.10, 0.20, 0.30)) -> list[dict]:
     """Illustrative false-bottom and missed-rally paths; never historical forecasts."""
     start = date(2020, 1, 6)
     initial_price = 100_000.0
@@ -353,14 +433,16 @@ def synthetic_stress_scenarios(*, capital: float = CAPITAL_AUD) -> list[dict]:
     paths.append(("missed_rally_no_discount", rally_rows))
 
     for label, rows in paths:
+      for floor in cash_floor_fractions:
         results = {
-            policy: simulate(rows, policy=policy, capital=capital, cash_yield=CASH_YIELD)
+            policy: simulate(rows, policy=policy, capital=capital, cash_yield=CASH_YIELD,
+                             cash_floor_fraction=floor)
             for policy in (*LADDERS, "fixed_weekly")
         }
         baseline = results["current_2_5pct"]
         for policy, result in results.items():
             scenarios.append({
-                "scenario": label, "policy": policy,
+                "scenario": label, "cash_floor_fraction_initial_cash": floor, "policy": policy,
                 "equity_uplift_vs_current_pct": 100.0 * (
                     result["equity_aud"] / baseline["equity_aud"] - 1.0),
                 "btc_equivalent_uplift_vs_current_pct": 100.0 * (

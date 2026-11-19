@@ -49,6 +49,29 @@ class DynamicWmaDcaTests(unittest.TestCase):
         five_pct_yield = study.simulate(rows, policy="current_2_5pct", cash_yield=0.05)
         self.assertGreater(five_pct_yield["cash_aud"], zero_yield["cash_aud"])
 
+    def test_cash_floor_is_never_spent(self):
+        start = date(2020, 1, 6)
+        rows = []
+        for i in range(104):
+            day = start + timedelta(weeks=i)
+            rows.append({"date": day, "signal_date": day-timedelta(days=1),
+                         "btc_price_aud": 100000.0, "ratio_to_200wma": .24})
+        result = study.simulate(rows, policy="C_aggressive", cash_floor_fraction=.20)
+        self.assertGreaterEqual(result["remaining_cash_pct_initial_cash"], 20.0 - 1e-6)
+        self.assertEqual(result["cash_floor_fraction_initial_cash"], .20)
+
+    def test_zero_cash_floor_preserves_existing_baseline_behaviour(self):
+        start = date(2020, 1, 6)
+        rows = []
+        for i in range(104):
+            day = start + timedelta(weeks=i)
+            rows.append({"date": day, "signal_date": day-timedelta(days=1),
+                         "btc_price_aud": 100000.0, "ratio_to_200wma": .90})
+        ordinary = study.simulate(rows, policy="current_2_5pct")
+        zero_floor = study.simulate(rows, policy="current_2_5pct", cash_floor_fraction=0.0)
+        self.assertAlmostEqual(ordinary["equity_aud"], zero_floor["equity_aud"], places=8)
+        self.assertAlmostEqual(ordinary["cash_aud"], zero_floor["cash_aud"], places=8)
+
     def test_simulation_obeys_weekly_cap_and_seven_day_spacing(self):
         start = date(2020, 1, 6)
         rows = []
@@ -75,11 +98,15 @@ class DynamicWmaDcaTests(unittest.TestCase):
 
     def test_synthetic_stress_covers_false_bottoms_and_missed_rally(self):
         results = study.synthetic_stress_scenarios()
-        self.assertEqual(len(results), 35)
+        self.assertEqual(len(results), 140)
         rally = [r for r in results if r["scenario"] == "missed_rally_no_discount"]
-        by_policy = {r["policy"]: r for r in rally}
-        for policy in ("A_measured", "B_stepped", "C_aggressive"):
-            self.assertAlmostEqual(by_policy[policy]["equity_uplift_vs_current_pct"], 0.0, places=8)
+        for floor in (0.0, 0.10, 0.20, 0.30):
+            same_floor = [r for r in rally if r["cash_floor_fraction_initial_cash"] == floor]
+            by_policy = {r["policy"]: r for r in same_floor}
+            for policy in ("A_measured", "B_stepped", "C_aggressive"):
+                self.assertAlmostEqual(
+                    by_policy[policy]["equity_uplift_vs_current_pct"], 0.0, places=8
+                )
         for row in results:
             self.assertGreaterEqual(row["remaining_cash_pct_initial_cash"], 0.0)
             self.assertLessEqual(row["max_drawdown_pct"], 0.0)
