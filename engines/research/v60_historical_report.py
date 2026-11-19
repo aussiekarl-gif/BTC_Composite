@@ -18,6 +18,7 @@ import requests
 from engines.research.v60_200wma_backtest import (
     build_weekly_execution_rows, rolling_104_week_comparison,
 )
+from engines.research.v60_200wma_policy import THRESHOLD_SETS
 
 ROOT = Path(__file__).resolve().parents[2]
 BTC_FILE = ROOT / "data" / "mvrv_z_score_2026-10-06T21-46-14.csv"
@@ -177,7 +178,7 @@ def build_report(output_dir: Path) -> dict:
     for cash_yield in CASH_YIELDS:
         cohort_results = rolling_104_week_comparison(
             weekly, floors_pct=CASH_FLOORS, cash_yield=cash_yield,
-            threshold_sets=("20_25_30", "10_15_20"),
+            threshold_sets=tuple(THRESHOLD_SETS),
         )
         for row in cohort_results:
             row["cash_yield"] = cash_yield
@@ -217,10 +218,7 @@ def build_report(output_dir: Path) -> dict:
         "cash_yields_annual": list(CASH_YIELDS),
         "protected_cash_floors_pct_initial_cash": list(CASH_FLOORS),
         "policies": ["fixed_weekly", "baseline", "measured", "stepped", "aggressive"],
-        "threshold_sets_tested": {
-            "20_25_30": [20.0, 25.0, 30.0],
-            "10_15_20": [10.0, 15.0, 20.0],
-        },
+        "threshold_sets_tested": {name: list(values) for name, values in THRESHOLD_SETS.items()},
         "account_assumptions": {
             "capital_aud": 510000.0,
             "initial_btc_fraction": 0.41,
