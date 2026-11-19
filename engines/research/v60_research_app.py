@@ -177,12 +177,74 @@ st.caption(
     "discount-tier activations concentrated in 2022–2023."
 )
 
+
+SCALE_EVIDENCE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "data" / "research_forward_validation"
+    / "v60_allocation_scale_summary_2026-11-19.json"
+)
+scale_evidence = json.loads(SCALE_EVIDENCE_PATH.read_text(encoding="utf-8"))
+
+st.subheader("Slower allocation sensitivity — 0% and 5% cash yield")
+st.caption(
+    "Measured 20/25/30 ladder scaled to 0.5x, 0.75x and 1.0x; "
+    "30% protected-cash reserve; 50% cumulative-spend cap; "
+    "fixed weekly DCA matched by cohort, yield, reserve and cap."
+)
+scale_frame = pd.DataFrame(scale_evidence["historical_scale_comparison"]).rename(columns={
+    "split": "Period",
+    "cash_yield_pct": "Gross cash yield",
+    "scale": "Ladder scale",
+    "base_buy_pct": "Base allocation",
+    "top_tier_buy_pct": "30%-discount allocation",
+    "median_equity_uplift_pct": "Median equity uplift",
+    "p10_equity_uplift_pct": "10th-percentile uplift",
+    "worst_equity_uplift_pct": "Worst cohort",
+    "median_btc_uplift_pct": "Median BTC-unit uplift",
+    "win_rate_pct": "Cohort wins",
+    "median_drawdown_difference_pp": "Drawdown difference (pp)",
+})
+for column in (
+    "Gross cash yield", "Base allocation", "30%-discount allocation",
+    "Median equity uplift", "10th-percentile uplift", "Worst cohort",
+    "Median BTC-unit uplift", "Cohort wins",
+):
+    scale_frame[column] = scale_frame[column].map(lambda x: f"{x:+.2f}%")
+scale_frame["Ladder scale"] = scale_frame["Ladder scale"].map(lambda x: f"{x:.2f}x")
+scale_frame["Drawdown difference (pp)"] = scale_frame["Drawdown difference (pp)"].map(lambda x: f"{x:+.2f}")
+st.dataframe(scale_frame, hide_index=True, width="stretch")
+st.warning(
+    "The 0.5x ladder is more conservative, not proven superior. In the 2017–2021 "
+    "training split its median uplift was close to zero and the win rate was only "
+    "39.9% at 0% yield / 52.5% at 5% yield. The stronger holdout result is "
+    "concentrated in a later market regime; all rolling cohorts overlap."
+)
+
+st.subheader("Synthetic path comparison — 50% cap, 30% reserve")
+stress_frame = pd.DataFrame(scale_evidence["synthetic_stress_cap_50"]).rename(columns={
+    "scenario": "Synthetic path",
+    "scale": "Ladder scale",
+    "base_buy_pct": "Base allocation",
+    "measured_minus_fixed_return_pp": "Return difference vs fixed (pp)",
+    "measured_btc_uplift_vs_fixed_pct": "BTC-unit difference vs fixed",
+})
+stress_frame["Ladder scale"] = stress_frame["Ladder scale"].map(lambda x: f"{x:.2f}x")
+stress_frame["Base allocation"] = stress_frame["Base allocation"].map(lambda x: f"{x:.2f}%")
+stress_frame["Return difference vs fixed (pp)"] = stress_frame["Return difference vs fixed (pp)"].map(lambda x: f"{x:+.2f}")
+stress_frame["BTC-unit difference vs fixed"] = stress_frame["BTC-unit difference vs fixed"].map(lambda x: f"{x:+.2f}%")
+st.dataframe(stress_frame, hide_index=True, width="stretch")
+st.caption(
+    "The slower ladder reduces losses in the prolonged-bear and extended-bear paths, "
+    "but gives up some rapid-recovery upside. These are synthetic paths, not forecasts."
+)
+
 st.subheader("Validation status")
 st.info(
     "Historical replay and synthetic stress testing are complete. "
     "The V6.0 prospective paper tape is initialized on a separate research branch; "
     f"its first eligible Sunday close is {paper['first_eligible_sunday_close_utc']}. "
-    f"It currently contains {paper['signal_rows']} signal and "
+    f"It is schema v{paper['signal_schema_version']} and records allocation scales "
+    f"{paper['allocation_scale_candidates']}. It currently contains {paper['signal_rows']} signal and "
     f"{paper['asx_observation_rows']} ASX observation rows. "
     "Cumulative deployment pacing remains under research. No candidate is approved "
     "for live investing."
