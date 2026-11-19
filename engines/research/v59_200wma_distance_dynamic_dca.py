@@ -18,7 +18,6 @@ import pandas as pd
 
 from engines.research import research_model as model
 from engines.research import v59_causal_timing_horse_race as base
-from engines.research.v59_live_signal_snapshot import live_risk_params
 
 CAPITAL_AUD = 510_000.0
 INITIAL_BTC_FRACTION = 0.41
@@ -64,22 +63,52 @@ def allocation_pct(ratio_to_200wma: float, ladder: tuple[float, ...]) -> float:
     return float(ladder[tier])
 
 
-def attach_strict_prior_200wma(rows: list[dict], scored: pd.DataFrame) -> list[dict]:
-    """Replace inclusive WMA ratios with strictly prior 200 completed Sunday closes."""
-    prices = pd.to_numeric(scored["price"], errors="coerce").copy()
+def build_weekly_rows(btc: pd.DataFrame, fx: pd.Series) -> list[dict]:
+    """Build prior-Sunday signal / next-Monday proxy rows without any risk inputs."""
+    if btc is None or btc.empty or fx is None or fx.empty or "price" not in btc:
+        raise ValueError("BTC price history and dated AUD/USD FX are required")
+    prices = pd.to_numeric(btc["price"], errors="coerce").copy()
     prices.index = pd.to_datetime(prices.index, utc=True).floor("D")
-    weekly = prices.resample("W-SUN").last()
-    prior_wma = weekly.rolling(200, min_periods=200).mean().shift(1)
-    result = []
-    for source in rows:
-        signal_day = pd.Timestamp(source["signal_date"], tz="UTC")
-        close = float(prices.loc[signal_day])
-        wma = float(prior_wma.loc[signal_day]) if signal_day in prior_wma.index else math.nan
-        row = dict(source)
-        row["prior_200wma_usd"] = wma
-        row["ratio_to_200wma"] = close / wma if math.isfinite(wma) and wma > 0 else math.nan
-        result.append(row)
-    return result
+    prices = prices.dropna().sort_index()
+    fx = pd.to_numeric(fx, errors="coerce").dropna().copy()
+    fx.index = pd.to_datetime(fx.index, utc=True).floor("D")
+    fx = fx.sort_index()
+    if prices.index.has_duplicates or fx.index.has_duplicates:
+        raise ValueError("BTC and FX observations must have unique dates")
+    weekly_close = prices.resample("W-SUN").last()
+    # Shift by one completed week: signal Sunday's close is NOT in its WMA.
+    prior_wma = weekly_close.rolling(200, min_periods=200).mean().shift(1)
+    rows = []
+    for monday in prices.index:
+        if monday.weekday() != 0 or monday.date() < date(2017, 1, 1):
+            continue
+        sunday = monday - pd.Timedelta(days=1)
+        if sunday not in prices.index:
+            continue
+        fx_pos = fx.index.searchsorted(sunday, side="right") - 1
+        if fx_pos < 0:
+            continue
+        fx_day = fx.index[fx_pos]
+        usd_per_aud = float(fx.iloc[fx_pos])
+        if not (0 <= (monday - fx_day).days <= 5 and
+                math.isfinite(usd_per_aud) and usd_per_aud > 0):
+            continue
+        wma = float(prior_wma.loc[sunday]) if sunday in prior_wma.index else math.nan
+        sunday_close = float(prices.loc[sunday])
+        monday_close = float(prices.loc[monday])
+        if not all(math.isfinite(x) and x > 0 for x in (sunday_close, monday_close)):
+            continue
+        rows.append({
+            "date": monday.date(), "signal_date": sunday.date(),
+            "btc_price_aud": monday_close / usd_per_aud,
+            "btc_usd_signal_close": sunday_close,
+            "prior_200wma_usd": wma,
+            "ratio_to_200wma": sunday_close / wma if math.isfinite(wma) and wma > 0 else math.nan,
+            "usd_per_aud": usd_per_aud, "fx_date": fx_day.date(),
+        })
+    if len(rows) < 100:
+        raise ValueError("Insufficient dated weekly BTC/FX history")
+    return rows
 
 
 def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
@@ -246,12 +275,7 @@ def fetch_and_evaluate() -> dict:
     fx = model.fetch_aud_usd_rates(start, now)
     if btc is None or btc.empty or fx is None or fx.empty:
         raise RuntimeError("BTC/FX history unavailable; refusing synthetic fallback")
-    priced = model.merge_bgeometrics(btc, pd.DataFrame())
-    scored = model.add_risk_indicators(priced, "Research WF Power Law", live_risk_params())
-    rows = base.build_weekly_rows(scored, fx)
-    rows = attach_strict_prior_200wma(rows, scored)
-    # The new decision path is independent of risk; strip risk fields before evaluation.
-    rows = [{k: v for k, v in row.items() if not k.startswith("risk_")} for row in rows]
+    rows = build_weekly_rows(btc, fx)
     return evaluate(rows)
 
 
