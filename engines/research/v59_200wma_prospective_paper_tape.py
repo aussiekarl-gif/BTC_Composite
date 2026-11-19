@@ -79,7 +79,8 @@ ASX_FULL_CLOSURES = {
     }),
 }
 ASX_CALENDAR_SOURCE = (
-    "ASX Trade official trading calendar 2026/2027; reviewed 2026-11-19"
+    "ASX Trade official trading calendar 2026/2027; reviewed 2026-11-19; " 
+  "https://www.asx.com.au/markets/market-resources/trading-hours-calendar/cash-market-trading-hours/trading-calendar"
 )
 
 
@@ -164,7 +165,7 @@ def build_paper_signal(btc_row: dict, *, model_sha256: str) -> dict:
         "btc_observation_date_utc": observation.isoformat(),
         "btc_captured_at_utc": captured.isoformat(),
         "signal_date_utc": signal_date.isoformat(),
-        "expected_next_asx_weekday_sydney": expected_asx.isoformat(),
+        "expected_next_asx_session_sydney": expected_asx.isoformat(),
         "btc_usd_sunday_close": f"{close:.6f}",
         "prior_200wma_usd": f"{prior_wma:.6f}",
         "discount_below_200wma_pct": f"{discount:.6f}",
@@ -182,10 +183,10 @@ def build_paper_signal(btc_row: dict, *, model_sha256: str) -> dict:
 
 def build_asx_observation(signal_row: dict, asx_row: dict) -> dict:
     expected = dt.date.fromisoformat(
-        signal_row["expected_next_asx_weekday_sydney"])
+        signal_row["expected_next_asx_session_sydney"])
     observed = dt.date.fromisoformat(asx_row["market_session_date_sydney"])
     if observed != expected:
-        raise ValueError("ASX quote is not the exact next expected weekday; no forward shift")
+        raise ValueError("ASX quote is not the exact expected ASX session; no forward shift")
     capture = dt.datetime.fromisoformat(asx_row["captured_at_utc"])
     if capture.tzinfo is None or capture.astimezone(SYDNEY).date() != observed:
         raise ValueError("ASX capture timestamp does not match Sydney session date")
@@ -248,7 +249,7 @@ def process_tapes(btc_text: str, asx_text: str, signal_text: str,
         date_key = signal["btc_observation_date_utc"]
         if date_key in execution_dates:
             continue
-        expected = signal["expected_next_asx_weekday_sydney"]
+        expected = signal["expected_next_asx_session_sydney"]
         match = next((r for r in asx_rows
                       if r["market_session_date_sydney"] == expected), None)
         if match is None:
