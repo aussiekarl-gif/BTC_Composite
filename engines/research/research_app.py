@@ -2064,33 +2064,38 @@ elif mode == "DCA Today":
     )
 
     st.subheader("Historical Weekly Risk Distribution")
-    # Match the clearer V5.8.2 histogram: show V5.9's actual raw 0.00–1.00
-    # sizing-risk scale, not the optional nonlinear 0.00–0.40 display transform.
-    # These eight mutually exclusive buckets retain all valid weekly observations.
+    # Option 1: transform the chart only. Raw R2 risk remains authoritative for
+    # sizing, multiplier selection, backtests and every stop-buy safety gate.
+    # The square-root display scale spreads low-end observations over 0.00–0.40
+    # and deliberately omits display bands above 0.40.
     _raw_values = pd.to_numeric(rarity_source, errors="coerce").dropna()
     _raw_values = _raw_values[_raw_values.between(0.0, 1.0)]
-    _raw_edges = [0.00, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 1.00]
-    _raw_rows = []
-    for _i, (_lower, _upper) in enumerate(zip(_raw_edges[:-1], _raw_edges[1:])):
+    _display_values = display_research_risk_series(_raw_values)
+    _display_edges = [0.00, 0.01, 0.02, 0.05, 0.10, 0.20, 0.30, 0.40]
+    # Invert the display transform at each bucket boundary so multiplier labels
+    # still reflect the true raw-risk ladder, not the transformed display value.
+    _raw_lower_edges = [(_edge / 0.40) ** 2 for _edge in _display_edges[:-1]]
+    _display_rows = []
+    for _i, (_lower, _upper) in enumerate(zip(_display_edges[:-1], _display_edges[1:])):
         _mask = (
-            (_raw_values >= _lower) & (_raw_values <= _upper)
-            if _i == len(_raw_edges) - 2
-            else ((_raw_values >= _lower) & (_raw_values < _upper))
+            (_display_values >= _lower) & (_display_values <= _upper)
+            if _i == len(_display_edges) - 2
+            else ((_display_values >= _lower) & (_display_values < _upper))
         )
         _weeks = int(_mask.sum())
-        _raw_rows.append({
+        _display_rows.append({
             "Risk range": f"{_lower:.2f}–{_upper:.2f}",
             "Weeks": _weeks,
-            "Percent": 100.0 * _weeks / len(_raw_values) if len(_raw_values) else 0.0,
+            "Percent": 100.0 * _weeks / len(_display_values) if len(_display_values) else 0.0,
         })
-    occurrence = pd.DataFrame(_raw_rows)
+    occurrence = pd.DataFrame(_display_rows)
     _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
-        occurrence["Risk range"].tolist(), _raw_edges[:-1],
+        occurrence["Risk range"].tolist(), _raw_lower_edges,
         active_smart_dca_curve,
     )
     fig_occurrence = go.Figure()
-    _cur_idx = min(7, int(np.searchsorted(
-        _raw_edges[1:], current_risk, side="right"
+    _cur_idx = min(len(_display_edges) - 2, int(np.searchsorted(
+        _display_edges[1:], current_research_display_risk, side="right"
     )))
     _bar_colors = [
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
@@ -2103,25 +2108,25 @@ elif mode == "DCA Today":
         marker_color=_bar_colors,
         customdata=_chart_custom.to_numpy(),
         hovertemplate=(
-            "BTC risk %{x}<br>%{y:.1f}% of weekly observations"
+            "Displayed BTC risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
-            "<br>Buy multiplier: %{customdata[1]}×"
+            "<br>Raw-risk buy multiplier: %{customdata[1]}×"
             "<extra></extra>"
         ),
     )
     fig_occurrence.update_layout(
-        xaxis_title="BTC Risk Range (0.00–1.00)",
+        xaxis_title="Displayed BTC Risk Range (0.00–0.40)",
         yaxis_title="Historical Weekly Frequency (%)",
         margin=dict(l=20, r=20, t=20, b=20),
         height=380,
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current raw R2 sizing risk {current_risk:.3f} (orange bar). "
-        "The chart uses the actual 0.00–1.00 risk score that selects the V5.9 "
-        "DCA multiplier and stop-buy protection. Each bucket shows its applicable "
-        "multiplier; all valid historical weeks are included. The separate 0.00–0.40 "
-        "display-risk metric is retained elsewhere as a presentation aid only."
+        f"Current display risk {current_research_display_risk:.3f}/0.400 (orange bar); "
+        f"underlying raw R2 sizing risk is {current_risk:.3f}/1.000. "
+        "The nonlinear chart is presentation-only: raw risk still selects the "
+        "V5.9 DCA multiplier and stop-buy protection. Multiplier labels are mapped "
+        "back to raw-risk thresholds. All valid historical weeks are retained."
     )
 
     # Side-by-side diagnostic: active tail-stretched Research sizing score
