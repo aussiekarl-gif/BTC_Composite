@@ -187,6 +187,15 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
 
     terminal_price = float(rows[-1]["btc_price_aud"])
     equity = cash + btc * terminal_price
+    # Hindsight-only timing diagnostic: spread the SAME gross spend equally
+    # over all 104 execution weeks, with identical per-buy costs.
+    uniform_gross_per_week = spent / HORIZON_WEEKS
+    uniform_net_per_week = max(0.0, uniform_gross_per_week - FIXED_FEE_AUD) * (1.0 - BUY_FRICTION)
+    uniform_btc_units = sum(uniform_net_per_week / float(r["btc_price_aud"]) for r in rows)
+    same_spend_btc_uplift = (
+        100.0 * (net_btc_bought / uniform_btc_units - 1.0)
+        if uniform_btc_units > 0 else 0.0
+    )
     return {
         "policy": policy,
         "equity_aud": equity,
@@ -199,6 +208,9 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
         "buy_count": buy_count,
         "biggest_buy_pct_original_capital": 100.0 * biggest_buy / capital,
         "average_net_entry_aud": net_cost / net_btc_bought if net_btc_bought else None,
+        "new_btc_bought_before_drag": net_btc_bought,
+        "same_spend_uniform_btc_units_hindsight": uniform_btc_units,
+        "same_spend_btc_timing_uplift_pct_hindsight": same_spend_btc_uplift,
         "max_drawdown_pct": 100.0 * max_drawdown,
     }
 
@@ -246,6 +258,8 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
                 "median_remaining_cash_pct_initial_cash": median(
                     r["remaining_cash_pct_initial_cash"] for r in selected),
                 "median_drawdown_pct": median(r["max_drawdown_pct"] for r in selected),
+                "median_same_spend_btc_timing_uplift_pct_hindsight": median(
+                    r["same_spend_btc_timing_uplift_pct_hindsight"] for r in selected),
                 "median_buy_count": median(r["buy_count"] for r in selected),
             })
     return {
@@ -268,6 +282,7 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
             "Historical provider publication vintages are not independently attested.",
             "Jan/July two-year cohorts overlap and are not independent cycles.",
             "Candidate thresholds were proposed after reviewing BTC history; holdout is not pristine.",
+            "Same-spend equal-week BTC comparison is a hindsight attribution diagnostic, not a deployable policy.",
             "Cash yield, ETF drag, spread and fee assumptions are illustrative.",
             "No Production, live V5.9, portfolio, dashboard, notification, brokerage or order changes.",
         ],
