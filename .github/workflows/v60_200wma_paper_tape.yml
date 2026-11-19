@@ -6,6 +6,12 @@ on:
     - cron: '23 10 * * *'
     - cron: '53 10 * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "engines/research/v60_200wma_paper_tape.py"
+      - "tests/test_v60_200wma_paper_tape.py"
+      - ".github/workflows/v60_200wma_paper_tape.yml"
   pull_request:
     paths:
       - "engines/research/v60_200wma_paper_tape.py"
