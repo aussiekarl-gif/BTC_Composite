@@ -187,11 +187,23 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
 
     terminal_price = float(rows[-1]["btc_price_aud"])
     equity = cash + btc * terminal_price
-    # Hindsight-only timing diagnostic: spread the SAME gross spend equally
-    # over all 104 execution weeks, with identical per-buy costs.
-    uniform_gross_per_week = spent / HORIZON_WEEKS
-    uniform_net_per_week = max(0.0, uniform_gross_per_week - FIXED_FEE_AUD) * (1.0 - BUY_FRICTION)
-    uniform_btc_units = sum(uniform_net_per_week / float(r["btc_price_aud"]) for r in rows)
+    # Hindsight-only timing diagnostic: same gross spend AND same number
+    # of transactions, but equal-sized buys spread across the full period.
+    uniform_btc_units = 0.0
+    if buy_count:
+        uniform_gross_per_buy = spent / buy_count
+        uniform_net_per_buy = max(0.0, uniform_gross_per_buy - FIXED_FEE_AUD) * (1.0 - BUY_FRICTION)
+        if buy_count == 1:
+            uniform_indices = [len(rows) // 2]
+        else:
+            uniform_indices = [
+                round(k * (len(rows) - 1) / (buy_count - 1))
+                for k in range(buy_count)
+            ]
+        uniform_btc_units = sum(
+            uniform_net_per_buy / float(rows[i]["btc_price_aud"])
+            for i in uniform_indices
+        )
     same_spend_btc_uplift = (
         100.0 * (net_btc_bought / uniform_btc_units - 1.0)
         if uniform_btc_units > 0 else 0.0
@@ -282,7 +294,7 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
             "Historical provider publication vintages are not independently attested.",
             "Jan/July two-year cohorts overlap and are not independent cycles.",
             "Candidate thresholds were proposed after reviewing BTC history; holdout is not pristine.",
-            "Same-spend equal-week BTC comparison is a hindsight attribution diagnostic, not a deployable policy.",
+            "Same-spend equal-sized/equal-transaction-count BTC comparison is a hindsight attribution diagnostic, not a deployable policy.",
             "Cash yield, ETF drag, spread and fee assumptions are illustrative.",
             "No Production, live V5.9, portfolio, dashboard, notification, brokerage or order changes.",
         ],
