@@ -84,7 +84,9 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertEqual(historical["discount_activation_weeks"]["2022_onward_holdout_era"]["20%"], 9)
         self.assertEqual(historical["discount_activation_weeks"]["2022_onward_holdout_era"]["25%"], 9)
         self.assertFalse(snapshot["trade_executable"])
-        self.assertIn("No prospective V6.0 paper validation", " ".join(snapshot["limitations"]))
+        self.assertEqual(snapshot["prospective_paper_tape"]["status"], "awaiting_first_eligible_sunday_close")
+        self.assertEqual(snapshot["prospective_paper_tape"]["signal_rows"], 0)
+        self.assertIn("zero prospective observations", " ".join(snapshot["limitations"]))
 
     def test_retired_tier_page_remains_unlinked(self):
         source = APP.read_text(encoding="utf-8")
