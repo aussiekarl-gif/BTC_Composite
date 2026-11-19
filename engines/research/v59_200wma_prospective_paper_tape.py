@@ -123,11 +123,11 @@ def build_paper_signal(btc_row: dict, *, model_sha256: str) -> dict:
     if abs(expected_ratio - ratio) > 0.000001:
         raise ValueError("Frozen BTC/200WMA ratio does not reconcile")
     discount = max(0.0, (1.0 - ratio) * 100.0)
-    if discount >= 30.0:
+    if discount + 1e-9 >= 30.0:
         a_pct = 7.5
-    elif discount >= 25.0:
+    elif discount + 1e-9 >= 25.0:
         a_pct = 5.0
-    elif discount >= 20.0:
+    elif discount + 1e-9 >= 20.0:
         a_pct = 3.5
     else:
         a_pct = 2.5
