@@ -85,7 +85,7 @@ def build_matched_rows(history: pd.DataFrame, fx: pd.Series) -> list[dict]:
                 and np.isfinite(rscore) and 0 <= rscore <= 1):
             continue
         execution_day = pd.Timestamp(row["date"], tz="UTC")
-        expected_aud = float(price.loc[execution_day]) / _fx_before(fx, execution_day)
+        expected_aud = float(price.loc[execution_day]) / _fx_before(fx, signal_day)
         if not np.isclose(expected_aud, float(row["btc_price_aud"]), rtol=1e-10, atol=1e-8):
             raise AssertionError("Model rows do not share the same BTC/AUD execution price")
         matched.append({
@@ -213,6 +213,7 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
         "production_modified": False,
         "starting_capital_aud": capital,
         "matched_execution": "Prior Sunday UTC risk; next Monday UTC BTC/AUD spot proxy; same date/price/FX for both versions",
+        "common_price_source": "One dated BTC/USD price series from the joined MVRV/NUPL/SOPR exports; read_exported_history rejects >1% cross-export price disagreement.",
         "risk_inputs": {
             "V5.8.2": "Reconstructed Production composite: BTC price, exported MVRV-Z and price-derived components; historical Fear & Greed omitted",
             "V5.9": "Walk-forward Power Law residual risk from the same BTC price series; optional specialist inputs unavailable",
@@ -249,20 +250,12 @@ def fetch_and_evaluate() -> dict:
     )
     if fx is None or fx.empty:
         raise RuntimeError("Historical FX unavailable; refusing fallback")
-    btc = research_model.fetch_btc_history(
-        research_model.RESEARCH_PL_HISTORY_START.to_pydatetime(),
-        ARCHIVE_CUTOFF.to_pydatetime(),
-    )
-    if btc is None or btc.empty:
-        raise RuntimeError("Historical BTC price series unavailable")
-    btc.index = pd.to_datetime(btc.index, utc=True).floor("D")
-    history = history.join(btc[["price"]].rename(columns={"price": "_provider_price"}), how="inner")
-    # Keep the MVRV export's price only after independently checking it against
-    # the contemporaneous public BTC history; reject materially mismatched feeds.
-    gap = (history["price_usd"] / history["_provider_price"] - 1.0).abs()
-    if gap.dropna().empty or float(gap.dropna().max()) > 0.01:
-        raise RuntimeError("Archived MVRV and BTC price exports fail 1% parity check")
-    history = history.drop(columns=["_provider_price"])
+    # read_exported_history has already joined the dated MVRV, NUPL and SOPR
+    # exports and rejected >1% disagreement between their BTC price columns.
+    # Use that one common exported BTC price series for BOTH models; do not
+    # splice in a second vendor's close series and create a false mismatch.
+    # The Monday execution conversion uses the same strictly prior-Sunday FX
+    # fixing as build_weekly_rows, never Monday's potentially unpublished fix.
     rows = build_matched_rows(history, fx)
     report = evaluate(rows)
     report["input_dates"] = {
