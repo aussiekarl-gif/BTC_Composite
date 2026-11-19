@@ -22,6 +22,7 @@ class V60HistoricalReportTests(unittest.TestCase):
             "cohort_start": "2022-01-03",
             "cohort_end": "2024-01-01",
             "cash_yield": 0.05,
+            "threshold_set": "20_25_30",
             "protected_cash_floor_pct_initial_cash": 20.0,
             "observations": 104,
             "cash_remaining_aud": 100_000.0,
@@ -52,8 +53,12 @@ class V60HistoricalReportTests(unittest.TestCase):
             {"execution_date": __import__("datetime").date(2023, 1, 2), "ratio_to_200wma": 0.69},
         ]
         result = discount_activation_counts(rows)
+        self.assertEqual(result["pre_2022_train_era"]["at_least_10_pct_below_200wma"]["signal_week_count"], 1)
+        self.assertEqual(result["pre_2022_train_era"]["at_least_15_pct_below_200wma"]["signal_week_count"], 1)
         self.assertEqual(result["pre_2022_train_era"]["at_least_20_pct_below_200wma"]["signal_week_count"], 1)
-        self.assertEqual(result["2022_onward_holdout_era"]["at_least_20_pct_below_200wma"]["signal_week_count"], 3)
+        self.assertEqual(result["2022_onward_holdout_era"]["at_least_10_pct_below_200wma"]["signal_week_count"], 3)
+        self.assertEqual(result["2022_onward_holdout_era"]["at_least_15_pct_below_200wma"]["signal_week_count"], 2)
+        self.assertEqual(result["2022_onward_holdout_era"]["at_least_20_pct_below_200wma"]["signal_week_count"], 2)
         self.assertEqual(result["2022_onward_holdout_era"]["at_least_25_pct_below_200wma"]["signal_week_count"], 2)
         self.assertEqual(result["2022_onward_holdout_era"]["at_least_30_pct_below_200wma"]["signal_week_count"], 1)
 
