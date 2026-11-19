@@ -60,6 +60,7 @@ SNAPSHOT_PATH = (
 snapshot = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
 historical = snapshot["historical_replay"]
 stress = snapshot["synthetic_stress"]
+paper = snapshot["prospective_paper_tape"]
 
 st.subheader("Historical holdout snapshot")
 st.caption(
@@ -107,8 +108,11 @@ st.caption(
 st.subheader("Validation status")
 st.info(
     "Historical replay and synthetic stress testing are complete. "
-    "Cumulative deployment pacing remains under research, and prospective "
-    "V6.0 paper validation has not yet started. No candidate is approved "
+    "The V6.0 prospective paper tape is initialized on a separate research branch; "
+    f"its first eligible Sunday close is {paper['first_eligible_sunday_close_utc']}. "
+    f"It currently contains {paper['signal_rows']} signal and "
+    f"{paper['asx_observation_rows']} ASX observation rows. "
+    "Cumulative deployment pacing remains under research. No candidate is approved "
     "for live investing."
 )
 st.caption(
