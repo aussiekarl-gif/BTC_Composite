@@ -125,6 +125,10 @@ def summarise_pacing(frame: pd.DataFrame) -> pd.DataFrame:
             if float(p.total_buy_spend_aud) > 0 else 0.0
             for r, p in zip(group.itertuples(index=False), peers)
         ]
+        drawdown_differences = [
+            float(r.max_drawdown_pct) - float(p.max_drawdown_pct)
+            for r, p in zip(group.itertuples(index=False), peers)
+        ]
         summaries.append({
             "split": split,
             "cash_yield_annual_pct": 100.0 * float(cash_yield),
@@ -133,12 +137,17 @@ def summarise_pacing(frame: pd.DataFrame) -> pd.DataFrame:
             "policy": policy_label,
             "cohort_count": int(len(group)),
             "median_final_equity_uplift_vs_matched_fixed_pct": float(pd.Series(equity_uplifts).median()),
+            "p10_final_equity_uplift_vs_matched_fixed_pct": float(pd.Series(equity_uplifts).quantile(0.10)),
+            "worst_final_equity_uplift_vs_matched_fixed_pct": float(pd.Series(equity_uplifts).min()),
             "median_btc_uplift_vs_matched_fixed_pct": float(pd.Series(btc_uplifts).median()),
+            "p10_btc_uplift_vs_matched_fixed_pct": float(pd.Series(btc_uplifts).quantile(0.10)),
+            "worst_btc_uplift_vs_matched_fixed_pct": float(pd.Series(btc_uplifts).min()),
+            "median_max_drawdown_difference_vs_fixed_pp": float(pd.Series(drawdown_differences).median()),
             "cohort_win_rate_final_equity_pct": 100.0 * sum(x > 0 for x in equity_uplifts) / len(equity_uplifts),
             "cohort_win_rate_btc_pct": 100.0 * sum(x > 0 for x in btc_uplifts) / len(btc_uplifts),
             "median_spend_difference_vs_matched_fixed_pct": float(pd.Series(spend_differences).median()),
             "median_policy_total_spend_aud": float(group["total_buy_spend_aud"].median()),
-            "median_fixed_count_buy_count": float(group["buy_count"].median()),
+            "median_policy_buy_count": float(group["buy_count"].median()),
             "median_cash_remaining_aud": float(group["cash_remaining_aud"].median()),
             "median_max_drawdown_pct": float(group["max_drawdown_pct"].median()),
             "median_same_spend_same_count_timing_uplift_pct_hindsight": float(
