@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "engines/research/v60_allocation_scale_report.py"
+      - "engines/research/v60_allocation_scale_stress_report.py"
+      - "engines/research/v60_synthetic_stress.py"
+      - "tests/test_v60_allocation_scale_stress_report.py"
       - "engines/research/v60_200wma_backtest.py"
       - "engines/research/v60_historical_report.py"
       - "tests/test_v60_allocation_scale_report.py"
@@ -35,11 +38,16 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_v60_200wma_backtest.py' -v
           python -m unittest discover -s tests -p 'test_v60_allocation_scale_report.py' -v
+          python -m unittest discover -s tests -p 'test_v60_allocation_scale_stress_report.py' -v
       - name: Run matched historical allocation-scale report
         run: python -m engines.research.v60_allocation_scale_report --output-dir artifacts/v60_allocation_scale
+      - name: Run matched-cap synthetic allocation-scale stress
+        run: python -m engines.research.v60_allocation_scale_stress_report --output-dir artifacts/v60_allocation_scale_stress
       - name: Upload V6.0 allocation-scale evidence
         uses: actions/upload-artifact@v4
         with:
-          name: v60-allocation-scale-historical
-          path: artifacts/v60_allocation_scale/
+          name: v60-allocation-scale-evidence
+          path: |
+            artifacts/v60_allocation_scale/
+            artifacts/v60_allocation_scale_stress/
           if-no-files-found: error
