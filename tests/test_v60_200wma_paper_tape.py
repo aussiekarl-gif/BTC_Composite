@@ -83,6 +83,7 @@ class V60ProspectivePaperTapeTests(unittest.TestCase):
             "reported_close_aud": "20.500000",
             "daily_low_aud": "20.000000", "daily_high_aud": "21.000000",
             "daily_volume": "100000", "provider": "Yahoo_Finance_IBIT.AX_daily_candle_indicative",
+            "single_provider_unverified_execution": "True",
             "is_confirmed_broker_fill": "False", "row_hash": "d" * 64,
         }
         result = build_asx_observation(signal, asx)
@@ -112,7 +113,7 @@ class V60ProspectivePaperTapeTests(unittest.TestCase):
     def test_empty_tape_does_not_create_historical_signals(self):
         btc_text = _dump_rows([], BTC_COLUMNS)
         asx_text = _dump_rows([], ASX_COLUMNS)
-        signal_text = dump_btc_rows([], SIGNAL_COLUMNS)
+        signal_text = _dump_rows([], SIGNAL_COLUMNS)
         execution_text = _dump_rows([], EXECUTION_COLUMNS)
         new_signal, new_execution, status = process_tapes(
             btc_text, asx_text, signal_text, execution_text,
