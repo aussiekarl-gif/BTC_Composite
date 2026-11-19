@@ -94,7 +94,7 @@ def discount_activation_counts(weekly_rows: list[dict]) -> dict:
     result = {}
     for period, rows in periods.items():
         counts = {}
-        for threshold in (20, 25, 30):
+        for threshold in (10, 15, 20, 25, 30):
             hits = [
                 r for r in rows
                 if float(r["ratio_to_200wma"]) <= 1.0 - threshold / 100.0
@@ -124,8 +124,8 @@ def summarise(results: list[dict]) -> pd.DataFrame:
     }
     rows = []
     primary = frame.loc[frame["split"].isin(["train", "holdout"])]
-    for (split, yield_pct, floor, policy), group in primary.groupby(
-        ["split", "cash_yield", "protected_cash_floor_pct_initial_cash", "policy"]
+    for (split, yield_pct, floor, threshold_set, policy), group in primary.groupby(
+        ["split", "cash_yield", "protected_cash_floor_pct_initial_cash", "threshold_set", "policy"]
     ):
         peers = [fixed[(float(yield_pct), float(floor), str(r.cohort_start))]
                  for r in group.itertuples(index=False)]
@@ -142,6 +142,7 @@ def summarise(results: list[dict]) -> pd.DataFrame:
             "cash_yield_annual_pct": float(yield_pct) * 100.0,
             "protected_cash_floor_pct_initial_cash": float(floor),
             "policy": policy,
+            "threshold_set": threshold_set,
             "cohort_count": int(len(group)),
             "median_final_equity_aud": float(group["final_equity_aud"].median()),
             "median_btc_held": float(group["btc_held"].median()),
@@ -160,7 +161,7 @@ def summarise(results: list[dict]) -> pd.DataFrame:
             "interpretation": "Overlapping rolling cohorts; descriptive robustness only, not independent trials",
         })
     return pd.DataFrame(rows).sort_values(
-        ["split", "cash_yield_annual_pct", "protected_cash_floor_pct_initial_cash", "policy"]
+        ["split", "cash_yield_annual_pct", "protected_cash_floor_pct_initial_cash", "threshold_set", "policy"]
     ).reset_index(drop=True)
 
 
@@ -175,7 +176,8 @@ def build_report(output_dir: Path) -> dict:
     all_results = []
     for cash_yield in CASH_YIELDS:
         cohort_results = rolling_104_week_comparison(
-            weekly, floors_pct=CASH_FLOORS, cash_yield=cash_yield
+            weekly, floors_pct=CASH_FLOORS, cash_yield=cash_yield,
+            threshold_sets=("20_25_30", "10_15_20"),
         )
         for row in cohort_results:
             row["cash_yield"] = cash_yield
@@ -215,6 +217,10 @@ def build_report(output_dir: Path) -> dict:
         "cash_yields_annual": list(CASH_YIELDS),
         "protected_cash_floors_pct_initial_cash": list(CASH_FLOORS),
         "policies": ["fixed_weekly", "baseline", "measured", "stepped", "aggressive"],
+        "threshold_sets_tested": {
+            "20_25_30": [20.0, 25.0, 30.0],
+            "10_15_20": [10.0, 15.0, 20.0],
+        },
         "account_assumptions": {
             "capital_aud": 510000.0,
             "initial_btc_fraction": 0.41,
