@@ -28,6 +28,17 @@ class DynamicWmaDcaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             study.allocation_pct(.7, (.025, .05, .04, .10))
 
+    def test_cash_yield_is_a_separate_account_assumption(self):
+        start = date(2020, 1, 6)
+        rows = []
+        for i in range(104):
+            day = start + timedelta(weeks=i)
+            rows.append({"date": day, "signal_date": day-timedelta(days=1),
+                         "btc_price_aud": 100000.0, "ratio_to_200wma": 1.10})
+        zero_yield = study.simulate(rows, policy="current_2_5pct", cash_yield=0.0)
+        five_pct_yield = study.simulate(rows, policy="current_2_5pct", cash_yield=0.05)
+        self.assertGreater(five_pct_yield["cash_aud"], zero_yield["cash_aud"])
+
     def test_simulation_obeys_weekly_cap_and_seven_day_spacing(self):
         start = date(2020, 1, 6)
         rows = []
