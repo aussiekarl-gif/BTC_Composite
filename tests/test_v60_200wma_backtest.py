@@ -68,6 +68,40 @@ class V60BacktestTests(unittest.TestCase):
         self.assertEqual(len(summary), 8)
         self.assertTrue(all(x["overlapping_cohorts_not_independent"] for x in summary))
 
+
+    def test_cumulative_spend_cap_preserves_unspent_cash(self):
+        rows = flat_rows(price=100_000, ratio=0.70)
+        capped = simulate_weekly_cohort(
+            rows, policy="measured",
+            max_cumulative_buy_spend_pct_initial_cash=50.0,
+        )
+        self.assertLessEqual(capped["total_buy_spend_aud"], 150_450.0 + 1e-6)
+        self.assertLessEqual(capped["biggest_buy_pct_original_capital"], 5.0 + 1e-9)
+        self.assertAlmostEqual(capped["max_cumulative_buy_budget_aud"], 150_450.0)
+        self.assertAlmostEqual(
+            capped["cumulative_buy_budget_remaining_aud"],
+            150_450.0 - capped["total_buy_spend_aud"],
+        )
+
+    def test_cumulative_cap_and_protected_reserve_are_independent(self):
+        rows = flat_rows(price=100_000, ratio=0.70)
+        result = simulate_weekly_cohort(
+            rows, policy="aggressive",
+            protected_cash_floor_pct_initial_cash=30.0,
+            max_cumulative_buy_spend_pct_initial_cash=50.0,
+        )
+        self.assertLessEqual(result["total_buy_spend_aud"], 150_450.0 + 1e-6)
+        self.assertGreaterEqual(
+            result["cash_remaining_aud"], result["protected_cash_floor_aud"] - 1e-6
+        )
+
+    def test_invalid_cumulative_spend_cap_fails_closed(self):
+        with self.assertRaises(ValueError):
+            simulate_weekly_cohort(
+                flat_rows(), policy="measured",
+                max_cumulative_buy_spend_pct_initial_cash=101.0,
+            )
+
     def test_invalid_inputs_fail_closed(self):
         rows = flat_rows()
         rows[3]["ratio_to_200wma"] = 0
