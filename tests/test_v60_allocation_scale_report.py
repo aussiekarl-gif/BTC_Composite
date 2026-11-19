@@ -29,9 +29,9 @@ def sample_rows():
 class V60AllocationScaleReportTests(unittest.TestCase):
     def test_scales_are_matched_to_fixed_dca_by_cap_and_reserve(self):
         results = build_scale_results(sample_rows())
-        self.assertEqual(len(results), 60)
+        self.assertEqual(len(results), 120)
         fixed = results.loc[results["policy"] == "fixed_weekly"]
-        self.assertEqual(len(fixed), 10)
+        self.assertEqual(len(fixed), 20)
         for _, row in results.loc[results["policy"] == "measured"].iterrows():
             peers = fixed.loc[
                 (fixed["protected_cash_floor_pct_initial_cash"] == row["protected_cash_floor_pct_initial_cash"])
@@ -45,8 +45,9 @@ class V60AllocationScaleReportTests(unittest.TestCase):
 
     def test_summary_reports_scale_and_downside_metrics(self):
         summary = summarise_scale_results(build_scale_results(sample_rows()))
-        self.assertEqual(len(summary), 50)
+        self.assertEqual(len(summary), 100)
         self.assertTrue((summary["split"] == "train").all())
+        self.assertEqual(set(summary["cash_yield_annual_pct"]), {0.0, 5.0})
         self.assertEqual(set(summary["dynamic_allocation_scale"]), {0.5, 0.75, 1.0, 1.25, 1.5})
         self.assertIn("p10_final_equity_uplift_vs_matched_fixed_pct", summary.columns)
         self.assertTrue(summary["cohorts_overlap"].all())
