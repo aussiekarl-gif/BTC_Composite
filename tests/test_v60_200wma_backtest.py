@@ -60,10 +60,12 @@ class V60BacktestTests(unittest.TestCase):
 
     def test_rolling_comparison_is_matched_and_reports_overlap(self):
         rows = flat_rows(count=106)
-        results = rolling_104_week_comparison(rows, floors_pct=(0.0,))
-        self.assertEqual(len(results), 3 * 5)
+        results = rolling_104_week_comparison(
+            rows, floors_pct=(0.0,), threshold_sets=("20_25_30", "10_15_20")
+        )
+        self.assertEqual(len(results), 3 * 8)
         summary = summarise_matched_cohorts(results)
-        self.assertEqual(len(summary), 5)
+        self.assertEqual(len(summary), 8)
         self.assertTrue(all(x["overlapping_cohorts_not_independent"] for x in summary))
 
     def test_invalid_inputs_fail_closed(self):

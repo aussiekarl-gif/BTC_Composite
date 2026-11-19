@@ -18,7 +18,7 @@ All buy recommendations are percentages, never fixed-dollar allocations:
 - Stepped: 2.5% / 5.0% / 7.5% / 10.0%.
 - Aggressive: 2.5% / 7.5% / 10.0% / 15.0%.
 
-These are test candidates, not approved settings. No strict below-200WMA entry gate is used: the base DCA remains active above and around the average.
+These are test candidates, not approved settings. No strict below-200WMA entry gate is used: the base DCA remains active above and around the average. A separate 10% / 15% / 20% threshold sensitivity is also tested; it does not replace the 20% / 25% / 30% reference.
 
 ## Cash reserve overlay
 Test separately from the candidate ladder. A protected reserve is a percentage of initial cash; candidate buy percentages apply only to deployable cash above the reserve. The existing 5% of original capital weekly hard cap is independent of the cash percentage.

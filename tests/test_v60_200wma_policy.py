@@ -21,6 +21,13 @@ class V60PolicyTests(unittest.TestCase):
         for ratio, amount in expected.items():
             self.assertEqual(policy.allocation_for_discount(ratio), amount)
 
+
+    def test_alternative_10_15_20_threshold_set_is_supported(self):
+        thresholds = (10.0, 15.0, 20.0)
+        self.assertEqual(policy.allocation_for_discount(0.90, thresholds=thresholds), 3.5)
+        self.assertEqual(policy.allocation_for_discount(0.85, thresholds=thresholds), 5.0)
+        self.assertEqual(policy.allocation_for_discount(0.80, thresholds=thresholds), 7.5)
+
     def test_all_candidates_are_monotonic(self):
         ratios = (1.2, 1.0, 0.9, 0.8, 0.75, 0.7, 0.6)
         for candidate in policy.CANDIDATE_LADDERS:

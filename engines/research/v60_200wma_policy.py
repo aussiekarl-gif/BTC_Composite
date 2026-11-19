@@ -15,6 +15,10 @@ import pandas as pd
 MODEL_VERSION = "V6.0"
 BASE_BUY_PCT_AVAILABLE_CASH = 2.5
 DISCOUNT_THRESHOLDS_PCT = (20.0, 25.0, 30.0)
+THRESHOLD_SETS = {
+    "20_25_30": (20.0, 25.0, 30.0),
+    "10_15_20": (10.0, 15.0, 20.0),
+}
 MAX_WEEKLY_BUY_PCT_ORIGINAL_CAPITAL = 5.0
 
 # Candidate ladders are hypotheses only. The measured ladder is the reference;
@@ -61,6 +65,7 @@ def allocation_for_discount(
     ratio_to_200wma: float,
     *,
     candidate: str = "measured",
+    thresholds: tuple[float, float, float] = DISCOUNT_THRESHOLDS_PCT,
 ) -> float:
     """Return the candidate buy percentage of deployable cash, not dollars."""
     if candidate not in CANDIDATE_LADDERS:
@@ -69,9 +74,13 @@ def allocation_for_discount(
     if not math.isfinite(ratio) or ratio <= 0:
         raise ValueError("A finite positive prior 200WMA ratio is required")
     ladder = CANDIDATE_LADDERS[candidate]
+    if len(thresholds) != 3 or tuple(sorted(float(x) for x in thresholds)) != tuple(float(x) for x in thresholds):
+        raise ValueError("Exactly three ascending discount thresholds are required")
+    if any(not math.isfinite(float(x)) or not 0 < float(x) < 100 for x in thresholds):
+        raise ValueError("Discount thresholds must be finite percentages in (0, 100)")
     discount = max(0.0, (1.0 - ratio) * 100.0)
     tier = 0
-    for index, threshold in enumerate(DISCOUNT_THRESHOLDS_PCT, start=1):
+    for index, threshold in enumerate(thresholds, start=1):
         if discount + 1e-10 >= threshold:
             tier = index
     return float(ladder[tier])
@@ -85,6 +94,7 @@ def calculate_buy_plan(
     initial_cash_aud: float,
     candidate: str = "measured",
     protected_cash_floor_pct_initial_cash: float = 0.0,
+    thresholds: tuple[float, float, float] = DISCOUNT_THRESHOLDS_PCT,
 ) -> dict:
     """Calculate a research buy plan with an optional protected-cash overlay.
 
@@ -100,7 +110,7 @@ def calculate_buy_plan(
         raise ValueError("Invalid cash or capital amount")
     if not 0 <= protected_cash_floor_pct_initial_cash < 100:
         raise ValueError("Protected cash floor must be in [0, 100)")
-    buy_pct = allocation_for_discount(ratio_to_200wma, candidate=candidate)
+    buy_pct = allocation_for_discount(ratio_to_200wma, candidate=candidate, thresholds=thresholds)
     reserve_aud = initial_cash_aud * protected_cash_floor_pct_initial_cash / 100.0
     deployable_cash = max(0.0, available_cash_aud - reserve_aud)
     uncapped_buy_aud = deployable_cash * buy_pct / 100.0
@@ -112,6 +122,7 @@ def calculate_buy_plan(
     return {
         "model_version": MODEL_VERSION,
         "candidate": candidate,
+        "discount_thresholds_pct": list(thresholds),
         "ratio_to_200wma": float(ratio_to_200wma),
         "discount_below_200wma_pct": max(0.0, (1.0-float(ratio_to_200wma))*100.0),
         "buy_pct_deployable_cash": buy_pct,

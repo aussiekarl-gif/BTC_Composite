@@ -12,7 +12,8 @@ from statistics import median
 import pandas as pd
 
 from engines.research.v60_200wma_policy import (
-    CANDIDATE_LADDERS, allocation_for_discount, weekly_prior_200wma_signals,
+    CANDIDATE_LADDERS, DISCOUNT_THRESHOLDS_PCT, THRESHOLD_SETS,
+    allocation_for_discount, weekly_prior_200wma_signals,
 )
 
 DEFAULT_CAPITAL_AUD = 510_000.0
@@ -117,11 +118,17 @@ def simulate_weekly_cohort(
     buy_friction: float = DEFAULT_BUY_FRICTION,
     fixed_fee_aud: float = DEFAULT_FIXED_FEE_AUD,
     min_ticket_aud: float = DEFAULT_MIN_TICKET_AUD,
+    thresholds: tuple[float, float, float] = DISCOUNT_THRESHOLDS_PCT,
+    threshold_set: str = "20_25_30",
 ) -> dict:
     """Replay one 104-week cohort with cash yield, BTC drag and buy friction."""
     validate_weekly_cohort(rows)
     if policy not in (*CANDIDATE_LADDERS, "fixed_weekly"):
         raise ValueError("Unknown V6.0 policy")
+    if threshold_set not in (*THRESHOLD_SETS, "none"):
+        raise ValueError("Unknown V6.0 discount threshold set")
+    if policy in ("fixed_weekly", "baseline"):
+        threshold_set = "none"
     numeric = (capital_aud, initial_btc_fraction, cash_yield, btc_drag_annual,
                protected_cash_floor_pct_initial_cash, weekly_cap_pct_original_capital,
                buy_friction, fixed_fee_aud, min_ticket_aud)
@@ -171,7 +178,9 @@ def simulate_weekly_cohort(
         if policy == "fixed_weekly":
             target_spend = fixed_weekly_spend
         else:
-            pct = allocation_for_discount(float(row["ratio_to_200wma"]), candidate=policy)
+            pct = allocation_for_discount(
+                float(row["ratio_to_200wma"]), candidate=policy, thresholds=thresholds
+            )
             target_spend = deployable * pct / 100.0
         spend = min(deployable, target_spend, weekly_cap)
         if spend >= min_ticket_aud and spend > fixed_fee_aud:
@@ -210,6 +219,8 @@ def simulate_weekly_cohort(
     return {
         "model_version": "V6.0",
         "policy": policy,
+        "threshold_set": threshold_set,
+        "discount_thresholds_pct": list(thresholds) if threshold_set != "none" else [],
         "cohort_start": rows[0]["execution_date"].isoformat(),
         "cohort_end": rows[-1]["execution_date"].isoformat(),
         "observations": len(rows),
@@ -237,37 +248,56 @@ def rolling_104_week_comparison(
     *,
     floors_pct: tuple[float, ...] = (0.0, 10.0, 20.0, 30.0),
     cash_yield: float = DEFAULT_CASH_YIELD,
+    threshold_sets: tuple[str, ...] = ("20_25_30",),
 ) -> list[dict]:
-    """Compare fixed weekly DCA and V6.0 candidates on identical 104-week windows."""
+    """Compare fixed DCA/base policy and V6.0 candidate threshold sets.
+
+    Fixed weekly DCA and the 2.5% base policy are emitted once per cohort;
+    only the measured/stepped/aggressive ladders are repeated for each
+    threshold set, avoiding duplicate benchmark rows.
+    """
     if len(rows) < COHORT_WEEKS:
         raise ValueError("At least 104 weekly rows are required")
     for floor in floors_pct:
         if not 0 <= floor < 100:
             raise ValueError("Cash floors must be in [0, 100)")
-    policies = ("fixed_weekly", "baseline", "measured", "stepped", "aggressive")
+    if not threshold_sets or any(x not in THRESHOLD_SETS for x in threshold_sets):
+        raise ValueError("Unknown or empty V6.0 threshold-set selection")
+    policies = ("measured", "stepped", "aggressive")
     results = []
     for start in range(0, len(rows) - COHORT_WEEKS + 1):
         cohort = rows[start:start+COHORT_WEEKS]
         validate_weekly_cohort(cohort)
         for floor in floors_pct:
-            for name in policies:
-                results.append(simulate_weekly_cohort(
-                    cohort, policy=name, cash_yield=cash_yield,
-                    protected_cash_floor_pct_initial_cash=floor,
-                ))
+            results.append(simulate_weekly_cohort(
+                cohort, policy="fixed_weekly", cash_yield=cash_yield,
+                protected_cash_floor_pct_initial_cash=floor, threshold_set="none",
+            ))
+            results.append(simulate_weekly_cohort(
+                cohort, policy="baseline", cash_yield=cash_yield,
+                protected_cash_floor_pct_initial_cash=floor, threshold_set="none",
+            ))
+            for threshold_name in threshold_sets:
+                for name in policies:
+                    results.append(simulate_weekly_cohort(
+                        cohort, policy=name, cash_yield=cash_yield,
+                        protected_cash_floor_pct_initial_cash=floor,
+                        thresholds=THRESHOLD_SETS[threshold_name],
+                        threshold_set=threshold_name,
+                    ))
     return results
-
 
 def summarise_matched_cohorts(results: list[dict]) -> list[dict]:
     """Summarise overlapping cohort results; they are not independent samples."""
     grouped: dict[tuple[str, float], list[dict]] = {}
     for row in results:
-        key = (str(row["policy"]), float(row["protected_cash_floor_pct_initial_cash"]))
+        key = (str(row["policy"]), float(row["protected_cash_floor_pct_initial_cash"]), str(row.get("threshold_set", "20_25_30")))
         grouped.setdefault(key, []).append(row)
     summary = []
-    for (policy, floor), rows in sorted(grouped.items()):
+    for (policy, floor, threshold_set), rows in sorted(grouped.items()):
         summary.append({
             "policy": policy,
+            "threshold_set": threshold_set,
             "protected_cash_floor_pct_initial_cash": floor,
             "cohort_count": len(rows),
             "median_final_equity_aud": median(r["final_equity_aud"] for r in rows),
