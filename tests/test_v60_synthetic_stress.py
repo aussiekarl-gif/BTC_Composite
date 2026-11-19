@@ -20,16 +20,30 @@ class V60SyntheticStressTests(unittest.TestCase):
                 self.assertEqual(rows[0]["signal_date"].weekday(), 6)
                 self.assertEqual(rows[0]["execution_date"].weekday(), 0)
 
-    def test_prolonged_bear_respects_cash_reserve_and_weekly_cap(self):
+    def test_prolonged_bear_respects_all_cash_reserve_levels_and_weekly_cap(self):
         rows = build_scenario_rows(scenario_price_paths()["prolonged_bear_70pct"]["prices"])
-        result = simulate_weekly_cohort(
-            rows, policy="aggressive", protected_cash_floor_pct_initial_cash=30.0,
-        )
-        self.assertGreaterEqual(
-            result["cash_remaining_aud"], result["protected_cash_floor_aud"] - 1e-6
-        )
-        self.assertLessEqual(result["biggest_buy_pct_original_capital"], 5.0 + 1e-9)
-        self.assertGreater(result["buy_count"], 0)
+        for floor in (30.0, 40.0, 50.0, 60.0):
+            with self.subTest(floor=floor):
+                result = simulate_weekly_cohort(
+                    rows, policy="aggressive",
+                    protected_cash_floor_pct_initial_cash=floor,
+                )
+                self.assertGreaterEqual(
+                    result["cash_remaining_aud"], result["protected_cash_floor_aud"] - 1e-6
+                )
+                self.assertLessEqual(result["biggest_buy_pct_original_capital"], 5.0 + 1e-9)
+                self.assertGreater(result["buy_count"], 0)
+
+    def test_higher_reserve_never_increases_spend_in_same_bear_scenario(self):
+        rows = build_scenario_rows(scenario_price_paths()["prolonged_bear_70pct"]["prices"])
+        spends = [
+            simulate_weekly_cohort(
+                rows, policy="measured",
+                protected_cash_floor_pct_initial_cash=floor,
+            )["total_buy_spend_aud"]
+            for floor in (0.0, 30.0, 40.0, 50.0, 60.0)
+        ]
+        self.assertEqual(spends, sorted(spends, reverse=True))
 
     def test_false_bottom_does_not_break_guardrails(self):
         rows = build_scenario_rows(scenario_price_paths()["false_bottom_recovery"]["prices"])

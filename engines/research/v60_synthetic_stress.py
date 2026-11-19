@@ -21,7 +21,7 @@ START_SUNDAY = date(2020, 1, 5)
 WARMUP_WEEKS = 200
 SCENARIO_WEEKS = 104
 CASH_YIELDS = (0.0, 0.05)
-CASH_FLOORS = (0.0, 20.0, 30.0)
+CASH_FLOORS = (0.0, 30.0, 40.0, 50.0, 60.0)
 
 
 def linear_path(start: float, end: float, count: int) -> list[float]:
