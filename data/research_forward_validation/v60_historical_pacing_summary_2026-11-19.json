@@ -1,0 +1,53 @@
+{
+  "model_version": "V6.0",
+  "research_only": true,
+  "trade_executable": false,
+  "generated_at_utc": "2026-11-19T10:35:47Z",
+  "historical_source_run_id": 44507131433,
+  "historical_source_commit": "c88b6d22e8b11a1b584b3de64774dcb3fc34f24b",
+  "historical_artifact_sha256": "3df2a7d1a697d820f1571b71a782634b6ff051003c0537971d2755157790d526",
+  "btc_data_cutoff": "2026-10-05",
+  "holdout_cohort_count": 146,
+  "cohorts_overlap": true,
+  "cash_yield_gross_annual_pct": 5.0,
+  "policy": "measured_20_25_30",
+  "benchmark": "fixed weekly DCA with identical starting capital, reserve, cash yield and cumulative spend cap",
+  "historical_holdout": [
+    {"reserve_pct_initial_cash":0,"cumulative_spend_cap":"40%","median_equity_uplift_pct":2.8208,"p10_equity_uplift_pct":-6.4680,"worst_equity_uplift_pct":-8.9978,"median_btc_uplift_pct":4.1587,"win_rate_pct":78.7671,"median_spend_difference_pct":0.0,"median_max_drawdown_difference_pp":-0.2932},
+    {"reserve_pct_initial_cash":0,"cumulative_spend_cap":"50%","median_equity_uplift_pct":4.2572,"p10_equity_uplift_pct":-4.5297,"worst_equity_uplift_pct":-11.2432,"median_btc_uplift_pct":5.9155,"win_rate_pct":85.6164,"median_spend_difference_pct":0.0,"median_max_drawdown_difference_pp":-0.3236},
+    {"reserve_pct_initial_cash":0,"cumulative_spend_cap":"60%","median_equity_uplift_pct":5.5396,"p10_equity_uplift_pct":-0.8504,"worst_equity_uplift_pct":-11.0009,"median_btc_uplift_pct":7.6437,"win_rate_pct":89.0411,"median_spend_difference_pct":0.0,"median_max_drawdown_difference_pp":-0.3512},
+    {"reserve_pct_initial_cash":0,"cumulative_spend_cap":"70%","median_equity_uplift_pct":7.3950,"p10_equity_uplift_pct":1.3326,"worst_equity_uplift_pct":-8.3308,"median_btc_uplift_pct":8.7793,"win_rate_pct":91.7808,"median_spend_difference_pct":-0.0322,"median_max_drawdown_difference_pp":-0.4310},
+    {"reserve_pct_initial_cash":0,"cumulative_spend_cap":"uncapped","median_equity_uplift_pct":10.0194,"p10_equity_uplift_pct":1.3643,"worst_equity_uplift_pct":-4.1125,"median_btc_uplift_pct":9.7432,"win_rate_pct":93.1507,"median_spend_difference_pct":-4.4331,"median_max_drawdown_difference_pp":-1.1200},
+    {"reserve_pct_initial_cash":30,"cumulative_spend_cap":"40%","median_equity_uplift_pct":3.7705,"p10_equity_uplift_pct":-1.7735,"worst_equity_uplift_pct":-8.5126,"median_btc_uplift_pct":5.8097,"win_rate_pct":88.3562,"median_spend_difference_pct":0.0,"median_max_drawdown_difference_pp":-0.3594},
+    {"reserve_pct_initial_cash":30,"cumulative_spend_cap":"50%","median_equity_uplift_pct":5.6264,"p10_equity_uplift_pct":0.8828,"worst_equity_uplift_pct":-5.9227,"median_btc_uplift_pct":7.2030,"win_rate_pct":91.7808,"median_spend_difference_pct":0.0,"median_max_drawdown_difference_pp":-0.4963},
+    {"reserve_pct_initial_cash":30,"cumulative_spend_cap":"60%","median_equity_uplift_pct":7.1022,"p10_equity_uplift_pct":0.6577,"worst_equity_uplift_pct":-2.7081,"median_btc_uplift_pct":8.2547,"win_rate_pct":92.4658,"median_spend_difference_pct":0.0,"median_max_drawdown_difference_pp":-0.9022},
+    {"reserve_pct_initial_cash":30,"cumulative_spend_cap":"70%","median_equity_uplift_pct":7.9533,"p10_equity_uplift_pct":0.8189,"worst_equity_uplift_pct":-2.8771,"median_btc_uplift_pct":8.5733,"win_rate_pct":93.1507,"median_spend_difference_pct":-1.6962,"median_max_drawdown_difference_pp":-1.0577},
+    {"reserve_pct_initial_cash":30,"cumulative_spend_cap":"uncapped","median_equity_uplift_pct":7.9533,"p10_equity_uplift_pct":0.8189,"worst_equity_uplift_pct":-2.8771,"median_btc_uplift_pct":8.5733,"win_rate_pct":93.1507,"median_spend_difference_pct":-1.6962,"median_max_drawdown_difference_pp":-1.0577}
+  ],
+  "synthetic_stress_source_run_id": 44497548838,
+  "synthetic_stress_cash_yield_gross_annual_pct": 5.0,
+  "synthetic_stress_reserve_pct_initial_cash": 30,
+  "synthetic_stress": [
+    {"scenario":"prolonged_bear_70pct","cumulative_spend_cap":"40%","fixed_return_pct":-39.1273,"measured_return_pct":-40.6730,"measured_minus_fixed_pp":-1.5458},
+    {"scenario":"prolonged_bear_70pct","cumulative_spend_cap":"50%","fixed_return_pct":-42.0201,"measured_return_pct":-44.6108,"measured_minus_fixed_pp":-2.5907},
+    {"scenario":"prolonged_bear_70pct","cumulative_spend_cap":"60%","fixed_return_pct":-44.0965,"measured_return_pct":-48.2692,"measured_minus_fixed_pp":-4.1727},
+    {"scenario":"prolonged_bear_70pct","cumulative_spend_cap":"70%","fixed_return_pct":-44.9236,"measured_return_pct":-51.5211,"measured_minus_fixed_pp":-6.5975},
+    {"scenario":"false_bottom_recovery","cumulative_spend_cap":"40%","fixed_return_pct":13.4040,"measured_return_pct":15.7199,"measured_minus_fixed_pp":2.3159},
+    {"scenario":"false_bottom_recovery","cumulative_spend_cap":"50%","fixed_return_pct":13.1615,"measured_return_pct":15.3024,"measured_minus_fixed_pp":2.1409},
+    {"scenario":"false_bottom_recovery","cumulative_spend_cap":"60%","fixed_return_pct":13.0074,"measured_return_pct":14.9877,"measured_minus_fixed_pp":1.9803},
+    {"scenario":"false_bottom_recovery","cumulative_spend_cap":"70%","fixed_return_pct":12.9411,"measured_return_pct":14.8451,"measured_minus_fixed_pp":1.9039},
+    {"scenario":"rapid_v_recovery","cumulative_spend_cap":"40%","fixed_return_pct":21.6728,"measured_return_pct":37.7572,"measured_minus_fixed_pp":16.0843},
+    {"scenario":"rapid_v_recovery","cumulative_spend_cap":"50%","fixed_return_pct":21.4303,"measured_return_pct":37.5125,"measured_minus_fixed_pp":16.0821},
+    {"scenario":"rapid_v_recovery","cumulative_spend_cap":"60%","fixed_return_pct":21.2762,"measured_return_pct":37.1215,"measured_minus_fixed_pp":15.8453},
+    {"scenario":"rapid_v_recovery","cumulative_spend_cap":"70%","fixed_return_pct":21.2099,"measured_return_pct":36.9137,"measured_minus_fixed_pp":15.7038}
+  ],
+  "interpretation": "Historical holdout suggests positive median timing uplift at matched spending caps, but all rolling windows overlap and tier activations are concentrated in 2022-2023. Synthetic prolonged-bear paths still show the measured policy underperforming fixed DCA at every tested cap. No cap or reserve is selected.",
+  "limitations": [
+    "The BTC export is an October 2026 historical vintage ending 2026-10-05, not a point-in-time vintage.",
+    "The 5% cash yield is a gross scenario, not guaranteed or tax-adjusted.",
+    "Historical execution is a next-Monday BTC/AUD spot proxy, not an ASX:IBIT fill.",
+    "The matched comparator shares the same spend cap and reserve, but realised spend can differ; the difference is reported.",
+    "Synthetic paths are stress tests, not forecasts or probability-weighted outcomes.",
+    "No strategy candidate is approved for live investing."
+  ]
+}
