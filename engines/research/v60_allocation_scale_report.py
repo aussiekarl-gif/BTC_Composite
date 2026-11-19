@@ -169,7 +169,7 @@ def build_report(output_dir: Path) -> dict:
         "benchmark": "fixed weekly DCA under the identical starting capital, reserve, gross cash yield and cumulative spending cap",
         "limitations": [
             "Historical BTC export ends 2026-10-05 and is not a contemporaneous point-in-time vintage.",
-            "5% cash yield is a gross scenario, not guaranteed and not tax-adjusted.",
+            "0% and 5% cash yields are tested; the 5% yield is gross, not guaranteed and not tax-adjusted.",
             "Execution is a next-Monday BTC/AUD spot proxy, not an ASX:IBIT fill.",
             "Rolling 104-week cohorts overlap heavily and are not independent trials.",
             "Synthetic prolonged-bear stress must be considered alongside historical holdout results.",
