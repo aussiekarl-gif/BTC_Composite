@@ -23,7 +23,7 @@ from engines.research.v60_historical_report import (
 SCALES = (0.5, 0.75, 1.0, 1.25, 1.5)
 CASH_FLOOR_PCTS = (0.0, 30.0)
 CUMULATIVE_CAPS = (None, 40.0, 50.0, 60.0, 70.0)
-CASH_YIELD = 0.05
+CASH_YIELDS = (0.0, 0.05)
 THRESHOLDS = (20.0, 25.0, 30.0)
 
 
@@ -37,32 +37,33 @@ def build_scale_results(weekly_rows: list[dict]) -> pd.DataFrame:
     output = []
     for start in range(len(weekly_rows) - COHORT_WEEKS + 1):
         cohort = weekly_rows[start:start + COHORT_WEEKS]
-        for floor in CASH_FLOOR_PCTS:
-            for cap in CUMULATIVE_CAPS:
-                common = {
-                    "cash_yield": CASH_YIELD,
-                    "protected_cash_floor_pct_initial_cash": floor,
-                    "max_cumulative_buy_spend_pct_initial_cash": cap,
-                }
-                fixed = simulate_weekly_cohort(
-                    cohort, policy="fixed_weekly", cash_yield=CASH_YIELD,
-                    protected_cash_floor_pct_initial_cash=floor,
-                    max_cumulative_buy_spend_pct_initial_cash=cap,
-                )
-                fixed.update(common)
-                fixed["split"] = assign_validation_split(fixed)
-                output.append(fixed)
-                for scale in SCALES:
-                    dynamic = simulate_weekly_cohort(
-                        cohort, policy="measured", cash_yield=CASH_YIELD,
+        for cash_yield in CASH_YIELDS:
+            for floor in CASH_FLOOR_PCTS:
+                for cap in CUMULATIVE_CAPS:
+                    common = {
+                        "cash_yield": cash_yield,
+                        "protected_cash_floor_pct_initial_cash": floor,
+                        "max_cumulative_buy_spend_pct_initial_cash": cap,
+                    }
+                    fixed = simulate_weekly_cohort(
+                        cohort, policy="fixed_weekly", cash_yield=cash_yield,
                         protected_cash_floor_pct_initial_cash=floor,
                         max_cumulative_buy_spend_pct_initial_cash=cap,
-                        thresholds=THRESHOLDS, threshold_set="20_25_30",
-                        dynamic_allocation_scale=scale,
                     )
-                    dynamic.update(common)
-                    dynamic["split"] = assign_validation_split(dynamic)
-                    output.append(dynamic)
+                    fixed.update(common)
+                    fixed["split"] = assign_validation_split(fixed)
+                    output.append(fixed)
+                    for scale in SCALES:
+                        dynamic = simulate_weekly_cohort(
+                            cohort, policy="measured", cash_yield=cash_yield,
+                            protected_cash_floor_pct_initial_cash=floor,
+                            max_cumulative_buy_spend_pct_initial_cash=cap,
+                            thresholds=THRESHOLDS, threshold_set="20_25_30",
+                            dynamic_allocation_scale=scale,
+                        )
+                        dynamic.update(common)
+                        dynamic["split"] = assign_validation_split(dynamic)
+                        output.append(dynamic)
     return pd.DataFrame(output)
 
 
@@ -71,7 +72,8 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
     fixed = primary.loc[primary["policy"] == "fixed_weekly"]
     fixed_index = {
         (
-            str(r.cohort_start), float(r.protected_cash_floor_pct_initial_cash),
+            str(r.cohort_start), float(r.cash_yield),
+            float(r.protected_cash_floor_pct_initial_cash),
             _cap_key(r.max_cumulative_buy_spend_pct_initial_cash),
         ): r
         for r in fixed.itertuples(index=False)
@@ -79,14 +81,14 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
     summaries = []
     dynamic = primary.loc[primary["policy"] == "measured"]
     for label, group in dynamic.groupby(
-        ["split", "protected_cash_floor_pct_initial_cash",
+        ["split", "cash_yield", "protected_cash_floor_pct_initial_cash",
          "max_cumulative_buy_spend_pct_initial_cash", "dynamic_allocation_scale"],
         dropna=False,
     ):
-        split, floor, cap, scale = label
+        split, cash_yield, floor, cap, scale = label
         peers = []
         for row in group.itertuples(index=False):
-            key = (str(row.cohort_start), float(floor), _cap_key(cap))
+            key = (str(row.cohort_start), float(cash_yield), float(floor), _cap_key(cap))
             if key not in fixed_index:
                 raise ValueError(f"Missing matched fixed-DCA cohort: {key}")
             peers.append(fixed_index[key])
@@ -101,7 +103,7 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
               for r, p in zip(group.itertuples(index=False), peers)]
         summaries.append({
             "split": split,
-            "cash_yield_annual_pct": CASH_YIELD * 100.0,
+            "cash_yield_annual_pct": float(cash_yield) * 100.0,
             "protected_cash_floor_pct_initial_cash": float(floor),
             "cumulative_spend_cap_pct_initial_cash": _cap_key(cap),
             "dynamic_allocation_scale": float(scale),
@@ -126,7 +128,7 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
             "interpretation": "Matched fixed DCA uses identical cohort, initial capital, cash yield, reserve and spend cap; realised spend can differ.",
         })
     return pd.DataFrame(summaries).sort_values(
-        ["split", "protected_cash_floor_pct_initial_cash",
+        ["split", "cash_yield_annual_pct", "protected_cash_floor_pct_initial_cash",
          "cumulative_spend_cap_pct_initial_cash", "dynamic_allocation_scale"]
     ).reset_index(drop=True)
 
@@ -158,7 +160,7 @@ def build_report(output_dir: Path) -> dict:
         "train_rule": "Cohort end before 2022-01-01",
         "holdout_rule": "Cohort start on or after 2022-01-01",
         "bridge_cohorts_excluded": True,
-        "cash_yield_annual_pct": CASH_YIELD * 100.0,
+        "cash_yields_annual_pct": [x * 100.0 for x in CASH_YIELDS],
         "protected_cash_floors_pct_initial_cash": list(CASH_FLOOR_PCTS),
         "cumulative_spend_caps_pct_initial_cash": ["uncapped", 40, 50, 60, 70],
         "dynamic_allocation_scales": list(SCALES),
@@ -167,7 +169,7 @@ def build_report(output_dir: Path) -> dict:
         "benchmark": "fixed weekly DCA under the identical starting capital, reserve, gross cash yield and cumulative spending cap",
         "limitations": [
             "Historical BTC export ends 2026-10-05 and is not a contemporaneous point-in-time vintage.",
-            "5% cash yield is a gross scenario, not guaranteed and not tax-adjusted.",
+            "0% and 5% cash yields are tested; the 5% yield is gross, not guaranteed and not tax-adjusted.",
             "Execution is a next-Monday BTC/AUD spot proxy, not an ASX:IBIT fill.",
             "Rolling 104-week cohorts overlap heavily and are not independent trials.",
             "Synthetic prolonged-bear stress must be considered alongside historical holdout results.",
