@@ -88,6 +88,21 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertEqual(snapshot["prospective_paper_tape"]["signal_rows"], 0)
         self.assertIn("zero prospective observations", " ".join(snapshot["limitations"]))
 
+
+    def test_v60_dashboard_displays_matched_historical_pacing_and_bear_stress(self):
+        evidence_path = ROOT / "data" / "research_forward_validation" / "v60_historical_pacing_summary_2026-11-19.json"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        self.assertEqual(evidence["holdout_cohort_count"], 146)
+        self.assertEqual(evidence["policy"], "measured_20_25_30")
+        self.assertEqual(len(evidence["historical_holdout"]), 10)
+        bear = [r for r in evidence["synthetic_stress"] if r["scenario"] == "prolonged_bear_70pct"]
+        self.assertEqual(len(bear), 4)
+        self.assertTrue(all(r["measured_minus_fixed_pp"] < 0 for r in bear))
+        source = (ROOT / "engines" / "research" / "v60_research_app.py").read_text(encoding="utf-8")
+        self.assertIn("Historical cash-pacing holdout", source)
+        self.assertIn("Synthetic prolonged-bear stress", source)
+        self.assertIn("no spending cap or reserve is selected", source)
+
     def test_retired_tier_page_remains_unlinked(self):
         source = APP.read_text(encoding="utf-8")
         self.assertNotIn('"200WMA Trading Model"', source)
