@@ -1,0 +1,43 @@
+name: V6.0 historical pacing and matched-budget report
+
+on:
+  pull_request:
+    paths:
+      - "engines/research/v60_historical_pacing_report.py"
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_historical_report.py"
+      - "tests/test_v60_historical_pacing_report.py"
+      - ".github/workflows/v60_historical_pacing.yml"
+  push:
+    branches: [main]
+    paths:
+      - "engines/research/v60_historical_pacing_report.py"
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_historical_report.py"
+      - "tests/test_v60_historical_pacing_report.py"
+      - ".github/workflows/v60_historical_pacing.yml"
+  workflow_dispatch:
+
+jobs:
+  pacing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run isolated pacing regression tests
+        run: python -m unittest discover -s tests -p 'test_v60_historical_pacing_report.py' -v
+      - name: Run matched-budget historical pacing report
+        run: python -m engines.research.v60_historical_pacing_report --output-dir artifacts/v60_historical_pacing
+      - name: Upload V6.0 pacing evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: v60-historical-pacing-matched-budget
+          path: artifacts/v60_historical_pacing/
+          if-no-files-found: error
