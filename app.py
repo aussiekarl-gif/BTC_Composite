@@ -229,8 +229,8 @@ button[data-testid="stSidebarCollapseButton"] {
 </style>
 """, unsafe_allow_html=True)
 
-# Cycle Trading is the first/default dashboard. Production remains its own frozen model.
-# Sidebar priority does not promote or validate the research trading rules.
+# Production is the first/default dashboard. Research V6.0 is separate and non-executable.
+# V5.9 and Cycle Trading remain archived in the repository, outside active navigation.
 section = st.sidebar.radio(
     "Model",
     ["Production", "Research", "Bottom Signal Timeline"],
