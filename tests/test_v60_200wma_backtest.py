@@ -102,6 +102,33 @@ class V60BacktestTests(unittest.TestCase):
                 max_cumulative_buy_spend_pct_initial_cash=101.0,
             )
 
+
+    def test_dynamic_allocation_scale_changes_only_dynamic_spend(self):
+        rows = flat_rows(price=100_000, ratio=0.70)
+        fixed_default = simulate_weekly_cohort(rows, policy="fixed_weekly")
+        fixed_scaled = simulate_weekly_cohort(
+            rows, policy="fixed_weekly", dynamic_allocation_scale=0.5
+        )
+        measured_default = simulate_weekly_cohort(rows, policy="measured")
+        measured_half = simulate_weekly_cohort(
+            rows, policy="measured", dynamic_allocation_scale=0.5
+        )
+        measured_one_half = simulate_weekly_cohort(
+            rows, policy="measured", dynamic_allocation_scale=1.5
+        )
+        self.assertAlmostEqual(fixed_default["total_buy_spend_aud"], fixed_scaled["total_buy_spend_aud"])
+        self.assertAlmostEqual(measured_half["dynamic_allocation_scale"], 0.5)
+        self.assertLess(measured_half["total_buy_spend_aud"], measured_default["total_buy_spend_aud"])
+        self.assertGreater(measured_one_half["total_buy_spend_aud"], measured_default["total_buy_spend_aud"])
+
+    def test_invalid_dynamic_allocation_scale_fails_closed(self):
+        for scale in (0, -0.1, 3.01, float("nan")):
+            with self.subTest(scale=scale):
+                with self.assertRaises(ValueError):
+                    simulate_weekly_cohort(
+                        flat_rows(), policy="measured", dynamic_allocation_scale=scale
+                    )
+
     def test_invalid_inputs_fail_closed(self):
         rows = flat_rows()
         rows[3]["ratio_to_200wma"] = 0
