@@ -41,29 +41,29 @@ def build_scale_results(weekly_rows: list[dict]) -> pd.DataFrame:
             for floor in CASH_FLOOR_PCTS:
                 for cap in CUMULATIVE_CAPS:
                     common = {
-                    "cash_yield": cash_yield,
-                    "protected_cash_floor_pct_initial_cash": floor,
-                    "max_cumulative_buy_spend_pct_initial_cash": cap,
-                }
-                fixed = simulate_weekly_cohort(
-                    cohort, policy="fixed_weekly", cash_yield=cash_yield,
-                    protected_cash_floor_pct_initial_cash=floor,
-                    max_cumulative_buy_spend_pct_initial_cash=cap,
-                )
-                fixed.update(common)
-                fixed["split"] = assign_validation_split(fixed)
-                output.append(fixed)
-                for scale in SCALES:
-                    dynamic = simulate_weekly_cohort(
-                        cohort, policy="measured", cash_yield=cash_yield,
+                        "cash_yield": cash_yield,
+                        "protected_cash_floor_pct_initial_cash": floor,
+                        "max_cumulative_buy_spend_pct_initial_cash": cap,
+                    }
+                    fixed = simulate_weekly_cohort(
+                        cohort, policy="fixed_weekly", cash_yield=cash_yield,
                         protected_cash_floor_pct_initial_cash=floor,
                         max_cumulative_buy_spend_pct_initial_cash=cap,
-                        thresholds=THRESHOLDS, threshold_set="20_25_30",
-                        dynamic_allocation_scale=scale,
                     )
-                    dynamic.update(common)
-                    dynamic["split"] = assign_validation_split(dynamic)
-                    output.append(dynamic)
+                    fixed.update(common)
+                    fixed["split"] = assign_validation_split(fixed)
+                    output.append(fixed)
+                    for scale in SCALES:
+                        dynamic = simulate_weekly_cohort(
+                            cohort, policy="measured", cash_yield=cash_yield,
+                            protected_cash_floor_pct_initial_cash=floor,
+                            max_cumulative_buy_spend_pct_initial_cash=cap,
+                            thresholds=THRESHOLDS, threshold_set="20_25_30",
+                            dynamic_allocation_scale=scale,
+                        )
+                        dynamic.update(common)
+                        dynamic["split"] = assign_validation_split(dynamic)
+                        output.append(dynamic)
     return pd.DataFrame(output)
 
 
@@ -128,7 +128,7 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
             "interpretation": "Matched fixed DCA uses identical cohort, initial capital, cash yield, reserve and spend cap; realised spend can differ.",
         })
     return pd.DataFrame(summaries).sort_values(
-        ["split", "protected_cash_floor_pct_initial_cash",
+        ["split", "cash_yield_annual_pct", "protected_cash_floor_pct_initial_cash",
          "cumulative_spend_cap_pct_initial_cash", "dynamic_allocation_scale"]
     ).reset_index(drop=True)
 
