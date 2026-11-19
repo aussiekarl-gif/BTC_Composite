@@ -148,13 +148,16 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
         order=planned_buy_order(snap,cash_available=500000)
         self.assertEqual(order["amount_aud"],0.)
 
-    def test_current_app_navigation_exposes_research_only_page(self):
-        app=Path(__file__).resolve().parents[1]/"app.py"
-        txt=app.read_text(encoding="utf8")
-        self.assertIn('"Cycle Trading — Research"',txt)
-        self.assertIn('"Cycle Trading — Research": Path(',txt)
+    def test_current_app_archives_cycle_page_and_routes_research_to_v60(self):
+        root=Path(__file__).resolve().parents[1]
+        txt=(root/"app.py").read_text(encoding="utf8")
+        self.assertNotIn('"Cycle Trading — Research"',txt)
+        self.assertNotIn('"Cycle Trading — Research": Path(',txt)
         self.assertIn('"Production": Path(',txt)
-        self.assertIn('engines" / "research" / "cycle_trading_app.py"',txt)
+        self.assertIn('"Research": Path(',txt)
+        self.assertIn('engines" / "research" / "v60_research_app.py"',txt)
+        # The old Cycle Trading implementation is retained, only unlinked.
+        self.assertTrue((root/"engines"/"research"/"cycle_trading_app.py").is_file())
 
     def test_historical_rejects_2013_and_unsupported_variants(self):
         p,fx=fake_prices()
