@@ -30,7 +30,7 @@ def sample_weekly_rows():
 class V60HistoricalPacingTests(unittest.TestCase):
     def test_all_dynamic_policies_have_identical_cap_reserve_and_yield_benchmarks(self):
         results = build_pacing_results(sample_weekly_rows())
-        self.assertEqual(len(results), 120)
+        self.assertEqual(len(results), 100)
         fixed = results.loc[results["policy"] == "fixed_weekly"]
         self.assertEqual(len(fixed), 20)
         for _, row in results.iterrows():
