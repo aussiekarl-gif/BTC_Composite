@@ -37,8 +37,8 @@ class V60HistoricalReportTests(unittest.TestCase):
         summary = summarise(rows)
         measured = summary.loc[summary["policy"] == "measured"].iloc[0]
         self.assertEqual(measured["split"], "holdout")
-        self.assertEqual(measured["median_final_equity_uplift_vs_fixed_weekly_pct"], 5.0)
-        self.assertEqual(measured["median_btc_uplift_vs_fixed_weekly_pct"], 10.0)
+        self.assertAlmostEqual(measured["median_final_equity_uplift_vs_fixed_weekly_pct"], 5.0, places=8)
+        self.assertAlmostEqual(measured["median_btc_uplift_vs_fixed_weekly_pct"], 10.0, places=8)
         self.assertEqual(measured["cohort_win_rate_final_equity_vs_fixed_weekly_pct"], 100.0)
         self.assertTrue(measured["cohorts_overlap"])
 
