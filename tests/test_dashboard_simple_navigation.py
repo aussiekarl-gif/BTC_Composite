@@ -40,6 +40,7 @@ class SimplifiedLauncherTests(unittest.TestCase):
         expected = [
             ROOT / "engines" / "production" / "production_app.py",
             ROOT / "engines" / "research" / "v60_research_app.py",
+            ROOT / "engines" / "research" / "v60_200wma_paper_tape.py",
             ROOT / "engines" / "audit" / "bottom_signal_timeline_app.py",
         ]
         for target in expected:
