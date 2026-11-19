@@ -84,7 +84,7 @@ def _dump_rows(rows: list[dict], columns: tuple[str, ...]) -> str:
     import csv
     import io
     stream = io.StringIO(newline="")
-    writer = csv.DictWriter(stream, fieldnames=list(columns), lineterminator="\\n")
+    writer = csv.DictWriter(stream, fieldnames=list(columns), lineterminator="\n")
     writer.writeheader()
     writer.writerows(rows)
     return stream.getvalue()
