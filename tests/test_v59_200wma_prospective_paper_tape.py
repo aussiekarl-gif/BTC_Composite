@@ -7,7 +7,7 @@ from engines.research.cycle_forward_signal_tape import (
 from engines.research.ibit_asx_forward_close_tape import COLUMNS as IBIT_COLUMNS
 from engines.research.v59_200wma_prospective_paper_tape import (
     SIGNAL_COLUMNS_PAPER, EXECUTION_COLUMNS, PAPER_START_AFTER_UTC,
-    build_paper_signal, build_asx_observation, process_tapes, _append,
+    build_paper_signal, build_asx_observation, process_tapes, _append, _next_asx_session,
 )
 
 UTC = dt.timezone.utc
@@ -78,7 +78,7 @@ class Prospective200WmaPaperTapeTests(unittest.TestCase):
         self.assertEqual(signal["A_measured_protected_cash_floor_pct_initial_cash"], "0.000000")
         self.assertEqual(signal["A_measured_30pct_protected_cash_floor_pct_initial_cash"], "30.000000")
         self.assertEqual(signal["A_measured_30pct_floor_buy_pct_deployable_cash"], "5.000000")
-        self.assertEqual(signal["expected_next_asx_weekday_sydney"], "2026-11-25")
+        self.assertEqual(signal["expected_next_asx_session_sydney"], "2026-11-25")
 
     def test_tier_boundaries_are_monotonic(self):
         cases = [(0.81, 2.5), (0.80, 3.5), (0.75, 5.0), (0.70, 7.5)]
@@ -104,7 +104,7 @@ class Prospective200WmaPaperTapeTests(unittest.TestCase):
         self.assertEqual(obs["reported_close_aud"], "20.500000")
         self.assertEqual(obs["is_confirmed_broker_fill"], "False")
         wrong = asx_row(session="2026-11-26")
-        with self.assertRaisesRegex(ValueError, "exact next expected"):
+        with self.assertRaisesRegex(ValueError, "exact expected ASX session"):
             build_asx_observation(signal, wrong)
 
     def test_missing_expected_session_never_shifts_to_later_quote(self):
@@ -127,6 +127,14 @@ class Prospective200WmaPaperTapeTests(unittest.TestCase):
             btc, asx, signals, executions, model_sha256="b" * 64)
         self.assertEqual(again_s, signals)
         self.assertEqual(again_e, executions)
+
+    def test_official_asx_calendar_skips_closures_but_keeps_early_closes(self):
+        self.assertEqual(_next_asx_session(dt.date(2026, 12, 24)), dt.date(2026, 12, 29))
+        self.assertEqual(_next_asx_session(dt.date(2027, 4, 23)), dt.date(2027, 4, 26))
+
+    def test_unknown_calendar_year_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "No reviewed ASX trading calendar"):
+            _next_asx_session(dt.date(2027, 12, 31))
 
     def test_bad_frozen_ratio_is_rejected(self):
         row = btc_row(ratio=0.74)
