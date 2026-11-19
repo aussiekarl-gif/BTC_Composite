@@ -50,6 +50,8 @@ class V60ProspectivePaperTapeTests(unittest.TestCase):
         row = build_paper_signal(sample_btc_row(ratio=0.74), model_sha256="c" * 64)
         self.assertEqual(row["baseline_buy_pct_available_cash"], "2.500000")
         self.assertEqual(row["measured_20_25_30_buy_pct_deployable_cash"], "5.000000")
+        self.assertEqual(row["measured_20_25_30_scale_0_5_buy_pct_deployable_cash"], "2.500000")
+        self.assertEqual(row["measured_20_25_30_scale_0_75_buy_pct_deployable_cash"], "3.750000")
         self.assertEqual(row["measured_10_15_20_buy_pct_deployable_cash"], "7.500000")
         self.assertEqual(row["protected_cash_floor_variants_pct_initial_cash"], "0.000000;30.000000;50.000000")
         self.assertEqual(row["cumulative_spend_cap_variants_pct_initial_cash"], "40.000000;50.000000;60.000000")
