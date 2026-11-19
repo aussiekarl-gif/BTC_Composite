@@ -2085,17 +2085,17 @@ elif mode == "DCA Today":
         _raw_probe = (
             _raw_lower if _i == 0 else float(np.nextafter(_raw_lower, 1.0))
         )
-        _multiplier_low_risk = float(
-            risk_band_multiplier(active_smart_dca_curve, _raw_probe)
-        )
-        _multiplier_high_risk = float(
-            risk_band_multiplier(active_smart_dca_curve, _raw_upper)
-        )
-        _multiplier_range = (
-            f"{_multiplier_low_risk:g}×"
-            if _multiplier_low_risk == _multiplier_high_risk else
-            f"{_multiplier_low_risk:g}×→{_multiplier_high_risk:g}×"
-        )
+        _band_multipliers = [
+            float(risk_band_multiplier(active_smart_dca_curve, _raw_probe))
+        ]
+        for _threshold, _ in sorted(active_smart_dca_curve):
+            _threshold = float(_threshold)
+            if _raw_lower < _threshold <= _raw_upper:
+                _band_multipliers.append(float(
+                    risk_band_multiplier(active_smart_dca_curve, _threshold)
+                ))
+        _band_multipliers = list(dict.fromkeys(_band_multipliers))
+        _multiplier_range = "→".join(f"{x:g}×" for x in _band_multipliers)
         _display_rows.append({
             "Risk range": f"{_lower:.2f}–{_upper:.2f}",
             "Weeks": _weeks,
