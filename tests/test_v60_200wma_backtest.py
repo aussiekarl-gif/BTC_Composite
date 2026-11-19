@@ -23,8 +23,8 @@ def flat_rows(price=100_000.0, ratio=0.70, count=104):
 class V60BacktestTests(unittest.TestCase):
     def test_fixed_weekly_and_dynamic_run_same_cohort(self):
         rows = flat_rows()
-        fixed = simulate_weekly_cohort(rows, policy="fixed_weekly")
-        measured = simulate_weekly_cohort(rows, policy="measured")
+        fixed = simulate_weekly_cohort(rows, policy="fixed_weekly", cash_yield=0.0)
+        measured = simulate_weekly_cohort(rows, policy="measured", cash_yield=0.0)
         self.assertEqual(fixed["cohort_start"], measured["cohort_start"])
         self.assertEqual(fixed["observations"], 104)
         self.assertTrue(fixed["research_only"])
@@ -107,14 +107,14 @@ class V60BacktestTests(unittest.TestCase):
         rows = flat_rows(price=100_000, ratio=0.70)
         fixed_default = simulate_weekly_cohort(rows, policy="fixed_weekly")
         fixed_scaled = simulate_weekly_cohort(
-            rows, policy="fixed_weekly", dynamic_allocation_scale=0.5
+            rows, policy="fixed_weekly", dynamic_allocation_scale=0.5, cash_yield=0.0
         )
         measured_default = simulate_weekly_cohort(rows, policy="measured")
         measured_half = simulate_weekly_cohort(
-            rows, policy="measured", dynamic_allocation_scale=0.5
+            rows, policy="measured", dynamic_allocation_scale=0.5, cash_yield=0.0
         )
         measured_one_half = simulate_weekly_cohort(
-            rows, policy="measured", dynamic_allocation_scale=1.5
+            rows, policy="measured", dynamic_allocation_scale=1.5, cash_yield=0.0
         )
         self.assertAlmostEqual(fixed_default["total_buy_spend_aud"], fixed_scaled["total_buy_spend_aud"])
         self.assertAlmostEqual(measured_half["dynamic_allocation_scale"], 0.5)
