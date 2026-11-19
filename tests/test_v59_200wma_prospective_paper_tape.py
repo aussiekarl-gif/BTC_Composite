@@ -104,7 +104,7 @@ class Prospective200WmaPaperTapeTests(unittest.TestCase):
         self.assertEqual(obs["reported_close_aud"], "20.500000")
         self.assertEqual(obs["is_confirmed_broker_fill"], "False")
         wrong = asx_row(session="2026-11-26")
-        with self.assertRaisesRegex(ValueError, "exact next expected"):
+        with self.assertRaisesRegex(ValueError, "exact expected ASX session"):
             build_asx_observation(signal, wrong)
 
     def test_missing_expected_session_never_shifts_to_later_quote(self):
