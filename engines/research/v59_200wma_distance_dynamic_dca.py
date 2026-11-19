@@ -295,16 +295,83 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
         "candidate_ladders": {k: list(v) for k, v in LADDERS.items()},
         "summary": summary,
         "cohort_results": trials,
+        "synthetic_stress_scenarios": synthetic_stress_scenarios(capital=capital),
         "limitations": [
             "Historical BTC/AUD spot is a proxy, not executable ASX:IBIT pricing.",
             "Historical provider publication vintages are not independently attested.",
             "Jan/July two-year cohorts overlap and are not independent cycles.",
             "Candidate thresholds were proposed after reviewing BTC history; holdout is not pristine.",
             "Same-spend equal-sized/equal-transaction-count BTC comparison is a hindsight attribution diagnostic, not a deployable policy.",
+            "Synthetic false-bottom and rally paths are deterministic stress tests, not probability-weighted forecasts.",
             "Cash yield, ETF drag, spread and fee assumptions are illustrative.",
             "No Production, live V5.9, portfolio, dashboard, notification, brokerage or order changes.",
         ],
     }
+
+
+
+def synthetic_stress_scenarios(*, capital: float = CAPITAL_AUD) -> list[dict]:
+    """Illustrative false-bottom and missed-rally paths; never historical forecasts."""
+    start = date(2020, 1, 6)
+    initial_price = 100_000.0
+    fixed_reference_wma = 125_000.0
+    scenarios = []
+    paths = []
+    for further_drop in (0.30, 0.50, 0.70):
+        for recovery in (False, True):
+            trough = initial_price * (1.0 - further_drop)
+            label = f"further_drop_{int(further_drop*100)}pct_" + (
+                "recover_to_200wma" if recovery else "remain_at_trough"
+            )
+            rows = []
+            for i in range(HORIZON_WEEKS):
+                if i <= 26:
+                    price = initial_price + (trough - initial_price) * (i / 26.0)
+                elif recovery:
+                    price = trough + (fixed_reference_wma - trough) * ((i - 26) / 77.0)
+                else:
+                    price = trough
+                day = start + timedelta(weeks=i)
+                rows.append({
+                    "date": day, "signal_date": day - timedelta(days=1),
+                    "btc_price_aud": price,
+                    "ratio_to_200wma": price / fixed_reference_wma,
+                })
+            paths.append((label, rows))
+
+    # A separate rising market beginning above the WMA checks that the base
+    # DCA continues rather than waiting indefinitely for a discount signal.
+    rally_rows = []
+    for i in range(HORIZON_WEEKS):
+        price = 127_500.0 + (250_000.0 - 127_500.0) * (i / 103.0)
+        day = start + timedelta(weeks=i)
+        rally_rows.append({
+            "date": day, "signal_date": day - timedelta(days=1),
+            "btc_price_aud": price,
+            "ratio_to_200wma": price / fixed_reference_wma,
+        })
+    paths.append(("missed_rally_no_discount", rally_rows))
+
+    for label, rows in paths:
+        results = {
+            policy: simulate(rows, policy=policy, capital=capital, cash_yield=CASH_YIELD)
+            for policy in (*LADDERS, "fixed_weekly")
+        }
+        baseline = results["current_2_5pct"]
+        for policy, result in results.items():
+            scenarios.append({
+                "scenario": label, "policy": policy,
+                "equity_uplift_vs_current_pct": 100.0 * (
+                    result["equity_aud"] / baseline["equity_aud"] - 1.0),
+                "btc_equivalent_uplift_vs_current_pct": 100.0 * (
+                    result["terminal_btc_equivalent"] /
+                    baseline["terminal_btc_equivalent"] - 1.0),
+                "remaining_cash_pct_initial_cash": result["remaining_cash_pct_initial_cash"],
+                "max_drawdown_pct": result["max_drawdown_pct"],
+                "same_spend_btc_timing_uplift_pct_hindsight":
+                    result["same_spend_btc_timing_uplift_pct_hindsight"],
+            })
+    return scenarios
 
 
 def fetch_and_evaluate() -> dict:
