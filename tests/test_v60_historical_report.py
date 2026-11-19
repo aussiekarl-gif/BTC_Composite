@@ -42,6 +42,21 @@ class V60HistoricalReportTests(unittest.TestCase):
         self.assertEqual(measured["cohort_win_rate_final_equity_vs_fixed_weekly_pct"], 100.0)
         self.assertTrue(measured["cohorts_overlap"])
 
+
+    def test_discount_activation_counts_report_sparse_valuation_events(self):
+        from engines.research.v60_historical_report import discount_activation_counts
+        rows = [
+            {"execution_date": __import__("datetime").date(2021, 6, 7), "ratio_to_200wma": 0.70},
+            {"execution_date": __import__("datetime").date(2022, 6, 6), "ratio_to_200wma": 0.79},
+            {"execution_date": __import__("datetime").date(2022, 6, 13), "ratio_to_200wma": 0.74},
+            {"execution_date": __import__("datetime").date(2023, 1, 2), "ratio_to_200wma": 0.69},
+        ]
+        result = discount_activation_counts(rows)
+        self.assertEqual(result["pre_2022_train_era"]["at_least_20_pct_below_200wma"]["signal_week_count"], 1)
+        self.assertEqual(result["2022_onward_holdout_era"]["at_least_20_pct_below_200wma"]["signal_week_count"], 3)
+        self.assertEqual(result["2022_onward_holdout_era"]["at_least_25_pct_below_200wma"]["signal_week_count"], 2)
+        self.assertEqual(result["2022_onward_holdout_era"]["at_least_30_pct_below_200wma"]["signal_week_count"], 1)
+
     def test_v60_report_has_no_v59_or_production_imports(self):
         from pathlib import Path
         import inspect
