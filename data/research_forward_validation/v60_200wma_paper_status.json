@@ -1,0 +1,11 @@
+{
+  "status": "awaiting_first_eligible_sunday_close",
+  "paper_start_after_utc": "2026-11-19T09:05:02+00:00",
+  "first_eligible_sunday_close_utc": "2026-11-22",
+  "signal_rows": 0,
+  "asx_observation_rows": 0,
+  "unmatched_signal_rows": 0,
+  "trade_executable": false,
+  "can_claim_trading_edge": false,
+  "eligible_for_live_promotion": false
+}
