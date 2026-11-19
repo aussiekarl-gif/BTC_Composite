@@ -1,5 +1,6 @@
 """Keep the public dashboard limited to frozen Production and V6.0 Research."""
 import ast
+import json
 from pathlib import Path
 import unittest
 
@@ -52,6 +53,17 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertNotIn("production_model", source)
         self.assertIn("V6.0", source)
         self.assertIn("trade_executable", source)
+
+
+    def test_v60_snapshot_discloses_sparse_tiers_and_stress_limits(self):
+        snapshot_path = ROOT / "data" / "research_forward_validation" / "v60_dashboard_snapshot_2026-11-19.json"
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        historical = snapshot["historical_replay"]
+        self.assertEqual(historical["discount_activation_weeks"]["pre_2022_train_era"]["20%"], 0)
+        self.assertEqual(historical["discount_activation_weeks"]["2022_onward_holdout_era"]["20%"], 9)
+        self.assertEqual(historical["discount_activation_weeks"]["2022_onward_holdout_era"]["25%"], 9)
+        self.assertFalse(snapshot["trade_executable"])
+        self.assertIn("No prospective V6.0 paper validation", " ".join(snapshot["limitations"]))
 
     def test_retired_tier_page_remains_unlinked(self):
         source = APP.read_text(encoding="utf-8")
