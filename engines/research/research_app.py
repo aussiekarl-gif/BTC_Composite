@@ -1529,7 +1529,7 @@ elif mode == "DCA Today":
               <div class="v59-sub">{"Deployable capital unavailable until portfolio verification" if not portfolio_verified else f"Deployable A$ {deployable_before_review:,.0f} ÷ {weeks_remaining:.1f} weeks to review ({target_deployment_date:%d/%m/%Y}); preserved A$ {preserved_capital_aud:,.0f}"}</div>
             </div>
             <div>
-              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × risk-band multiplier, bounded by verified deployable cash and remaining capital. Risk ≥0.40 means no buy.">?</span></div>
+              <div class="v59-title">Reason for This Week's Amount <span class="v59-q" title="Base Monday allowance × active risk-band multiplier, bounded by verified deployable cash and remaining capital. The active curve determines the zero-buy band.">?</span></div>
               <div class="v59-reason"><span class="{halving_reason_cls}">{halving_reason_icon}</span><div><b>{halving_reason_title}</b><small>{halving_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-off">i</span><div><b>{purchase_reason_title}</b><small>{purchase_reason_sub}</small></div></div>
               <div class="v59-reason"><span class="v59-check">✓</span><div><b>R2 valuation risk: {risk_label.title()}</b><small>Valuation display {_display_txt} • R2 sizing score {current_risk:.3f} → {risk_weight:.2f}× risk multiplier</small></div></div>
