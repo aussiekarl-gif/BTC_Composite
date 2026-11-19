@@ -2815,6 +2815,10 @@ elif mode == "My Portfolio":
             shared_portfolio = browser_state["portfolio"].copy()
             _save_browser_state(browser_state)
             st.success("Portfolio saved and verified in the persistent database.")
+            # Verification is computed near the top of this script. Rerun so
+            # DCA Today reloads the just-verified durable portfolio rather than
+            # retaining the pre-save fail-closed state for this browser session.
+            st.rerun()
         else:
             # Do not write a stale buy-only browser copy over saved
             # SALE transactions when the shared Google state has changed.
