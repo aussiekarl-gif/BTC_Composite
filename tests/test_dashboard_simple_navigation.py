@@ -40,6 +40,7 @@ class SimplifiedLauncherTests(unittest.TestCase):
         expected = [
             ROOT / "engines" / "production" / "production_app.py",
             ROOT / "engines" / "research" / "v60_research_app.py",
+            ROOT / "engines" / "research" / "v60_200wma_paper_tape.py",
             ROOT / "engines" / "audit" / "bottom_signal_timeline_app.py",
         ]
         for target in expected:
@@ -54,6 +55,26 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertIn("V6.0", source)
         self.assertIn("trade_executable", source)
 
+
+
+    def test_v60_paper_signal_is_independent_and_percentage_only(self):
+        from engines.research.v60_200wma_paper_tape import build_paper_signal
+        btc = {
+            "observation_date_utc": "2026-11-23",
+            "captured_at_utc": "2026-11-24T09:00:00+00:00",
+            "signal_input_last_prior_close_date_utc": "2026-11-22",
+            "prior_btc_usd_close": "74000.000000",
+            "prior_200wma_usd": "100000.000000",
+            "prior_close_div_200wma": "0.74000000",
+            "source_crosscheck_max_diff_pct": "0.0100",
+            "market_data_provider": "verified BTC/USD source",
+            "row_hash": "b" * 64,
+        }
+        row = build_paper_signal(btc, model_sha256="c" * 64)
+        self.assertEqual(row["measured_20_25_30_buy_pct_deployable_cash"], "5.000000")
+        self.assertEqual(row["measured_10_15_20_buy_pct_deployable_cash"], "7.500000")
+        self.assertEqual(row["baseline_buy_pct_available_cash"], "2.500000")
+        self.assertEqual(row["expected_next_asx_session_sydney"], "2026-11-25")
 
     def test_v60_snapshot_discloses_sparse_tiers_and_stress_limits(self):
         snapshot_path = ROOT / "data" / "research_forward_validation" / "v60_dashboard_snapshot_2026-11-19.json"
