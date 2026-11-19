@@ -214,8 +214,6 @@ def simulate_weekly_cohort(
             raise AssertionError("V6.0 cash reserve or weekly capital guardrail violated")
         if cumulative_budget is not None and total_spend > cumulative_budget + 1e-6:
             raise AssertionError("V6.0 cumulative buy budget violated")
-        if False:
-            raise AssertionError("V6.0 cash reserve or weekly capital guardrail violated")
 
     terminal_price = execution_prices[-1]
     final_equity = cash + btc * terminal_price
