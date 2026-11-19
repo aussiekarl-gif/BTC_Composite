@@ -1,0 +1,37 @@
+name: V6.0 synthetic 200WMA stress scenarios
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "engines/research/v60_200wma_policy.py"
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_synthetic_stress.py"
+      - "tests/test_v60_synthetic_stress.py"
+      - ".github/workflows/v60_200wma_stress_report.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run V6.0 synthetic scenario guardrail tests
+        run: python -m unittest discover -s tests -p "test_v60_synthetic_stress.py" -v
+      - name: Generate V6.0 synthetic stress report
+        run: python -m engines.research.v60_synthetic_stress --output-dir artifacts/v60_stress
+      - name: Upload V6.0 synthetic stress report
+        uses: actions/upload-artifact@v4
+        with:
+          name: v60-200wma-synthetic-stress-report
+          path: artifacts/v60_stress/
+          if-no-files-found: error
+          retention-days: 90
