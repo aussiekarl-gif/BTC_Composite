@@ -121,8 +121,15 @@ def simulate_weekly_cohort(
     thresholds: tuple[float, float, float] = DISCOUNT_THRESHOLDS_PCT,
     threshold_set: str = "20_25_30",
     max_cumulative_buy_spend_pct_initial_cash: float | None = None,
+    dynamic_allocation_scale: float = 1.0,
 ) -> dict:
-    """Replay one 104-week cohort with cash yield, BTC drag and buy friction."""
+    """Replay one 104-week cohort with cash yield, BTC drag and buy friction.
+
+    dynamic_allocation_scale proportionally scales every V6.0 candidate tier.
+    A value of 0.5 halves the normal and discount-tier cash percentages; it
+    does not change fixed weekly DCA, the 5% original-capital weekly hard cap,
+    the protected reserve or the cumulative spend cap.
+    """
     validate_weekly_cohort(rows)
     if policy not in (*CANDIDATE_LADDERS, "fixed_weekly"):
         raise ValueError("Unknown V6.0 policy")
@@ -132,7 +139,7 @@ def simulate_weekly_cohort(
         threshold_set = "none"
     numeric = (capital_aud, initial_btc_fraction, cash_yield, btc_drag_annual,
                protected_cash_floor_pct_initial_cash, weekly_cap_pct_original_capital,
-               buy_friction, fixed_fee_aud, min_ticket_aud)
+               buy_friction, fixed_fee_aud, min_ticket_aud, dynamic_allocation_scale)
     if not all(math.isfinite(float(x)) for x in numeric):
         raise ValueError("Simulation inputs must be finite")
     if capital_aud <= 0 or not 0 <= initial_btc_fraction <= 1:
@@ -145,6 +152,8 @@ def simulate_weekly_cohort(
         raise ValueError("Weekly cap must be in (0, 100]")
     if fixed_fee_aud < 0 or min_ticket_aud < 0:
         raise ValueError("Fees and minimum ticket cannot be negative")
+    if not 0 < dynamic_allocation_scale <= 3.0:
+        raise ValueError("Dynamic allocation scale must be in (0, 3]")
     if max_cumulative_buy_spend_pct_initial_cash is not None:
         cap_pct = float(max_cumulative_buy_spend_pct_initial_cash)
         if not math.isfinite(cap_pct) or not 0 <= cap_pct <= 100:
@@ -190,7 +199,7 @@ def simulate_weekly_cohort(
             pct = allocation_for_discount(
                 float(row["ratio_to_200wma"]), candidate=policy, thresholds=thresholds
             )
-            target_spend = deployable * pct / 100.0
+            target_spend = deployable * pct * dynamic_allocation_scale / 100.0
         remaining_cumulative_budget = (
             max(0.0, cumulative_budget - total_spend)
             if cumulative_budget is not None else float("inf")
@@ -234,6 +243,7 @@ def simulate_weekly_cohort(
     return {
         "model_version": "V6.0",
         "policy": policy,
+        "dynamic_allocation_scale": float(dynamic_allocation_scale),
         "threshold_set": threshold_set,
         "discount_thresholds_pct": list(thresholds) if threshold_set != "none" else [],
         "cohort_start": rows[0]["execution_date"].isoformat(),
