@@ -1,0 +1,38 @@
+name: V6.0 200WMA matched historical cohort report
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "engines/research/v60_200wma_policy.py"
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_historical_report.py"
+      - "tests/test_v60_200wma_backtest.py"
+      - "tests/test_v60_historical_report.py"
+      - ".github/workflows/v60_200wma_historical_replay.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  historical-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install research dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Test V6.0 train, bridge and holdout split logic
+        run: python -m unittest discover -s tests -p "test_v60_historical_report.py" -v
+      - name: Run isolated V6.0 matched train and holdout replay
+        run: python -m engines.research.v60_historical_report --output-dir artifacts/v60_historical
+      - name: Upload V6.0 historical report and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: v60-200wma-historical-cohort-report
+          path: artifacts/v60_historical/
+          if-no-files-found: error
+          retention-days: 90
