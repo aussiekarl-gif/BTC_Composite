@@ -100,6 +100,13 @@
     "asx_observation_rows": 0,
     "trade_executable": false,
     "can_claim_trading_edge": false,
-    "eligible_for_live_promotion": false
+    "eligible_for_live_promotion": false,
+    "signal_schema_version": 2,
+    "model_name": "v60_200wma_measured_threshold_sensitivity_scale_paper_v2",
+    "allocation_scale_candidates": [
+      0.5,
+      0.75,
+      1
+    ]
   }
 }
