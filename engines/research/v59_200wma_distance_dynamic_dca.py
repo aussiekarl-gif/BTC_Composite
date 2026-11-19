@@ -217,7 +217,6 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
     return {
         "policy": policy,
         "cash_floor_fraction_initial_cash": cash_floor_fraction,
-        "protected_cash_floor_aud": protected_cash_floor,
         "equity_aud": equity,
         "btc_units": btc,
         "terminal_btc_equivalent": btc + cash / terminal_price,
