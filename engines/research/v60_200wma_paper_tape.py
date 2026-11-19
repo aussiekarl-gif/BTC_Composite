@@ -360,6 +360,9 @@ def process_tapes(btc_text: str, asx_text: str, signal_text: str,
     executions = _read_rows(execution_text, EXECUTION_COLUMNS, date_key="btc_observation_date_utc")
     status = {
         "status": "captured" if added_signal or added_execution_count else "no_new_prospective_observation",
+        "signal_schema_version": 2,
+        "model_name": MODEL_LABEL,
+        "allocation_scale_candidates": [0.5, 0.75, 1.0],
         "paper_start_after_utc": paper_start_after_utc.isoformat(),
         "first_eligible_sunday_close_utc": "2026-11-22",
         "signal_rows": len(signals),
