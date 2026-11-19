@@ -15,6 +15,8 @@ on:
       - 'engines/research/forward_ibit_matched_benchmark.py'
       - 'engines/research/cycle_mid_session_asx_timing_audit.py'
       - 'engines/research/cycle_mid_session_capture_health.py'
+      - 'engines/research/v59_200wma_prospective_paper_tape.py'
+      - 'tests/test_v59_200wma_prospective_paper_tape.py'
       - '.github/workflows/research_forward_cycle_tape.yml'
   pull_request:
     paths:
@@ -31,6 +33,8 @@ on:
       - 'tests/test_cycle_mid_session_asx_timing_audit.py'
       - 'tests/test_cycle_mid_session_capture_health.py'
       - 'tests/test_cycle_independent_nightly_workflow.py'
+      - 'engines/research/v59_200wma_prospective_paper_tape.py'
+      - 'tests/test_v59_200wma_prospective_paper_tape.py'
       - 'engines/research/btc_unified_research_readiness.py'
       - 'tests/test_cycle_forward_signal_tape.py'
       - '.github/workflows/research_forward_cycle_tape.yml'
@@ -80,7 +84,7 @@ jobs:
       - name: Check frozen model equality, capture invariants and future-only grades
         id: capture_validation
         run: |
-          python -m py_compile engines/research/cycle_forward_signal_tape.py engines/research/cycle_forward_kraken_bridge.py engines/research/ibit_asx_forward_close_tape.py engines/research/forward_market_readiness.py
+          python -m py_compile engines/research/cycle_forward_signal_tape.py engines/research/cycle_forward_kraken_bridge.py engines/research/ibit_asx_forward_close_tape.py engines/research/forward_market_readiness.py engines/research/v59_200wma_prospective_paper_tape.py
           python -m unittest discover -s tests -p 'test_cycle_forward_signal_tape.py' -v
           python -m unittest discover -s tests -p 'test_cycle_forward_publish_guard.py' -v
           python -m unittest discover -s tests -p 'test_cycle_forward_kraken_bridge.py' -v
@@ -92,6 +96,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_cycle_mid_session_asx_timing_audit.py' -v
           python -m unittest discover -s tests -p 'test_cycle_mid_session_capture_health.py' -v
           python -m unittest discover -s tests -p 'test_cycle_independent_nightly_workflow.py' -v
+          python -m unittest discover -s tests -p 'test_v59_200wma_prospective_paper_tape.py' -v
       - name: Capture only last VERIFIED completed close and market-level Cycle signal
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: python -m engines.research.cycle_forward_signal_tape
@@ -127,6 +132,16 @@ jobs:
           if ! python -m engines.research.cycle_mid_session_asx_timing_audit; then
             echo '::warning::Mid-session ASX timing study unavailable; preserve independent source tapes.'
           fi
+      - name: Update append-only V5.9 200WMA prospective paper tape (no orders)
+        # Research-only: consumes newly frozen BTC Sunday closes and exact
+        # next-weekday ASX:IBIT indicative closes; never shifts over a missing
+        # weekday/holiday and never claims a Yahoo close is a broker fill.
+        if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && steps.readiness.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          if ! python -m engines.research.v59_200wma_prospective_paper_tape; then
+            echo '::warning::V5.9 200WMA prospective paper tape did not update; preserve source tapes and do not infer a paper execution.'
+          fi
       - name: Preserve prospective source record even if repository write is blocked
         if: ${{ !cancelled() && steps.capture_validation.outcome == 'success' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         uses: actions/upload-artifact@v4
@@ -139,6 +154,7 @@ jobs:
             artifacts/forward_ibit_matched_benchmark.json
             artifacts/cycle_mid_session_asx_timing_audit.json
             artifacts/research_mid_session_capture_health.json
+            artifacts/v59_200wma_paper_status.json
           if-no-files-found: ignore
       - name: Save only new immutable research observation and matured scores
         # A failed test OR failed chained-data audit must NEVER publish
