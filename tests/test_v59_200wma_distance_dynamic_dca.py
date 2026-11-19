@@ -28,6 +28,16 @@ class DynamicWmaDcaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             study.allocation_pct(.7, (.025, .05, .04, .10))
 
+    def test_same_spend_timing_diagnostic_is_zero_at_constant_prices(self):
+        start = date(2020, 1, 6)
+        rows = []
+        for i in range(104):
+            day = start + timedelta(weeks=i)
+            rows.append({"date": day, "signal_date": day-timedelta(days=1),
+                         "btc_price_aud": 100000.0, "ratio_to_200wma": .70})
+        result = study.simulate(rows, policy="C_aggressive")
+        self.assertAlmostEqual(result["same_spend_btc_timing_uplift_pct_hindsight"], 0.0, places=8)
+
     def test_cash_yield_is_a_separate_account_assumption(self):
         start = date(2020, 1, 6)
         rows = []
