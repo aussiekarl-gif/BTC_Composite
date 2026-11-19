@@ -56,6 +56,26 @@ class SimplifiedLauncherTests(unittest.TestCase):
 
 
 
+
+    def test_v60_paper_signal_is_independent_and_percentage_only(self):
+        from engines.research.v60_200wma_paper_tape import build_paper_signal
+        btc = {
+            "observation_date_utc": "2026-11-23",
+            "captured_at_utc": "2026-11-24T09:00:00+00:00",
+            "signal_input_last_prior_close_date_utc": "2026-11-22",
+            "prior_btc_usd_close": "74000.000000",
+            "prior_200wma_usd": "100000.000000",
+            "prior_close_div_200wma": "0.74000000",
+            "source_crosscheck_max_diff_pct": "0.0100",
+            "market_data_provider": "verified BTC/USD source",
+            "row_hash": "b" * 64,
+        }
+        row = build_paper_signal(btc, model_sha256="c" * 64)
+        self.assertEqual(row["measured_20_25_30_buy_pct_deployable_cash"], "5.000000")
+        self.assertEqual(row["measured_10_15_20_buy_pct_deployable_cash"], "7.500000")
+        self.assertEqual(row["baseline_buy_pct_available_cash"], "2.500000")
+        self.assertEqual(row["expected_next_asx_session_sydney"], "2026-11-25")
+
     def test_v60_paper_tape_module_exists_and_compiles_without_legacy_imports(self):
         paper = ROOT / "engines" / "research" / "v60_200wma_paper_tape.py"
         source = paper.read_text(encoding="utf-8")
