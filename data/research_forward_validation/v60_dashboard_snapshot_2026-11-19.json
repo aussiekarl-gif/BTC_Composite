@@ -31,9 +31,24 @@
       "cohort_win_rate_final_equity_pct": 93.835616
     },
     "discount_activation_weeks": {
-      "pre_2022_train_era": {"10%": 0, "15%": 0, "20%": 0, "25%": 0, "30%": 0},
-      "2022_onward_holdout_era": {"10%": 24, "15%": 16, "20%": 9, "25%": 9, "30%": 6},
-      "activation_years": [2022, 2023],
+      "pre_2022_train_era": {
+        "10%": 0,
+        "15%": 0,
+        "20%": 0,
+        "25%": 0,
+        "30%": 0
+      },
+      "2022_onward_holdout_era": {
+        "10%": 24,
+        "15%": 16,
+        "20%": 9,
+        "25%": 9,
+        "30%": 6
+      },
+      "activation_years": [
+        2022,
+        2023
+      ],
       "note": "20% and 25% thresholds were reached on the same nine weekly observations"
     },
     "interpretation": "Historical holdout uplift is descriptive only. Discount tiers did not activate during the 2017-2021 training era and were observed only in the 2022-2023 bear-market episode. Rolling cohorts overlap heavily and are not independent trials."
@@ -45,11 +60,11 @@
       "no_reserve_return_pct": -64.074038,
       "reserve_30_pct_return_pct": -52.430532,
       "reserve_50_pct_return_pct": -44.664904,
-      "reserve_60_pct_return_pct": -40.782090
+      "reserve_60_pct_return_pct": -40.78209
     },
     "fixed_weekly": {
       "no_reserve_return_pct": -54.393496,
-      "reserve_30_pct_return_pct": -44.923580,
+      "reserve_30_pct_return_pct": -44.92358,
       "reserve_50_pct_return_pct": -38.610303,
       "reserve_60_pct_return_pct": -35.453664
     },
@@ -66,8 +81,8 @@
     "The 5% cash yield is a gross scenario, not guaranteed and not tax-adjusted.",
     "The 0.25% annual BTC holding drag and 0.3% buy friction are modelling assumptions.",
     "ASX:IBIT premium/discount, intraday execution, actual brokerage, spreads, tax and personal cash flows are not fully modelled.",
-    "No prospective V6.0 paper validation has been completed.",
-    "No candidate is approved for live investment."
+    "No candidate is approved for live investment.",
+    "V6.0 prospective paper tape is initialized on an isolated branch, but zero prospective observations have been recorded as of this snapshot."
   ],
   "source_runs": {
     "historical_report": 44496028525,
@@ -75,5 +90,16 @@
     "synthetic_stress": 44496508986,
     "reserve_sensitivity": 44496864764,
     "cumulative_cap_sensitivity": 44497548838
+  },
+  "prospective_paper_tape": {
+    "status": "awaiting_first_eligible_sunday_close",
+    "isolated_branch": "research/v60-paper-tape",
+    "paper_start_after_utc": "2026-11-19T09:05:02+00:00",
+    "first_eligible_sunday_close_utc": "2026-11-22",
+    "signal_rows": 0,
+    "asx_observation_rows": 0,
+    "trade_executable": false,
+    "can_claim_trading_edge": false,
+    "eligible_for_live_promotion": false
   }
 }
