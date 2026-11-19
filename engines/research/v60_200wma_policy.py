@@ -39,6 +39,9 @@ def weekly_prior_200wma_signals(daily_closes: pd.Series) -> pd.DataFrame:
     if (prices <= 0).any() or not prices.map(math.isfinite).all():
         raise ValueError("BTC closes must be finite and positive")
     weekly = prices.resample("W-SUN").last().dropna()
+    # A weekly bin is eligible only when the actual Sunday close exists.
+    # Never relabel a Friday/Saturday or partial-week close as Sunday.
+    weekly = weekly.loc[weekly.index.isin(prices.index)]
     prior_200wma = weekly.rolling(200, min_periods=200).mean().shift(1)
     result = pd.DataFrame({
         "signal_date": weekly.index,
