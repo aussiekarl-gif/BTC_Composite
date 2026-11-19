@@ -244,6 +244,10 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
             result["equity_aud"] / control["equity_aud"] - 1.0)
         result["btc_equivalent_uplift_vs_current_pct"] = 100.0 * (
             result["terminal_btc_equivalent"] / control["terminal_btc_equivalent"] - 1.0)
+        result["same_spend_timing_uplift_vs_current_pp_hindsight"] = (
+            result["same_spend_btc_timing_uplift_pct_hindsight"] -
+            control["same_spend_btc_timing_uplift_pct_hindsight"]
+        )
 
     summary = []
     for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
@@ -272,6 +276,8 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
                 "median_drawdown_pct": median(r["max_drawdown_pct"] for r in selected),
                 "median_same_spend_btc_timing_uplift_pct_hindsight": median(
                     r["same_spend_btc_timing_uplift_pct_hindsight"] for r in selected),
+                "median_incremental_same_spend_timing_vs_current_pp_hindsight": median(
+                    r["same_spend_timing_uplift_vs_current_pp_hindsight"] for r in selected),
                 "median_buy_count": median(r["buy_count"] for r in selected),
             })
     return {
