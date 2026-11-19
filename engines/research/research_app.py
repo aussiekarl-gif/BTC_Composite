@@ -2064,80 +2064,64 @@ elif mode == "DCA Today":
     )
 
     st.subheader("Historical Weekly Risk Distribution")
-    # Eight equal-width display bands cover the full transformed 0.00–0.40 scale.
-    # Every valid historical week remains in the denominator; no high-risk weeks are discarded.
-    _display_values = pd.to_numeric(display_source, errors="coerce").dropna().clip(0.0, 0.4)
-    _display_edges = np.linspace(0.0, 0.4, 9)
-    _display_counts = pd.cut(
-        _display_values, bins=_display_edges, labels=False, include_lowest=True,
-        right=True,
-    )
-    _display_rows = []
-    for _i in range(8):
-        _weeks = int((_display_counts == _i).sum())
-        _lower = float(_display_edges[_i])
-        _upper = float(_display_edges[_i + 1])
-        _raw_lower = (_lower / 0.4) ** 2
-        _raw_upper = (_upper / 0.4) ** 2
-        # pd.cut uses (lower, upper] except for the first inclusive bin.
-        # Probe just above non-first lower edges so boundary tiers are not
-        # incorrectly attributed to the preceding display bucket.
-        _raw_probe = (
-            _raw_lower if _i == 0 else float(np.nextafter(_raw_lower, 1.0))
+    # Match the clearer V5.8.2 histogram: show V5.9's actual raw 0.00–1.00
+    # sizing-risk scale, not the optional nonlinear 0.00–0.40 display transform.
+    # These eight mutually exclusive buckets retain all valid weekly observations.
+    _raw_values = pd.to_numeric(rarity_source, errors="coerce").dropna()
+    _raw_values = _raw_values[_raw_values.between(0.0, 1.0)]
+    _raw_edges = [0.00, 0.01, 0.02, 0.05, 0.10, 0.20, 0.40, 0.50, 1.00]
+    _raw_rows = []
+    for _i, (_lower, _upper) in enumerate(zip(_raw_edges[:-1], _raw_edges[1:])):
+        _mask = (
+            (_raw_values >= _lower) & (_raw_values <= _upper)
+            if _i == len(_raw_edges) - 2
+            else ((_raw_values >= _lower) & (_raw_values < _upper))
         )
-        _band_multipliers = [
-            float(risk_band_multiplier(active_smart_dca_curve, _raw_probe))
-        ]
-        for _threshold, _ in sorted(active_smart_dca_curve):
-            _threshold = float(_threshold)
-            if _raw_lower < _threshold <= _raw_upper:
-                _band_multipliers.append(float(
-                    risk_band_multiplier(active_smart_dca_curve, _threshold)
-                ))
-        _band_multipliers = list(dict.fromkeys(_band_multipliers))
-        _multiplier_range = "→".join(f"{x:g}×" for x in _band_multipliers)
-        _display_rows.append({
+        _weeks = int(_mask.sum())
+        _raw_rows.append({
             "Risk range": f"{_lower:.2f}–{_upper:.2f}",
             "Weeks": _weeks,
-            "Percent": 100.0 * _weeks / len(_display_values) if len(_display_values) else 0.0,
-            "Buy multiplier range": _multiplier_range,
+            "Percent": 100.0 * _weeks / len(_raw_values) if len(_raw_values) else 0.0,
         })
-    occurrence = pd.DataFrame(_display_rows)
-    _chart_labels = [
-        f"{row['Risk range']}<br>{row['Buy multiplier range']}"
-        for row in _display_rows
-    ]
+    occurrence = pd.DataFrame(_raw_rows)
+    _chart_labels, _chart_multipliers = risk_ladder_chart_labels(
+        occurrence["Risk range"].tolist(), _raw_edges[:-1],
+        active_smart_dca_curve,
+    )
     fig_occurrence = go.Figure()
     _cur_idx = min(7, int(np.searchsorted(
-        _display_edges[1:], current_research_display_risk, side="left"
+        _raw_edges[1:], current_risk, side="right"
     )))
     _bar_colors = [
         "#F7931A" if i == _cur_idx else "#83C9FF" for i in range(len(occurrence))
     ]
+    _chart_custom = occurrence[["Weeks"]].copy()
+    _chart_custom["Buy multiplier"] = _chart_multipliers
     fig_occurrence.add_bar(
         x=_chart_labels,
         y=occurrence["Percent"],
         marker_color=_bar_colors,
-        customdata=occurrence[["Weeks", "Buy multiplier range"]].to_numpy(),
+        customdata=_chart_custom.to_numpy(),
         hovertemplate=(
-            "Display risk %{x}<br>%{y:.1f}% of weekly observations"
+            "BTC risk %{x}<br>%{y:.1f}% of weekly observations"
             "<br>%{customdata[0]} weeks"
-            "<br>Buy multiplier range: %{customdata[1]}"
+            "<br>Buy multiplier: %{customdata[1]}×"
             "<extra></extra>"
         ),
     )
     fig_occurrence.update_layout(
-        xaxis_title="Research Display Risk (0.00–0.40)",
+        xaxis_title="BTC Risk Range (0.00–1.00)",
         yaxis_title="Historical Weekly Frequency (%)",
         margin=dict(l=20, r=20, t=20, b=20),
         height=380,
     )
     st.plotly_chart(fig_occurrence, width="stretch")
     st.caption(
-        f"Current Research display risk {current_research_display_risk:.3f}/0.400 (orange band). "
-        "This is a nonlinear, display-only rescaling of the full R2 0.00–1.00 score. "
-        "Arrow labels show multiplier changes from lower to higher risk within a display band. All historical weeks are retained. The underlying raw R2 score still controls the "
-        "existing multiplier and >0.50 stop-buy protection; no sizing or backtest inputs changed."
+        f"Current raw R2 sizing risk {current_risk:.3f} (orange bar). "
+        "The chart uses the actual 0.00–1.00 risk score that selects the V5.9 "
+        "DCA multiplier and stop-buy protection. Each bucket shows its applicable "
+        "multiplier; all valid historical weeks are included. The separate 0.00–0.40 "
+        "display-risk metric is retained elsewhere as a presentation aid only."
     )
 
     # Side-by-side diagnostic: active tail-stretched Research sizing score
