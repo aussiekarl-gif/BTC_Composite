@@ -16,6 +16,7 @@ import pandas as pd
 from engines.research.v60_200wma_backtest import (
     build_weekly_execution_rows, simulate_weekly_cohort, COHORT_WEEKS,
 )
+from engines.research.v60_200wma_policy import THRESHOLD_SETS
 from engines.research.v60_historical_report import (
     load_btc_daily, fetch_usd_per_aud, assign_validation_split,
 )
@@ -24,7 +25,6 @@ SCALES = (0.5, 0.75, 1.0, 1.25, 1.5)
 CASH_FLOOR_PCTS = (0.0, 30.0)
 CUMULATIVE_CAPS = (None, 40.0, 50.0, 60.0, 70.0)
 CASH_YIELDS = (0.0, 0.05)
-THRESHOLDS = (20.0, 25.0, 30.0)
 
 
 def _cap_key(value) -> str:
@@ -82,7 +82,7 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
     dynamic = primary.loc[primary["policy"] == "measured"]
     for label, group in dynamic.groupby(
         ["split", "cash_yield", "protected_cash_floor_pct_initial_cash",
-         "max_cumulative_buy_spend_pct_initial_cash", "dynamic_allocation_scale"],
+         "max_cumulative_buy_spend_pct_initial_cash", "threshold_set", "dynamic_allocation_scale"],
         dropna=False,
     ):
         split, cash_yield, floor, cap, scale = label
@@ -106,6 +106,8 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
             "cash_yield_annual_pct": float(cash_yield) * 100.0,
             "protected_cash_floor_pct_initial_cash": float(floor),
             "cumulative_spend_cap_pct_initial_cash": _cap_key(cap),
+            "threshold_set": str(group["threshold_set"].iloc[0]),
+            "discount_thresholds_pct": list(THRESHOLD_SETS[str(group["threshold_set"].iloc[0])]),
             "dynamic_allocation_scale": float(scale),
             "base_buy_pct_deployable_cash": 2.5 * float(scale),
             "top_tier_buy_pct_deployable_cash": 7.5 * float(scale),
@@ -129,7 +131,7 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
         })
     return pd.DataFrame(summaries).sort_values(
         ["split", "cash_yield_annual_pct", "protected_cash_floor_pct_initial_cash",
-         "cumulative_spend_cap_pct_initial_cash", "dynamic_allocation_scale"]
+         "cumulative_spend_cap_pct_initial_cash", "threshold_set", "dynamic_allocation_scale"]
     ).reset_index(drop=True)
 
 
@@ -164,6 +166,7 @@ def build_report(output_dir: Path) -> dict:
         "protected_cash_floors_pct_initial_cash": list(CASH_FLOOR_PCTS),
         "cumulative_spend_caps_pct_initial_cash": ["uncapped", 40, 50, 60, 70],
         "dynamic_allocation_scales": list(SCALES),
+        "threshold_sets_tested": {name: list(values) for name, values in THRESHOLD_SETS.items()},
         "base_buy_percentages": [2.5 * x for x in SCALES],
         "top_tier_buy_percentages": [7.5 * x for x in SCALES],
         "benchmark": "fixed weekly DCA under the identical starting capital, reserve, gross cash yield and cumulative spending cap",
