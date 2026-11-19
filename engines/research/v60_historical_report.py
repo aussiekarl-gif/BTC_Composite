@@ -95,7 +95,7 @@ def discount_activation_counts(weekly_rows: list[dict]) -> dict:
     result = {}
     for period, rows in periods.items():
         counts = {}
-        for threshold in (10, 15, 20, 25, 30):
+        for threshold in (10, 15, 20, 25, 30, 35):
             hits = [
                 r for r in rows
                 if float(r["ratio_to_200wma"]) <= 1.0 - threshold / 100.0
