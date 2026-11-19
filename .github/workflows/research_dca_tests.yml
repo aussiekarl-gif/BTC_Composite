@@ -39,3 +39,12 @@ jobs:
           python -m unittest discover -s tests -p 'test_v59_risk_ui_acceptance.py' -v
           python -m unittest discover -s tests -p 'test_v59_200wma_distance_dynamic_dca.py' -v
           python -m py_compile engines/research/v59_200wma_distance_dynamic_dca.py engines/shared/dca_purchase_status.py engines/production/production_model.py engines/research/research_model.py engines/production/production_app.py engines/research/research_app.py
+      - name: Run matched 200WMA discount-tier historical research
+        run: |
+          python -m engines.research.v59_200wma_distance_dynamic_dca --out artifacts/v59_200wma_distance_dynamic_dca.json
+      - name: Upload 200WMA research report
+        uses: actions/upload-artifact@v4
+        with:
+          name: v59-200wma-distance-dynamic-dca-report
+          path: artifacts/v59_200wma_distance_dynamic_dca.json
+          if-no-files-found: error
