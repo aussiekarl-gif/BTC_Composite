@@ -1,6 +1,6 @@
 {
   "first_actual_capture": "2026-11-12T11:19:52.234443+00:00",
-  "last_signal_day": "2026-11-17",
+  "last_signal_day": "2026-11-19",
   "legacy_realized_rows_not_scored": 3,
   "matured_paper_BTC_AUD_returns": {
     "28d": {
@@ -43,8 +43,8 @@
           "mean_pct": null
         },
         "below_to_plus10": {
-          "count": 0,
-          "mean_pct": null
+          "count": 1,
+          "mean_pct": -13.5107584414353
         },
         "piecewise_tail_3x_mid": {
           "count": 0,
@@ -55,19 +55,19 @@
           "mean_pct": null
         },
         "risk_1x": {
-          "count": 0,
-          "mean_pct": null
+          "count": 1,
+          "mean_pct": -13.5107584414353
         },
         "risk_3x": {
-          "count": 0,
-          "mean_pct": null
+          "count": 1,
+          "mean_pct": -13.5107584414353
         },
         "risk_3x_risk_le_020": {
-          "count": 0,
-          "mean_pct": null
+          "count": 1,
+          "mean_pct": -13.5107584414353
         }
       },
-      "observed_exact_horizon_pairs": 0
+      "observed_exact_horizon_pairs": 1
     },
     "84d": {
       "btc_aud_excess_over_5pct_cash_on_signals_pct": {
@@ -106,35 +106,37 @@
   "new_day_appended": true,
   "no_live_recommendations_orders_notifications": true,
   "not_asx_ibit_execution_or_personal_portfolio": true,
-  "observations": 7,
-  "piecewise_tail_shadow_eligible_observations": 1,
+  "observations": 8,
+  "piecewise_tail_shadow_eligible_observations": 2,
   "prospective_shadow": {
     "broker_fills_verified": false,
     "first_paper_monday": "2026-11-16",
     "illustrative_review_date_not_hard_user_deadline": "2027-12-31",
     "last_paper_monday": "2026-11-16",
     "matched_prospective_monday_fills": 1,
-    "note": "Uses immutable prior-Sunday signals and next captured Monday BTC/USD proxy with Sunday prior FX. Existing holdings virtualised at first paired Monday. No historical backfill.",
+    "note": "Uses immutable prior-Sunday signals and next captured Monday BTC/AUD proxy execution with Sunday prior FX. Existing holdings are virtualised at the first matched Monday. Purchases have no fixed weekly cap and cannot exceed available paper cash. No historical market-data backfill; no broker fills.",
+    "purchase_limit_policy": "No fixed weekly cap; limited by available cash and remaining deployment runway.",
+    "simulation_policy_version": "v59_current_ladder_no_fixed_weekly_cap_v1",
     "status": "PROSPECTIVE_PAPER_ONLY_NOT_BROKER_EXECUTABLE",
     "strategies": {
       "below_200wma": {
-        "additional_purchase_aud": 25500.0,
+        "additional_purchase_aud": 51373.17073170733,
         "cash_interest_aud": 0.0,
-        "max_drawdown_pct": -0.015586470588235812,
-        "paper_btc_reference_units": 2.4368359963343975,
+        "max_drawdown_pct": -0.03080598278334401,
+        "paper_btc_reference_units": 2.704870242145262,
         "paper_buy_count": 1,
-        "portfolio_aud": 509920.509,
-        "remaining_cash_aud": 275400.00000000006,
+        "portfolio_aud": 509842.88948780496,
+        "remaining_cash_aud": 249526.82926829273,
         "value_gap_vs_strict020_pct": 0.0
       },
       "below_to_plus10": {
-        "additional_purchase_aud": 25500.0,
+        "additional_purchase_aud": 51373.17073170733,
         "cash_interest_aud": 0.0,
-        "max_drawdown_pct": -0.015586470588235812,
-        "paper_btc_reference_units": 2.4368359963343975,
+        "max_drawdown_pct": -0.03080598278334401,
+        "paper_btc_reference_units": 2.704870242145262,
         "paper_buy_count": 1,
-        "portfolio_aud": 509920.509,
-        "remaining_cash_aud": 275400.00000000006,
+        "portfolio_aud": 509842.88948780496,
+        "remaining_cash_aud": 249526.82926829273,
         "value_gap_vs_strict020_pct": 0.0
       },
       "piecewise_tail_3x_mid": {
@@ -145,7 +147,7 @@
         "paper_buy_count": 0,
         "portfolio_aud": 510000.0,
         "remaining_cash_aud": 300900.00000000006,
-        "value_gap_vs_strict020_pct": 0.015588900347607293
+        "value_gap_vs_strict020_pct": 0.03081547579351085
       },
       "realized110_and_risk050": {
         "additional_purchase_aud": 0.0,
@@ -155,7 +157,7 @@
         "paper_buy_count": 0,
         "portfolio_aud": 510000.0,
         "remaining_cash_aud": 300900.00000000006,
-        "value_gap_vs_strict020_pct": 0.015588900347607293
+        "value_gap_vs_strict020_pct": 0.03081547579351085
       },
       "risk_1x": {
         "additional_purchase_aud": 5137.317073170733,
@@ -165,35 +167,44 @@
         "paper_buy_count": 1,
         "portfolio_aud": 509981.59704878053,
         "remaining_cash_aud": 295762.6829268293,
-        "value_gap_vs_strict020_pct": 0.011979916026572113
+        "value_gap_vs_strict020_pct": 0.027205942033425856
       },
       "risk_3x": {
-        "additional_purchase_aud": 25500.0,
+        "additional_purchase_aud": 51373.17073170733,
         "cash_interest_aud": 0.0,
-        "max_drawdown_pct": -0.015586470588235812,
-        "paper_btc_reference_units": 2.4368359963343975,
+        "max_drawdown_pct": -0.03080598278334401,
+        "paper_btc_reference_units": 2.704870242145262,
         "paper_buy_count": 1,
-        "portfolio_aud": 509920.509,
-        "remaining_cash_aud": 275400.00000000006,
+        "portfolio_aud": 509842.88948780496,
+        "remaining_cash_aud": 249526.82926829273,
         "value_gap_vs_strict020_pct": 0.0
       },
       "risk_3x_risk_le_020": {
-        "additional_purchase_aud": 25500.0,
+        "additional_purchase_aud": 51373.17073170733,
         "cash_interest_aud": 0.0,
-        "max_drawdown_pct": -0.015586470588235812,
-        "paper_btc_reference_units": 2.4368359963343975,
+        "max_drawdown_pct": -0.03080598278334401,
+        "paper_btc_reference_units": 2.704870242145262,
         "paper_buy_count": 1,
-        "portfolio_aud": 509920.509,
-        "remaining_cash_aud": 275400.00000000006,
+        "portfolio_aud": 509842.88948780496,
+        "remaining_cash_aud": 249526.82926829273,
         "value_gap_vs_strict020_pct": 0.0
       }
-    }
+    },
+    "weekly_purchase_cap_aud": null
   },
+  "purchase_limit_policy": "No fixed weekly cap; limited by available cash and remaining deployment runway.",
   "realized_current_signal_is_tradeable": false,
-  "realized_gate_eligible_observations": 3,
+  "realized_gate_eligible_observations": 4,
   "realized_gate_method_version": "explore21_same_day_close_v2",
   "realized_observation_status": "VALID_DATED_RESEARCH_REFERENCE",
   "realized_reference_is_research_only": true,
+  "simulation_policy_version": "v59_current_ladder_no_fixed_weekly_cap_v1",
   "status": "RESEARCH_ONLY_FORWARD_DATA",
-  "uncaptured_calendar_days_between_first_last": 0
+  "strategy_key_legend": {
+    "risk_1x": "Current risk ladder capped at 1x.",
+    "risk_3x": "Legacy key name; uses the full current 10x/5x/3x/2x/1.5x/1x/0x risk ladder, not a fixed 3x multiplier.",
+    "risk_3x_risk_le_020": "Legacy key name; same current risk ladder, enabled only when the captured raw risk is <=0.20."
+  },
+  "uncaptured_calendar_days_between_first_last": 1,
+  "weekly_purchase_cap_aud": null
 }
