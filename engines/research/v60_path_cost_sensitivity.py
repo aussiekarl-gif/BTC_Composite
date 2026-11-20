@@ -114,6 +114,37 @@ def run_path_comparison() -> list[dict]:
     return output
 
 
+def run_allocation_scale_sensitivity() -> list[dict]:
+    """Compare conservative/base/aggressive dynamic pacing on every path."""
+    output = []
+    for name, (prices, discounts) in _scenario_paths().items():
+        rows = _rows(prices, discounts)
+        common = dict(cash_yield=CASH_YIELD,
+                      protected_cash_floor_pct_initial_cash=RESERVE_PCT,
+                      max_cumulative_buy_spend_pct_initial_cash=CUMULATIVE_CAP_PCT)
+        fixed = simulate_weekly_cohort(rows, policy="fixed_weekly", **common)
+        for scale in (0.50, 0.75, 1.00):
+            dynamic = simulate_weekly_cohort(
+                rows, policy="measured", thresholds=(20.0, 25.0, 30.0),
+                threshold_set="20_25_30", dynamic_allocation_scale=scale,
+                **common,
+            )
+            output.append({
+                "scenario": name,
+                "dynamic_scale": scale,
+                "fixed_final_equity_aud": fixed["final_equity_aud"],
+                "dynamic_final_equity_aud": dynamic["final_equity_aud"],
+                "dynamic_equity_uplift_vs_fixed_pct": 100.0 * (dynamic["final_equity_aud"] / fixed["final_equity_aud"] - 1.0),
+                "fixed_btc": fixed["btc_held"],
+                "dynamic_btc": dynamic["btc_held"],
+                "dynamic_btc_uplift_vs_fixed_pct": 100.0 * (dynamic["btc_held"] / fixed["btc_held"] - 1.0),
+                "dynamic_cash_remaining_pct_initial_cash": 100.0 * dynamic["cash_remaining_aud"] / (CAPITAL_AUD * (1.0 - INITIAL_BTC_FRACTION)),
+                "dynamic_max_drawdown_pct": dynamic["max_drawdown_pct"],
+                "fixed_max_drawdown_pct": fixed["max_drawdown_pct"],
+                "research_only": True,
+            })
+    return output
+
 def run_execution_cost_sensitivity() -> list[dict]:
     prices, discounts = _scenario_paths()["rapid_v_recovery"]
     rows = _rows(prices, discounts)
@@ -157,6 +188,7 @@ def run_execution_cost_sensitivity() -> list[dict]:
 def build_report(output_path: Path) -> dict:
     paths = run_path_comparison()
     costs = run_execution_cost_sensitivity()
+    scales = run_allocation_scale_sensitivity()
     report = {
         "model_version": "V6.0",
         "research_only": True,
@@ -168,6 +200,7 @@ def build_report(output_path: Path) -> dict:
         "cumulative_spend_cap_pct_initial_cash": CUMULATIVE_CAP_PCT,
         "dynamic_ladder": "20/25/30 discount thresholds; measured ladder at 0.75x",
         "delayed_bottom_and_recovery_paths": paths,
+        "allocation_scale_sensitivity_all_paths": scales,
         "rapid_recovery_execution_cost_grid": costs,
         "execution_cost_limitations": [
             "Buy friction is a scenario input, not a measured IBIT bid/ask spread.",
