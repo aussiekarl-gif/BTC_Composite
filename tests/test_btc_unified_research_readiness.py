@@ -209,6 +209,42 @@ class UnifiedResearchReadinessTests(unittest.TestCase):
         self.assertEqual(r["source_health"]["cycle_forward"]["frozen_ASX_IBIT_Sydney_session_quotes"],0)
         self.assertFalse(r["source_health"]["cycle_forward"]["ASX_close_is_executable_broker_quote"])
 
+    def test_v59_active_risk_mapping_lineage_is_explicit(self):
+        result = self.audit()
+        v59 = result["model_scoreboard"]["Research V5.9"]
+        self.assertEqual(
+            v59["research_role"],
+            "FROZEN_RESEARCH_REFERENCE_WITH_TAIL_STRETCHED_MAPPING",
+        )
+        self.assertEqual(v59["active_risk_mapping"], "TAIL_STRETCHED_POWER_LAW")
+        self.assertEqual(v59["active_zero_risk_residual_boundary"], -0.32)
+        self.assertEqual(v59["pre_pr309_reference_cheap_residual"], -0.10)
+        self.assertEqual(v59["pre_pr309_reference_expensive_residual"], 0.20)
+        self.assertTrue(v59["risk_mapping_changed_from_pre_pr309_reference"])
+        self.assertEqual(v59["risk_mapping_change_source_pr"], 309)
+        self.assertFalse(v59["risk_parameters_modified_by_this_report_run"])
+        self.assertEqual(
+            v59["active_risk_mapping_knots"],
+            [
+                {"residual": -0.32, "risk": 0.00},
+                {"residual": -0.31, "risk": 0.01},
+                {"residual": -0.30, "risk": 0.02},
+                {"residual": -0.25, "risk": 0.03},
+                {"residual": -0.10, "risk": 0.049},
+                {"residual": -0.04, "risk": 0.20},
+                {"residual": 0.02, "risk": 0.40},
+                {"residual": 0.20, "risk": 1.00},
+            ],
+        )
+        self.assertIn(
+            "not a model-version-lineage assertion",
+            result["research_parameters_changed_scope"],
+        )
+        self.assertFalse(result["approved_for_live_investment_use"])
+        self.assertEqual(result["recommended_trade_aud"], 0)
+        self.assertEqual(result["new_notifications"], 0)
+        self.assertEqual(result["portfolio_writes"], 0)
+
     def test_no_sources_on_future_policy_data_still_not_alpha(self):
         r=self.audit(books=[book()],flows=[trades()])
         self.assertFalse(r["model_scoreboard"]["Production V5.8.2"]["after_cost_outperformance_verified"])

@@ -26,6 +26,7 @@ from engines.research.coinbase_trade_samples import (
 from engines.research.btc_microstructure_forward_scorecard import (
     build_report as micro_forward_report,
 )
+from engines.research import research_model as v59_model
 
 SYDNEY = ZoneInfo("Australia/Sydney")
 MAX_PUBLIC_SAMPLE_AGE_HOURS = 9
@@ -53,6 +54,48 @@ def _freshness(now, rows):
         "latest_captured_at_utc": last.isoformat(),
         "age_hours": round(age, 3),
         "recent": age <= MAX_PUBLIC_SAMPLE_AGE_HOURS,
+    }
+
+
+def _v59_risk_mapping_lineage() -> dict:
+    """Describe the current V5.9 mapping without changing or promoting it.
+
+    The readiness artifact previously hard-coded risk_parameters_changed to
+    False, obscuring the already-merged PR #309 mapping change. Keep this
+    report-only metadata tied to the actual research-model constants.
+    """
+    knots = tuple(
+        (float(residual), float(risk))
+        for residual, risk in v59_model.RESEARCH_TAIL_RISK_KNOTS
+    )
+    expected_tail_knots = (
+        (-0.32, 0.00), (-0.31, 0.01), (-0.30, 0.02), (-0.25, 0.03),
+        (-0.10, 0.049), (-0.04, 0.20), (0.02, 0.40), (0.20, 1.00),
+    )
+    known_tail_mapping = knots == expected_tail_knots
+    zero_residuals = [residual for residual, risk in knots if risk == 0.0]
+    return {
+        "active_risk_mapping": (
+            "TAIL_STRETCHED_POWER_LAW" if known_tail_mapping
+            else "UNRECOGNIZED_POWER_LAW_MAPPING"
+        ),
+        "active_risk_mapping_knots": [
+            {"residual": residual, "risk": risk} for residual, risk in knots
+        ],
+        "active_zero_risk_residual_boundary": (
+            min(zero_residuals) if zero_residuals else None
+        ),
+        "pre_pr309_reference_mapping": (
+            "LINEAR_CLIPPED_POWER_LAW: zero at residual -0.10, "
+            "one at residual +0.20"
+        ),
+        "pre_pr309_reference_cheap_residual": float(v59_model.DEFAULT_PL_CHEAP),
+        "pre_pr309_reference_expensive_residual": float(v59_model.DEFAULT_PL_EXPENSIVE),
+        "risk_mapping_changed_from_pre_pr309_reference": (
+            True if known_tail_mapping else None
+        ),
+        "risk_mapping_change_source_pr": 309 if known_tail_mapping else None,
+        "risk_parameters_modified_by_this_report_run": False,
     }
 
 
@@ -150,8 +193,8 @@ def build_control_room(
             "after_cost_outperformance_verified": False,
         },
         "Research V5.9": {
-            "research_role": "FROZEN_RESEARCH_REFERENCE",
-            "risk_parameters_changed": False,
+            "research_role": "FROZEN_RESEARCH_REFERENCE_WITH_TAIL_STRETCHED_MAPPING",
+            **_v59_risk_mapping_lineage(),
             "identical_historical_inputs_verified": False,
             "after_cost_outperformance_verified": False,
         },
@@ -225,6 +268,10 @@ def build_control_room(
         "portfolio_writes": 0,
         "production_parameters_changed": False,
         "research_parameters_changed": False,
+        "research_parameters_changed_scope": (
+            "This read-only report did not modify model parameters; this field "
+            "is not a model-version-lineage assertion."
+        ),
         "existing_cycle_rules_changed": False,
     }
 
