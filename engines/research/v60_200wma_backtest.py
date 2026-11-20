@@ -122,6 +122,7 @@ def simulate_weekly_cohort(
     threshold_set: str = "20_25_30",
     max_cumulative_buy_spend_pct_initial_cash: float | None = None,
     dynamic_allocation_scale: float = 1.0,
+    require_nonnegative_weekly_momentum: bool = False,
 ) -> dict:
     """Replay one 104-week cohort with cash yield, BTC drag and buy friction.
 
@@ -199,6 +200,15 @@ def simulate_weekly_cohort(
             pct = allocation_for_discount(
                 float(row["ratio_to_200wma"]), candidate=policy, thresholds=thresholds
             )
+            # Optional research overlay: keep the normal base DCA while the
+            # execution-price proxy is falling; only unlock discount tiers
+            # after a non-negative week-on-week close.
+            if (
+                require_nonnegative_weekly_momentum
+                and i > 0
+                and price < float(rows[i - 1]["btc_price_aud"])
+            ):
+                pct = 2.5
             target_spend = deployable * pct * dynamic_allocation_scale / 100.0
         remaining_cumulative_budget = (
             max(0.0, cumulative_budget - total_spend)
@@ -244,6 +254,7 @@ def simulate_weekly_cohort(
         "model_version": "V6.0",
         "policy": policy,
         "dynamic_allocation_scale": float(dynamic_allocation_scale),
+        "require_nonnegative_weekly_momentum": bool(require_nonnegative_weekly_momentum),
         "threshold_set": threshold_set,
         "discount_thresholds_pct": list(thresholds) if threshold_set != "none" else [],
         "cohort_start": rows[0]["execution_date"].isoformat(),

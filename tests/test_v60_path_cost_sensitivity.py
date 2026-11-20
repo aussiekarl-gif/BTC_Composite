@@ -3,6 +3,7 @@ import unittest
 from engines.research.v60_path_cost_sensitivity import (
     run_allocation_scale_sensitivity,
     run_execution_cost_sensitivity,
+    run_momentum_confirmation_sensitivity,
     run_path_comparison,
 )
 
@@ -32,6 +33,19 @@ class V60PathCostSensitivityTests(unittest.TestCase):
         })
         self.assertTrue(all(row["research_only"] for row in rows))
         self.assertTrue(all(row["fixed_btc"] > 0 and row["dynamic_btc"] > 0 for row in rows))
+    def test_momentum_confirmation_covers_every_path_and_scale(self):
+        rows = run_momentum_confirmation_sensitivity()
+        self.assertEqual(len(rows), 24)
+        self.assertEqual({row["dynamic_scale"] for row in rows}, {0.50, 0.75, 1.00})
+        self.assertEqual({row["weekly_momentum_confirmation"] for row in rows}, {True, False})
+        self.assertEqual({row["scenario"] for row in rows}, {
+            "delayed_bottom_extra_30pct",
+            "delayed_bottom_extra_40pct",
+            "delayed_bottom_extra_50pct",
+            "rapid_v_recovery",
+        })
+        self.assertTrue(all(row["research_only"] for row in rows))
+        self.assertTrue(all(row["dynamic_btc"] > 0 for row in rows))
     def test_execution_cost_grid_is_complete_and_keeps_outputs_finite(self):
         rows = run_execution_cost_sensitivity()
         self.assertEqual(len(rows), 18)
