@@ -229,14 +229,26 @@ button[data-testid="stSidebarCollapseButton"] {
 </style>
 """, unsafe_allow_html=True)
 
-# Production is the first/default dashboard. Research V6.0 is separate and non-executable.
-# V5.9 and Cycle Trading remain archived in the repository, outside active navigation.
+# Keep each strategy independently selectable. Production remains the default and
+# unchanged; V5.9 and the original Day-500 Cycle Trading research are restored
+# as separate research pages rather than blended into the V6.0 programme.
 section = st.sidebar.radio(
     "Model",
-    ["Production", "Research", "Bottom Signal Timeline"],
+    [
+        "Production",
+        "Research V5.9",
+        "Research V6.0",
+        "Cycle Trading — Research",
+        "Bottom Signal Timeline",
+    ],
     index=0,
     key="combined_app_section_selector",
-    help="Production is frozen at V5.8.2. Research is the independent V6.0 200WMA programme. V5.9 is archived and retained outside active navigation.",
+    help=(
+        "Production is frozen at V5.8.2. V5.9 restores the historical risk-ladder "
+        "research; V6.0 is the separate 200WMA discount programme. Cycle Trading "
+        "preserves the original halving Day-500 sell / 200WMA recovery research. "
+        "All research pages remain separate from Production."
+    ),
 )
 
 # Ensure audit quota guards never leak into either user-facing model.
@@ -244,7 +256,9 @@ uninstall_bgeometrics_guard()
 
 engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
-    "Research": Path(__file__).parent / "engines" / "research" / "v60_research_app.py",
+    "Research V5.9": Path(__file__).parent / "engines" / "research" / "research_app.py",
+    "Research V6.0": Path(__file__).parent / "engines" / "research" / "v60_research_app.py",
+    "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
 }[section]
 
