@@ -61,26 +61,55 @@ snapshot = json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
 historical = snapshot["historical_replay"]
 stress = snapshot["synthetic_stress"]
 paper = snapshot["prospective_paper_tape"]
+PACING_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "data" / "research_forward_validation"
+    / "v60_historical_pacing_summary_2026-11-19.json"
+)
+pacing = json.loads(PACING_PATH.read_text(encoding="utf-8"))
 
 st.subheader("Historical holdout snapshot")
 st.caption(
     f"BTC data cutoff {historical['btc_last_observation_date']} • "
     f"{historical['holdout_cohort_count']} overlapping 104-week holdout windows • "
-    "5% gross cash-yield scenario • no protected-cash floor"
+    f"{historical['cash_yield_gross_annual_pct']:.0f}% gross cash-yield scenario • "
+    "no protected-cash floor"
 )
-comparison_rows = []
-for label, key in (
-    ("Reference 20/25/30", "measured_ladder_holdout"),
-    ("Sensitivity 10/15/20", "measured_ladder_10_15_20_holdout"),
-):
-    item = historical[key]
-    comparison_rows.append({
-        "Policy": label,
-        "Median final AUD uplift vs fixed DCA": f"{item['median_final_equity_uplift_vs_fixed_pct']:+.2f}%",
-        "Median BTC-unit uplift vs fixed DCA": f"{item['median_btc_units_uplift_vs_fixed_pct']:+.2f}%",
-        "Cohort wins": f"{item['cohort_win_rate_final_equity_pct']:.1f}%",
-    })
+pacing_rows = {
+    (row["reserve_pct_initial_cash"], row["cumulative_spend_cap"]): row
+    for row in pacing["historical_holdout"]
+}
+reference_pacing = pacing_rows.get((0, "uncapped"), {})
+comparison_rows = [
+    {
+        "Policy": "Reference 20/25/30",
+        "Median final AUD uplift vs fixed DCA": f"{historical['measured_ladder_holdout']['median_final_equity_uplift_vs_fixed_pct']:+.2f}%",
+        "Median BTC-unit uplift vs fixed DCA": f"{historical['measured_ladder_holdout']['median_btc_units_uplift_vs_fixed_pct']:+.2f}%",
+        "Cohort wins": f"{historical['measured_ladder_holdout']['cohort_win_rate_final_equity_pct']:.1f}%",
+        "P10 uplift vs fixed DCA": f"{reference_pacing.get('p10_equity_uplift_pct', 0.0):+.2f}%",
+        "Worst uplift vs fixed DCA": f"{reference_pacing.get('worst_equity_uplift_pct', 0.0):+.2f}%",
+        "Max drawdown difference (pp)": f"{reference_pacing.get('median_max_drawdown_difference_pp', 0.0):+.2f}",
+        "Overlapping windows": pacing["holdout_cohort_count"],
+    },
+    {
+        "Policy": "Sensitivity 10/15/20",
+        "Median final AUD uplift vs fixed DCA": f"{historical['measured_ladder_10_15_20_holdout']['median_final_equity_uplift_vs_fixed_pct']:+.2f}%",
+        "Median BTC-unit uplift vs fixed DCA": f"{historical['measured_ladder_10_15_20_holdout']['median_btc_units_uplift_vs_fixed_pct']:+.2f}%",
+        "Cohort wins": f"{historical['measured_ladder_10_15_20_holdout']['cohort_win_rate_final_equity_pct']:.1f}%",
+        "P10 uplift vs fixed DCA": "n/a",
+        "Worst uplift vs fixed DCA": "n/a",
+        "Max drawdown difference (pp)": "n/a",
+        "Overlapping windows": pacing["holdout_cohort_count"],
+    },
+]
 st.dataframe(pd.DataFrame(comparison_rows), hide_index=True, width="stretch")
+st.caption(
+    "Sample: the holdout windows appear in the matched-budget table below. "
+    "Retrospective, not prospective proof; the rolling cohorts overlap and are not "
+    "independent tests. The sensitivity set has no matched-budget downside metrics "
+    "published; see the prolonged-bear and slower-allocation sections for downside "
+    "evidence."
+)
 st.warning(
     "The discount tiers did not activate at all during 2017–2021. "
     "In the 2022-onward holdout they activated only 24 / 16 / 9 weeks at "
@@ -106,13 +135,6 @@ st.caption(
 )
 
 
-PACING_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "data" / "research_forward_validation"
-    / "v60_historical_pacing_summary_2026-11-19.json"
-)
-pacing = json.loads(PACING_PATH.read_text(encoding="utf-8"))
-
 st.subheader("Historical cash-pacing holdout — matched budgets")
 st.caption(
     f"{pacing['holdout_cohort_count']} overlapping 104-week holdout windows • "
@@ -131,6 +153,7 @@ pacing_frame = pacing_frame.rename(columns={
     "median_spend_difference_pct": "Median spend difference",
     "median_max_drawdown_difference_pp": "Max drawdown difference (pp)",
 })
+pacing_frame["Overlapping windows"] = pacing["holdout_cohort_count"]
 for column in (
     "Median final equity uplift", "10th-percentile equity uplift",
     "Worst equity uplift", "Median BTC-unit uplift", "Cohort wins",
@@ -203,6 +226,7 @@ scale_frame = pd.DataFrame(scale_evidence["historical_scale_comparison"]).rename
     "median_btc_uplift_pct": "Median BTC-unit uplift",
     "win_rate_pct": "Cohort wins",
     "median_drawdown_difference_pp": "Drawdown difference (pp)",
+    "cohorts": "Cohorts",
 })
 for column in (
     "Gross cash yield", "Base allocation", "30%-discount allocation",
