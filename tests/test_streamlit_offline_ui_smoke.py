@@ -80,10 +80,10 @@ class StreamlitOfflineSmoke(unittest.TestCase):
     def test_actual_launcher_routes_to_v60_research_without_live_execution(self):
         page = AppTest.from_file(str(APP), default_timeout=25)
         # Select the non-executable Research page before the first script run.
-        page.session_state["combined_app_section_selector"] = "Research"
+        page.session_state["combined_app_section_selector"] = "Research V6.0"
         page = page.run()
         self.assertFalse(page.exception, repr([x.message for x in page.exception]))
-        self.assertEqual(page.radio(key="combined_app_section_selector").value, "Research")
+        self.assertEqual(page.radio(key="combined_app_section_selector").value, "Research V6.0")
         self.assertTrue(any("Candidate allocation ladders" in x.value
                             for x in page.subheader))
         self.assertTrue(any("Research only" in x.value for x in page.warning))

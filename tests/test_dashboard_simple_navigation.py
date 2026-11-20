@@ -9,7 +9,7 @@ APP = ROOT / "app.py"
 
 
 class SimplifiedLauncherTests(unittest.TestCase):
-    def test_only_production_research_and_timeline_are_in_navigation(self):
+    def test_restored_models_and_timeline_are_in_navigation(self):
         tree = ast.parse(APP.read_text(encoding="utf-8"))
         radios = [
             n for n in ast.walk(tree)
@@ -21,17 +21,20 @@ class SimplifiedLauncherTests(unittest.TestCase):
         radio = radios[0]
         self.assertIsInstance(radio.args[1], ast.List)
         self.assertEqual(ast.literal_eval(radio.args[1]), [
-            "Production", "Research", "Bottom Signal Timeline",
+            "Production", "Research V5.9", "Research V6.0",
+            "Cycle Trading — Research", "Bottom Signal Timeline",
         ])
         named = {kw.arg: kw.value for kw in radio.keywords}
         self.assertEqual(ast.literal_eval(named["index"]), 0)
         self.assertEqual(ast.literal_eval(named["key"]), "combined_app_section_selector")
 
-    def test_v59_and_cycle_trading_are_archived_not_deleted(self):
+    def test_v59_and_cycle_trading_are_restored_as_separate_pages(self):
         source = APP.read_text(encoding="utf-8")
-        self.assertNotIn('"Cycle Trading — Research"', source)
-        self.assertNotIn('"engines" / "research" / "research_app.py"', source)
-        self.assertNotIn('"research_app.py"', source)
+        self.assertIn('"Cycle Trading — Research"', source)
+        self.assertIn('"Research V5.9"', source)
+        self.assertIn('"Research V6.0"', source)
+        self.assertIn('"engines" / "research" / "research_app.py"', source)
+        self.assertIn('"engines" / "research" / "cycle_trading_app.py"', source)
         self.assertTrue((ROOT / "engines" / "research" / "research_app.py").is_file())
         self.assertTrue((ROOT / "engines" / "research" / "cycle_trading_app.py").is_file())
         self.assertTrue((ROOT / "engines" / "research" / "v59_200wma_prospective_paper_tape.py").is_file())
@@ -39,7 +42,9 @@ class SimplifiedLauncherTests(unittest.TestCase):
     def test_all_active_launch_targets_exist_and_compile(self):
         expected = [
             ROOT / "engines" / "production" / "production_app.py",
+            ROOT / "engines" / "research" / "research_app.py",
             ROOT / "engines" / "research" / "v60_research_app.py",
+            ROOT / "engines" / "research" / "cycle_trading_app.py",
             ROOT / "engines" / "research" / "v60_200wma_paper_tape.py",
             ROOT / "engines" / "audit" / "bottom_signal_timeline_app.py",
         ]
