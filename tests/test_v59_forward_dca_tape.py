@@ -43,6 +43,15 @@ class ForwardDcaTapeTests(unittest.TestCase):
     def test_rejects_fallback_stale_unclosed_and_future_fx(self):
         r=snapshot()
         self.assertEqual(t.to_observation(r)["signal_date"],"2026-11-15")
+        # Regression: the upstream snapshot once marked a two-day-old BTC
+        # observation fresh. The outer workflow caught it, but the tape engine
+        # must independently refuse to serialize it.
+        stale_two_day=dict(r)
+        stale_two_day["captured_at_utc"] = (
+            datetime.fromisoformat(r["captured_at_utc"]) + timedelta(days=1)
+        ).isoformat()
+        with self.assertRaisesRegex(ValueError, "next UTC calendar day"):
+            t.to_observation(stale_two_day)
         for key,value in [
             ("status","BLOCKED_SOURCE_OR_FRESHNESS"),
             ("risk_and_fx_fresh",False),

@@ -102,6 +102,14 @@ def to_observation(s:dict, code_sha:str="",realized_reference:dict|None=None,
     signal=signal.astimezone(timezone.utc)
     if signal >= observed or signal.date()>=observed.date():
         raise ValueError("Only closed daily market observations allowed")
+    # The scheduled forward workflow requires the immediately preceding UTC
+    # close. A stale upstream snapshot has previously claimed
+    # risk_and_fx_fresh=True while carrying a two-day-old BTC observation;
+    # enforce the date contract here as well as in the workflow's outer guard.
+    if (observed.date() - signal.date()).days != 1:
+        raise ValueError(
+            "V5.9 daily observation must be captured on the next UTC calendar day; stale snapshot refused"
+        )
     if s.get("risk_score_source")!="Walk-forward Power Law":
         raise ValueError("Cannot publish neutral risk fallback")
     risk=float(s["r2_sizing_risk"])
