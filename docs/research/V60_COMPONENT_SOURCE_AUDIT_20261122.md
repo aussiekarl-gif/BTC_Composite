@@ -193,3 +193,19 @@ Using the documented formula (Terminal Price = 21 × cumulative CDD × daily BTC
 - Five-year prior-only percentile of the ratio: 9.21%.
 
 The CDD input is four days behind the other daily sources at this snapshot. The output is explicitly a partial-history candidate because its cumulative USD value-days history starts on 2010-07-18, when the first valid Coin Metrics market price is available, while market age is counted from 2009-01-03. No missing CDD days are filled.
+
+
+## Current candidate percentile snapshot — 2026-11-21
+
+Five-year prior-only empirical percentiles (1,825 calendar-day lookback; only valid prior observations counted) from the successful source snapshot:
+
+| Candidate component | Latest date | Raw value | Prior-only percentile |
+|---|---|---:|---:|
+| Puell Multiple | 2026-11-21 | 0.91146 | 44.55% |
+| MVRV | 2026-11-21 | 1.12934 | 13.21% |
+| MVRV Z-Score | 2026-11-21 | 0.21906 | 13.75% |
+| Transaction Fees | 2026-11-21 | 3.2467 BTC/day | 18.88% (1,822 valid prior days) |
+| MCTC | 2026-11-21 | 12.0220 | 27.45% |
+| Price / Terminal Price | 2026-11-17 | 0.21211 | 9.21% |
+
+These are our own candidate percentiles, not the nine-item Cowen indicator output. The transaction-fee percentile uses only 1,822 available prior observations because three daily fee rows in its five-year window are missing. No missing value was filled. The Terminal Price source is four days stale in this snapshot. mCTC remains pending; therefore the seven-component composite remains disabled.
