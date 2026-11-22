@@ -60,17 +60,21 @@ except Exception as exc:
     raw = pd.DataFrame()
     load_error = str(exc)
 
-# Map available source series to the Cowen component names. MVRV is explicitly
-# marked as a PlanB realised-price proxy, not a verified market-cap/realised-cap series.
+# Prefer the public Explore21 source snapshots when present. The older local exports
+# remain a clearly labelled fallback for offline use and historical regression tests.
 series_map = {}
 source_map = {}
 if not raw.empty:
-    for column, metric, source in (
-        ("puell_multiple_candidate", "puell_multiple", "Miner revenue / trailing 365-observation mean; candidate"),
+    source_candidates = (
+        ("puell_multiple_explore21", "puell_multiple", "Explore21 Puell Multiple, method v1 • CC BY 4.0"),
+        ("mvrv_explore21", "mvrv", "Explore21 MVRV ratio, method v2 • CC BY 4.0"),
+        ("mvrv_z_score_explore21", "mvrv_z_score", "Explore21 MVRV Z-Score, method v1 • CC BY 4.0"),
+        ("puell_multiple_candidate", "puell_multiple", "Legacy miner-revenue-derived candidate; not preferred"),
         ("mvrv_planb_realized_price_proxy", "mvrv", "PlanB price / realised-price proxy; not exact market-cap MVRV"),
-        ("mvrv_z_score_provider_export", "mvrv_z_score", "Saved provider export; provider methodology not yet reconciled"),
-    ):
-        if column in raw:
+        ("mvrv_z_score_provider_export", "mvrv_z_score", "Saved provider export; methodology not reconciled"),
+    )
+    for column, metric, source in source_candidates:
+        if column in raw and metric not in series_map:
             series_map[metric] = pd.to_numeric(raw[column], errors="coerce")
             source_map[metric] = source
 
@@ -96,6 +100,8 @@ for metric, values in series_map.items():
     )
 
 latest_date = raw.index.max() if not raw.empty else None
+# Completeness is measured on one common as-of date. Each card separately displays
+# its own latest valid observation so a lagging provider does not hide its last value.
 available_now = {
     metric: metric in risk_frame.columns and latest_date in risk_frame.index
     and pd.notna(risk_frame.loc[latest_date, metric])
@@ -103,13 +109,17 @@ available_now = {
 }
 active_available = sum(available_now.values())
 latest_raw = raw.loc[latest_date] if latest_date is not None else pd.Series(dtype=float)
+metric_latest_dates = {
+    metric: values.dropna().index.max()
+    for metric, values in series_map.items() if values.notna().any()
+}
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Active components available", f"{active_available} / 7")
 c2.metric("Dashboard completeness", f"{active_available / 7:.0%}")
 c3.metric("Latest source date", latest_date.strftime("%d %b %Y") if latest_date is not None else "Unavailable")
 c4.metric("Composite score", "NOT CALCULATED")
-st.caption("Completeness counts only active metrics with a current observation and a valid prior-only percentile.")
+st.caption("Completeness is assessed on the common latest source date. Cards show each metric's own latest valid date. No missing values are carried forward.")
 
 if load_error:
     st.error(f"Local source files could not be loaded: {load_error}")
@@ -120,9 +130,10 @@ for row_start in range(0, len(COMPONENTS), 3):
     cols = st.columns(3)
     for col, (label, metric, weight, description) in zip(cols, COMPONENTS[row_start:row_start + 3]):
         with col:
-            if metric in series_map and latest_date is not None:
-                value = latest_raw.get(series_map[metric].name, np.nan)
-                score = risk_frame.loc[latest_date, metric] if metric in risk_frame else np.nan
+            if metric in series_map and metric in metric_latest_dates:
+                metric_date = metric_latest_dates[metric]
+                value = series_map[metric].loc[metric_date]
+                score = risk_frame.loc[metric_date, metric] if metric in risk_frame else np.nan
                 value_text = f"{value:,.3f}" if pd.notna(value) else "—"
                 score_text = f"Historical risk percentile: {score:.0%}" if pd.notna(score) else "Risk percentile: building history"
                 provenance = source_map.get(metric, "")
@@ -131,7 +142,7 @@ for row_start in range(0, len(COMPONENTS), 3):
                     f'<span style="color:#7fa4b9">· weight {weight}</span></div>'
                     f'<div class="metric-value">{value_text}</div>'
                     f'<div class="metric-score">{score_text}</div>'
-                    f'<div class="metric-foot">{provenance}</div></div>',
+                    f'<div class="metric-foot">{provenance} • data through {metric_date:%d %b %Y}</div></div>',
                     unsafe_allow_html=True,
                 )
             else:
@@ -173,11 +184,12 @@ with st.expander("Methodology, weights and data limitations", expanded=False):
     **Zero-weight diagnostics:** RHODL Ratio and Supply in Profit/Loss. They are shown
     for visual completeness but do not contribute to the active composite.
 
-    **What is currently populated:** three historical candidate series are available
-    from the repository's saved exports. Puell is calculated as daily miner revenue
-    divided by its trailing 365-observation average. MVRV is a PlanB price/realised-price
-    proxy. MVRV Z-Score is a saved provider export. Their raw values and percentile
-    histories are not asserted to be identical to Cowen's source or transformation.
+    **What is currently populated:** Explore21 provides daily Puell Multiple (method v1),
+    MVRV ratio (method v2) and MVRV Z-Score (method v1), all CC BY 4.0 with source
+    attribution in the snapshot metadata. Coin Metrics Community provides an independent
+    market-cap MVRV cross-check and BTC issuance, price and supply. Coin Metrics Community
+    is CC BY-NC 4.0 and is not suitable for commercial redistribution. Explore21's
+    pre-18 Nov 2026 historical rows are not verified point-in-time vintages.
 
     **Percentile method:** each observation is ranked against up to the preceding
     1,825 daily observations; at least 365 prior observations are required. Today's
@@ -187,7 +199,8 @@ with st.expander("Methodology, weights and data limitations", expanded=False):
 
     **Not yet displayed as scores:** Transaction Fees, Terminal Price, MCTC and mCTC
     remain unavailable in this dashboard until source series and formulas are validated.
-    The saved MCTC/ThermoCap CSVs are being audited separately; mCTC remains unresolved.
+    The MCTC/ThermoCap snapshot and CDD inputs are separate outstanding data tasks; mCTC
+    remains unresolved.
     """)
 
 st.caption("Research 10.0 • Cowen On-Chain Risk • isolated from Production and V5.9 • no trade execution")
