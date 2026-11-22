@@ -137,3 +137,73 @@ def component_contributions(
     total = float(sum(supplied.values()))
     result = scores.mul(pd.Series(supplied, dtype=float), axis=1).div(total)
     return result.where(complete)
+
+
+def _read_daily_chart_export(path, metric_column):
+    """Read a BlockHorizon-style millisecond-UTC daily export without filling gaps."""
+    frame = pd.read_csv(path)
+    required = {"timestamp", metric_column}
+    if not required.issubset(frame.columns):
+        raise ValueError(f"{path}: missing required columns {sorted(required - set(frame.columns))}")
+    timestamps = pd.to_numeric(frame["timestamp"], errors="coerce")
+    dates = pd.to_datetime(timestamps, unit="ms", utc=True, errors="coerce").dt.normalize()
+    values = pd.to_numeric(frame[metric_column], errors="coerce")
+    result = pd.Series(values.to_numpy(dtype=float), index=dates, name=metric_column)
+    result = result.loc[result.index.notna()].sort_index()
+    if result.index.has_duplicates:
+        raise ValueError(f"{path}: duplicate UTC dates")
+    return result
+
+
+def build_existing_raw_candidates(data_dir):
+    """Load only the existing local exports that can support first-pass components.
+
+    Returned values are raw metric candidates, not Cowen risk scores. MVRV is
+    explicitly a PlanB-realized-price proxy; MVRV Z is the saved provider export.
+    Missing observations remain NaN. No composite or trading output is produced.
+    """
+    from pathlib import Path
+
+    root = Path(data_dir)
+    revenue = _read_daily_chart_export(
+        root / "miner_revenue_total_daily__2026-10-07T21-26-46.csv",
+        "Miner Revenue: Total (Daily)",
+    )
+    realized = pd.read_csv(root / "planb_realized_prices_2026-10-07T21-19-48.csv")
+    required = {"timestamp", "Price", "Realized Price"}
+    if not required.issubset(realized.columns):
+        raise ValueError("PlanB realized-price export has unexpected columns")
+    dates = pd.to_datetime(
+        pd.to_numeric(realized["timestamp"], errors="coerce"),
+        unit="ms", utc=True, errors="coerce"
+    ).dt.normalize()
+    price = pd.to_numeric(realized["Price"], errors="coerce")
+    realized_price = pd.to_numeric(realized["Realized Price"], errors="coerce")
+    planb = pd.DataFrame(
+        {"price_usd": price.to_numpy(dtype=float),
+         "realized_price_usd": realized_price.to_numpy(dtype=float)},
+        index=dates,
+    ).loc[lambda x: x.index.notna()].sort_index()
+    if planb.index.has_duplicates:
+        raise ValueError("PlanB realized-price export has duplicate UTC dates")
+    if (planb[["price_usd", "realized_price_usd"]] <= 0).any().any():
+        raise ValueError("PlanB price fields must be positive")
+
+    # Standard Puell candidate: daily miner revenue divided by its trailing
+    # 365-observation simple moving average. Includes the current completed day;
+    # this is a candidate definition, not proof of exact Cowen source parity.
+    puell = revenue / revenue.rolling(365, min_periods=365).mean()
+    puell.name = "puell_multiple_candidate"
+
+    mvrv_proxy = planb["price_usd"] / planb["realized_price_usd"]
+    mvrv_proxy.name = "mvrv_planb_realized_price_proxy"
+
+    z_path = root / "mvrv_z_score_2026-10-06T21-46-14.csv"
+    mvrv_z = _read_daily_chart_export(z_path, "MVRV Z-Score")
+    mvrv_z.name = "mvrv_z_score_provider_export"
+
+    result = pd.concat(
+        [puell, mvrv_proxy, mvrv_z], axis=1, join="outer"
+    ).sort_index()
+    result.index.name = "date_utc"
+    return result
