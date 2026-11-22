@@ -309,17 +309,17 @@ def build_public_raw_candidates(data_dir):
         cm = _read_indexed_source_csv(
             cm_path, ("CapMVRVCur", "IssTotUSD", "PriceUSD", "SplyCur")
         )
-        result = result.join(
-            cm[["CapMVRVCur", "IssTotUSD", "PriceUSD", "SplyCur"]].rename(
-                columns={
-                    "CapMVRVCur": "mvrv_coinmetrics_crosscheck",
-                    "IssTotUSD": "coinmetrics_issuance_usd",
-                    "PriceUSD": "coinmetrics_price_usd",
-                    "SplyCur": "coinmetrics_supply_btc",
-                }
-            ),
-            how="outer",
-        )
+        cm_columns = ["CapMVRVCur", "IssTotUSD", "PriceUSD", "SplyCur"]
+        cm_rename = {
+            "CapMVRVCur": "mvrv_coinmetrics_crosscheck",
+            "IssTotUSD": "coinmetrics_issuance_usd",
+            "PriceUSD": "coinmetrics_price_usd",
+            "SplyCur": "coinmetrics_supply_btc",
+        }
+        if "RevAllTimeUSD" in cm.columns:
+            cm_columns.append("RevAllTimeUSD")
+            cm_rename["RevAllTimeUSD"] = "coinmetrics_thermocap_crosscheck"
+        result = result.join(cm[cm_columns].rename(columns=cm_rename), how="outer")
     if "transaction_fees_btc_candidate" in result and "coinmetrics_price_usd" in result:
         result["transaction_fees_usd_coinmetrics_close"] = (
             result["transaction_fees_btc_candidate"] * result["coinmetrics_price_usd"]
@@ -361,6 +361,16 @@ def build_public_raw_candidates(data_dir):
                 result.loc[thermo_inputs.index, "mctc_ratio_candidate"] = (
                     market_cap / thermocap
                 )
+                if "coinmetrics_thermocap_crosscheck" in result.columns:
+                    direct_thermocap = result.loc[
+                        thermo_inputs.index, "coinmetrics_thermocap_crosscheck"
+                    ]
+                    result.loc[
+                        thermo_inputs.index, "mctc_ratio_coinmetrics_crosscheck"
+                    ] = market_cap / direct_thermocap
+                    result.loc[
+                        thermo_inputs.index, "thermocap_reconstruction_diff_pct"
+                    ] = 100.0 * (thermocap / direct_thermocap - 1.0)
     if {
         "cdd_btc_days", "coinmetrics_price_usd", "coinmetrics_supply_btc"
     }.issubset(result.columns):
