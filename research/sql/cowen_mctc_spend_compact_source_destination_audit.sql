@@ -1,8 +1,7 @@
 -- Compact follow-up for the two MinerCap cohort balance-drop dates.
 -- Research only. Rebuilds the same retrospective Sep-Oct 2024 cohort.
--- Unlike the first spend-destination audit, this exports source and destination
--- breakdowns as compact JSON STRINGs grouped by address/script, avoiding very
--- large nested arrays that may be blank in CSV exports.
+-- Source and destination breakdowns are pre-aggregated by transaction and
+-- joined to the final result (no correlated subqueries).
 --
 -- One final row per spending transaction. No inference of ownership or sale.
 
@@ -116,6 +115,32 @@ JOIN transaction_summary AS s
 CROSS JOIN UNNEST(t.outputs) AS o
 GROUP BY t.tx_hash;
 
+CREATE TEMP TABLE source_json_summary AS
+SELECT
+  spending_tx_hash,
+  TO_JSON_STRING(ARRAY_AGG(STRUCT(
+    source_address,
+    cohort_input_outpoint_count,
+    ROUND(cohort_input_satoshis / 100000000.0, 8) AS cohort_input_btc,
+    ROUND(coinbase_origin_satoshis / 100000000.0, 8) AS coinbase_origin_btc,
+    ROUND(ordinary_origin_satoshis / 100000000.0, 8) AS ordinary_origin_btc
+  ) ORDER BY cohort_input_satoshis DESC)) AS cohort_source_breakdown_json
+FROM source_summary
+GROUP BY spending_tx_hash;
+
+CREATE TEMP TABLE destination_json_summary AS
+SELECT
+  spending_tx_hash,
+  TO_JSON_STRING(ARRAY_AGG(STRUCT(
+    destination_address,
+    output_script_type,
+    address_count,
+    output_count,
+    ROUND(output_satoshis / 100000000.0, 8) AS output_btc
+  ) ORDER BY output_satoshis DESC)) AS destination_breakdown_json
+FROM destination_summary
+GROUP BY spending_tx_hash;
+
 SELECT
   s.spent_date,
   s.spent_timestamp_utc,
@@ -124,28 +149,10 @@ SELECT
   s.cohort_source_address_count,
   ROUND(s.cohort_input_satoshis / 100000000.0, 8) AS cohort_input_btc,
   ROUND(o.all_output_satoshis / 100000000.0, 8) AS transaction_all_outputs_btc,
-  TO_JSON_STRING(ARRAY(
-    SELECT AS STRUCT
-      x.source_address,
-      x.cohort_input_outpoint_count,
-      ROUND(x.cohort_input_satoshis / 100000000.0, 8) AS cohort_input_btc,
-      ROUND(x.coinbase_origin_satoshis / 100000000.0, 8) AS coinbase_origin_btc,
-      ROUND(x.ordinary_origin_satoshis / 100000000.0, 8) AS ordinary_origin_btc
-    FROM source_summary AS x
-    WHERE x.spending_tx_hash = s.spending_tx_hash
-    ORDER BY x.cohort_input_satoshis DESC
-  )) AS cohort_source_breakdown_json,
-  TO_JSON_STRING(ARRAY(
-    SELECT AS STRUCT
-      x.destination_address,
-      x.output_script_type,
-      x.address_count,
-      x.output_count,
-      ROUND(x.output_satoshis / 100000000.0, 8) AS output_btc
-    FROM destination_summary AS x
-    WHERE x.spending_tx_hash = s.spending_tx_hash
-    ORDER BY x.output_satoshis DESC
-  )) AS destination_breakdown_json
+  src.cohort_source_breakdown_json,
+  dst.destination_breakdown_json
 FROM transaction_summary AS s
 JOIN output_totals AS o USING (spending_tx_hash)
+LEFT JOIN source_json_summary AS src USING (spending_tx_hash)
+LEFT JOIN destination_json_summary AS dst USING (spending_tx_hash)
 ORDER BY s.spent_date, s.spent_timestamp_utc, s.spending_tx_hash;
