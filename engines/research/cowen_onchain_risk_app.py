@@ -163,6 +163,11 @@ for row_start in range(0, len(COMPONENTS), 3):
                             provenance += f" • Coin Metrics RevAllTimeUSD {direct_thermocap / 1e9:,.2f}B"
                         if pd.notna(diff):
                             provenance += f" • reconstruction difference {diff:+.2f}%"
+                    fallback_count = raw.get(
+                        "thermocap_fee_fallback_count", pd.Series(dtype=float)
+                    ).get(metric_date, np.nan)
+                    if pd.notna(fallback_count) and fallback_count > 0:
+                        provenance += f" • source-backed fallback days {int(fallback_count)}"
                 st.markdown(
                     f'<div class="metric-card"><div class="metric-name">{label} '
                     f'<span style="color:#7fa4b9">· weight {weight}</span></div>'
