@@ -227,6 +227,73 @@ def _read_daily_chart_export(path, metric_column):
     return result
 
 
+
+def _read_indexed_source_csv(path, required_columns):
+    """Read a saved public-source CSV with strict daily UTC index validation."""
+    from pathlib import Path
+
+    frame = pd.read_csv(Path(path))
+    if "date_utc" not in frame.columns:
+        raise ValueError(f"{path}: missing date_utc column")
+    dates = pd.to_datetime(frame.pop("date_utc"), utc=True, errors="coerce").dt.normalize()
+    frame.index = dates
+    frame.index.name = "date_utc"
+    frame = frame.loc[frame.index.notna()].sort_index()
+    if frame.index.has_duplicates:
+        raise ValueError(f"{path}: duplicate UTC dates")
+    missing = set(required_columns) - set(frame.columns)
+    if missing:
+        raise ValueError(f"{path}: missing source columns {sorted(missing)}")
+    for column in frame.columns:
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
+    return frame
+
+
+def build_public_raw_candidates(data_dir):
+    """Load validated Explore21 candidate series plus available Coin Metrics cross-checks."""
+    from pathlib import Path
+
+    root = Path(data_dir) / "research" / "cowen_onchain"
+    explore = root / "explore21"
+    puell = _read_indexed_source_csv(
+        explore / "bitcoin-puell-multiple.csv",
+        ("puell_multiple", "issuance_btc", "issuance_usd", "issuance_usd_365d_avg", "btc_close_usd"),
+    )
+    mvrv = _read_indexed_source_csv(
+        explore / "bitcoin-mvrv-ratio.csv", ("mvrv_ratio", "btc_close_usd")
+    )
+    zscore = _read_indexed_source_csv(
+        explore / "bitcoin-mvrv-z-score.csv", ("mvrv_z_score", "btc_close_usd")
+    )
+    result = pd.concat(
+        [
+            puell["puell_multiple"].rename("puell_multiple_explore21"),
+            mvrv["mvrv_ratio"].rename("mvrv_explore21"),
+            zscore["mvrv_z_score"].rename("mvrv_z_score_explore21"),
+        ],
+        axis=1,
+        join="outer",
+    ).sort_index()
+
+    cm_path = root / "coinmetrics_btc_daily_community.csv"
+    if cm_path.exists():
+        cm = _read_indexed_source_csv(
+            cm_path, ("CapMVRVCur", "IssTotUSD", "PriceUSD", "SplyCur")
+        )
+        result = result.join(
+            cm[["CapMVRVCur", "IssTotUSD", "PriceUSD", "SplyCur"]].rename(
+                columns={
+                    "CapMVRVCur": "mvrv_coinmetrics_crosscheck",
+                    "IssTotUSD": "coinmetrics_issuance_usd",
+                    "PriceUSD": "coinmetrics_price_usd",
+                    "SplyCur": "coinmetrics_supply_btc",
+                }
+            ),
+            how="outer",
+        )
+    result.index.name = "date_utc"
+    return result
+
 def build_existing_raw_candidates(data_dir):
     """Load only the existing local exports that can support first-pass components.
 
@@ -237,6 +304,15 @@ def build_existing_raw_candidates(data_dir):
     from pathlib import Path
 
     root = Path(data_dir)
+    public_root = root / "research" / "cowen_onchain" / "explore21"
+    public_files = (
+        public_root / "bitcoin-puell-multiple.csv",
+        public_root / "bitcoin-mvrv-ratio.csv",
+        public_root / "bitcoin-mvrv-z-score.csv",
+    )
+    if all(path.exists() for path in public_files):
+        return build_public_raw_candidates(root)
+
     revenue = _read_daily_chart_export(
         root / "miner_revenue_total_daily__2026-10-07T21-26-46.csv",
         "Miner Revenue: Total (Daily)",
