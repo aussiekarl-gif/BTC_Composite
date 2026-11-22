@@ -137,6 +137,14 @@ for row_start in range(0, len(COMPONENTS), 3):
                 value_text = f"{value:,.3f}" if pd.notna(value) else "—"
                 score_text = f"Historical risk percentile: {score:.0%}" if pd.notna(score) else "Risk percentile: building history"
                 provenance = source_map.get(metric, "")
+                if metric == "mvrv" and "mvrv_coinmetrics_crosscheck" in raw.columns:
+                    cm_value = raw["mvrv_coinmetrics_crosscheck"].get(metric_date, np.nan)
+                    if pd.notna(cm_value) and value != 0:
+                        delta_pct = 100.0 * (cm_value / value - 1.0)
+                        provenance += (
+                            f" • Coin Metrics cross-check {cm_value:.3f} "
+                            f"({delta_pct:+.2f}% vs Explore21)"
+                        )
                 st.markdown(
                     f'<div class="metric-card"><div class="metric-name">{label} '
                     f'<span style="color:#7fa4b9">· weight {weight}</span></div>'
