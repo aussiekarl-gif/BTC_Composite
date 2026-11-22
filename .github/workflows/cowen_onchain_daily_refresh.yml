@@ -36,6 +36,10 @@ jobs:
         run: |
           python -m engines.research.coinmetrics_community \
             --output data/research/cowen_onchain/coinmetrics_btc_daily_community.csv
+      - name: Fetch Aethereal daily transaction fees
+        run: |
+          python -m engines.research.aethereal_public_data \
+            --output data/research/cowen_onchain/bitcoin_network_daily_aethereal.csv
       - name: Commit changed source snapshots
         run: |
           git add data/research/cowen_onchain
