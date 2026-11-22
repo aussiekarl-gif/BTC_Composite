@@ -246,3 +246,19 @@ The automated PR public-data smoke test explicitly requested both documented min
 Both returned HTTP 403. The acquisition completed successfully for the other public data sources, and the metadata sidecar records status 403 for both miner-balance metrics. This confirms that the metrics are documented in Coin Metrics' network-data catalogue but are not currently available to this project through Community API access. They are not suitable as the mCTC input under the present free-access constraints.
 
 Operational decision: retain the 403 result in provenance, but do not treat either metric as a series or attempt to infer/zero-fill it. mCTC remains missing pending a separately licensed, free-to-access historical miner-wallet balance source.
+
+
+### Additional open-data search for mCTC — 2026-11-22
+
+A further search of free mining-data endpoints did not identify a suitable open miner-wallet balance history:
+- Firsthand Bitcoin provides a no-key CSV/JSON API for mining economics, network fees/revenue, MVRV and other series, plus quarterly public-miner company data. Its published series catalogue does not provide the historical aggregate miner-wallet balance needed for Miner Cap.
+- Aethereal's free-for-research/education Bitcoin Network Daily dataset provides fees, miner revenue and market/network fields, but no miner entity balance.
+- CryptoQuant documents a full historical reserve endpoint for aggregated miners, but it requires bearer-token authentication and its miner-wallet clustering is periodically revised; it is not a no-key public history.
+- Coin Metrics miner-balance candidates have now been tested directly and both return HTTP 403 under Community access (see above).
+
+Therefore, there is still no identified source that simultaneously meets the requirements of (1) historical daily aggregate miner-held BTC, (2) no paid entitlement/API key, (3) reusable licence/provenance, and (4) sufficient history for a meaningful cycle backtest. This is a source-availability limitation, not a reason to substitute a different metric. mCTC stays explicitly unavailable.
+
+References:
+- Firsthand Bitcoin public data API and published series catalogue: https://firsthandbitcoin.com/data/api
+- Aethereal Bitcoin Network Daily: https://dataset.aethereal.top/datasets/bitcoin-network-daily
+- CryptoQuant miner reserve endpoint and wallet-clustering caveat: https://userguide.cryptoquant.com/api/btc-miner-flows
