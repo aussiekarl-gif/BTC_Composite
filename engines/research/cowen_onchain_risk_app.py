@@ -40,9 +40,9 @@ st.markdown("""
 
 st.markdown("""
 <div class="cowen-wrap">
- <div class="cowen-kicker">Into The Cryptoverse • visual research reconstruction</div>
+ <div class="cowen-kicker">RESEARCH 10.0 • INTO THE CRYPTOVERSE RECONSTRUCTION</div>
  <div class="cowen-heading">On-Chain Metrics Historical Risk</div>
- <div class="cowen-sub">Cowen-inspired component layout • seven active metrics • two zero-weight diagnostics</div>
+ <div class="cowen-sub">Standalone on-chain risk research page • seven active metrics • two zero-weight diagnostics</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -190,4 +190,4 @@ with st.expander("Methodology, weights and data limitations", expanded=False):
     The saved MCTC/ThermoCap CSVs are being audited separately; mCTC remains unresolved.
     """)
 
-st.caption("V6.0 Cowen On-Chain Risk research • isolated from Production and V5.9 • no trade execution")
+st.caption("Research 10.0 • Cowen On-Chain Risk • isolated from Production and V5.9 • no trade execution")
