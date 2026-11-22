@@ -141,14 +141,17 @@ def component_contributions(
     return result.where(complete)
 
 
-def calculate_terminal_price(inputs: pd.DataFrame) -> pd.DataFrame:
+def calculate_terminal_price(
+    inputs: pd.DataFrame, *, market_age_origin=None
+) -> pd.DataFrame:
     """Calculate Cowen's raw Terminal Price from complete daily CDD, price and supply.
 
     Cowen's public 2026 explanation defines Value Days Destroyed as
     CDD * BTC price, Transferred Price as cumulative VDD / (market age * supply),
     and Terminal Price as 21 * Transferred Price.
 
-    The first row is treated as market-age day 1 (the first price observation).
+    By default, the first row is treated as market-age day 1. When a later
+    market_age_origin is supplied, calendar age is measured from that UTC date.
     Inputs must be complete and contiguous: a missing CDD day cannot be treated
     as zero because that would permanently understate cumulative VDD.
     This returns raw price levels and price/terminal ratio, not a 0-1 risk score.
@@ -183,7 +186,17 @@ def calculate_terminal_price(inputs: pd.DataFrame) -> pd.DataFrame:
     out = frame.copy()
     out["value_days_destroyed_usd"] = out["cdd_btc_days"] * out["price_usd"]
     out["cumulative_value_days_destroyed_usd"] = out["value_days_destroyed_usd"].cumsum()
-    out["market_age_days"] = np.arange(1, len(out) + 1, dtype=int)
+    if market_age_origin is None:
+        out["market_age_days"] = np.arange(1, len(out) + 1, dtype=int)
+    else:
+        origin = pd.Timestamp(market_age_origin)
+        if origin.tzinfo is None:
+            origin = origin.tz_localize("UTC")
+        else:
+            origin = origin.tz_convert("UTC")
+        out["market_age_days"] = (out.index - origin).days + 1
+        if (out["market_age_days"] <= 0).any():
+            raise ValueError("market_age_origin must be on or before the first input date")
     out["transferred_price_usd"] = (
         out["cumulative_value_days_destroyed_usd"]
         / (out["market_age_days"] * out["supply_btc"])
@@ -275,6 +288,13 @@ def build_public_raw_candidates(data_dir):
         join="outer",
     ).sort_index()
 
+    cdd_path = root / "obm_cdd_btcxdays_daily.csv"
+    if cdd_path.exists():
+        cdd = _read_indexed_source_csv(cdd_path, ("cdd_btc_days",))
+        result = result.join(
+            cdd["cdd_btc_days"].rename("cdd_btc_days"), how="outer"
+        )
+
     fees_path = root / "bitcoin_network_daily_aethereal.csv"
     if fees_path.exists():
         fees = _read_indexed_source_csv(
@@ -304,6 +324,38 @@ def build_public_raw_candidates(data_dir):
         result["transaction_fees_usd_coinmetrics_close"] = (
             result["transaction_fees_btc_candidate"] * result["coinmetrics_price_usd"]
         )
+    if {
+        "cdd_btc_days", "coinmetrics_price_usd", "coinmetrics_supply_btc"
+    }.issubset(result.columns):
+        terminal_inputs = result[
+            ["cdd_btc_days", "coinmetrics_price_usd", "coinmetrics_supply_btc"]
+        ].rename(
+            columns={
+                "coinmetrics_price_usd": "price_usd",
+                "coinmetrics_supply_btc": "supply_btc",
+            }
+        )
+        terminal_inputs = terminal_inputs.dropna()
+        terminal_inputs = terminal_inputs.loc[
+            (terminal_inputs["price_usd"] > 0)
+            & (terminal_inputs["supply_btc"] > 0)
+        ]
+        if not terminal_inputs.empty:
+            terminal = calculate_terminal_price(
+                terminal_inputs, market_age_origin="2009-01-03"
+            )
+            result = result.join(
+                terminal[
+                    ["terminal_price_usd", "price_to_terminal_price", "market_age_days"]
+                ].rename(
+                    columns={
+                        "terminal_price_usd": "terminal_price_usd_candidate",
+                        "price_to_terminal_price": "price_to_terminal_price_candidate",
+                        "market_age_days": "terminal_market_age_days",
+                    }
+                ),
+                how="outer",
+            )
     result.index.name = "date_utc"
     return result
 
