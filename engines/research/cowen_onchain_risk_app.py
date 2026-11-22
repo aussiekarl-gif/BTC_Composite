@@ -69,6 +69,7 @@ if not raw.empty:
         ("puell_multiple_explore21", "puell_multiple", "Explore21 Puell Multiple, method v1 • CC BY 4.0"),
         ("mvrv_explore21", "mvrv", "Explore21 MVRV ratio, method v2 • CC BY 4.0"),
         ("mvrv_z_score_explore21", "mvrv_z_score", "Explore21 MVRV Z-Score, method v1 • CC BY 4.0"),
+        ("transaction_fees_btc_candidate", "transaction_fees", "Aethereal daily total fees in BTC/day • free for research and education; candidate"),
         ("puell_multiple_candidate", "puell_multiple", "Legacy miner-revenue-derived candidate; not preferred"),
         ("mvrv_planb_realized_price_proxy", "mvrv", "PlanB price / realised-price proxy; not exact market-cap MVRV"),
         ("mvrv_z_score_provider_export", "mvrv_z_score", "Saved provider export; methodology not reconciled"),
@@ -170,7 +171,8 @@ if not risk_frame.empty:
     labels = {
         "puell_multiple": "Puell Multiple",
         "mvrv": "MVRV (PlanB realised-price proxy)",
-        "mvrv_z_score": "MVRV Z-Score (saved provider export)",
+        "mvrv_z_score": "MVRV Z-Score (Explore21)",
+        "transaction_fees": "Transaction Fees (BTC/day candidate)",
     }
     selected = st.multiselect(
         "Display components", choices, default=choices,
@@ -194,10 +196,12 @@ with st.expander("Methodology, weights and data limitations", expanded=False):
 
     **What is currently populated:** Explore21 provides daily Puell Multiple (method v1),
     MVRV ratio (method v2) and MVRV Z-Score (method v1), all CC BY 4.0 with source
-    attribution in the snapshot metadata. Coin Metrics Community provides an independent
-    market-cap MVRV cross-check and BTC issuance, price and supply. Coin Metrics Community
-    is CC BY-NC 4.0 and is not suitable for commercial redistribution. Explore21's
-    pre-18 Nov 2026 historical rows are not verified point-in-time vintages.
+    attribution in the snapshot metadata. Aethereal provides a separate daily total-fees
+    series in BTC/day, free for research and education; it is a candidate, not a verified
+    Cowen source. Coin Metrics Community provides an independent market-cap MVRV
+    cross-check and BTC issuance, price and supply. Coin Metrics Community is CC BY-NC 4.0
+    and is not suitable for commercial redistribution. Explore21's pre-18 Nov 2026
+    historical rows are not verified point-in-time vintages.
 
     **Percentile method:** each observation is ranked against up to the preceding
     1,825 daily observations; at least 365 prior observations are required. Today's
@@ -206,9 +210,10 @@ with st.expander("Methodology, weights and data limitations", expanded=False):
     candidates and remains subject to source/formula review.
 
     **Not yet displayed as scores:** Transaction Fees, Terminal Price, MCTC and mCTC
-    remain unavailable in this dashboard until source series and formulas are validated.
-    The MCTC/ThermoCap snapshot and CDD inputs are separate outstanding data tasks; mCTC
-    remains unresolved.
+    Transaction Fees is now displayed as an Aethereal BTC/day candidate, but its
+    exact Cowen transformation and direction still need validation. Terminal Price,
+    MCTC and mCTC remain unavailable as validated scores. The MCTC/ThermoCap snapshot
+    and CDD inputs are separate outstanding data tasks; mCTC remains unresolved.
     """)
 
 st.caption("Research 10.0 • Cowen On-Chain Risk • isolated from Production and V5.9 • no trade execution")
