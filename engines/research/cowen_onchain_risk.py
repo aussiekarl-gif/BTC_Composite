@@ -199,13 +199,27 @@ def _read_daily_chart_export(path, metric_column):
     required = {"timestamp", metric_column}
     if not required.issubset(frame.columns):
         raise ValueError(f"{path}: missing required columns {sorted(required - set(frame.columns))}")
-    timestamps = pd.to_numeric(frame["timestamp"], errors="coerce")
-    dates = pd.to_datetime(timestamps, unit="ms", utc=True, errors="coerce").dt.normalize()
-    values = pd.to_numeric(frame[metric_column], errors="coerce")
-    result = pd.Series(values.to_numpy(dtype=float), index=dates, name=metric_column)
-    result = result.loc[result.index.notna()].sort_index()
+    # Convert the timestamp/value arrays positionally. Keeping the conversion
+    # outside Series index alignment avoids accidental label alignment when a
+    # CSV parser or pandas version supplies a non-RangeIndex.
+    timestamps = pd.to_numeric(frame["timestamp"], errors="coerce").to_numpy(dtype=float)
+    values = pd.to_numeric(frame[metric_column], errors="coerce").to_numpy(dtype=float)
+    valid = np.isfinite(timestamps)
+    dates = pd.to_datetime(
+        timestamps[valid].astype("int64"),
+        unit="ms", utc=True, errors="coerce",
+    ).normalize()
+    valid_dates = ~pd.isna(dates)
+    result = pd.Series(
+        values[valid][valid_dates],
+        index=pd.DatetimeIndex(dates[valid_dates]),
+        name=metric_column,
+        dtype=float,
+    ).sort_index()
     if result.index.has_duplicates:
-        raise ValueError(f"{path}: duplicate UTC dates")
+        duplicate_dates = result.index[result.index.duplicated()].unique()
+        examples = ", ".join(str(x.date()) for x in duplicate_dates[:5])
+        raise ValueError(f"{path}: duplicate UTC dates ({examples})")
     return result
 
 
