@@ -60,5 +60,37 @@ class CowenOnchainRiskTests(unittest.TestCase):
             )
 
 
+    def test_existing_raw_candidates_preserve_missing_and_provenance_labels(self):
+        import tempfile
+        from pathlib import Path
+        from engines.research.cowen_onchain_risk import build_existing_raw_candidates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dates = pd.date_range("2020-01-01", periods=366, freq="D", tz="UTC")
+            ts = (dates.view("int64") // 10**6).astype("int64")
+            pd.DataFrame({
+                "timestamp": ts,
+                "Miner Revenue: Total (Daily)": np.arange(1, 367, dtype=float),
+            }).to_csv(root / "miner_revenue_total_daily__2026-10-07T21-26-46.csv", index=False)
+            pd.DataFrame({
+                "timestamp": ts,
+                "Price": np.full(366, 20.0),
+                "Realized Price": np.full(366, 10.0),
+            }).to_csv(root / "planb_realized_prices_2026-10-07T21-19-48.csv", index=False)
+            pd.DataFrame({
+                "timestamp": ts,
+                "MVRV Z-Score": np.linspace(-1, 2, 366),
+            }).to_csv(root / "mvrv_z_score_2026-10-06T21-46-14.csv", index=False)
+
+            candidates = build_existing_raw_candidates(root)
+            self.assertTrue(np.isnan(candidates["puell_multiple_candidate"].iloc[363]))
+            self.assertTrue(np.isfinite(candidates["puell_multiple_candidate"].iloc[364]))
+            self.assertTrue(np.isfinite(candidates["puell_multiple_candidate"].iloc[365]))
+            self.assertAlmostEqual(candidates["mvrv_planb_realized_price_proxy"].iloc[-1], 2.0)
+            self.assertAlmostEqual(candidates["mvrv_z_score_provider_export"].iloc[-1], 2.0)
+            self.assertTrue(candidates.index.is_monotonic_increasing)
+
+
 if __name__ == "__main__":
     unittest.main()
