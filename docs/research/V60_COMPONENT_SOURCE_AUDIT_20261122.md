@@ -170,3 +170,15 @@ References: Coin Metrics Revenue metric definition (RevAllTimeUSD = cumulative R
 ### MCTC reconstruction missing-fee handling
 
 The successful public-source snapshot found three Aethereal fee-BTC observations missing after the common market-price start (2025-11-13 through 2025-11-15), while Aethereal's total miner-revenue USD and price fields were present. The reconstruction does not fill those fee rows with zero or carry adjacent values forward. For those dates only, it derives miner-revenue BTC from Aethereal total miner-revenue USD divided by Aethereal's own daily price, then revalues that BTC revenue at the Coin Metrics daily close. The dashboard exposes the cumulative number of these source-backed fallback days. This is an alternate source path, not a fabricated observation.
+
+
+### MCTC parity check against the user's uploaded series (2026-11-21)
+
+Using the successful public-source snapshot, the independent reconstruction starts 2010-07-18 and is continuous through 2026-11-21. It produced:
+- Reconstructed ThermoCap: USD 100,598,150,055.
+- Reconstructed MCTC: 12.02200.
+- Three missing Aethereal fees_btc observations were handled by the documented Aethereal total-miner-revenue fallback; no missing values were zero-filled.
+
+The user's previously uploaded 2026-11-21 series showed ThermoCap USD 100,566,384,572 and MCTC 12.017. The independent reconstruction differs by only +0.0316% in ThermoCap and +0.0416% in MCTC. This is a strong parity result for the fees-inclusive Coin Metrics-style ThermoCap variant. It is still a cross-source validation, not proof that the proprietary Cowen component uses exactly these source fields or transformations.
+
+The five-year prior-only percentile for the reconstructed MCTC ratio on 2026-11-21 is 27.45%. It is a research candidate percentile, not a Cowen slider score or DCA instruction.
