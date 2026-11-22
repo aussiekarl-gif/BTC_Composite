@@ -245,10 +245,21 @@ def build_existing_raw_candidates(data_dir):
     required = {"timestamp", "Price", "Realized Price"}
     if not required.issubset(realized.columns):
         raise ValueError("PlanB realized-price export has unexpected columns")
-    dates = pd.to_datetime(
-        pd.to_numeric(realized["timestamp"], errors="coerce"),
-        unit="ms", utc=True, errors="coerce"
-    ).dt.normalize()
+    realized_timestamps = pd.to_numeric(
+        realized["timestamp"], errors="coerce"
+    ).to_numpy(dtype=float)
+    finite_realized_timestamps = np.isfinite(realized_timestamps)
+    realized_epoch_unit = (
+        "ms"
+        if np.nanmedian(np.abs(realized_timestamps[finite_realized_timestamps])) >= 1e11
+        else "s"
+    )
+    dates = pd.Series(pd.NaT, index=realized.index, dtype="datetime64[ns, UTC]")
+    dates.loc[finite_realized_timestamps] = pd.to_datetime(
+        realized_timestamps[finite_realized_timestamps].astype("int64"),
+        unit=realized_epoch_unit, utc=True, errors="coerce"
+    )
+    dates = dates.dt.normalize()
     price = pd.to_numeric(realized["Price"], errors="coerce")
     realized_price = pd.to_numeric(realized["Realized Price"], errors="coerce")
     planb = pd.DataFrame(
