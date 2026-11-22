@@ -33,8 +33,7 @@ WHERE block_timestamp_month BETWEEN start_month AND end_month
 
 -- Persistent reward addresses: at least one positive coinbase output in each month.
 CREATE TEMP TABLE persistent_cohort AS
-SELECT
-  address
+SELECT address
 FROM (
   SELECT
     DATE_TRUNC(DATE(t.block_timestamp), MONTH) AS reward_month,
@@ -51,6 +50,7 @@ HAVING COUNT(DISTINCT reward_month) = 2;
 -- Keep all single-address receipts to cohort addresses, not just coinbase rewards.
 CREATE TEMP TABLE cohort_outputs AS
 SELECT
+  o.addresses[SAFE_OFFSET(0)] AS address,
   t.tx_hash,
   o.index AS output_index,
   DATE(t.block_timestamp) AS received_date,
@@ -93,11 +93,10 @@ outpoints AS (
 daily AS (
   SELECT
     c.snapshot_date,
-    COUNT(DISTINCT p.address) AS cohort_addresses,
     COUNT(DISTINCT IF(
       u.received_date <= c.snapshot_date
       AND (u.spent_date IS NULL OR u.spent_date > c.snapshot_date),
-      p.address, NULL
+      u.address, NULL
     )) AS addresses_with_positive_balance,
     ROUND(SUM(IF(
       u.received_date <= c.snapshot_date
@@ -122,23 +121,18 @@ daily AS (
     )) / 100000000, 8) AS cumulative_window_receipts_btc,
     COUNTIF(u.spend_reference_count > 1) AS duplicate_spend_reference_outpoints
   FROM calendar AS c
-  CROSS JOIN persistent_cohort AS p
   LEFT JOIN outpoints AS u
     ON u.received_date <= c.snapshot_date
-   AND u.tx_hash IS NOT NULL
-   AND EXISTS (
-     SELECT 1
-     FROM cohort_outputs AS match_output
-     WHERE match_output.tx_hash = u.tx_hash
-       AND match_output.output_index = u.output_index
-   )
   GROUP BY c.snapshot_date
 ),
 cohort_stats AS (
   SELECT
-    COUNT(*) AS persistent_address_count,
-    ROUND(SUM(IF(t.is_coinbase AND DATE_TRUNC(DATE(t.block_timestamp), MONTH) = end_month,
-      o.value, 0)) / 100000000, 8) AS october_coinbase_rewards_btc
+    (SELECT COUNT(*) FROM persistent_cohort) AS persistent_address_count,
+    ROUND(SUM(IF(
+      t.is_coinbase
+      AND DATE_TRUNC(DATE(t.block_timestamp), MONTH) = end_month,
+      o.value, 0
+    )) / 100000000, 8) AS october_coinbase_rewards_btc
   FROM month_transactions AS t
   CROSS JOIN UNNEST(t.outputs) AS o
   WHERE t.is_coinbase
