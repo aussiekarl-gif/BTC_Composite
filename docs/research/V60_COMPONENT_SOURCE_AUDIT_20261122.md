@@ -6,13 +6,13 @@ This is a research-only source audit. It does not claim exact replication of Int
 
 The user has authorised progress on the six active components that do not require the outstanding miner-cap-to-ThermoCap (mCTC) miner-entity series. The seven active components remain equally weighted in the target reference; mCTC remains missing, so the seven-component composite must remain incomplete.
 
-## Key finding: a much better free-first route exists
+## Key finding: two free-first public sources now look promising
 
-Coin Metrics' public Daily Network Metrics Availability page currently lists BTC with 1,194 / 1,194 daily network metrics completed through 2026-11-21. This makes the Coin Metrics Community API the first source to test for the standard daily series. The API and metric availability must still be tested directly in the repository's automated acquisition workflow; the availability page alone is not proof that every endpoint/metric is exposed under community entitlements.
+Coin Metrics' public Daily Network Metrics Availability page currently lists BTC with 1,194 / 1,194 daily network metrics completed through 2026-11-21. This makes the Coin Metrics Community API a strong independent source to test for standard daily series. The API and metric availability must still be tested directly; the availability page alone is not proof that every endpoint/metric is exposed under Community entitlements.\n\nA second source, Explore21, publishes daily CSVs and a no-key JSON API under CC BY 4.0. Its public catalogue explicitly lists Puell Multiple (2012-08-16 onward), MVRV Ratio (2011-09-16 onward), and MVRV Z-Score (2011-09-16 onward), with method versions and changelog links. It also preserves daily point-in-time vintages from 2026-11-18 onward. That vintage history is too short to provide historical point-in-time data for old cycles, but it is useful for prospective shadow validation and method-change tracking. The earlier historical series remain current/reconstructed data, not frozen historical vintages.
 
 References:
 - Availability: https://availability.coinmetrics.io/
-- Community API: https://community-api.coinmetrics.io/v4
+- Community API: https://community-api.coinmetrics.io/v4\n- Explore21 data catalogue/API: https://charts.explore21.com/data\n- Explore21 Puell: https://charts.explore21.com/bitcoin-puell-multiple\n- Explore21 MVRV: https://charts.explore21.com/bitcoin-mvrv-ratio\n- Explore21 MVRV Z-Score: https://charts.explore21.com/bitcoin-mvrv-z-score
 - Fees/revenue metric catalogue: https://docs.coinmetrics.io/network-data/network-data-overview/fees-and-revenue
 - Supply metric catalogue: https://docs.coinmetrics.io/network-data/network-data-overview/supply
 
@@ -22,9 +22,9 @@ Coin Metrics Community data is licensed CC BY-NC 4.0. Preserve attribution and d
 
 | Active component | Best current route | Status | Important caveat |
 |---|---|---|---|
-| Puell Multiple | Coin Metrics daily issuance value (prefer `IssTotUSD` / `PuellMulTot`); compare against local 365-day calculation and existing BlockHorizon miner-revenue export | Candidate route identified | Standard Puell uses daily issuance value / 365-day average. Do not confuse issuance-only with total miner revenue including transaction fees. BlockHorizon export magnitude/units remain unresolved. |
-| MVRV | Coin Metrics `CapMVRVCur` | Direct standard metric identified | Coin Metrics defines it as current market cap / realised cap. Compare against local PlanB price / realised-price proxy; do not treat PlanB as Cowen source. |
-| MVRV Z-Score | Coin Metrics `CapMVRVZ` if direct community endpoint access is confirmed; existing BlockHorizon daily export is fallback | Existing historical export available; direct-source access pending | Standard definition is (market cap - realised cap) / standard deviation of market cap. The standard-deviation history/window and provider conventions must match before claiming parity. |
+| Puell Multiple | Explore21 `bitcoin-puell-multiple` primary candidate; Coin Metrics `IssTotUSD` / `PuellMulTot` independent cross-check | Public daily CSV/API listed from 2012-08-16 | Explore21 defines daily newly issued coin value / its 365-day average. Historical series is current/reconstructed before 2026-11-18; retain vintage limitation. Do not confuse issuance-only with total miner revenue including transaction fees. |
+| MVRV | Explore21 `bitcoin-mvrv-ratio` primary candidate; Coin Metrics `CapMVRVCur` independent cross-check | Public daily CSV/API listed from 2011-09-16 | Coin Metrics defines it as current market cap / realised cap. Compare both providers and local PlanB price / realised-price proxy; do not treat PlanB as Cowen source. |
+| MVRV Z-Score | Explore21 `bitcoin-mvrv-z-score` primary candidate; Coin Metrics `CapMVRVZ` and existing BlockHorizon export as cross-checks | Public daily CSV/API listed from 2011-09-16 | Standard definition is (market cap - realised cap) / standard deviation of market cap. The standard-deviation history/window and provider conventions must match before claiming parity. |
 | Transaction Fees | Coin Metrics `FeeTotUSD` (and native-unit counterpart if available) | Direct daily metric identified | `FeeTotUSD` is total USD value of fees paid in the interval, using daily close price. Cowen's exact selected fee series, smoothing, transformation and risk direction remain unknown. Preserve USD and native series for comparison. |
 | Terminal Price | Reconstruct from cumulative Value Days Destroyed / (market age × supply), then multiply Transferred Price by 21 | Formula identified; raw input acquisition pending | Requires complete daily CDD/VDD history and a precisely aligned price, supply, and genesis/first-price date. Do not substitute CVDD, Balanced Price or a different terminal-price chart. |
 | MCTC | Existing uploaded Market Cap / ThermoCap ratio history | Data file exists in the current research context | Snapshot currently ends 2026-11-21. Provider, currency, exact ThermoCap definition, and point-in-time vintage still need validation. This component is not blocked by miner entity attribution. |
@@ -32,7 +32,7 @@ Coin Metrics Community data is licensed CC BY-NC 4.0. Preserve attribution and d
 
 Zero-weight diagnostics RHODL Ratio and Supply P/L remain outside the default seven-component composite.
 
-## Formula references
+## Explore21 source coverage and vintage caveat\n\nExplore21's public catalogue reports:\n- Puell Multiple: 2012-08-16 to 2026-11-21; method v1; columns include raw issuance BTC, issuance USD, 365-day issuance USD average and BTC close.\n- MVRV Ratio: 2011-09-16 to 2026-11-21; method v2.\n- MVRV Z-Score: 2011-09-16 to 2026-11-21; method v1.\n- Realized Price and Realized Cap: 2011-08-18 to 2026-11-21.\n- Point-in-time published vintages currently begin 2026-11-18. Do not mistake this recent archive for historical vintages back to 2011.\n\nExplore21's data is CC BY 4.0 and requires attribution/linking to the relevant chart. Its catalogue does not currently list Cowen's Transaction Fees or Terminal Price series, so it does not complete the six non-mCTC components.\n\n## Formula references
 
 - MVRV: Coin Metrics defines `CapMVRVCur` as market cap divided by realised market cap: https://github.com/coinmetrics/docs-website/blob/master/asset-metrics/market/capmvrvcur.md
 - Total transaction fees: Coin Metrics defines `FeeTotUSD` as the sum USD value of all fees paid during the interval, computed from native fees multiplied by daily close price: https://github.com/coinmetrics/docs-website/blob/master/asset-metrics/fees-and-revenue/feetotusd.md
@@ -61,12 +61,12 @@ The loader does not fill missing dates, does not normalize values, and does not 
 
 ## Next engineering actions
 
-1. Add a free-first Coin Metrics Community API client for BTC daily `CapMVRVCur`, `CapMVRVZ`, `FeeTotUSD`, `IssTotUSD`, `PuellMulTot` (where supported), `PriceUSD`, and `SplyCur`. Record request timestamp, response metadata, source metric IDs, units, and missingness.
-2. Cross-check Coin Metrics MVRV against PlanB price / realised-price proxy; cross-check Coin Metrics Puell against both `IssTotUSD` / 365-day SMA and `PuellMulTot`.
-3. Preserve transaction fees in USD and native BTC; test raw level, ratio-to-issuance, and trailing-relative variants separately. Do not choose a transformation based on backtest performance before defining training/validation/test periods.
-4. Acquire daily CDD/VDD for Terminal Price from a reproducible public source. If the source requires paid access, calculate from chain data in an automated pipeline rather than asking the user to perform manual BigQuery exports.
-5. Verify MCTC source provenance and merge its CSV metadata into the V6.0 data manifest.
-6. Continue mCTC independently. Until all seven components are valid, composite risk remains null and status remains `INCOMPLETE — NOT INVESTABLE`.
+1. Add a small Explore21 CSV/API acquisition adapter for Puell, MVRV and MVRV Z, preserving method versions and CC BY 4.0 attribution; use Coin Metrics as an independent cross-check.\n2. Add a free-first Coin Metrics Community API client for BTC daily `CapMVRVCur`, `CapMVRVZ`, `FeeTotUSD`, `IssTotUSD`, `PuellMulTot` (where supported), `PriceUSD`, and `SplyCur`. Record request timestamp, response metadata, source metric IDs, units, and missingness.
+3. Cross-check Coin Metrics MVRV against PlanB price / realised-price proxy; cross-check Coin Metrics Puell against both `IssTotUSD` / 365-day SMA and `PuellMulTot`.
+4. Preserve transaction fees in USD and native BTC; test raw level, ratio-to-issuance, and trailing-relative variants separately. Do not choose a transformation based on backtest performance before defining training/validation/test periods.
+5. Acquire daily CDD/VDD for Terminal Price from a reproducible public source. If the source requires paid access, calculate from chain data in an automated pipeline rather than asking the user to perform manual BigQuery exports.
+6. Verify MCTC source provenance and merge its CSV metadata into the V6.0 data manifest.
+7. Continue mCTC independently. Until all seven components are valid, composite risk remains null and status remains `INCOMPLETE — NOT INVESTABLE`.
 
 ## Normalisation caution
 
