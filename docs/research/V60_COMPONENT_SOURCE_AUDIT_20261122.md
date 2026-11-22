@@ -57,7 +57,7 @@ Repository data currently includes:
 2. MVRV proxy: PlanB exported BTC price / PlanB realised price. This is not the canonical Coin Metrics MVRV series.
 3. MVRV Z-Score: saved provider export as-is.
 
-The loader does not fill missing dates, does not normalize values, and does not create a composite. It exists to make data reuse repeatable while the direct Coin Metrics feed is built.
+The loader does not fill missing dates, does not normalize values, and does not create a composite. It exists to make data reuse repeatable while the direct Coin Metrics feed is built.\n\n`engines/research/coinmetrics_community.py` now provides a no-key daily API client with 10,000-row pagination, UTC date handling, null preservation, metric-level fallback when a batch is rejected, and a JSON provenance sidecar (retrieval timestamp, metric IDs, coverage, missingness, CC BY-NC attribution and CSV SHA-256). Tests cover pagination, untrusted next-page hosts, unavailable metric fallback and sidecar generation. The first live acquisition is still pending; do not claim that any metric was successfully retrieved until the script runs in CI or a controlled environment.
 
 ## Next engineering actions
 
