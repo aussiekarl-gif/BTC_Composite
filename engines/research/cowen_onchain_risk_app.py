@@ -155,7 +155,14 @@ for row_start in range(0, len(COMPONENTS), 3):
                 if metric == "mctc" and "thermocap_usd_candidate" in raw.columns:
                     thermocap_usd = raw["thermocap_usd_candidate"].get(metric_date, np.nan)
                     if pd.notna(thermocap_usd):
-                        provenance += f" • implied ThermoCap USD {thermocap_usd / 1e9:,.2f}B"
+                        provenance += f" • reconstructed ThermoCap USD {thermocap_usd / 1e9:,.2f}B"
+                    if "coinmetrics_thermocap_crosscheck" in raw.columns:
+                        direct_thermocap = raw["coinmetrics_thermocap_crosscheck"].get(metric_date, np.nan)
+                        diff = raw.get("thermocap_reconstruction_diff_pct", pd.Series(dtype=float)).get(metric_date, np.nan)
+                        if pd.notna(direct_thermocap):
+                            provenance += f" • Coin Metrics RevAllTimeUSD {direct_thermocap / 1e9:,.2f}B"
+                        if pd.notna(diff):
+                            provenance += f" • reconstruction difference {diff:+.2f}%"
                 st.markdown(
                     f'<div class="metric-card"><div class="metric-name">{label} '
                     f'<span style="color:#7fa4b9">· weight {weight}</span></div>'
