@@ -154,3 +154,14 @@ The first positive Coin Metrics Community price and supply-aligned price series 
 - is explicitly a partial-history reconstruction, not a validated exact Cowen Terminal Price series.
 
 The candidate is the raw price / Terminal Price ratio plus the implied Terminal Price USD value. Direction and Cowen's component normalisation remain unverified. It must not be promoted to an exact component or DCA input until its early-history treatment and formula parity are independently reconciled.
+
+
+## MCTC candidate reconstruction — Coin Metrics ThermoCap definition
+
+Coin Metrics defines All Time Miner Revenue (RevAllTimeUSD) as the cumulative sum of daily miner revenue in USD, including newly issued coins plus transaction fees, and explicitly notes that this metric is also known as ThermoCap. The current reconstruction therefore calculates daily miner revenue as Coin Metrics IssTotUSD plus Aethereal fees_btc multiplied by the Coin Metrics PriceUSD daily close, then cumulatively sums it. MCTC candidate = (Coin Metrics PriceUSD × SplyCur) / reconstructed cumulative miner revenue.
+
+This is a transparent cross-provider reconstruction, not a claim that the Cowen dashboard uses exactly this provider or convention. It begins on 2010-07-18, the first date with positive Coin Metrics price and issuance values, and only calculates while all daily inputs are complete and contiguous. It does not fill missing data. The raw ThermoCap estimate is retained beside the MCTC ratio so it can be compared with the user's previously supplied ThermoCap history.
+
+A second definition must remain distinct: Glassnode and Black Almanak describe ThermoCap as cumulative coinbase issuance valued at the contemporaneous price, excluding transaction fees. Coin Metrics' RevAllTimeUSD includes fees plus issuance. Those variants can differ materially over Bitcoin's history. The user's MCTC/ThermoCap file is the parity target; do not choose between variants solely on backtest performance.
+
+References: Coin Metrics Revenue metric definition (RevAllTimeUSD = cumulative RevUSD, also known as ThermoCap); Glassnode Thermocap definition (coinbase transactions); Black Almanak Market Cap to Thermocap formula (issuance-only).
