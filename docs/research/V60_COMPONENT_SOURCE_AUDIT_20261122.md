@@ -165,3 +165,8 @@ This is a transparent cross-provider reconstruction, not a claim that the Cowen 
 A second definition must remain distinct: Glassnode and Black Almanak describe ThermoCap as cumulative coinbase issuance valued at the contemporaneous price, excluding transaction fees. Coin Metrics' RevAllTimeUSD includes fees plus issuance. Those variants can differ materially over Bitcoin's history. The user's MCTC/ThermoCap file is the parity target; do not choose between variants solely on backtest performance.
 
 References: Coin Metrics Revenue metric definition (RevAllTimeUSD = cumulative RevUSD, also known as ThermoCap); Glassnode Thermocap definition (coinbase transactions); Black Almanak Market Cap to Thermocap formula (issuance-only).
+
+
+### MCTC reconstruction missing-fee handling
+
+The successful public-source snapshot found three Aethereal fee-BTC observations missing after the common market-price start (2025-11-13 through 2025-11-15), while Aethereal's total miner-revenue USD and price fields were present. The reconstruction does not fill those fee rows with zero or carry adjacent values forward. For those dates only, it derives miner-revenue BTC from Aethereal total miner-revenue USD divided by Aethereal's own daily price, then revalues that BTC revenue at the Coin Metrics daily close. The dashboard exposes the cumulative number of these source-backed fallback days. This is an alternate source path, not a fabricated observation.
