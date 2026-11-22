@@ -1,0 +1,40 @@
+{
+  "dataset": "Market Cap to Thermocap Ratio",
+  "received_at_utc": "2026-11-22T08:40:14Z",
+  "source_file": "market_cap_to_thermocap_ratio_2026-11-22T08-40-14.csv",
+  "source_sha256": "1d8f01064d0eace8446024fe3fe637193b91b1edcace45053b209cc36edaa406",
+  "observations": 5865,
+  "first_date_utc": "2010-11-01",
+  "last_date_utc": "2026-11-21",
+  "frequency": "daily",
+  "duplicate_timestamps": 0,
+  "missing_ratio_values": 0,
+  "missing_price_values": 0,
+  "nonpositive_ratio_values": 0,
+  "nonpositive_price_values": 0,
+  "gaps_greater_than_one_day": 0,
+  "columns": {
+    "timestamp": "Unix epoch milliseconds, UTC",
+    "Market Cap to Thermocap Ratio": "Provider-supplied MCTC ratio; preserved without recalculation",
+    "Price": "Provider-supplied BTC price; quote currency/source not independently established from the file"
+  },
+  "ratio_summary": {
+    "min": 0.9263,
+    "p01": 1.469956,
+    "p05": 2.47452,
+    "p25": 5.6486,
+    "median": 10.7177,
+    "p75": 18.5171,
+    "p95": 29.6656,
+    "p99": 43.909288,
+    "max": 66.7845,
+    "latest": 12.017
+  },
+  "limitations": [
+    "The uploaded CSV does not identify the upstream provider, retrieval endpoint, metric version, revision policy, or quote currency for Price.",
+    "This is MCTC (Market Cap / ThermoCap), not mCTC (Miner Cap / ThermoCap).",
+    "The series is provider-supplied and must not be represented as a point-in-time frozen historical feed.",
+    "Do not infer Cowen's 0-1 risk normalisation from this raw ratio alone."
+  ],
+  "usage": "Research-only raw input audit. Not a validated DCA signal."
+}
