@@ -14,7 +14,6 @@ from engines.research.cycle_trading_dashboard_model import (
 def fake_prices(n=1550,*,last="2026-10-16"):
     i=pd.date_range(end=last,periods=n,freq="D",tz="UTC")
     p=pd.Series(100000.+200*np.arange(n),index=i,name="price_usd")
-    # All historical FX strictly earlier than latest observed close.
     f=pd.DataFrame({"aud_per_usd":np.ones(n)*1.5},index=i)
     return p,f
 
@@ -56,19 +55,16 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
         self.assertEqual(audit["purchases_count"],2)
         self.assertAlmostEqual(audit["btc_equivalent_purchased"],.03)
         self.assertAlmostEqual(audit["effective_avg_usd_per_btc"],100133.33,places=2)
-        self.assertAlmostEqual(
-            audit["error_above_user_reported_low_pct"],
-            100*(100133.3333/57717.-1),places=2)
+        self.assertAlmostEqual(audit["error_above_user_reported_low_pct"],
+                               100*(100133.3333/57717.-1),places=2)
 
     def test_missing_fx_or_purchase_price_does_not_show_partial_error(self):
         fx=pd.DataFrame({"aud_per_usd":[1.5]},
                         index=pd.DatetimeIndex(["2026-06-18"],tz="UTC"))
         rows={"rows":[{"Date":"19/06/26","Asset":"ASX:IBIT",
                        "AUD Spent":2500., "BTC AUD Price":0.}]}
-        self.assertFalse(
-            portfolio_buy_error_from_reported_low(rows,fx)["available"])
-        self.assertFalse(
-            portfolio_buy_error_from_reported_low(rows,pd.DataFrame())["available"])
+        self.assertFalse(portfolio_buy_error_from_reported_low(rows,fx)["available"])
+        self.assertFalse(portfolio_buy_error_from_reported_low(rows,pd.DataFrame())["available"])
         with self.assertRaises(ValueError):
             portfolio_buy_error_from_reported_low(rows,fx,low_usd=0)
 
@@ -96,14 +92,13 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
         changed.iloc[-1]=1e6
         b=build_dashboard_market(changed,fx)
         self.assertEqual(a["prior_200wma_usd"],b["prior_200wma_usd"])
-        self.assertEqual(a["previous_close_below_200wma"],
-                         b["previous_close_below_200wma"])
+        self.assertEqual(a["previous_close_below_200wma"],b["previous_close_below_200wma"])
         self.assertEqual(a["previous_close_usd"],b["previous_close_usd"])
         self.assertNotEqual(a["btc_price_usd"],b["btc_price_usd"])
 
     def test_fails_closed_on_missing_weekly_samples(self):
         p,fx=fake_prices()
-        p=p.drop(p.index[-9])  # last minus 8 days is a required prior-week sample
+        p=p.drop(p.index[-9])
         with self.assertRaisesRegex(ValueError,"Missing dates"):
             build_dashboard_market(p,fx)
 
@@ -121,21 +116,18 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
         self.assertEqual(snap["day500_date"],"2025-09-02")
         self.assertEqual(snap["day560_date"],"2025-11-01")
         self.assertEqual(snap["halving_day"],
-                         (pd.Timestamp("2026-10-16",tz="UTC")-
-                          LAST_CONFIRMED_HALVING).days)
+                         (pd.Timestamp("2026-10-16",tz="UTC")-LAST_CONFIRMED_HALVING).days)
 
     def test_prior_below_wma_builds_small_hypothetical_order(self):
         p,fx=fake_prices()
         p.iloc[-2]=25000.
         snap=build_dashboard_market(p,fx)
         self.assertTrue(snap["previous_close_below_200wma"])
-        x=planned_buy_order(snap,cash_available=100000,
-                            style="adaptive_recovery")
+        x=planned_buy_order(snap,cash_available=100000,style="adaptive_recovery")
         self.assertEqual(x["action"],"ILLUSTRATIVE BUY")
         self.assertEqual(x["amount_aud"],2500.)
-        self.assertAlmostEqual(
-            x["btc_equivalent_estimate"],
-            (2500.-3)/snap["btc_price_aud_estimate"],delta=1e-8)
+        self.assertAlmostEqual(x["btc_equivalent_estimate"],
+                               (2500.-3)/snap["btc_price_aud_estimate"],delta=1e-8)
         with self.assertRaises(ValueError):
             planned_buy_order(snap,cash_available=100000,style="oracle")
         tiny=planned_buy_order(snap,cash_available=1000)
@@ -148,15 +140,16 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
         order=planned_buy_order(snap,cash_available=500000)
         self.assertEqual(order["amount_aud"],0.)
 
-    def test_current_app_archives_cycle_page_and_routes_research_to_v60(self):
+    def test_current_app_routes_each_research_page_separately(self):
         root=Path(__file__).resolve().parents[1]
         txt=(root/"app.py").read_text(encoding="utf8")
-        self.assertNotIn('"Cycle Trading — Research"',txt)
-        self.assertNotIn('"Cycle Trading — Research": Path(',txt)
         self.assertIn('"Production": Path(',txt)
-        self.assertIn('"Research": Path(',txt)
-        self.assertIn('engines" / "research" / "v60_research_app.py"',txt)
-        # The old Cycle Trading implementation is retained, only unlinked.
+        self.assertIn('"Research V5.9": Path(',txt)
+        self.assertIn('"Research V6.0": Path(',txt)
+        self.assertIn('"Research 10.0": Path(',txt)
+        self.assertIn('engines" / "research" / "cowen_onchain_risk_app.py"',txt)
+        # Existing Cycle Trading research remains a separate page, not merged.
+        self.assertIn('"Cycle Trading — Research": Path(',txt)
         self.assertTrue((root/"engines"/"research"/"cycle_trading_app.py").is_file())
 
     def test_historical_rejects_2013_and_unsupported_variants(self):
