@@ -104,5 +104,24 @@ class CoinMetricsCommunityTests(unittest.TestCase):
         self.assertEqual(len(session.calls), 3)
 
 
+    def test_recovers_metric_omitted_from_successful_batch(self):
+        session = FakeSession([
+            {"data": [
+                {"asset": "btc", "time": "2020-01-01T00:00:00Z",
+                 "CapMVRVCur": "1.2"}
+            ]},
+            {"data": [
+                {"asset": "btc", "time": "2020-01-01T00:00:00Z",
+                 "FeeTotUSD": "200"}
+            ]},
+        ])
+        frame = fetch_daily_btc_metrics_resilient(
+            metrics=("CapMVRVCur", "FeeTotUSD"), session=session
+        )
+        self.assertEqual(set(frame.columns), {"CapMVRVCur", "FeeTotUSD"})
+        self.assertEqual(frame.iloc[0]["FeeTotUSD"], 200.0)
+        self.assertEqual(frame.attrs["unavailable_metrics"], {})
+
+
 if __name__ == "__main__":
     unittest.main()
