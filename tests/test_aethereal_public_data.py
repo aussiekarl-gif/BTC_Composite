@@ -39,7 +39,7 @@ class AetherealPublicDataTests(unittest.TestCase):
         session = FakeSession(csv)
         frame = fetch_daily_btc_network(session=session)
         self.assertEqual(len(frame), 2)
-        self.assertEqual(frame.index.tz.zone, "UTC")
+        self.assertEqual(str(frame.index.tz), "UTC")
         self.assertAlmostEqual(frame["fees_btc"].iloc[0], 1.25)
         self.assertTrue(pd.isna(frame["fees_btc"].iloc[1]))
         self.assertEqual(len(session.calls), 1)
