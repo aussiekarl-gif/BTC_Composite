@@ -24,6 +24,7 @@ DEFAULT_METRICS = (
     "PuellMulTot",
     "PriceUSD",
     "SplyCur",
+    "RevAllTimeUSD",
 )
 ALLOWED_HOST = "community-api.coinmetrics.io"
 
