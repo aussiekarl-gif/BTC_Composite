@@ -38,7 +38,21 @@ Coin Metrics Community data is licensed CC BY-NC 4.0. Preserve attribution and d
 
 Zero-weight diagnostics RHODL Ratio and Supply P/L remain outside the default seven-component composite.
 
-## Terminal Price formula and CDD source audit\n\nCowen's 2026 explanation gives the exact raw formula:\n\n- Value Days Destroyed = CDD × BTC price at the spend date.\n- Transferred Price = cumulative Value Days Destroyed / (market age in days × circulating supply).\n- Terminal Price = 21 × Transferred Price.\n\nThe market age starts at the first price observation. The code treats that first observation as day 1, and requires consecutive complete daily CDD, price and supply inputs. A missing CDD day invalidates the cumulative series; it is never filled with zero. The raw ratio `price_to_terminal_price` is retained as the likely risk-direction candidate (higher means price is closer to/above the Terminal Price ceiling), but Cowen's exact 0–1 component transform remains unknown.\n\nPotential CDD source: OnChainLab publishes daily CDD from 2009-01-12 to 2026-10-16, computed from its own full Bitcoin archive node, with a JSON endpoint and a full daily CSV. Its methodology page is useful and transparent, but no explicit data-reuse licence was found in the reviewed pages. It is therefore not yet accepted as an automated project data dependency or redistributed in this repository. Newhedge also offers a CDD API but requires an API token.\n\nReferences: Cowen formula explanation https://www.youtube.com/watch?v=WUJwW3mf6to ; OnChainLab CDD methodology/data https://onchainlab.net/metrics/cdd ; OnChainLab project notes https://onchainlab.net/about ; Newhedge CDD API token requirement https://prod-docs.newhedge.io/api/coin-days-destroyed\n\n## Explore21 source coverage and vintage caveat
+## Terminal Price formula and CDD source audit
+
+Cowen's 2026 explanation gives the exact raw formula:
+
+- Value Days Destroyed = CDD × BTC price at the spend date.
+- Transferred Price = cumulative Value Days Destroyed / (market age in days × circulating supply).
+- Terminal Price = 21 × Transferred Price.
+
+The market age starts at the first price observation. The code treats that first observation as day 1, and requires consecutive complete daily CDD, price and supply inputs. A missing CDD day invalidates the cumulative series; it is never filled with zero. The raw ratio `price_to_terminal_price` is retained as the likely risk-direction candidate (higher means price is closer to/above the Terminal Price ceiling), but Cowen's exact 0–1 component transform remains unknown.
+
+Potential CDD source: OnChainLab publishes daily CDD from 2009-01-12 to 2026-10-16, computed from its own full Bitcoin archive node, with a JSON endpoint and a full daily CSV. Its methodology page is useful and transparent, but no explicit data-reuse licence was found in the reviewed pages. It is therefore not yet accepted as an automated project data dependency or redistributed in this repository. Newhedge also offers a CDD API but requires an API token.
+
+References: Cowen formula explanation https://www.youtube.com/watch?v=WUJwW3mf6to ; OnChainLab CDD methodology/data https://onchainlab.net/metrics/cdd ; OnChainLab project notes https://onchainlab.net/about ; Newhedge CDD API token requirement https://prod-docs.newhedge.io/api/coin-days-destroyed
+
+## Explore21 source coverage and vintage caveat
 
 Explore21's public catalogue reports:
 - Puell Multiple: 2012-08-16 to 2026-11-21; method v1; columns include raw issuance BTC, issuance USD, 365-day issuance USD average and BTC close.
@@ -77,7 +91,10 @@ Repository data currently includes:
 The loader does not fill missing dates, does not normalize values, and does not create a composite. It exists to make data reuse repeatable while the direct Coin Metrics feed is built.
 
 `engines/research/coinmetrics_community.py` provides a no-key daily API client with 10,000-row pagination, UTC date handling, null preservation, metric-level fallback when a batch is rejected or omits a requested metric, and a JSON provenance sidecar (retrieval timestamp, metric IDs, coverage, missingness, CC BY-NC attribution and CSV SHA-256).
-\n`calculate_terminal_price(inputs)` now implements the raw Cowen Terminal Price formula, including explicit first-price-observation market age and strict no-gap/no-null validation. It returns VDD, cumulative VDD, transferred price, terminal price and price/terminal ratio; it does not normalize the ratio into a risk score.\n\n`engines/research/explore21_public_data.py` provides a whitelisted CSV downloader for Explore21 Puell, MVRV and MVRV Z-Score. It preserves source columns and gaps and writes method-version, chart-link, CC BY 4.0 attribution, vintage caveat and SHA-256 metadata. Tests cover source-column validation, missing values and provenance. Live retrieval is still pending; do not claim any metric was successfully retrieved until the PR's live-source smoke workflow runs.
+
+`calculate_terminal_price(inputs)` now implements the raw Cowen Terminal Price formula, including explicit first-price-observation market age and strict no-gap/no-null validation. It returns VDD, cumulative VDD, transferred price, terminal price and price/terminal ratio; it does not normalize the ratio into a risk score.
+
+`engines/research/explore21_public_data.py` provides a whitelisted CSV downloader for Explore21 Puell, MVRV and MVRV Z-Score. It preserves source columns and gaps and writes method-version, chart-link, CC BY 4.0 attribution, vintage caveat and SHA-256 metadata. Tests cover source-column validation, missing values and provenance. Live retrieval is still pending; do not claim any metric was successfully retrieved until the PR's live-source smoke workflow runs.
 
 ## Next engineering actions
 
