@@ -235,3 +235,14 @@ References:
 - Glassnode miner balance definition and PiT notes: https://studio.glassnode.com/charts/distribution.BalanceMinersSumPit?a=BTC
 - CoinGlass miner unspent supply definition and distinction from miner reserves: https://www.coinglass.com/pro/onchain/bitcoin-miner-unspent-holdings
 - CoinGlass Total Miner Holdings description: https://www.coinglass.com/pro/onchain/bitcoin-total-miner-holdings
+
+
+### Coin Metrics miner-balance endpoint test — 2026-11-22 20:39 UTC
+
+The automated PR public-data smoke test explicitly requested both documented miner-balance metrics from the no-key Community API:
+- `SplyMiner0HopAllNtv`
+- `SplyMiner1HopAllNtv`
+
+Both returned HTTP 403. The acquisition completed successfully for the other public data sources, and the metadata sidecar records status 403 for both miner-balance metrics. This confirms that the metrics are documented in Coin Metrics' network-data catalogue but are not currently available to this project through Community API access. They are not suitable as the mCTC input under the present free-access constraints.
+
+Operational decision: retain the 403 result in provenance, but do not treat either metric as a series or attempt to infer/zero-fill it. mCTC remains missing pending a separately licensed, free-to-access historical miner-wallet balance source.
