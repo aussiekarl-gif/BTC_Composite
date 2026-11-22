@@ -8,11 +8,17 @@ The user has authorised progress on the six active components that do not requir
 
 ## Key finding: two free-first public sources now look promising
 
-Coin Metrics' public Daily Network Metrics Availability page currently lists BTC with 1,194 / 1,194 daily network metrics completed through 2026-11-21. This makes the Coin Metrics Community API a strong independent source to test for standard daily series. The API and metric availability must still be tested directly; the availability page alone is not proof that every endpoint/metric is exposed under Community entitlements.\n\nA second source, Explore21, publishes daily CSVs and a no-key JSON API under CC BY 4.0. Its public catalogue explicitly lists Puell Multiple (2012-08-16 onward), MVRV Ratio (2011-09-16 onward), and MVRV Z-Score (2011-09-16 onward), with method versions and changelog links. It also preserves daily point-in-time vintages from 2026-11-18 onward. That vintage history is too short to provide historical point-in-time data for old cycles, but it is useful for prospective shadow validation and method-change tracking. The earlier historical series remain current/reconstructed data, not frozen historical vintages.
+Coin Metrics' public Daily Network Metrics Availability page currently lists BTC with 1,194 / 1,194 daily network metrics completed through 2026-11-21. This makes the Coin Metrics Community API a strong independent source to test for standard daily series. The API and metric availability must still be tested directly; the availability page alone is not proof that every endpoint/metric is exposed under Community entitlements.
+
+A second source, Explore21, publishes daily CSVs and a no-key JSON API under CC BY 4.0. Its public catalogue explicitly lists Puell Multiple (2012-08-16 onward), MVRV Ratio (2011-09-16 onward), and MVRV Z-Score (2011-09-16 onward), with method versions and changelog links. It also preserves daily point-in-time vintages from 2026-11-18 onward. That vintage history is too short to provide historical point-in-time data for old cycles, but it is useful for prospective shadow validation and method-change tracking. The earlier historical series remain current/reconstructed data, not frozen historical vintages.
 
 References:
 - Availability: https://availability.coinmetrics.io/
-- Community API: https://community-api.coinmetrics.io/v4\n- Explore21 data catalogue/API: https://charts.explore21.com/data\n- Explore21 Puell: https://charts.explore21.com/bitcoin-puell-multiple\n- Explore21 MVRV: https://charts.explore21.com/bitcoin-mvrv-ratio\n- Explore21 MVRV Z-Score: https://charts.explore21.com/bitcoin-mvrv-z-score
+- Community API: https://community-api.coinmetrics.io/v4
+- Explore21 data catalogue/API: https://charts.explore21.com/data
+- Explore21 Puell: https://charts.explore21.com/bitcoin-puell-multiple
+- Explore21 MVRV: https://charts.explore21.com/bitcoin-mvrv-ratio
+- Explore21 MVRV Z-Score: https://charts.explore21.com/bitcoin-mvrv-z-score
 - Fees/revenue metric catalogue: https://docs.coinmetrics.io/network-data/network-data-overview/fees-and-revenue
 - Supply metric catalogue: https://docs.coinmetrics.io/network-data/network-data-overview/supply
 
@@ -32,7 +38,18 @@ Coin Metrics Community data is licensed CC BY-NC 4.0. Preserve attribution and d
 
 Zero-weight diagnostics RHODL Ratio and Supply P/L remain outside the default seven-component composite.
 
-## Explore21 source coverage and vintage caveat\n\nExplore21's public catalogue reports:\n- Puell Multiple: 2012-08-16 to 2026-11-21; method v1; columns include raw issuance BTC, issuance USD, 365-day issuance USD average and BTC close.\n- MVRV Ratio: 2011-09-16 to 2026-11-21; method v2.\n- MVRV Z-Score: 2011-09-16 to 2026-11-21; method v1.\n- Realized Price and Realized Cap: 2011-08-18 to 2026-11-21.\n- Point-in-time published vintages currently begin 2026-11-18. Do not mistake this recent archive for historical vintages back to 2011.\n\nExplore21's data is CC BY 4.0 and requires attribution/linking to the relevant chart. Its catalogue does not currently list Cowen's Transaction Fees or Terminal Price series, so it does not complete the six non-mCTC components.\n\n## Formula references
+## Explore21 source coverage and vintage caveat
+
+Explore21's public catalogue reports:
+- Puell Multiple: 2012-08-16 to 2026-11-21; method v1; columns include raw issuance BTC, issuance USD, 365-day issuance USD average and BTC close.
+- MVRV Ratio: 2011-09-16 to 2026-11-21; method v2.
+- MVRV Z-Score: 2011-09-16 to 2026-11-21; method v1.
+- Realized Price and Realized Cap: 2011-08-18 to 2026-11-21.
+- Point-in-time published vintages currently begin 2026-11-18. Do not mistake this recent archive for historical vintages back to 2011.
+
+Explore21's data is CC BY 4.0 and requires attribution/linking to the relevant chart. Its catalogue does not currently list Cowen's Transaction Fees or Terminal Price series, so it does not complete the six non-mCTC components.
+
+## Formula references
 
 - MVRV: Coin Metrics defines `CapMVRVCur` as market cap divided by realised market cap: https://github.com/coinmetrics/docs-website/blob/master/asset-metrics/market/capmvrvcur.md
 - Total transaction fees: Coin Metrics defines `FeeTotUSD` as the sum USD value of all fees paid during the interval, computed from native fees multiplied by daily close price: https://github.com/coinmetrics/docs-website/blob/master/asset-metrics/fees-and-revenue/feetotusd.md
@@ -57,11 +74,14 @@ Repository data currently includes:
 2. MVRV proxy: PlanB exported BTC price / PlanB realised price. This is not the canonical Coin Metrics MVRV series.
 3. MVRV Z-Score: saved provider export as-is.
 
-The loader does not fill missing dates, does not normalize values, and does not create a composite. It exists to make data reuse repeatable while the direct Coin Metrics feed is built.\n\n`engines/research/coinmetrics_community.py` now provides a no-key daily API client with 10,000-row pagination, UTC date handling, null preservation, metric-level fallback when a batch is rejected, and a JSON provenance sidecar (retrieval timestamp, metric IDs, coverage, missingness, CC BY-NC attribution and CSV SHA-256). Tests cover pagination, untrusted next-page hosts, unavailable metric fallback and sidecar generation. The first live acquisition is still pending; do not claim that any metric was successfully retrieved until the script runs in CI or a controlled environment.
+The loader does not fill missing dates, does not normalize values, and does not create a composite. It exists to make data reuse repeatable while the direct Coin Metrics feed is built.
+
+`engines/research/coinmetrics_community.py` now provides a no-key daily API client with 10,000-row pagination, UTC date handling, null preservation, metric-level fallback when a batch is rejected, and a JSON provenance sidecar (retrieval timestamp, metric IDs, coverage, missingness, CC BY-NC attribution and CSV SHA-256). Tests cover pagination, untrusted next-page hosts, unavailable metric fallback and sidecar generation. The first live acquisition is still pending; do not claim that any metric was successfully retrieved until the script runs in CI or a controlled environment.
 
 ## Next engineering actions
 
-1. Add a small Explore21 CSV/API acquisition adapter for Puell, MVRV and MVRV Z, preserving method versions and CC BY 4.0 attribution; use Coin Metrics as an independent cross-check.\n2. Add a free-first Coin Metrics Community API client for BTC daily `CapMVRVCur`, `CapMVRVZ`, `FeeTotUSD`, `IssTotUSD`, `PuellMulTot` (where supported), `PriceUSD`, and `SplyCur`. Record request timestamp, response metadata, source metric IDs, units, and missingness.
+1. Add a small Explore21 CSV/API acquisition adapter for Puell, MVRV and MVRV Z, preserving method versions and CC BY 4.0 attribution; use Coin Metrics as an independent cross-check.
+2. Add a free-first Coin Metrics Community API client for BTC daily `CapMVRVCur`, `CapMVRVZ`, `FeeTotUSD`, `IssTotUSD`, `PuellMulTot` (where supported), `PriceUSD`, and `SplyCur`. Record request timestamp, response metadata, source metric IDs, units, and missingness.
 3. Cross-check Coin Metrics MVRV against PlanB price / realised-price proxy; cross-check Coin Metrics Puell against both `IssTotUSD` / 365-day SMA and `PuellMulTot`.
 4. Preserve transaction fees in USD and native BTC; test raw level, ratio-to-issuance, and trailing-relative variants separately. Do not choose a transformation based on backtest performance before defining training/validation/test periods.
 5. Acquire daily CDD/VDD for Terminal Price from a reproducible public source. If the source requires paid access, calculate from chain data in an automated pipeline rather than asking the user to perform manual BigQuery exports.
