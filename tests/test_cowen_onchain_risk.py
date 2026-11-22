@@ -6,6 +6,7 @@ import pandas as pd
 from engines.research.cowen_onchain_risk import (
     ACTIVE_METRICS,
     build_seven_metric_composite,
+    calculate_terminal_price,
     prior_only_percentile_risk,
 )
 
@@ -90,6 +91,36 @@ class CowenOnchainRiskTests(unittest.TestCase):
             self.assertAlmostEqual(candidates["mvrv_planb_realized_price_proxy"].iloc[-1], 2.0)
             self.assertAlmostEqual(candidates["mvrv_z_score_provider_export"].iloc[-1], 2.0)
             self.assertTrue(candidates.index.is_monotonic_increasing)
+
+
+    def test_terminal_price_matches_cumulative_vdd_formula(self):
+        idx = pd.date_range("2020-01-01", periods=3, freq="D", tz="UTC")
+        inputs = pd.DataFrame({
+            "cdd_btc_days": [1.0, 2.0, 3.0],
+            "price_usd": [10.0, 20.0, 30.0],
+            "supply_btc": [10.0, 10.0, 10.0],
+        }, index=idx)
+        result = calculate_terminal_price(inputs)
+        self.assertEqual(result["market_age_days"].tolist(), [1, 2, 3])
+        self.assertAlmostEqual(result.iloc[-1]["cumulative_value_days_destroyed_usd"], 140.0)
+        self.assertAlmostEqual(result.iloc[-1]["transferred_price_usd"], 140.0 / 30.0)
+        self.assertAlmostEqual(result.iloc[-1]["terminal_price_usd"], 21.0 * 140.0 / 30.0)
+        self.assertAlmostEqual(result.iloc[-1]["price_to_terminal_price"], 30.0 / (21.0 * 140.0 / 30.0))
+
+    def test_terminal_price_rejects_missing_or_gapped_daily_inputs(self):
+        idx = pd.date_range("2020-01-01", periods=3, freq="D", tz="UTC")
+        inputs = pd.DataFrame({
+            "cdd_btc_days": [1.0, 2.0, 3.0],
+            "price_usd": [10.0, 20.0, 30.0],
+            "supply_btc": [10.0, 10.0, 10.0],
+        }, index=idx)
+        missing = inputs.copy()
+        missing.loc[idx[1], "cdd_btc_days"] = np.nan
+        with self.assertRaises(ValueError):
+            calculate_terminal_price(missing)
+        gapped = inputs.iloc[[0, 2]]
+        with self.assertRaises(ValueError):
+            calculate_terminal_price(gapped)
 
 
 if __name__ == "__main__":
