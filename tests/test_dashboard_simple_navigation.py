@@ -1,4 +1,4 @@
-"""Keep the public dashboard limited to frozen Production and V6.0 Research."""
+"""Keep Production frozen while exposing independent research pages."""
 import ast
 import json
 from pathlib import Path
@@ -21,29 +21,32 @@ class SimplifiedLauncherTests(unittest.TestCase):
         radio = radios[0]
         self.assertIsInstance(radio.args[1], ast.List)
         self.assertEqual(ast.literal_eval(radio.args[1]), [
-            "Production", "Research V5.9", "Research V6.0",
+            "Production", "Research V5.9", "Research V6.0", "Research 10.0",
             "Cycle Trading — Research", "Bottom Signal Timeline",
         ])
         named = {kw.arg: kw.value for kw in radio.keywords}
         self.assertEqual(ast.literal_eval(named["index"]), 0)
         self.assertEqual(ast.literal_eval(named["key"]), "combined_app_section_selector")
 
-    def test_v59_and_cycle_trading_are_restored_as_separate_pages(self):
+    def test_v59_cycle_and_cowen_pages_are_separate(self):
         source = APP.read_text(encoding="utf-8")
-        self.assertIn('"Cycle Trading — Research"', source)
-        self.assertIn('"Research V5.9"', source)
-        self.assertIn('"Research V6.0"', source)
+        for label in ('"Cycle Trading — Research"', '"Research V5.9"',
+                      '"Research V6.0"', '"Research 10.0"'):
+            self.assertIn(label, source)
         self.assertIn('"engines" / "research" / "research_app.py"', source)
         self.assertIn('"engines" / "research" / "cycle_trading_app.py"', source)
-        self.assertTrue((ROOT / "engines" / "research" / "research_app.py").is_file())
-        self.assertTrue((ROOT / "engines" / "research" / "cycle_trading_app.py").is_file())
-        self.assertTrue((ROOT / "engines" / "research" / "v59_200wma_prospective_paper_tape.py").is_file())
+        self.assertIn('"engines" / "research" / "cowen_onchain_risk_app.py"', source)
+        for name in ("research_app.py", "cycle_trading_app.py",
+                     "v59_200wma_prospective_paper_tape.py",
+                     "cowen_onchain_risk_app.py"):
+            self.assertTrue((ROOT / "engines" / "research" / name).is_file())
 
     def test_all_active_launch_targets_exist_and_compile(self):
         expected = [
             ROOT / "engines" / "production" / "production_app.py",
             ROOT / "engines" / "research" / "research_app.py",
             ROOT / "engines" / "research" / "v60_research_app.py",
+            ROOT / "engines" / "research" / "cowen_onchain_risk_app.py",
             ROOT / "engines" / "research" / "cycle_trading_app.py",
             ROOT / "engines" / "research" / "v60_200wma_paper_tape.py",
             ROOT / "engines" / "audit" / "bottom_signal_timeline_app.py",
@@ -59,8 +62,6 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertNotIn("production_model", source)
         self.assertIn("V6.0", source)
         self.assertIn("trade_executable", source)
-
-
 
     def test_v60_paper_signal_is_independent_and_percentage_only(self):
         from engines.research.v60_200wma_paper_tape import build_paper_signal
@@ -93,7 +94,6 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertEqual(snapshot["prospective_paper_tape"]["signal_rows"], 0)
         self.assertIn("zero prospective observations", " ".join(snapshot["limitations"]))
 
-
     def test_v60_dashboard_displays_matched_historical_pacing_and_bear_stress(self):
         evidence_path = ROOT / "data" / "research_forward_validation" / "v60_historical_pacing_summary_2026-11-19.json"
         evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
@@ -107,7 +107,6 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertIn("Historical cash-pacing holdout", source)
         self.assertIn("Synthetic prolonged-bear stress", source)
         self.assertIn("no spending cap or reserve is selected", source)
-
 
     def test_v60_dashboard_shows_scaled_allocation_yield_and_stress_evidence(self):
         evidence_path = ROOT / "data" / "research_forward_validation" / "v60_allocation_scale_summary_2026-11-19.json"
