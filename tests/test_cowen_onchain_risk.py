@@ -16,7 +16,8 @@ class CowenOnchainRiskTests(unittest.TestCase):
         idx = pd.date_range("2020-01-01", periods=6, freq="D", tz="UTC")
         values = pd.Series([1, 2, 3, 4, 5, 100], index=idx)
         result = prior_only_percentile_risk(
-            values, window_observations=5, min_prior_observations=5
+            values, window_observations=5, min_prior_observations=5,
+            higher_is_riskier=True,
         )
         self.assertTrue(np.isnan(result.iloc[4]))
         self.assertEqual(result.iloc[5], 1.0)
@@ -25,7 +26,8 @@ class CowenOnchainRiskTests(unittest.TestCase):
         idx = pd.date_range("2020-01-01", periods=4, freq="D", tz="UTC")
         values = pd.Series([1, 2, 3, 0], index=idx)
         high = prior_only_percentile_risk(
-            values, window_observations=3, min_prior_observations=3
+            values, window_observations=3, min_prior_observations=3,
+            higher_is_riskier=True,
         )
         low = prior_only_percentile_risk(
             values, window_observations=3, min_prior_observations=3,
@@ -57,7 +59,8 @@ class CowenOnchainRiskTests(unittest.TestCase):
         values = pd.Series([1, 2], index=idx)
         with self.assertRaises(ValueError):
             prior_only_percentile_risk(
-                values, window_observations=2, min_prior_observations=2
+                values, window_observations=2, min_prior_observations=2,
+                higher_is_riskier=True,
             )
 
 
