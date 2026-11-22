@@ -194,7 +194,7 @@ def calculate_terminal_price(inputs: pd.DataFrame) -> pd.DataFrame:
 
 
 def _read_daily_chart_export(path, metric_column):
-    """Read a BlockHorizon-style millisecond-UTC daily export without filling gaps."""
+    """Read a Unix-second or Unix-millisecond UTC daily export without filling gaps."""
     frame = pd.read_csv(path)
     required = {"timestamp", metric_column}
     if not required.issubset(frame.columns):
@@ -205,9 +205,13 @@ def _read_daily_chart_export(path, metric_column):
     timestamps = pd.to_numeric(frame["timestamp"], errors="coerce").to_numpy(dtype=float)
     values = pd.to_numeric(frame[metric_column], errors="coerce").to_numpy(dtype=float)
     valid = np.isfinite(timestamps)
+    finite_timestamps = timestamps[valid]
+    # Public exports are inconsistent: some encode Unix seconds, others ms.
+    # Infer only the epoch scale from magnitude; never reinterpret dates row by row.
+    epoch_unit = "ms" if np.nanmedian(np.abs(finite_timestamps)) >= 1e11 else "s"
     dates = pd.to_datetime(
-        timestamps[valid].astype("int64"),
-        unit="ms", utc=True, errors="coerce",
+        finite_timestamps.astype("int64"),
+        unit=epoch_unit, utc=True, errors="coerce",
     ).normalize()
     valid_dates = ~pd.isna(dates)
     result = pd.Series(
