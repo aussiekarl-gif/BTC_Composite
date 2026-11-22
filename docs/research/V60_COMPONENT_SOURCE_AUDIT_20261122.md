@@ -76,17 +76,18 @@ Repository data currently includes:
 
 The loader does not fill missing dates, does not normalize values, and does not create a composite. It exists to make data reuse repeatable while the direct Coin Metrics feed is built.
 
-`engines/research/coinmetrics_community.py` now provides a no-key daily API client with 10,000-row pagination, UTC date handling, null preservation, metric-level fallback when a batch is rejected, and a JSON provenance sidecar (retrieval timestamp, metric IDs, coverage, missingness, CC BY-NC attribution and CSV SHA-256). Tests cover pagination, untrusted next-page hosts, unavailable metric fallback and sidecar generation. The first live acquisition is still pending; do not claim that any metric was successfully retrieved until the script runs in CI or a controlled environment.
+`engines/research/coinmetrics_community.py` provides a no-key daily API client with 10,000-row pagination, UTC date handling, null preservation, metric-level fallback when a batch is rejected or omits a requested metric, and a JSON provenance sidecar (retrieval timestamp, metric IDs, coverage, missingness, CC BY-NC attribution and CSV SHA-256).
+\n`engines/research/explore21_public_data.py` provides a whitelisted CSV downloader for Explore21 Puell, MVRV and MVRV Z-Score. It preserves source columns and gaps and writes method-version, chart-link, CC BY 4.0 attribution, vintage caveat and SHA-256 metadata. Tests cover source-column validation, missing values and provenance. Live retrieval is still pending; do not claim any metric was successfully retrieved until the PR's live-source smoke workflow runs.
 
 ## Next engineering actions
 
 1. Add a small Explore21 CSV/API acquisition adapter for Puell, MVRV and MVRV Z, preserving method versions and CC BY 4.0 attribution; use Coin Metrics as an independent cross-check.
 2. Add a free-first Coin Metrics Community API client for BTC daily `CapMVRVCur`, `CapMVRVZ`, `FeeTotUSD`, `IssTotUSD`, `PuellMulTot` (where supported), `PriceUSD`, and `SplyCur`. Record request timestamp, response metadata, source metric IDs, units, and missingness.
-3. Cross-check Coin Metrics MVRV against PlanB price / realised-price proxy; cross-check Coin Metrics Puell against both `IssTotUSD` / 365-day SMA and `PuellMulTot`.
-4. Preserve transaction fees in USD and native BTC; test raw level, ratio-to-issuance, and trailing-relative variants separately. Do not choose a transformation based on backtest performance before defining training/validation/test periods.
-5. Acquire daily CDD/VDD for Terminal Price from a reproducible public source. If the source requires paid access, calculate from chain data in an automated pipeline rather than asking the user to perform manual BigQuery exports.
-6. Verify MCTC source provenance and merge its CSV metadata into the V6.0 data manifest.
-7. Continue mCTC independently. Until all seven components are valid, composite risk remains null and status remains `INCOMPLETE — NOT INVESTABLE`.
+4. Cross-check Coin Metrics MVRV against PlanB price / realised-price proxy; cross-check Coin Metrics Puell against both `IssTotUSD` / 365-day SMA and `PuellMulTot`.
+5. Preserve transaction fees in USD and native BTC; test raw level, ratio-to-issuance, and trailing-relative variants separately. Do not choose a transformation based on backtest performance before defining training/validation/test periods.
+6. Acquire daily CDD/VDD for Terminal Price from a reproducible public source. If the source requires paid access, calculate from chain data in an automated pipeline rather than asking the user to perform manual BigQuery exports.
+7. Verify MCTC source provenance and merge its CSV metadata into the V6.0 data manifest.
+8. Continue mCTC independently. Until all seven components are valid, composite risk remains null and status remains `INCOMPLETE — NOT INVESTABLE`.
 
 ## Normalisation caution
 
