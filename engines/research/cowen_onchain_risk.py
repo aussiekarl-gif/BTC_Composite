@@ -324,6 +324,43 @@ def build_public_raw_candidates(data_dir):
         result["transaction_fees_usd_coinmetrics_close"] = (
             result["transaction_fees_btc_candidate"] * result["coinmetrics_price_usd"]
         )
+    # Reconstruct the Coin Metrics-style all-time miner revenue (ThermoCap):
+    # cumulative USD issuance plus transaction fees valued at the same daily
+    # Coin Metrics close. Do not use Aethereal's differently timed price field.
+    thermocap_columns = {
+        "coinmetrics_issuance_usd",
+        "transaction_fees_btc_candidate",
+        "coinmetrics_price_usd",
+        "coinmetrics_supply_btc",
+    }
+    if thermocap_columns.issubset(result.columns):
+        thermo_inputs = result[list(thermocap_columns)].copy()
+        thermo_inputs = thermo_inputs.dropna()
+        thermo_inputs = thermo_inputs.loc[
+            (thermo_inputs["coinmetrics_issuance_usd"] >= 0)
+            & (thermo_inputs["transaction_fees_btc_candidate"] >= 0)
+            & (thermo_inputs["coinmetrics_price_usd"] > 0)
+            & (thermo_inputs["coinmetrics_supply_btc"] > 0)
+        ].sort_index()
+        if len(thermo_inputs) > 1:
+            thermo_gaps = thermo_inputs.index.to_series().diff().dropna()
+            if thermo_gaps.eq(pd.Timedelta(days=1)).all():
+                daily_fee_usd = (
+                    thermo_inputs["transaction_fees_btc_candidate"]
+                    * thermo_inputs["coinmetrics_price_usd"]
+                )
+                daily_miner_revenue_usd = (
+                    thermo_inputs["coinmetrics_issuance_usd"] + daily_fee_usd
+                )
+                thermocap = daily_miner_revenue_usd.cumsum()
+                market_cap = (
+                    thermo_inputs["coinmetrics_price_usd"]
+                    * thermo_inputs["coinmetrics_supply_btc"]
+                )
+                result.loc[thermo_inputs.index, "thermocap_usd_candidate"] = thermocap
+                result.loc[thermo_inputs.index, "mctc_ratio_candidate"] = (
+                    market_cap / thermocap
+                )
     if {
         "cdd_btc_days", "coinmetrics_price_usd", "coinmetrics_supply_btc"
     }.issubset(result.columns):
