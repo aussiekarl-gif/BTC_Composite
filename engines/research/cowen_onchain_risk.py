@@ -29,7 +29,7 @@ def prior_only_percentile_risk(
     *,
     window_observations: int,
     min_prior_observations: int,
-    higher_is_riskier: bool = True,
+    higher_is_riskier: bool,
 ) -> pd.Series:
     """Rank today's value against strictly earlier observations only.
 
