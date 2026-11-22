@@ -109,3 +109,24 @@ The loader does not fill missing dates, does not normalize values, and does not 
 ## Normalisation caution
 
 Cowen's public descriptions establish that component metrics are normalised to 0–1 and then averaged, and that the final average may be re-normalised to 0–1. They do not, by themselves, disclose every metric's exact transform, direction, historical window, or final re-normalisation algorithm. The current prior-only percentile function is one transparent research candidate, not an exact replica. Maintain separate variants until chart parity can be checked.
+
+
+## Live public-source smoke result — 2026-11-22 19:50 UTC
+
+The PR's public-source smoke job completed successfully and uploaded a reproducible snapshot artifact. The exact raw files and provider sidecars were inspected after download.
+
+Explore21 results (daily, latest date 2026-11-21):
+- Puell Multiple: 5,211 rows, 2012-08-16 to 2026-11-21; latest 0.9114571567.
+- MVRV ratio: 5,546 rows, 2011-09-16 to 2026-11-21; latest 1.129338.
+- MVRV Z-Score: 5,546 rows, 2011-09-16 to 2026-11-21; latest 0.219062.
+- All three downloaded series had no missing observations or duplicate daily dates in their published ranges.
+
+Coin Metrics Community results:
+- 6,532 daily rows, 2009-01-03 to 2026-11-21.
+- Returned: CapMVRVCur, IssTotUSD, PriceUSD, SplyCur.
+- Unavailable under Community access (HTTP 403): CapMVRVZ, FeeTotUSD, PuellMulTot.
+- CapMVRVCur latest: 1.1299291147, versus Explore21 MVRV 1.129338 on the same date: +0.0523% relative difference.
+- Coin Metrics PriceUSD latest: USD 60,122.61 versus Explore21 close USD 60,078.34: +0.0737%. This small difference is consistent with differing price-source/close conventions; retain source-specific prices rather than forcing a match.
+- Coin Metrics SplyCur includes zero values in early history and should not be used without validity checks; MVRV/issuance/price first become populated after their 561 initial missing rows.
+
+This supports Explore21 as the current primary candidate source for Puell, MVRV and MVRV Z, with Coin Metrics as an independent MVRV check. It does not prove exact Cowen parity or point-in-time historical availability. The snapshot workflow now has a separate daily refresh definition; data will be committed to the research data folder only after that workflow runs on the default branch following merge. Until then, the successful files remain in the CI artifact and are not yet checked into the repository.
