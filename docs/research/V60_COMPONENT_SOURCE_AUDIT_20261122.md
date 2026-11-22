@@ -139,3 +139,18 @@ Aethereal publishes a daily Bitcoin Network dataset from 2009 onward, refreshed 
 Independent same-day cross-check: Black Almanak reports 3.247 BTC total fees on 2026-11-21 and documents its calculation as the sum of inputs minus outputs for every non-coinbase transaction in blocks assigned to that UTC day. It says its values are checked against coinbase collections, blockchain.com and Coin Metrics. Its methodology page explicitly says free viewing does not grant unrestricted reuse of third-party prices or derived data; therefore Black Almanak is used only as a displayed validation reference, not as a downloaded or redistributed project dependency.
 
 The Research 10.0 dashboard now labels the Aethereal series as a transaction-fee candidate in BTC/day. Higher-fee percentile is provisionally treated as higher risk for comparison only; exact Cowen unit, smoothing and normalisation remain unknown.
+
+
+## Terminal Price input source — Open Bitcoin Metrics CDD (added 2026-11-22)
+
+A reusable CDD history is now available from Open Bitcoin Metrics (OBM), published under CC BY 4.0. Its daily series is derived from spent-output values and ages, with CDD measured in BTC-days; the source repository publishes the CSV, metric definition, generation code, release version and validation notes. The checked-in source file currently covers 2009-01-03 through 2026-11-17 (6,528 daily rows), so it is four days behind the 2026-11-21 market series.
+
+The adapter preserves valid zero CDD days, rejects missing dates/duplicates/negative values, and records source URL, release version, unit, attribution and SHA-256. The daily refresh workflow now retrieves this file alongside Explore21, Coin Metrics and Aethereal.
+
+The first positive Coin Metrics Community price and supply-aligned price series begins 2010-07-18. Therefore the current Terminal Price candidate:
+- starts its VDD accumulation on 2010-07-18, when all required price/supply inputs are available;
+- counts market age from 2009-01-03;
+- does not invent or zero-fill pre-2010 USD price-weighted CDD;
+- is explicitly a partial-history reconstruction, not a validated exact Cowen Terminal Price series.
+
+The candidate is the raw price / Terminal Price ratio plus the implied Terminal Price USD value. Direction and Cowen's component normalisation remain unverified. It must not be promoted to an exact component or DCA input until its early-history treatment and formula parity are independently reconciled.
