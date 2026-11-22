@@ -348,19 +348,21 @@ def build_public_raw_candidates(data_dir):
             "coinmetrics_issuance_usd",
             "coinmetrics_price_usd",
             "coinmetrics_supply_btc",
-            "aethereal_price_usd",
-            "aethereal_miner_revenue_usd",
         ]
         thermo_inputs = thermo_inputs.dropna(subset=core_columns)
+        fee_available = thermo_inputs["transaction_fees_btc_candidate"].notna()
+        fallback_available = (
+            thermo_inputs["aethereal_price_usd"].gt(0)
+            & thermo_inputs["aethereal_miner_revenue_usd"].notna()
+            & thermo_inputs["aethereal_miner_revenue_usd"].ge(0)
+        )
         thermo_inputs = thermo_inputs.loc[
             (thermo_inputs["coinmetrics_issuance_usd"] >= 0)
             & (thermo_inputs["coinmetrics_price_usd"] > 0)
             & (thermo_inputs["coinmetrics_supply_btc"] > 0)
-            & (thermo_inputs["aethereal_price_usd"] > 0)
-            & (thermo_inputs["aethereal_miner_revenue_usd"] >= 0)
             & (
-                thermo_inputs["transaction_fees_btc_candidate"].isna()
-                | (thermo_inputs["transaction_fees_btc_candidate"] >= 0)
+                (fee_available & (thermo_inputs["transaction_fees_btc_candidate"] >= 0))
+                | (~fee_available & fallback_available)
             )
         ].sort_index()
         if len(thermo_inputs) > 1:
