@@ -301,7 +301,14 @@ def build_public_raw_candidates(data_dir):
             fees_path, ("fees_btc", "price_usd", "miners_revenue_usd", "transactions")
         )
         result = result.join(
-            fees["fees_btc"].rename("transaction_fees_btc_candidate"), how="outer"
+            fees[["fees_btc", "price_usd", "miners_revenue_usd"]].rename(
+                columns={
+                    "fees_btc": "transaction_fees_btc_candidate",
+                    "price_usd": "aethereal_price_usd",
+                    "miners_revenue_usd": "aethereal_miner_revenue_usd",
+                }
+            ),
+            how="outer",
         )
 
     cm_path = root / "coinmetrics_btc_daily_community.csv"
@@ -332,25 +339,50 @@ def build_public_raw_candidates(data_dir):
         "transaction_fees_btc_candidate",
         "coinmetrics_price_usd",
         "coinmetrics_supply_btc",
+        "aethereal_price_usd",
+        "aethereal_miner_revenue_usd",
     }
     if thermocap_columns.issubset(result.columns):
         thermo_inputs = result[list(thermocap_columns)].copy()
-        thermo_inputs = thermo_inputs.dropna()
+        core_columns = [
+            "coinmetrics_issuance_usd",
+            "coinmetrics_price_usd",
+            "coinmetrics_supply_btc",
+            "aethereal_price_usd",
+            "aethereal_miner_revenue_usd",
+        ]
+        thermo_inputs = thermo_inputs.dropna(subset=core_columns)
         thermo_inputs = thermo_inputs.loc[
             (thermo_inputs["coinmetrics_issuance_usd"] >= 0)
-            & (thermo_inputs["transaction_fees_btc_candidate"] >= 0)
             & (thermo_inputs["coinmetrics_price_usd"] > 0)
             & (thermo_inputs["coinmetrics_supply_btc"] > 0)
+            & (thermo_inputs["aethereal_price_usd"] > 0)
+            & (thermo_inputs["aethereal_miner_revenue_usd"] >= 0)
+            & (
+                thermo_inputs["transaction_fees_btc_candidate"].isna()
+                | (thermo_inputs["transaction_fees_btc_candidate"] >= 0)
+            )
         ].sort_index()
         if len(thermo_inputs) > 1:
             thermo_gaps = thermo_inputs.index.to_series().diff().dropna()
             if thermo_gaps.eq(pd.Timedelta(days=1)).all():
-                daily_fee_usd = (
-                    thermo_inputs["transaction_fees_btc_candidate"]
-                    * thermo_inputs["coinmetrics_price_usd"]
+                fee_values_available = thermo_inputs["transaction_fees_btc_candidate"].notna()
+                daily_miner_revenue_usd = pd.Series(
+                    np.nan, index=thermo_inputs.index, dtype=float
                 )
-                daily_miner_revenue_usd = (
-                    thermo_inputs["coinmetrics_issuance_usd"] + daily_fee_usd
+                daily_miner_revenue_usd.loc[fee_values_available] = (
+                    thermo_inputs.loc[fee_values_available, "coinmetrics_issuance_usd"]
+                    + thermo_inputs.loc[fee_values_available, "transaction_fees_btc_candidate"]
+                    * thermo_inputs.loc[fee_values_available, "coinmetrics_price_usd"]
+                )
+                # On rare missing-fee dates, derive BTC miner receipts from the
+                # same Aethereal total miner-revenue field, then revalue them at
+                # the Coin Metrics close. This is a source-backed fallback, not zero-fill.
+                fee_fallback = ~fee_values_available
+                daily_miner_revenue_usd.loc[fee_fallback] = (
+                    thermo_inputs.loc[fee_fallback, "aethereal_miner_revenue_usd"]
+                    / thermo_inputs.loc[fee_fallback, "aethereal_price_usd"]
+                    * thermo_inputs.loc[fee_fallback, "coinmetrics_price_usd"]
                 )
                 thermocap = daily_miner_revenue_usd.cumsum()
                 market_cap = (
@@ -360,6 +392,12 @@ def build_public_raw_candidates(data_dir):
                 result.loc[thermo_inputs.index, "thermocap_usd_candidate"] = thermocap
                 result.loc[thermo_inputs.index, "mctc_ratio_candidate"] = (
                     market_cap / thermocap
+                )
+                result.loc[thermo_inputs.index, "thermocap_fee_fallback_flag"] = (
+                    fee_fallback.astype(int)
+                )
+                result.loc[thermo_inputs.index, "thermocap_fee_fallback_count"] = (
+                    fee_fallback.cumsum()
                 )
                 if "coinmetrics_thermocap_crosscheck" in result.columns:
                     direct_thermocap = result.loc[
