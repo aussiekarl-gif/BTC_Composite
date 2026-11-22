@@ -39,6 +39,12 @@ class FakeSession:
 
 
 class CoinMetricsCommunityTests(unittest.TestCase):
+    def test_default_metrics_include_miner_balance_candidates(self):
+        from engines.research.coinmetrics_community import DEFAULT_METRICS
+
+        self.assertIn("SplyMiner0HopAllNtv", DEFAULT_METRICS)
+        self.assertIn("SplyMiner1HopAllNtv", DEFAULT_METRICS)
+
     def test_fetches_and_follows_pagination(self):
         session = FakeSession([
             {
