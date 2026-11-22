@@ -214,3 +214,24 @@ These are our own candidate percentiles, not the nine-item Cowen indicator outpu
 ### Coin Metrics direct ThermoCap access check
 
 The latest Community API smoke test also requested RevAllTimeUSD directly. It returned HTTP 403, like CapMVRVZ, FeeTotUSD and PuellMulTot. The direct Coin Metrics all-time revenue series is therefore not available in the free Community tier for this request. The project retains the transparent reconstruction from daily issuance plus fees, and the independent parity check against the user's uploaded ThermoCap history; it does not claim to have downloaded Coin Metrics' proprietary/paid RevAllTimeUSD series.
+
+
+## mCTC definition and miner-balance source investigation — 2026-11-22
+
+The missing seventh component is now defined more precisely: **mCTC = Miner Cap / ThermoCap**, where Miner Cap is the USD value of BTC held by the miner cohort and ThermoCap is cumulative miner revenue. This is distinct from MCTC, which is Market Cap / ThermoCap. A public description of the six-metric on-chain composite explicitly defines Miner Cap as the value of coins miners hold and ThermoCap as every dollar paid to miners. Cowen's 2022 on-chain-risk video also identifies mCTC as a separate component from MCTC.
+
+Potential source routes identified:
+- Coin Metrics documents miner-balance metrics `SplyMiner0HopAllNtv` and `SplyMiner1HopAllNtv`, including USD variants. These are the most promising no-key source candidates to test because Coin Metrics already supplies the project's price, supply and issuance series. However, the existence of a metric in the Network Data catalogue does **not** prove that it is available under Community API access. The direct API must be tested; no mCTC data is accepted until access, coverage, definition and licence are confirmed.
+- Glassnode's miner balance series defines the metric as supply held in miner addresses, including coinbase recipients not attributed to a known pool as "other". Glassnode describes this as an estimate based on its evolving labeled miner entities. Its PiT variant is append-only and intended for backtesting, but access to full history remains entitlement-dependent.
+- CoinGlass publishes a historical Total Miner Holdings chart and a separate Miner Unspent Supply series. Miner Unspent Supply is **not** equivalent to Miner Cap: it tracks unspent original coinbase outputs, and coins moved to a miner's own wallet leave the series even if the miner still owns them. It must not be used as a substitute for a wallet-based miner balance.
+- Tailwind Macro's public chart gives a contemporaneous Miner Cap / ThermoCap readout and documents the metric's meaning, but a displayed chart value is not a reusable historical dataset or a licence to redistribute the underlying series.
+
+The implementation decision remains conservative: do not populate mCTC from a miner-unspent-supply series, incomplete manually assembled pool addresses, or an undocumented proxy. First test Coin Metrics miner-balance metric access and historical coverage. If Community access is blocked, investigate a clearly licensed, no-key, full-history wallet-balance source or leave mCTC unavailable.
+
+References:
+- Cowen, "Bitcoin On-Chain Risk" (2022-11-08): https://www.youtube.com/watch?v=SO0ptRmi91c
+- Public definition of Miner Cap / ThermoCap: https://tailwindmacro.com/bitcoin-charts/bitcoin-onchain-risk
+- Coin Metrics mining metric catalogue: https://docs.coinmetrics.io/network-data/network-data-overview/mining
+- Glassnode miner balance definition and PiT notes: https://studio.glassnode.com/charts/distribution.BalanceMinersSumPit?a=BTC
+- CoinGlass miner unspent supply definition and distinction from miner reserves: https://www.coinglass.com/pro/onchain/bitcoin-miner-unspent-holdings
+- CoinGlass Total Miner Holdings description: https://www.coinglass.com/pro/onchain/bitcoin-total-miner-holdings
