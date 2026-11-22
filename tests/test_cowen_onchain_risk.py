@@ -170,6 +170,10 @@ class CowenOnchainRiskTests(unittest.TestCase):
                 "miners_revenue_usd": np.ones(len(dates)) * 100000,
                 "transactions": np.ones(len(dates)) * 1000,
             }).to_csv(target / "bitcoin_network_daily_aethereal.csv", index=False)
+            pd.DataFrame({
+                "date_utc": date_text,
+                "cdd_btc_days": np.ones(len(dates)) * 1000,
+            }).to_csv(target / "obm_cdd_btcxdays_daily.csv", index=False)
 
             raw = build_existing_raw_candidates(root)
             self.assertAlmostEqual(raw["puell_multiple_explore21"].iloc[-1], 1.5)
@@ -179,6 +183,10 @@ class CowenOnchainRiskTests(unittest.TestCase):
             self.assertAlmostEqual(raw["coinmetrics_price_usd"].iloc[-1], 10001)
             self.assertAlmostEqual(raw["transaction_fees_btc_candidate"].iloc[-1], 1.2)
             self.assertAlmostEqual(raw["transaction_fees_usd_coinmetrics_close"].iloc[-1], 12001.2)
+            self.assertTrue(np.isfinite(raw["terminal_price_usd_candidate"].iloc[-1]))
+            self.assertTrue(np.isfinite(raw["price_to_terminal_price_candidate"].iloc[-1]))
+            expected_age = (dates[-1] - pd.Timestamp("2009-01-03", tz="UTC")).days + 1
+            self.assertEqual(raw["terminal_market_age_days"].iloc[-1], expected_age)
             self.assertEqual(raw.index.max(), dates[-1])
 
 
