@@ -25,6 +25,8 @@ DEFAULT_METRICS = (
     "PriceUSD",
     "SplyCur",
     "RevAllTimeUSD",
+    "SplyMiner0HopAllNtv",
+    "SplyMiner1HopAllNtv",
 )
 ALLOWED_HOST = "community-api.coinmetrics.io"
 
