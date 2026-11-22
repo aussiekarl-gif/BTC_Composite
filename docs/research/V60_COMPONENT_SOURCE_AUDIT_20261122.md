@@ -262,3 +262,18 @@ References:
 - Firsthand Bitcoin public data API and published series catalogue: https://firsthandbitcoin.com/data/api
 - Aethereal Bitcoin Network Daily: https://dataset.aethereal.top/datasets/bitcoin-network-daily
 - CryptoQuant miner reserve endpoint and wallet-clustering caveat: https://userguide.cryptoquant.com/api/btc-miner-flows
+
+
+### CoinGlass Total Miner Holdings — access and reuse decision (2026-11-23)
+
+CoinGlass's public Total Miner Holdings chart is a strong *definition and coverage lead*: it describes a daily UTC address-cohort balance, with 6,527 observations from 2009-01-03 through 2026-11-16. Its own caveats are important: the cohort includes dormant balances, pool payouts and address reclassification can affect the series, and it is not a balance sheet of currently active public mining companies. Those properties make it a possible miner-cap candidate for research if the underlying data can be lawfully licensed and independently validated.
+
+However, CoinGlass's published API Terms explicitly prohibit bulk collection/aggregation to create independent databases or redistribution of API data and derived data without prior written consent. Its general Terms also prohibit bulk scraping/extraction and redistribution. The API is subscription-key authenticated; the documentation says access requires a subscription. Therefore the public chart's visible history is **not** permission to scrape or incorporate its series into this project. We will not use browser scraping, undocumented chart endpoints, or API data without the necessary entitlement and written rights.
+
+Decision: CoinGlass is retained as a source-definition/reference only, not a data dependency. mCTC remains unavailable under the current free/open/reusable-source requirement. Revisit only if the user obtains an appropriate licence or CoinGlass grants written permission covering this use.
+
+References:
+- CoinGlass Total Miner Holdings definition and published coverage: https://www.coinglass.com/pro/onchain/bitcoin-total-miner-holdings
+- CoinGlass API Terms (bulk collection and redistribution restrictions): https://www.coinglass.com/api-terms
+- CoinGlass general Terms (bulk scraping/extraction and redistribution restrictions): https://www.coinglass.com/terms
+- CoinGlass API overview (subscription/API-key access): https://docs.coinglass.com/reference/getting-started-with-your-api
