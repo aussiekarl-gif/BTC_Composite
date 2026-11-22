@@ -126,10 +126,56 @@ def save_snapshot(frame, output_csv, *, requested_metrics=DEFAULT_METRICS):
         "missing_values_by_metric": {
             column: int(frame[column].isna().sum()) for column in frame.columns
         },
+        "unavailable_metrics": frame.attrs.get("unavailable_metrics", {}),
     }
     sidecar = output.with_suffix(".metadata.json")
     sidecar.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     return sidecar
+
+
+def fetch_daily_btc_metrics_resilient(
+    *,
+    start_time="2009-01-03",
+    end_time=None,
+    metrics=DEFAULT_METRICS,
+    session=None,
+    page_size=10000,
+):
+    """Try one efficient batch, then isolate any metric blocked by Community access.
+
+    If the batch is rejected because one metric is not in the Community subset,
+    each metric is requested separately. Unavailable metric IDs are recorded in
+    DataFrame.attrs and are never silently represented as zero or a filled series.
+    """
+    client = session or requests.Session()
+    try:
+        return fetch_daily_btc_metrics(
+            start_time=start_time, end_time=end_time, metrics=metrics,
+            session=client, page_size=page_size,
+        )
+    except requests.HTTPError:
+        frames = []
+        unavailable = {}
+        for metric in metrics:
+            try:
+                one = fetch_daily_btc_metrics(
+                    start_time=start_time, end_time=end_time, metrics=(metric,),
+                    session=client, page_size=page_size,
+                )
+                frames.append(one)
+            except requests.HTTPError as exc:
+                response = getattr(exc, "response", None)
+                unavailable[metric] = getattr(response, "status_code", None) or str(exc)
+        if not frames:
+            raise RuntimeError(
+                "No requested metric was available from the Coin Metrics Community API; "
+                f"unavailable={unavailable}"
+            )
+        result = pd.concat(frames, axis=1, join="outer").sort_index()
+        if result.columns.has_duplicates:
+            raise ValueError("Coin Metrics fallback returned duplicate metric columns")
+        result.attrs["unavailable_metrics"] = unavailable
+        return result
 
 
 def main():
@@ -141,7 +187,7 @@ def main():
         default="data/research/coinmetrics_btc_daily_community.csv",
     )
     args = parser.parse_args()
-    frame = fetch_daily_btc_metrics(
+    frame = fetch_daily_btc_metrics_resilient(
         start_time=args.start_date, end_time=args.end_date
     )
     sidecar = save_snapshot(frame, args.output)
