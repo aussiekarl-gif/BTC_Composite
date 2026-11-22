@@ -156,22 +156,23 @@ class CowenOnchainRiskTests(unittest.TestCase):
                 "mvrv_z_score": np.linspace(-1, 1, len(dates)),
                 "btc_close_usd": np.ones(len(dates)) * 10000,
             }).to_csv(explore / "bitcoin-mvrv-z-score.csv", index=False)
+            fee_values = np.linspace(0.5, 1.2, len(dates))
+            expected_daily_revenue = 100.0 + fee_values * 10001.0
+            fee_values_with_gap = fee_values.copy()
+            fee_values_with_gap[100] = np.nan
             pd.DataFrame({
                 "date_utc": date_text,
                 "CapMVRVCur": np.linspace(0.81, 1.21, len(dates)),
                 "IssTotUSD": np.ones(len(dates)) * 100,
                 "PriceUSD": np.ones(len(dates)) * 10001,
                 "SplyCur": np.ones(len(dates)) * 19000000,
-                "RevAllTimeUSD": np.cumsum(
-                    np.full(len(dates), 100.0)
-                    + np.linspace(0.5, 1.2, len(dates)) * 10001.0
-                ),
+                "RevAllTimeUSD": np.cumsum(expected_daily_revenue),
             }).to_csv(target / "coinmetrics_btc_daily_community.csv", index=False)
             pd.DataFrame({
                 "date_utc": date_text,
-                "fees_btc": np.linspace(0.5, 1.2, len(dates)),
+                "fees_btc": fee_values_with_gap,
                 "price_usd": np.ones(len(dates)) * 10002,
-                "miners_revenue_usd": np.ones(len(dates)) * 100000,
+                "miners_revenue_usd": expected_daily_revenue / 10001.0 * 10002.0,
                 "transactions": np.ones(len(dates)) * 1000,
             }).to_csv(target / "bitcoin_network_daily_aethereal.csv", index=False)
             pd.DataFrame({
@@ -187,15 +188,13 @@ class CowenOnchainRiskTests(unittest.TestCase):
             self.assertAlmostEqual(raw["coinmetrics_price_usd"].iloc[-1], 10001)
             self.assertAlmostEqual(raw["transaction_fees_btc_candidate"].iloc[-1], 1.2)
             self.assertAlmostEqual(raw["transaction_fees_usd_coinmetrics_close"].iloc[-1], 12001.2)
-            expected_thermocap = (
-                np.full(len(dates), 100.0)
-                + np.linspace(0.5, 1.2, len(dates)) * 10001.0
-            ).sum()
+            expected_thermocap = expected_daily_revenue.sum()
             expected_mctc = (10001.0 * 19000000.0) / expected_thermocap
             self.assertAlmostEqual(raw["thermocap_usd_candidate"].iloc[-1], expected_thermocap)
             self.assertAlmostEqual(raw["mctc_ratio_candidate"].iloc[-1], expected_mctc)
             self.assertAlmostEqual(raw["mctc_ratio_coinmetrics_crosscheck"].iloc[-1], expected_mctc)
             self.assertAlmostEqual(raw["thermocap_reconstruction_diff_pct"].iloc[-1], 0.0, places=8)
+            self.assertEqual(raw["thermocap_fee_fallback_count"].iloc[-1], 1)
             self.assertTrue(np.isfinite(raw["terminal_price_usd_candidate"].iloc[-1]))
             self.assertTrue(np.isfinite(raw["price_to_terminal_price_candidate"].iloc[-1]))
             expected_age = (dates[-1] - pd.Timestamp("2009-01-03", tz="UTC")).days + 1
