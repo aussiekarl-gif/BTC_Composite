@@ -126,5 +126,52 @@ class CowenOnchainRiskTests(unittest.TestCase):
             calculate_terminal_price(gapped)
 
 
+    def test_public_candidates_prefer_explore21_and_keep_coinmetrics_crosscheck(self):
+        import tempfile
+        from pathlib import Path
+        from engines.research.cowen_onchain_risk import build_existing_raw_candidates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "research" / "cowen_onchain"
+            explore = target / "explore21"
+            explore.mkdir(parents=True)
+            dates = pd.date_range("2020-01-01", periods=370, freq="D", tz="UTC")
+            date_text = dates.strftime("%Y-%m-%d")
+            pd.DataFrame({
+                "date_utc": date_text,
+                "puell_multiple": np.linspace(0.5, 1.5, len(dates)),
+                "issuance_btc": np.ones(len(dates)),
+                "issuance_usd": np.ones(len(dates)) * 100,
+                "issuance_usd_365d_avg": np.ones(len(dates)) * 90,
+                "btc_close_usd": np.ones(len(dates)) * 10000,
+            }).to_csv(explore / "bitcoin-puell-multiple.csv", index=False)
+            pd.DataFrame({
+                "date_utc": date_text,
+                "mvrv_ratio": np.linspace(0.8, 1.2, len(dates)),
+                "btc_close_usd": np.ones(len(dates)) * 10000,
+            }).to_csv(explore / "bitcoin-mvrv-ratio.csv", index=False)
+            pd.DataFrame({
+                "date_utc": date_text,
+                "mvrv_z_score": np.linspace(-1, 1, len(dates)),
+                "btc_close_usd": np.ones(len(dates)) * 10000,
+            }).to_csv(explore / "bitcoin-mvrv-z-score.csv", index=False)
+            pd.DataFrame({
+                "date_utc": date_text,
+                "CapMVRVCur": np.linspace(0.81, 1.21, len(dates)),
+                "IssTotUSD": np.ones(len(dates)) * 100,
+                "PriceUSD": np.ones(len(dates)) * 10001,
+                "SplyCur": np.ones(len(dates)) * 19000000,
+            }).to_csv(target / "coinmetrics_btc_daily_community.csv", index=False)
+
+            raw = build_existing_raw_candidates(root)
+            self.assertAlmostEqual(raw["puell_multiple_explore21"].iloc[-1], 1.5)
+            self.assertAlmostEqual(raw["mvrv_explore21"].iloc[-1], 1.2)
+            self.assertAlmostEqual(raw["mvrv_z_score_explore21"].iloc[-1], 1.0)
+            self.assertAlmostEqual(raw["mvrv_coinmetrics_crosscheck"].iloc[-1], 1.21)
+            self.assertAlmostEqual(raw["coinmetrics_price_usd"].iloc[-1], 10001)
+            self.assertEqual(raw.index.max(), dates[-1])
+
+
 if __name__ == "__main__":
     unittest.main()
