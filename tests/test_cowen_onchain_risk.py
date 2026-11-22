@@ -163,6 +163,13 @@ class CowenOnchainRiskTests(unittest.TestCase):
                 "PriceUSD": np.ones(len(dates)) * 10001,
                 "SplyCur": np.ones(len(dates)) * 19000000,
             }).to_csv(target / "coinmetrics_btc_daily_community.csv", index=False)
+            pd.DataFrame({
+                "date_utc": date_text,
+                "fees_btc": np.linspace(0.5, 1.2, len(dates)),
+                "price_usd": np.ones(len(dates)) * 10002,
+                "miners_revenue_usd": np.ones(len(dates)) * 100000,
+                "transactions": np.ones(len(dates)) * 1000,
+            }).to_csv(target / "bitcoin_network_daily_aethereal.csv", index=False)
 
             raw = build_existing_raw_candidates(root)
             self.assertAlmostEqual(raw["puell_multiple_explore21"].iloc[-1], 1.5)
@@ -170,6 +177,8 @@ class CowenOnchainRiskTests(unittest.TestCase):
             self.assertAlmostEqual(raw["mvrv_z_score_explore21"].iloc[-1], 1.0)
             self.assertAlmostEqual(raw["mvrv_coinmetrics_crosscheck"].iloc[-1], 1.21)
             self.assertAlmostEqual(raw["coinmetrics_price_usd"].iloc[-1], 10001)
+            self.assertAlmostEqual(raw["transaction_fees_btc_candidate"].iloc[-1], 1.2)
+            self.assertAlmostEqual(raw["transaction_fees_usd_coinmetrics_close"].iloc[-1], 12001.2)
             self.assertEqual(raw.index.max(), dates[-1])
 
 
