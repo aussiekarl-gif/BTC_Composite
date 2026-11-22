@@ -130,6 +130,8 @@ def component_contributions(
     supplied = dict(DEFAULT_WEIGHTS if weights is None else weights)
     if set(supplied) != set(ACTIVE_METRICS):
         raise ValueError("weights must specify exactly the seven active metrics")
+    if any(not np.isfinite(float(v)) or float(v) <= 0 for v in supplied.values()):
+        raise ValueError("all seven active metric weights must be finite and positive")
     scores = component_scores.reindex(columns=ACTIVE_METRICS).apply(
         pd.to_numeric, errors="coerce"
     )
@@ -161,6 +163,8 @@ def calculate_terminal_price(inputs: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("inputs index must be sorted and unique")
     if not isinstance(frame.index, pd.DatetimeIndex):
         raise TypeError("inputs index must be a DatetimeIndex")
+    if frame.index.tz is None or str(frame.index.tz) != "UTC":
+        raise ValueError("inputs dates must be timezone-aware UTC")
     if frame.index.hasnans:
         raise ValueError("inputs index cannot contain NaT")
     if len(frame) < 1:
