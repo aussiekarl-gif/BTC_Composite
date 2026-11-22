@@ -130,3 +130,12 @@ Coin Metrics Community results:
 - Coin Metrics SplyCur includes zero values in early history and should not be used without validity checks; MVRV/issuance/price first become populated after their 561 initial missing rows.
 
 This supports Explore21 as the current primary candidate source for Puell, MVRV and MVRV Z, with Coin Metrics as an independent MVRV check. It does not prove exact Cowen parity or point-in-time historical availability. The snapshot workflow now has a separate daily refresh definition; data will be committed to the research data folder only after that workflow runs on the default branch following merge. Until then, the successful files remain in the CI artifact and are not yet checked into the repository.
+
+
+## Transaction Fees candidate — Aethereal (added 2026-11-22)
+
+Aethereal publishes a daily Bitcoin Network dataset from 2009 onward, refreshed daily, with a BTC-denominated total-fees field. Its stated terms are free for research and education; this is not treated as a blanket commercial redistribution licence. The adapter stores the raw BTC/day series, preserves nulls, validates unique UTC daily dates, and writes a source/licence/hash sidecar. No USD conversion uses Aethereal's own price field because its daily price convention differs from the Coin Metrics close used elsewhere.
+
+Independent same-day cross-check: Black Almanak reports 3.247 BTC total fees on 2026-11-21 and documents its calculation as the sum of inputs minus outputs for every non-coinbase transaction in blocks assigned to that UTC day. It says its values are checked against coinbase collections, blockchain.com and Coin Metrics. Its methodology page explicitly says free viewing does not grant unrestricted reuse of third-party prices or derived data; therefore Black Almanak is used only as a displayed validation reference, not as a downloaded or redistributed project dependency.
+
+The Research 10.0 dashboard now labels the Aethereal series as a transaction-fee candidate in BTC/day. Higher-fee percentile is provisionally treated as higher risk for comparison only; exact Cowen unit, smoothing and normalisation remain unknown.
