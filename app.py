@@ -238,7 +238,7 @@ section = st.sidebar.radio(
         "Production",
         "Research V5.9",
         "Research V6.0",
-        "Cowen On-Chain Risk",
+        "Research 10.0",
         "Cycle Trading — Research",
         "Bottom Signal Timeline",
     ],
@@ -259,7 +259,7 @@ engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Research V5.9": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "Research V6.0": Path(__file__).parent / "engines" / "research" / "v60_research_app.py",
-    "Cowen On-Chain Risk": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
+    "Research 10.0": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
     "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
 }[section]
