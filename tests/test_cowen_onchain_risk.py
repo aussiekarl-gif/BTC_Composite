@@ -162,6 +162,10 @@ class CowenOnchainRiskTests(unittest.TestCase):
                 "IssTotUSD": np.ones(len(dates)) * 100,
                 "PriceUSD": np.ones(len(dates)) * 10001,
                 "SplyCur": np.ones(len(dates)) * 19000000,
+                "RevAllTimeUSD": np.cumsum(
+                    np.full(len(dates), 100.0)
+                    + np.linspace(0.5, 1.2, len(dates)) * 10001.0
+                ),
             }).to_csv(target / "coinmetrics_btc_daily_community.csv", index=False)
             pd.DataFrame({
                 "date_utc": date_text,
@@ -190,6 +194,8 @@ class CowenOnchainRiskTests(unittest.TestCase):
             expected_mctc = (10001.0 * 19000000.0) / expected_thermocap
             self.assertAlmostEqual(raw["thermocap_usd_candidate"].iloc[-1], expected_thermocap)
             self.assertAlmostEqual(raw["mctc_ratio_candidate"].iloc[-1], expected_mctc)
+            self.assertAlmostEqual(raw["mctc_ratio_coinmetrics_crosscheck"].iloc[-1], expected_mctc)
+            self.assertAlmostEqual(raw["thermocap_reconstruction_diff_pct"].iloc[-1], 0.0, places=8)
             self.assertTrue(np.isfinite(raw["terminal_price_usd_candidate"].iloc[-1]))
             self.assertTrue(np.isfinite(raw["price_to_terminal_price_candidate"].iloc[-1]))
             expected_age = (dates[-1] - pd.Timestamp("2009-01-03", tz="UTC")).days + 1
