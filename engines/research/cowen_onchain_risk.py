@@ -275,6 +275,15 @@ def build_public_raw_candidates(data_dir):
         join="outer",
     ).sort_index()
 
+    fees_path = root / "bitcoin_network_daily_aethereal.csv"
+    if fees_path.exists():
+        fees = _read_indexed_source_csv(
+            fees_path, ("fees_btc", "price_usd", "miners_revenue_usd", "transactions")
+        )
+        result = result.join(
+            fees["fees_btc"].rename("transaction_fees_btc_candidate"), how="outer"
+        )
+
     cm_path = root / "coinmetrics_btc_daily_community.csv"
     if cm_path.exists():
         cm = _read_indexed_source_csv(
@@ -290,6 +299,10 @@ def build_public_raw_candidates(data_dir):
                 }
             ),
             how="outer",
+        )
+    if "transaction_fees_btc_candidate" in result and "coinmetrics_price_usd" in result:
+        result["transaction_fees_usd_coinmetrics_close"] = (
+            result["transaction_fees_btc_candidate"] * result["coinmetrics_price_usd"]
         )
     result.index.name = "date_utc"
     return result
