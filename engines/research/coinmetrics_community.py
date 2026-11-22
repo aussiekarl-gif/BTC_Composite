@@ -141,41 +141,45 @@ def fetch_daily_btc_metrics_resilient(
     session=None,
     page_size=10000,
 ):
-    """Try one efficient batch, then isolate any metric blocked by Community access.
+    """Try one efficient batch, then isolate metrics omitted/restricted by Community access.
 
-    If the batch is rejected because one metric is not in the Community subset,
-    each metric is requested separately. Unavailable metric IDs are recorded in
-    DataFrame.attrs and are never silently represented as zero or a filled series.
+    If the batch is rejected or omits one or more requested metric columns,
+    only the missing metrics are requested separately. Unavailable IDs are
+    recorded in DataFrame.attrs; no missing series is silently zero-filled.
     """
     client = session or requests.Session()
+    unavailable = {}
+    frames = []
     try:
-        return fetch_daily_btc_metrics(
+        batch = fetch_daily_btc_metrics(
             start_time=start_time, end_time=end_time, metrics=metrics,
             session=client, page_size=page_size,
         )
+        frames.append(batch)
+        missing = [metric for metric in metrics if metric not in batch.columns]
     except requests.HTTPError:
-        frames = []
-        unavailable = {}
-        for metric in metrics:
-            try:
-                one = fetch_daily_btc_metrics(
-                    start_time=start_time, end_time=end_time, metrics=(metric,),
-                    session=client, page_size=page_size,
-                )
-                frames.append(one)
-            except requests.HTTPError as exc:
-                response = getattr(exc, "response", None)
-                unavailable[metric] = getattr(response, "status_code", None) or str(exc)
-        if not frames:
-            raise RuntimeError(
-                "No requested metric was available from the Coin Metrics Community API; "
-                f"unavailable={unavailable}"
+        missing = list(metrics)
+
+    for metric in missing:
+        try:
+            one = fetch_daily_btc_metrics(
+                start_time=start_time, end_time=end_time, metrics=(metric,),
+                session=client, page_size=page_size,
             )
-        result = pd.concat(frames, axis=1, join="outer").sort_index()
-        if result.columns.has_duplicates:
-            raise ValueError("Coin Metrics fallback returned duplicate metric columns")
-        result.attrs["unavailable_metrics"] = unavailable
-        return result
+            frames.append(one)
+        except (requests.HTTPError, ValueError) as exc:
+            response = getattr(exc, "response", None)
+            unavailable[metric] = getattr(response, "status_code", None) or str(exc)
+
+    if not frames:
+        raise RuntimeError(
+            "No requested metric was available from the Coin Metrics Community API; "
+            f"unavailable={unavailable}"
+        )
+    result = pd.concat(frames, axis=1, join="outer").sort_index()
+    result = result.loc[:, ~result.columns.duplicated()]
+    result.attrs["unavailable_metrics"] = unavailable
+    return result
 
 
 def main():
