@@ -209,3 +209,8 @@ Five-year prior-only empirical percentiles (1,825 calendar-day lookback; only va
 | Price / Terminal Price | 2026-11-17 | 0.21211 | 9.21% |
 
 These are our own candidate percentiles, not the nine-item Cowen indicator output. The transaction-fee percentile uses only 1,822 available prior observations because three daily fee rows in its five-year window are missing. No missing value was filled. The Terminal Price source is four days stale in this snapshot. mCTC remains pending; therefore the seven-component composite remains disabled.
+
+
+### Coin Metrics direct ThermoCap access check
+
+The latest Community API smoke test also requested RevAllTimeUSD directly. It returned HTTP 403, like CapMVRVZ, FeeTotUSD and PuellMulTot. The direct Coin Metrics all-time revenue series is therefore not available in the free Community tier for this request. The project retains the transparent reconstruction from daily issuance plus fees, and the independent parity check against the user's uploaded ThermoCap history; it does not claim to have downloaded Coin Metrics' proprietary/paid RevAllTimeUSD series.
