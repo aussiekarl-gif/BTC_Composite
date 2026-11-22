@@ -139,6 +139,56 @@ def component_contributions(
     return result.where(complete)
 
 
+def calculate_terminal_price(inputs: pd.DataFrame) -> pd.DataFrame:
+    """Calculate Cowen's raw Terminal Price from complete daily CDD, price and supply.
+
+    Cowen's public 2026 explanation defines Value Days Destroyed as
+    CDD * BTC price, Transferred Price as cumulative VDD / (market age * supply),
+    and Terminal Price as 21 * Transferred Price.
+
+    The first row is treated as market-age day 1 (the first price observation).
+    Inputs must be complete and contiguous: a missing CDD day cannot be treated
+    as zero because that would permanently understate cumulative VDD.
+    This returns raw price levels and price/terminal ratio, not a 0-1 risk score.
+    """
+    required = ("cdd_btc_days", "price_usd", "supply_btc")
+    if not isinstance(inputs, pd.DataFrame):
+        raise TypeError("inputs must be a pandas DataFrame")
+    if not set(required).issubset(inputs.columns):
+        raise ValueError(f"inputs must contain {required}")
+    frame = inputs.loc[:, required].apply(pd.to_numeric, errors="coerce").copy()
+    if not frame.index.is_monotonic_increasing or frame.index.has_duplicates:
+        raise ValueError("inputs index must be sorted and unique")
+    if not isinstance(frame.index, pd.DatetimeIndex):
+        raise TypeError("inputs index must be a DatetimeIndex")
+    if frame.index.hasnans:
+        raise ValueError("inputs index cannot contain NaT")
+    if len(frame) < 1:
+        raise ValueError("inputs must contain at least one daily observation")
+    if frame.isna().any().any():
+        raise ValueError("CDD, price and supply must be complete; no gap filling is allowed")
+    if (frame["cdd_btc_days"] < 0).any():
+        raise ValueError("CDD cannot be negative")
+    if (frame[["price_usd", "supply_btc"]] <= 0).any().any():
+        raise ValueError("price and supply must be positive")
+    if len(frame) > 1:
+        gaps = frame.index.to_series().diff().dropna()
+        if not gaps.eq(pd.Timedelta(days=1)).all():
+            raise ValueError("inputs must have one observation per consecutive UTC day")
+
+    out = frame.copy()
+    out["value_days_destroyed_usd"] = out["cdd_btc_days"] * out["price_usd"]
+    out["cumulative_value_days_destroyed_usd"] = out["value_days_destroyed_usd"].cumsum()
+    out["market_age_days"] = np.arange(1, len(out) + 1, dtype=int)
+    out["transferred_price_usd"] = (
+        out["cumulative_value_days_destroyed_usd"]
+        / (out["market_age_days"] * out["supply_btc"])
+    )
+    out["terminal_price_usd"] = 21.0 * out["transferred_price_usd"]
+    out["price_to_terminal_price"] = out["price_usd"] / out["terminal_price_usd"]
+    return out
+
+
 def _read_daily_chart_export(path, metric_column):
     """Read a BlockHorizon-style millisecond-UTC daily export without filling gaps."""
     frame = pd.read_csv(path)
