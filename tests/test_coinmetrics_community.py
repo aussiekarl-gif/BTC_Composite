@@ -4,16 +4,22 @@ import pandas as pd
 
 from engines.research.coinmetrics_community import (
     fetch_daily_btc_metrics,
+    fetch_daily_btc_metrics_resilient,
     save_snapshot,
 )
 
 
 class FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200):
         self.payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self):
-        return None
+        if self.status_code >= 400:
+            import requests
+            error = requests.HTTPError(f"HTTP {self.status_code}")
+            error.response = self
+            raise error
 
     def json(self):
         return self.payload
@@ -26,7 +32,10 @@ class FakeSession:
 
     def get(self, url, params=None, timeout=60):
         self.calls.append((url, params, timeout))
-        return FakeResponse(self.responses.pop(0))
+        item = self.responses.pop(0)
+        if isinstance(item, tuple):
+            return FakeResponse(item[1], item[0])
+        return FakeResponse(item)
 
 
 class CoinMetricsCommunityTests(unittest.TestCase):
@@ -76,6 +85,23 @@ class CoinMetricsCommunityTests(unittest.TestCase):
             self.assertEqual(metadata["missing_values_by_metric"]["FeeTotUSD"], 1)
             self.assertEqual(metadata["provider"], "Coin Metrics Community API")
             self.assertTrue(metadata["sha256_csv"])
+
+
+    def test_falls_back_to_individual_metrics_and_records_unavailable(self):
+        session = FakeSession([
+            (403, {"error": "one metric not in community tier"}),
+            {"data": [
+                {"asset": "btc", "time": "2020-01-01T00:00:00Z",
+                 "CapMVRVCur": "1.2"}
+            ]},
+            (403, {"error": "CapMVRVZ unavailable"}),
+        ])
+        frame = fetch_daily_btc_metrics_resilient(
+            metrics=("CapMVRVCur", "CapMVRVZ"), session=session
+        )
+        self.assertEqual(list(frame.columns), ["CapMVRVCur"])
+        self.assertIn("CapMVRVZ", frame.attrs["unavailable_metrics"])
+        self.assertEqual(len(session.calls), 3)
 
 
 if __name__ == "__main__":
