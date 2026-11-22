@@ -182,3 +182,14 @@ Using the successful public-source snapshot, the independent reconstruction star
 The user's previously uploaded 2026-11-21 series showed ThermoCap USD 100,566,384,572 and MCTC 12.017. The independent reconstruction differs by only +0.0316% in ThermoCap and +0.0416% in MCTC. This is a strong parity result for the fees-inclusive Coin Metrics-style ThermoCap variant. It is still a cross-source validation, not proof that the proprietary Cowen component uses exactly these source fields or transformations.
 
 The five-year prior-only percentile for the reconstructed MCTC ratio on 2026-11-21 is 27.45%. It is a research candidate percentile, not a Cowen slider score or DCA instruction.
+
+
+### Terminal Price candidate latest observation
+
+Using the documented formula (Terminal Price = 21 × cumulative CDD × daily BTC price ÷ [market age in days × circulating supply]), the source intersection through 2026-11-17 gives:
+- Terminal Price candidate: USD 306,009.
+- Coin Metrics BTC close: USD 64,908.18.
+- Price / Terminal Price: 0.2121.
+- Five-year prior-only percentile of the ratio: 9.21%.
+
+The CDD input is four days behind the other daily sources at this snapshot. The output is explicitly a partial-history candidate because its cumulative USD value-days history starts on 2010-07-18, when the first valid Coin Metrics market price is available, while market age is counted from 2009-01-03. No missing CDD days are filled.
