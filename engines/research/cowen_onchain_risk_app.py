@@ -70,6 +70,7 @@ if not raw.empty:
         ("mvrv_explore21", "mvrv", "Explore21 MVRV ratio, method v2 • CC BY 4.0"),
         ("mvrv_z_score_explore21", "mvrv_z_score", "Explore21 MVRV Z-Score, method v1 • CC BY 4.0"),
         ("transaction_fees_btc_candidate", "transaction_fees", "Aethereal daily total fees in BTC/day • free for research and education; candidate"),
+        ("price_to_terminal_price_candidate", "terminal_price", "Price / Terminal Price ratio from OBM CDD + Coin Metrics price/supply; partial-history candidate"),
         ("puell_multiple_candidate", "puell_multiple", "Legacy miner-revenue-derived candidate; not preferred"),
         ("mvrv_planb_realized_price_proxy", "mvrv", "PlanB price / realised-price proxy; not exact market-cap MVRV"),
         ("mvrv_z_score_provider_export", "mvrv_z_score", "Saved provider export; methodology not reconciled"),
@@ -146,6 +147,10 @@ for row_start in range(0, len(COMPONENTS), 3):
                             f" • Coin Metrics cross-check {cm_value:.3f} "
                             f"({delta_pct:+.2f}% vs Explore21)"
                         )
+                if metric == "terminal_price" and "terminal_price_usd_candidate" in raw.columns:
+                    terminal_usd = raw["terminal_price_usd_candidate"].get(metric_date, np.nan)
+                    if pd.notna(terminal_usd):
+                        provenance += f" • implied terminal price USD {terminal_usd:,.0f}"
                 st.markdown(
                     f'<div class="metric-card"><div class="metric-name">{label} '
                     f'<span style="color:#7fa4b9">· weight {weight}</span></div>'
@@ -173,6 +178,7 @@ if not risk_frame.empty:
         "mvrv": "MVRV (PlanB realised-price proxy)",
         "mvrv_z_score": "MVRV Z-Score (Explore21)",
         "transaction_fees": "Transaction Fees (BTC/day candidate)",
+        "terminal_price": "Terminal Price (price/terminal ratio candidate)",
     }
     selected = st.multiselect(
         "Display components", choices, default=choices,
@@ -210,10 +216,13 @@ with st.expander("Methodology, weights and data limitations", expanded=False):
     candidates and remains subject to source/formula review.
 
     **Not yet displayed as scores:** Transaction Fees, Terminal Price, MCTC and mCTC
-    Transaction Fees is now displayed as an Aethereal BTC/day candidate, but its
-    exact Cowen transformation and direction still need validation. Terminal Price,
-    MCTC and mCTC remain unavailable as validated scores. The MCTC/ThermoCap snapshot
-    and CDD inputs are separate outstanding data tasks; mCTC remains unresolved.
+    Transaction Fees is displayed as an Aethereal BTC/day candidate, but its exact
+    Cowen transformation and direction still need validation. Terminal Price is now
+    shown as a partial-history price/terminal-price ratio candidate using Open Bitcoin
+    Metrics CDD and Coin Metrics price/supply. The CDD series is current only through
+    its latest published date, and the price-weighted cumulative history begins on the
+    first common valid Coin Metrics date (2010-07-18), not genesis. MCTC and mCTC remain
+    unavailable as validated scores; mCTC still requires a defensible miner-entity series.
     """)
 
 st.caption("Research 10.0 • Cowen On-Chain Risk • isolated from Production and V5.9 • no trade execution")
