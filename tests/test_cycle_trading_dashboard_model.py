@@ -145,7 +145,7 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
         txt=(root/"app.py").read_text(encoding="utf8")
         self.assertIn('"Production": Path(',txt)
         self.assertIn('"Research V5.9": Path(',txt)
-        self.assertIn('"Research V6.0": Path(',txt)
+        self.assertNotIn('"Research V6.0": Path(',txt)
         self.assertIn('"Research 10.0": Path(',txt)
         self.assertIn('engines" / "research" / "cowen_onchain_risk_app.py"',txt)
         # Existing Cycle Trading research remains a separate page, not merged.
