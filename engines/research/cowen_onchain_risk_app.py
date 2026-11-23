@@ -362,10 +362,11 @@ if ma_days and not six_composite_history.empty:
         .mean()
         .dropna()
     )
-        if renormalize_average and not risk_ma.empty:
-            lo, hi = float(risk_ma.min()), float(risk_ma.max())
-            if hi > lo:
-                risk_ma = (risk_ma - lo) / (hi - lo)
+    if renormalize_average and not risk_ma.empty:
+        lo, hi = float(risk_ma.min()), float(risk_ma.max())
+        if hi > lo:
+            risk_ma = (risk_ma - lo) / (hi - lo)
+    if not risk_ma.empty:
         fig.add_trace(
             go.Scatter(
                 x=risk_ma.index, y=risk_ma.values,
