@@ -24,13 +24,12 @@ from engines.research.cowen_onchain_risk import (
 
 st.markdown("""
 <style>
-.cowen-wrap {background:linear-gradient(135deg,#101d2b,#152b3d);border:1px solid #294b62;
- border-radius:14px;padding:18px 22px;margin:4px 0 18px 0}
-.cowen-kicker {color:#91b8cc;font-size:12px;letter-spacing:1.8px;text-transform:uppercase;font-weight:700}
-.cowen-heading {color:#f4f8fb;font-size:30px;font-weight:800;margin:3px 0}
-.cowen-sub {color:#b8cbd8;font-size:13px}
-.metric-card {background:#0b2030;border:1px solid #24465d;border-radius:12px;padding:13px 15px;
- min-height:132px;margin-bottom:10px}
+.cowen-wrap {background:#050505;border:0;border-radius:0;padding:10px 8px 14px 8px;margin:0 0 10px 0}
+.cowen-kicker {color:#8e9aa5;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;text-align:center}
+.cowen-heading {color:#f4f6f8;font-size:29px;font-weight:800;margin:3px 0;text-align:center}
+.cowen-sub {color:#aab2bb;font-size:12px;text-align:center}
+.metric-card {background:#080b10;border:1px solid #252a31;border-radius:7px;padding:11px 13px;
+ min-height:118px;margin-bottom:9px}
 .metric-name {font-size:13px;color:#a9c2d1;font-weight:700;min-height:34px}
 .metric-value {font-size:25px;color:#f4f8fb;font-weight:800;margin:5px 0}
 .metric-foot {font-size:11px;color:#8caaba}
@@ -309,16 +308,19 @@ metric_labels = {
     "supply_pnl": "Supply P/L Risk",
 }
 for metric, label in metric_labels.items():
-    if metric not in risk_frame.columns or weight_values.get(metric, 0) <= 0:
+    if metric not in risk_frame.columns:
         continue
     values = risk_frame[metric].dropna()
     if values.empty:
         continue
+    is_active_weight = weight_values.get(metric, 0) > 0
     fig.add_trace(
         go.Scatter(
-            x=values.index, y=values.values, name=label,
-            mode="lines", line=dict(width=1.35),
-            opacity=0.88,
+            x=values.index, y=values.values,
+            name=label + ("" if is_active_weight else " (weight 0)"),
+            mode="lines",
+            line=dict(width=1.35 if is_active_weight else 1.0, dash="solid" if is_active_weight else "dot"),
+            opacity=0.88 if is_active_weight else 0.55,
             hovertemplate="%{x|%d %b %Y}<br>" + label + ": %{y:.3f}<extra></extra>",
         ),
         secondary_y=True,
