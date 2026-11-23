@@ -20,12 +20,16 @@ Data sources:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 import streamlit as st
 
-from engines.cowen_risk_fetchers import fetch_live_df
+try:
+    from engines.cowen_risk_fetchers import fetch_live_df
+except ImportError:  # standalone cowen-risk-matrix layout
+    from fetchers import fetch_live_df
 
 # ---------------------------------------------------------------------------
 # Metric registry
@@ -291,22 +295,105 @@ def fmt(x) -> str:
 # Streamlit app
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# CSV data loaders — BTC_Composite repo data + Research7 risk series
+# ---------------------------------------------------------------------------
+
+def _repo_root() -> Path:
+    """Walk up from this file to the repo root (has data/risk_history.csv or .git)."""
+    p = Path(__file__).resolve()
+    for cand in p.parents:
+        if (cand / "data" / "risk_history.csv").exists() or (cand / ".git").exists():
+            return cand
+    return p.parent
+
+
+def _load_btc_composite_data() -> Optional[pd.DataFrame]:
+    """BTC_Composite/data/risk_history.csv — the user's own risk-ladder CSV."""
+    f = _repo_root() / "data" / "risk_history.csv"
+    if not f.exists():
+        return None
+    df = pd.read_csv(f)
+    if "date_utc" in df.columns:
+        df = df.rename(columns={"date_utc": "date"})
+    return df
+
+
+def _load_research7_series() -> Optional[pd.DataFrame]:
+    """Research7/data/indicators/risk_history_*.csv — merged into app columns."""
+    base = _repo_root().parent / "Research7" / "data" / "indicators"
+    if not base.exists():
+        return None
+    maps = {
+        "risk_history_mvrv_z.csv": "mvrv_zscore",
+        "risk_history_puell_multiple.csv": "puell_multiple",
+        "risk_history_realised_price_usd.csv": "realized_price_usd",
+        "risk_history_price_usd.csv": "price_usd",
+        "risk_history_composite_risk.csv": "composite_risk",
+        "risk_history_ahr999.csv": "ahr999",
+    }
+    frames = []
+    for fn, col in maps.items():
+        f = base / fn
+        if not f.exists():
+            continue
+        df = pd.read_csv(f)
+        if "value" not in df.columns or "date" not in df.columns:
+            continue
+        df = df[["date", "value"]].rename(columns={"value": col})
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        df = df.dropna(subset=["date", col]).sort_values("date")
+        if df.empty:
+            continue
+        frames.append(df)
+    if not frames:
+        return None
+    out = frames[0]
+    for df in frames[1:]:
+        out = out.merge(df, on="date", how="outer")
+    return out
+
+
 def main() -> None:
     st.set_page_config(page_title="Cowen Risk Matrix", page_icon="₿")
     st.title("Cowen Risk Matrix")
     st.caption("Cowen On-Chain Metrics Historical Risk — open-source replica — formulas & sources in README.md")
 
+    st.subheader("Data sources")
+    cb_btc = st.checkbox(
+        "Load BTC_Composite data (BTC_Composite/data/risk_history.csv)",
+        key="cb_cowen_btc_composite",
+    )
+    cb_r7 = st.checkbox(
+        "Load Research7 risk series (Research7/data/indicators/risk_history_*.csv)",
+        key="cb_cowen_research7",
+    )
     uploaded = st.file_uploader(
-        "Import raw series as CSV (optional — live free data is used by default; see README)",
+        "Import raw series as CSV (optional — overrides the checkboxes; live free data used by default)",
         type=["csv"],
     )
-    if uploaded:
+
+    df = None
+    source_label = None
+    if cb_btc:
+        df = _load_btc_composite_data()
+        if df is not None and len(df) > 0:
+            source_label = f"BTC_Composite data/risk_history.csv ({len(df)} rows)"
+        else:
+            st.warning("BTC_Composite/data/risk_history.csv not found — nothing loaded.")
+    if df is None and cb_r7:
+        df = _load_research7_series()
+        if df is not None and len(df) > 0:
+            source_label = f"Research7 risk series ({len(df)} rows)"
+        else:
+            st.warning("Research7 risk series not found — nothing loaded.")
+    if df is None and uploaded is not None:
         df = pd.read_csv(uploaded)
         if "date" in df:
             df["date"] = pd.to_datetime(df["date"], errors="coerce").sort_values()
             df = df.set_index("date")
-        st.caption("Source: CSV import")
-    else:
+        source_label = "CSV import"
+    if df is None:
         df = fetch_live_df()
         if df is None or df.empty:
             st.info(
@@ -315,7 +402,8 @@ def main() -> None:
                 "series (see README) or try again after the cache expires."
             )
             return
-        st.success("Source: live free data — BGeometrics bitcoin-data.com (anonymous, cached 30 min)")
+        source_label = "live free data — BGeometrics bitcoin-data.com (anonymous, cached 30 min)"
+    st.success("Source: " + source_label)
 
     series = derive_series(df)
     available = [k for k, s in series.items() if s.dropna().size >= 2]
