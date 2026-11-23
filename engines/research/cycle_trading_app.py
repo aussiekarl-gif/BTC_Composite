@@ -259,9 +259,17 @@ st.caption(
     + halving_countdown["source"] + " • " + halving_countdown["estimate_basis"] + "."
 )
 
-tabs=st.tabs(["Trading decision", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
+# Streamlit tabs execute every tab body on each rerun. Use a selector and
+# conditional rendering so expensive historical research is built only when
+# the user opens that section.
+cycle_section = st.radio(
+    "Cycle Trading section",
+    ["Trading decision", "My Portfolio — Buy & Sell", "Historical sell & buyback"],
+    horizontal=True,
+    key="cycle_trading_section",
+)
 
-with tabs[0]:
+if cycle_section == "Trading decision":
     st.subheader("Current trading decision — Research")
     st.caption(
         "Uses verified previous BTC close, strictly prior 200WMA and your recorded executed buys/sells. "
@@ -1272,7 +1280,7 @@ with tabs[0]:
 
 
 
-with tabs[1]:
+elif cycle_section == "My Portfolio — Buy & Sell":
     st.subheader("Your saved My Portfolio — net holdings")
     portfolio,store_error=saved_live_portfolio,saved_live_error
     if store_error:
@@ -1363,7 +1371,7 @@ with tabs[1]:
         store_error=store_error
     )
 
-with tabs[2]:
+else:  # Historical sell & buyback
     st.subheader("Historical whole-cycle comparison")
     st.info(
         "Historical research accounts each hypothetically invest A$500,000 at the selected *historical halving*, "
