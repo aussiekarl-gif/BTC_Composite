@@ -418,16 +418,23 @@ def _risk_history_line(df: Optional[pd.DataFrame], series: dict, weights: dict) 
 
 
 def _plot_risk_line(risk_line: pd.Series) -> None:
-    """Plot the risk line with year labels on the horizontal axis."""
+    """Plot the risk line with a proper timeline on the horizontal axis."""
     import plotly.graph_objects as go
     fig = go.Figure(go.Scatter(
         x=risk_line.index, y=risk_line.values, mode="lines", name="risk",
     ))
-    # Year ticks on the horizontal axis ("just write the year on the bar")
-    years = [pd.Timestamp(f"{y}-01-01")
-             for y in range(pd.Timestamp(risk_line.index.min()).year,
-                            pd.Timestamp(risk_line.index.max()).year + 1)]
-    fig.update_xaxes(tickvals=years, tickformat="%Y")
+    start = pd.Timestamp(risk_line.index.min())
+    end = pd.Timestamp(risk_line.index.max())
+    # Proper timeline: a tick at each year in the span, labeled with the year.
+    years = [pd.Timestamp(y, 1, 1) for y in range(start.year, end.year + 1)]
+    fig.update_xaxes(
+        range=[start, end],
+        tickvals=years,
+        ticktext=[f"{y.year}" for y in years],
+        showgrid=True,
+        gridcolor="rgba(128,128,128,0.25)",
+        zeroline=False,
+    )
     fig.update_yaxes(tickformat=".2f", range=[0, 1.05])
     fig.update_layout(
         height=320,
