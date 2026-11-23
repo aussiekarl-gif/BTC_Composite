@@ -83,8 +83,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.warning(
-    "RESEARCH DISPLAY ONLY — this is not Benjamin Cowen's live indicator and does not "
+st.markdown(
+    "**RESEARCH DISPLAY ONLY** — this is not Benjamin Cowen's live indicator and does not "
     "reproduce its proprietary transformations. No DCA, buy or sell signal is generated. "
     "Missing components are left missing; the experimental six-metric score requires all six inputs."
 )
