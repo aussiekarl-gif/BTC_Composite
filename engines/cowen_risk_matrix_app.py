@@ -29,8 +29,10 @@ import streamlit as st
 
 try:
     from engines.cowen_risk_fetchers import fetch_live_df
+    from engines import cowen_risk_fetchers as fetchers
 except ImportError:  # standalone cowen-risk-matrix layout
     from fetchers import fetch_live_df
+    import fetchers
 
 # ---------------------------------------------------------------------------
 # Metric registry
@@ -489,6 +491,17 @@ def main() -> None:
     st.success("Source: " + source_label)
 
     series = derive_series(df)
+
+    # Prefer the live BGeometrics Puell series when the loaded data's Puell is
+    # short — risk_history.csv has 2 points (risk 1.0); the live series has
+    # 1455 points and a realistic risk (~0.42).
+    if "PuellMultiple" in series and series["PuellMultiple"].dropna().size < 30:
+        live = fetchers._fetch_bgeometrics_series(
+            "puell-multiple", fetchers.BG_CANDIDATES["puell-multiple"]
+        )
+        if live is not None and not live.empty and live.dropna().size >= 2:
+            series["PuellMultiple"] = live
+
     available = [k for k, s in series.items() if s.dropna().size >= 2]
     if not available:
         st.warning(
