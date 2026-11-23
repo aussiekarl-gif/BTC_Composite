@@ -26,3 +26,19 @@ def test_sidebar_only_execution_stops_before_market_data_and_model_calculations(
     assert "_fetch_market_inputs(" not in sidebar
     assert "fetch_btc_history(" not in sidebar
     assert "params =" not in sidebar
+
+
+def test_sidebar_only_mode_skips_portfolio_recovery_and_durable_storage_reads():
+    assert 'if globals().get("BTC_SIDEBAR_ONLY", False):' in PRODUCTION
+    sidebar_mode = PRODUCTION.split('if globals().get("BTC_SIDEBAR_ONLY", False):', 1)[1]
+    sidebar_mode = sidebar_mode.split("else:", 1)[0]
+    assert "_load_portfolio_snapshots(" not in sidebar_mode
+    assert "_load_shared_portfolio(" not in sidebar_mode
+    assert "load_portfolio()" not in sidebar_mode
+    assert 'portfolio_storage_error = "Portfolio loading is intentionally skipped in sidebar-only mode."' in sidebar_mode
+
+
+def test_full_production_path_retains_portfolio_verification():
+    assert "server_portfolio, portfolio_storage_error = load_portfolio()" in PRODUCTION
+    assert "snapshot_as_portfolio_positions(_broker_snapshot)" in PRODUCTION
+    assert "portfolio_positions(server_portfolio)" in PRODUCTION
