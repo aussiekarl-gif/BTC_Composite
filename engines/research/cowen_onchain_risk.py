@@ -288,14 +288,14 @@ def build_public_raw_candidates(data_dir):
         join="outer",
     ).sort_index()
 
-    cdd_path = root / "obm_cdd_btcxdays_daily.csv"
+    cdd_path = public_root / "obm_cdd_btcxdays_daily.csv"
     if cdd_path.exists():
         cdd = _read_indexed_source_csv(cdd_path, ("cdd_btc_days",))
         result = result.join(
             cdd["cdd_btc_days"].rename("cdd_btc_days"), how="outer"
         )
 
-    fees_path = root / "bitcoin_network_daily_aethereal.csv"
+    fees_path = public_root / "bitcoin_network_daily_aethereal.csv"
     if fees_path.exists():
         fees = _read_indexed_source_csv(
             fees_path, ("fees_btc", "price_usd", "miners_revenue_usd", "transactions")
@@ -311,7 +311,7 @@ def build_public_raw_candidates(data_dir):
             how="outer",
         )
 
-    cm_path = root / "coinmetrics_btc_daily_community.csv"
+    cm_path = public_root / "coinmetrics_btc_daily_community.csv"
     if cm_path.exists():
         cm = _read_indexed_source_csv(
             cm_path, ("CapMVRVCur", "IssTotUSD", "PriceUSD", "SplyCur")
