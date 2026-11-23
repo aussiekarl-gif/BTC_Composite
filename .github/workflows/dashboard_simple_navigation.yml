@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - 'app.py'
-      - 'engines/research/v60_research_app.py'
       - 'data/research_forward_validation/v60_dashboard_snapshot_2026-11-19.json'
       - 'tests/test_dashboard_simple_navigation.py'
       - '.github/workflows/dashboard_simple_navigation.yml'
@@ -14,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  preserve-production-v60-and-archived-research:
+  preserve-production-and-archived-research:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -24,9 +23,9 @@ jobs:
           python-version: '3.12'
       - name: Install application dependencies
         run: python -m pip install -r requirements.txt
-      - name: Confirm three active choices and archived Cycle Trading tests remain
+      - name: Confirm active navigation and archived Cycle Trading tests remain
         run: |
-          python -m py_compile app.py engines/research/v60_research_app.py
+          python -m py_compile app.py engines/research/research_app.py engines/research/cowen_onchain_risk_app.py engines/research/cycle_trading_app.py
           python -m unittest discover -s tests -p 'test_dashboard_simple_navigation.py' -v
           python -m unittest discover -s tests -p 'test_cycle_trading_pct_allocation.py' -v
           python -m unittest discover -s tests -p 'test_cycle_halving_and_quote_display.py' -v
