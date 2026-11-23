@@ -140,6 +140,29 @@ class DynamicWmaDcaTests(unittest.TestCase):
         self.assertEqual(current["btc_units"], aggressive["btc_units"])
         self.assertEqual(aggressive["discount_tier_buy_counts"], [aggressive["buy_count"], 0, 0, 0])
 
+    def test_non_overlapping_cohort_selection_does_not_double_count_windows(self):
+        windows = [
+            {"anchor": "2017-01-01", "start": "2017-01-02", "end": "2018-12-24", "split": "TRAIN"},
+            {"anchor": "2017-07-01", "start": "2017-07-03", "end": "2019-06-24", "split": "TRAIN"},
+            {"anchor": "2019-01-01", "start": "2019-01-07", "end": "2020-12-28", "split": "TRAIN"},
+            {"anchor": "2019-07-01", "start": "2019-07-01", "end": "2021-06-21", "split": "TRAIN"},
+            {"anchor": "2022-01-01", "start": "2022-01-03", "end": "2023-12-25", "split": "HISTORICAL_HOLDOUT"},
+            {"anchor": "2022-07-01", "start": "2022-07-04", "end": "2024-06-24", "split": "HISTORICAL_HOLDOUT"},
+            {"anchor": "2024-01-01", "start": "2024-01-01", "end": "2025-12-22", "split": "HISTORICAL_HOLDOUT"},
+        ]
+        selected = study.select_non_overlapping_cohorts(windows)
+        self.assertEqual(
+            [w["anchor"] for w in selected],
+            ["2017-01-01", "2019-01-01", "2022-01-01", "2024-01-01"],
+        )
+        for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
+            same_split = [w for w in selected if w["split"] == split]
+            for left, right in zip(same_split, same_split[1:]):
+                self.assertGreater(
+                    date.fromisoformat(right["start"]),
+                    date.fromisoformat(left["end"]),
+                )
+
     def test_wma_excludes_the_signal_sunday_close(self):
         index = pd.date_range("2013-01-06", periods=400 * 7 + 2, freq="D", tz="UTC")
         prices = pd.Series([100.0 + i for i in range(len(index))], index=index)
