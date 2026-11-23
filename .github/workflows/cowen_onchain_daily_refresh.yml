@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "17 4 * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cowen_onchain_daily_refresh.yml"
+      - "engines/research/cowen_onchain_risk.py"
+      - "engines/research/explore21_public_data.py"
+      - "engines/research/coinmetrics_community.py"
+      - "engines/research/aethereal_public_data.py"
+      - "engines/research/obm_cdd_public_data.py":
 
 permissions:
   contents: write
