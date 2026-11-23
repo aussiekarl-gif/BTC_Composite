@@ -90,13 +90,21 @@ class StreamlitOfflineSmoke(unittest.TestCase):
             and node.func.attr == "radio"
         ]
         self.assertEqual(len(radios), 1)
-        options = ast.literal_eval(radios[0].args[1])
+        options_node = next(
+            node for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "MODEL_OPTIONS"
+                    for target in node.targets)
+        )
+        options = ast.literal_eval(options_node.value)
+        self.assertEqual(radios[0].args[1].id, "MODEL_OPTIONS")
         self.assertEqual(options[0], "Production")
         self.assertNotIn("Research V6.0", options)
+        self.assertNotIn("Research V5.9", options)
+        self.assertNotIn("Cowen Risk Matrix", options)
         self.assertFalse((ROOT / "engines/research/v60_research_app.py").exists())
         # Other research destinations remain available.
-        for retained in ("Research V5.9", "Research 10.0",
-                         "Cycle Trading — Research", "Cowen Risk Matrix"):
+        for retained in ("Research 10.0", "Cycle Trading — Research"):
             self.assertIn(retained, options)
 
     def test_retired_model_radio_state_is_reset_after_deploy(self):
@@ -106,8 +114,8 @@ class StreamlitOfflineSmoke(unittest.TestCase):
 import streamlit as st
 MODEL_SELECTOR_KEY = "combined_app_section_selector"
 MODEL_OPTIONS = [
-    "Production", "Research V5.9", "Research 10.0",
-    "Cycle Trading — Research", "Cowen Risk Matrix",
+    "Production", "Research 10.0",
+    "Cycle Trading — Research",
     "Bottom Signal Timeline",
 ]
 if st.session_state.get(MODEL_SELECTOR_KEY) not in MODEL_OPTIONS:
@@ -116,7 +124,7 @@ section = st.sidebar.radio("Model", MODEL_OPTIONS, key=MODEL_SELECTOR_KEY)
 st.write(section)
 '''
         page = AppTest.from_string(page_source, default_timeout=25)
-        page.session_state["combined_app_section_selector"] = "Research V6.0"
+        page.session_state["combined_app_section_selector"] = "Research V5.9"
         page = page.run()
         self.assertFalse(page.exception, repr([x.message for x in page.exception]))
         self.assertEqual(

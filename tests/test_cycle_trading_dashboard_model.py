@@ -144,7 +144,8 @@ class CycleTradingDashboardModelTests(unittest.TestCase):
         root=Path(__file__).resolve().parents[1]
         txt=(root/"app.py").read_text(encoding="utf8")
         self.assertIn('"Production": Path(',txt)
-        self.assertIn('"Research V5.9": Path(',txt)
+        self.assertNotIn('"Research V5.9": Path(',txt)
+        self.assertNotIn('"Cowen Risk Matrix": Path(',txt)
         self.assertNotIn('"Research V6.0": Path(',txt)
         self.assertIn('"Research 10.0": Path(',txt)
         self.assertIn('engines" / "research" / "cowen_onchain_risk_app.py"',txt)

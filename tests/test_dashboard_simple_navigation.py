@@ -19,23 +19,40 @@ class SimplifiedLauncherTests(unittest.TestCase):
         ]
         self.assertEqual(len(radios), 1)
         radio = radios[0]
-        self.assertIsInstance(radio.args[1], ast.List)
-        self.assertEqual(ast.literal_eval(radio.args[1]), [
-            "Production", "Research V5.9", "Research 10.0",
-            "Cycle Trading — Research", "Cowen Risk Matrix", "Bottom Signal Timeline",
+        options_assignment = next(
+            n for n in tree.body
+            if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "MODEL_OPTIONS"
+                    for t in n.targets)
+        )
+        options = ast.literal_eval(options_assignment.value)
+        self.assertEqual(options, [
+            "Production", "Research 10.0",
+            "Cycle Trading — Research", "Bottom Signal Timeline",
         ])
+        self.assertEqual(radio.args[1].id, "MODEL_OPTIONS")
         named = {kw.arg: kw.value for kw in radio.keywords}
         self.assertEqual(ast.literal_eval(named["index"]), 0)
-        self.assertEqual(ast.literal_eval(named["key"]), "combined_app_section_selector")
+        self.assertIsInstance(named["key"], ast.Name)
+        self.assertEqual(named["key"].id, "MODEL_SELECTOR_KEY")
 
-    def test_v59_cycle_and_cowen_pages_are_separate(self):
+    def test_retired_v59_and_cowen_pages_are_not_routed_or_listed(self):
         source = APP.read_text(encoding="utf-8")
-        for label in ('"Cycle Trading — Research"', '"Research V5.9"',
-                      '"Research 10.0"'):
-            self.assertIn(label, source)
-        self.assertIn('"engines" / "research" / "research_app.py"', source)
+        tree = ast.parse(source)
+        options_node = next(
+            n for n in tree.body
+            if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "MODEL_OPTIONS"
+                    for t in n.targets)
+        )
+        options = ast.literal_eval(options_node.value)
+        self.assertNotIn("Research V5.9", options)
+        self.assertNotIn("Cowen Risk Matrix", options)
+        self.assertIn('"Cycle Trading — Research"', source)
+        self.assertIn('"Research 10.0"', source)
         self.assertIn('"engines" / "research" / "cycle_trading_app.py"', source)
         self.assertIn('"engines" / "research" / "cowen_onchain_risk_app.py"', source)
+        # Retiring navigation must not delete historical research artefacts.
         for name in ("research_app.py", "cycle_trading_app.py",
                      "v59_200wma_prospective_paper_tape.py",
                      "cowen_onchain_risk_app.py"):
