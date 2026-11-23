@@ -452,7 +452,7 @@ st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
 if price_series is None:
     st.info("BTC price history is not present in the currently loaded source snapshot.")
-if not complete_now:
+if not six_complete_now:
     st.warning(
         "The six-metric experimental score is not plotted because one or more inputs "
         "are not available for every date. Individual available risk histories "
