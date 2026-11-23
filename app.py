@@ -239,6 +239,7 @@ section = st.sidebar.radio(
         "Research V5.9",
         "Research V6.0",
         "Cycle Trading — Research",
+        "Cowen Risk Matrix",
         "Bottom Signal Timeline",
     ],
     index=0,
@@ -247,6 +248,8 @@ section = st.sidebar.radio(
         "Production is frozen at V5.8.2. V5.9 restores the historical risk-ladder "
         "research; V6.0 is the separate 200WMA discount programme. Cycle Trading "
         "preserves the original halving Day-500 sell / 200WMA recovery research. "
+        "Cowen Risk Matrix is the open-source On-Chain Metrics Historical Risk "
+        "composite (9-metric risk gauge + dynamic-DCA risk matrix). "
         "All research pages remain separate from Production."
     ),
 )
@@ -259,6 +262,7 @@ engine_path = {
     "Research V5.9": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "Research V6.0": Path(__file__).parent / "engines" / "research" / "v60_research_app.py",
     "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
+    "Cowen Risk Matrix": Path(__file__).parent / "engines" / "cowen_risk_matrix_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
 }[section]
 
