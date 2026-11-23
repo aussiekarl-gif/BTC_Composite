@@ -5,7 +5,7 @@
   "source_csv_url": "https://dataset.aethereal.top/files/bitcoin-network-daily.csv",
   "license": "Free for research and education; not a blanket commercial redistribution licence",
   "attribution": "Aethereal (2026), Bitcoin Network Daily, https://dataset.aethereal.top/datasets/bitcoin-network-daily",
-  "retrieved_at_utc": "2026-11-23T10:47:32.121570+00:00",
+  "retrieved_at_utc": "2026-11-23T10:54:00.795850+00:00",
   "first_date_utc": "2009-01-03",
   "last_date_utc": "2026-11-22",
   "observations": 6533,
