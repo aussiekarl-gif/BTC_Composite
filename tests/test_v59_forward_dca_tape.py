@@ -90,6 +90,8 @@ class ForwardDcaTapeTests(unittest.TestCase):
         self.assertEqual(sc["matured_paper_BTC_AUD_returns"]["84d"]["observed_exact_horizon_pairs"],0)
         self.assertEqual(sc["simulation_policy_version"],t.SIMULATION_POLICY_VERSION)
         self.assertIsNone(sc["weekly_purchase_cap_aud"])
+        self.assertEqual(sc["capped_comparator_weekly_purchase_cap_aud"],25500.)
+        self.assertEqual(sc["prospective_shadow_capped"]["weekly_purchase_cap_aud"],25500.)
         self.assertIn("Legacy key name",sc["strategy_key_legend"]["risk_3x"])
 
     def test_paper_monday_requires_previous_sunday_and_monday_capture(self):
@@ -105,8 +107,20 @@ class ForwardDcaTapeTests(unittest.TestCase):
             t.CAPITAL*(1-t.INITIAL_BTC_FRACTION),
         )
         self.assertIsNone(stats["weekly_purchase_cap_aud"])
-        self.assertIn("No fixed weekly cap",stats["purchase_limit_policy"])
+        self.assertIn("Legacy comparator",stats["purchase_limit_policy"])
         self.assertFalse(stats["broker_fills_verified"])
+        capped=t.paper_portfolios(
+            r,weekly_cap_aud=t.WEEKLY_PURCHASE_CAP_AUD
+        )
+        capped_strict=capped["strategies"]["risk_3x_risk_le_020"]
+        self.assertEqual(capped["weekly_purchase_cap_aud"],25500.)
+        self.assertEqual(capped_strict["additional_purchase_aud"],25500.)
+        self.assertEqual(capped_strict["max_weekly_cash_outlay_aud"],25500.)
+        self.assertTrue(capped_strict["weekly_cap_compliant"])
+        self.assertLess(
+            capped_strict["paper_btc_reference_units"],
+            strict["paper_btc_reference_units"],
+        )
         only_monday=t.paper_portfolios(r[1:])
         self.assertEqual(only_monday["matched_prospective_monday_fills"],0)
 
