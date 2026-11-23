@@ -458,9 +458,9 @@ def build_existing_raw_candidates(data_dir):
     root = Path(data_dir)
     public_root = root / "research" / "cowen_onchain" / "explore21"
     public_files = (
-        public_root / "bitcoin-puell-multiple.csv",
-        public_root / "bitcoin-mvrv-ratio.csv",
-        public_root / "bitcoin-mvrv-z-score.csv",
+        root / "bitcoin-puell-multiple.csv",
+        root / "bitcoin-mvrv-ratio.csv",
+        root / "bitcoin-mvrv-z-score.csv",
     )
     if all(path.exists() for path in public_files):
         return build_public_raw_candidates(root)
