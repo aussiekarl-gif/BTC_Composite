@@ -27,6 +27,8 @@ ETF_DRAG = .0025
 FRICTION = .003
 FIXED_FEE = 3.
 SIMULATION_POLICY_VERSION = "v59_current_ladder_no_fixed_weekly_cap_v1"
+CAPPED_SIMULATION_POLICY_VERSION = "v59_current_ladder_5pct_weekly_cap_v1"
+WEEKLY_PURCHASE_CAP_AUD = CAPITAL * .05
 ILLUSTRATIVE_REVIEW = date(2027,12,31)
 HORIZONS=(7,28,84)
 REQUIRED_SNAPSHOT_STATUS="RESEARCH_SIGNAL_SNAPSHOT_READY"
@@ -291,12 +293,30 @@ def matured_returns(rows:list[dict]) -> dict:
     return result
 
 
-def paper_portfolios(rows:list[dict]) -> dict:
+def paper_portfolios(rows:list[dict], *, weekly_cap_aud:float|None=None) -> dict:
     """Forward-only *Sunday signal then Monday proxy fill*, no actual orders.
 
     Missing a captured Sunday/Monday => no assumed fill. First matched
     Monday marks existing ~41% holdings, not a reconstructed Stake entry.
+    An optional cap limits total cash outlay on EACH matched Monday; the
+    default remains the explicitly labelled legacy uncapped comparator.
     """
+    if weekly_cap_aud is not None and (
+        not math.isfinite(float(weekly_cap_aud)) or float(weekly_cap_aud)<=0
+    ):
+        raise ValueError("Weekly purchase cap must be a positive finite AUD amount")
+    cap=float(weekly_cap_aud) if weekly_cap_aud is not None else None
+    policy_version=(
+        CAPPED_SIMULATION_POLICY_VERSION if cap is not None
+        else SIMULATION_POLICY_VERSION
+    )
+    limit_policy=(
+        f"AUD {cap:,.0f} maximum total cash outlay per matched Monday "
+        f"({cap/CAPITAL:.1%} of starting capital)."
+        if cap is not None else
+        "Legacy comparator: no fixed weekly cap; limited by available cash "
+        "and remaining deployment runway."
+    )
     by_day={date.fromisoformat(r["signal_date"]):r for r in rows}
     pairs=[]
     for d in sorted(by_day):
@@ -308,14 +328,20 @@ def paper_portfolios(rows:list[dict]) -> dict:
         price=float(monday["btc_usd"])/float(sunday["usd_per_aud"])
         if math.isfinite(price) and price>0:pairs.append((d,price,sunday))
     if not pairs:
-        return {"matched_prospective_monday_fills":0,"status":"WAITING_FOR_FULL_SUNDAY_MONDAY_PAIR",
-                "broker_fills_verified":False}
+        return {
+            "matched_prospective_monday_fills":0,
+            "status":"WAITING_FOR_FULL_SUNDAY_MONDAY_PAIR",
+            "broker_fills_verified":False,
+            "simulation_policy_version":policy_version,
+            "weekly_purchase_cap_aud":cap,
+            "purchase_limit_policy":limit_policy,
+        }
     first_price=pairs[0][1]
     output={}
     for name in GATES:
         cash=CAPITAL*(1-INITIAL_BTC_FRACTION)
         btc=CAPITAL*INITIAL_BTC_FRACTION/first_price
-        spent=0.;interest=0.; buys=0
+        spent=0.;interest=0.; buys=0;max_weekly_outlay=0.
         prev=pairs[0][0];peak=CAPITAL;worst=0.
         for i,(day,price,sun) in enumerate(pairs):
             days=(day-prev).days if i else 0
@@ -327,20 +353,29 @@ def paper_portfolios(rows:list[dict]) -> dict:
             weight=multipliers(sun)[name] if day<=ILLUSTRATIVE_REVIEW else 0.
             remaining=max((ILLUSTRATIVE_REVIEW-day).days/7.,1.)
             proposed=min(cash,cash/remaining*weight)
+            if cap is not None:
+                proposed=min(proposed,cap)
             if proposed>FIXED_FEE+.01:
                 cash-=proposed
                 btc+=(proposed-FIXED_FEE)*(1-FRICTION)/price
                 spent+=proposed;buys+=1
+                max_weekly_outlay=max(max_weekly_outlay,proposed)
             equity=cash+btc*price
             peak=max(peak,equity)
             worst=min(worst,equity/peak-1)
             if cash < -1e-6 or proposed < -1e-6:
                 raise AssertionError("No leverage or negative paper purchase")
+            if cap is not None and proposed>cap+1e-6:
+                raise AssertionError("Per-Monday cash outlay exceeded cap")
         output[name]={
             "portfolio_aud":cash+btc*pairs[-1][1],
             "additional_purchase_aud":spent,
             "remaining_cash_aud":cash,
             "paper_btc_reference_units":btc,"paper_buy_count":buys,
+            "max_weekly_cash_outlay_aud":max_weekly_outlay,
+            "weekly_cap_compliant":(
+                None if cap is None else max_weekly_outlay<=cap+1e-6
+            ),
             "max_drawdown_pct":100*worst,"cash_interest_aud":interest,
         }
     baseline=output["risk_3x_risk_le_020"]["portfolio_aud"]
@@ -350,14 +385,19 @@ def paper_portfolios(rows:list[dict]) -> dict:
         "first_paper_monday":pairs[0][0].isoformat(),
         "last_paper_monday":pairs[-1][0].isoformat(),
         "status":"PROSPECTIVE_PAPER_ONLY_NOT_BROKER_EXECUTABLE",
-        "simulation_policy_version":SIMULATION_POLICY_VERSION,
-        "weekly_purchase_cap_aud":None,
-        "purchase_limit_policy":"No fixed weekly cap; limited by available cash and remaining deployment runway.",
+        "simulation_policy_version":policy_version,
+        "weekly_purchase_cap_aud":cap,
+        "purchase_limit_policy":limit_policy,
         "illustrative_review_date_not_hard_user_deadline":ILLUSTRATIVE_REVIEW.isoformat(),
         "broker_fills_verified":False,"strategies":output,
-        "note":"Uses immutable prior-Sunday signals and next captured Monday BTC/AUD proxy execution with Sunday prior FX. Existing holdings are virtualised at the first matched Monday. Purchases have no fixed weekly cap and cannot exceed available paper cash. No historical market-data backfill; no broker fills.",
+        "note":(
+            "Uses immutable prior-Sunday signals and next captured Monday BTC/AUD "
+            "proxy execution with Sunday prior FX. Existing holdings are virtualised "
+            "at the first matched Monday. No historical market-data backfill; no "
+            "broker fills. The optional cap applies to total cash outlay per matched "
+            "Monday, including the flat brokerage fee."
+        ),
     }
-
 
 def scorecard(rows:list[dict], new_record_added:bool) -> dict:
     validate_tape(rows)
@@ -380,6 +420,11 @@ def scorecard(rows:list[dict], new_record_added:bool) -> dict:
         "uncaptured_calendar_days_between_first_last":missed,
         "matured_paper_BTC_AUD_returns":matured_returns(rows),
         "prospective_shadow":paper_portfolios(rows),
+        "capped_comparator_weekly_purchase_cap_aud":WEEKLY_PURCHASE_CAP_AUD,
+        "capped_comparator_policy_version":CAPPED_SIMULATION_POLICY_VERSION,
+        "prospective_shadow_capped":paper_portfolios(
+            rows,weekly_cap_aud=WEEKLY_PURCHASE_CAP_AUD
+        ),
         "not_asx_ibit_execution_or_personal_portfolio":True,
         "realized_observation_status":(
             rows[-1].get("realized_price_reference",{}).get("status","UNAVAILABLE")
@@ -445,6 +490,8 @@ def main() -> int:
         "new_day_appended":added,"observations":len(tape),
         "last_signal_day":summary["last_signal_day"],
         "matched_prospective_mondays":summary["prospective_shadow"]["matched_prospective_monday_fills"],
+        "capped_matched_prospective_mondays":summary["prospective_shadow_capped"]["matched_prospective_monday_fills"],
+        "capped_weekly_purchase_cap_aud":WEEKLY_PURCHASE_CAP_AUD,
         "status":summary["status"],"live_trade_authorised":False
     },sort_keys=True))
     return 0
