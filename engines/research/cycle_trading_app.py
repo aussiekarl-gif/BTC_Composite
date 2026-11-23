@@ -41,6 +41,9 @@ from engines.research.cycle_halving_countdown import (
     fetch_halving_countdown, build_halving_timeline, build_halving_progress_bar,
     normalise_halving_epoch_metadata,
 )
+from engines.research.cycle_halving_horizon import (
+    build_halving_schedule, build_halving_horizon_chart,
+)
 from engines.research.cycle_aud_price_levels import observed_aud_cycle_levels
 from engines.research.cycle_model_redflags import (
     evaluate_major_red_flags, fetch_reference_model_risks,
@@ -1235,10 +1238,37 @@ with tabs[0]:
             f"• day 560: {market['day560_date']}. "
             "Timeline milestones are not retroactive broker instructions."
         )
-        st.subheader("Market history")
+        st.subheader("Long-range halving cycle map · through 2040")
         hist=market["price_history"]
-        st.line_chart(hist.tail(420).rename("BTC/USD daily price"))
-        st.caption("Chart is price only; all buy/sell decisions remain manual.")
+        halving_schedule=build_halving_schedule(
+            halving_countdown["estimated_date_utc"], final_year=2040,
+        )
+        schedule_table=pd.DataFrame([{
+            "Halving": f"{row['year']} halving",
+            "Approx. date (UTC)": row["date"],
+            "Date status": "Confirmed historical" if row["status"]=="confirmed"
+                           else "Estimated from block schedule",
+            "500 days before": row["before_500d"],
+            "500 days after": row["after_500d"],
+        } for row in halving_schedule])
+        st.caption(
+            "Each halving is marked by a vertical line. The shaded areas show the "
+            "500-day pre-halving and 500-day post-halving research windows. "
+            "Future dates are estimates, not fixed appointments. The chart extends "
+            "through the 500-day review window after the projected 2040 halving."
+        )
+        st.dataframe(schedule_table,hide_index=True,use_container_width=True)
+        st.plotly_chart(
+            build_halving_horizon_chart(hist,halving_schedule),
+            use_container_width=True,
+            config={"displayModeBar": True,"scrollZoom": True},
+            key="cycle_long_range_halving_horizon",
+        )
+        st.caption(
+            "The price series ends at the latest verified historical close; "
+            "the blank future portion is intentional. Halving markers are calendar "
+            "context only and do not change any buy/sell rules or forecasts."
+        )
 
 
 
