@@ -197,6 +197,7 @@ def _percentile_to_state(percentile):
     return 4
 
 
+@st.cache_data(ttl=900, show_spinner=False)
 def build_timeline(master):
     # Use the central master's full calendar instead of anchoring every series
     # to Risk Score, which only begins in 2016. Each indicator remains blank
