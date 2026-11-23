@@ -77,18 +77,19 @@ class StreamlitOfflineSmoke(unittest.TestCase):
     def tearDown(self):
         st.cache_data.clear()
 
-    def test_actual_launcher_routes_to_v60_research_without_live_execution(self):
-        page = AppTest.from_file(str(APP), default_timeout=25)
-        # Select the non-executable Research page before the first script run.
-        page.session_state["combined_app_section_selector"] = "Research V6.0"
-        page = page.run()
+    def test_actual_launcher_excludes_retired_v60_research_page(self):
+        page = AppTest.from_file(str(APP), default_timeout=25).run()
         self.assertFalse(page.exception, repr([x.message for x in page.exception]))
-        self.assertEqual(page.radio(key="combined_app_section_selector").value, "Research V6.0")
-        self.assertTrue(any("Candidate allocation ladders" in x.value
-                            for x in page.subheader))
-        self.assertTrue(any("Research only" in x.value for x in page.warning))
-        self.assertTrue(any("Trade executable: False" in x.value
-                            for x in page.caption))
+        selector = page.radio(key="combined_app_section_selector")
+        self.assertEqual(selector.value, "Production")
+        self.assertNotIn("Research V6.0", selector.options)
+        source = APP.read_text(encoding="utf-8")
+        self.assertNotIn('"Research V6.0":', source)
+        self.assertFalse((ROOT / "engines/research/v60_research_app.py").exists())
+        # Other research destinations remain available.
+        for retained in ("Research V5.9", "Research 10.0",
+                         "Cycle Trading — Research", "Cowen Risk Matrix"):
+            self.assertIn(retained, selector.options)
 
     def test_streamlit_date_widget_persists_across_sessions_without_portfolio_write(self):
         # The real Production & Research Streamlit pages use these helpers
