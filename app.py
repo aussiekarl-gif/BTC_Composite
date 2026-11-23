@@ -234,7 +234,6 @@ button[data-testid="stSidebarCollapseButton"] {
 MODEL_SELECTOR_KEY = "combined_app_section_selector"
 MODEL_OPTIONS = [
     "Production",
-    "Research V5.9",
     "Research 10.0",
     "Cycle Trading — Research",
     "Bottom Signal Timeline",
@@ -251,8 +250,7 @@ section = st.sidebar.radio(
     index=0,
     key=MODEL_SELECTOR_KEY,
     help=(
-        "Production is frozen at V5.8.2. V5.9 restores the historical risk-ladder "
-        "research. Cycle Trading "
+        "Production is frozen at V5.8.2. Cycle Trading "
         "preserves the original halving Day-500 sell / 200WMA recovery research. "
         "All research pages remain separate from Production."
     ),
@@ -263,7 +261,6 @@ uninstall_bgeometrics_guard()
 
 engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
-    "Research V5.9": Path(__file__).parent / "engines" / "research" / "research_app.py",
     "Research 10.0": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
     "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
