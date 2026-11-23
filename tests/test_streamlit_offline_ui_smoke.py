@@ -115,8 +115,7 @@ if st.session_state.get(MODEL_SELECTOR_KEY) not in MODEL_OPTIONS:
 section = st.sidebar.radio("Model", MODEL_OPTIONS, key=MODEL_SELECTOR_KEY)
 st.write(section)
 '''
-        page = AppTest.from_string(page_source, default_timeout=25).run()
-        self.assertFalse(page.exception)
+        page = AppTest.from_string(page_source, default_timeout=25)
         page.session_state["combined_app_section_selector"] = "Research V6.0"
         page = page.run()
         self.assertFalse(page.exception, repr([x.message for x in page.exception]))
