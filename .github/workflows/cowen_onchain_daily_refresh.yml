@@ -1,0 +1,57 @@
+name: Cowen on-chain daily source refresh
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cowen-onchain-daily-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Fetch Explore21 daily BTC metrics
+        run: |
+          python -m engines.research.explore21_public_data \
+            --output-dir data/research/cowen_onchain/explore21
+      - name: Fetch Coin Metrics Community cross-check
+        run: |
+          python -m engines.research.coinmetrics_community \
+            --output data/research/cowen_onchain/coinmetrics_btc_daily_community.csv
+      - name: Fetch Aethereal daily transaction fees
+        run: |
+          python -m engines.research.aethereal_public_data \
+            --output data/research/cowen_onchain/bitcoin_network_daily_aethereal.csv
+      - name: Fetch Open Bitcoin Metrics daily CDD
+        run: |
+          python -m engines.research.obm_cdd_public_data \
+            --output data/research/cowen_onchain/obm_cdd_btcxdays_daily.csv
+      - name: Commit changed source snapshots
+        run: |
+          git add data/research/cowen_onchain
+          if git diff --cached --quiet; then
+            echo "No source snapshot changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(research): refresh Cowen on-chain source snapshots"
+          git push origin HEAD:main

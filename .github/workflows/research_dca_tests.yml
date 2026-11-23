@@ -48,7 +48,12 @@ jobs:
           python -m unittest discover -s tests -p 'test_v60_historical_pacing_report.py' -v
           python -m unittest discover -s tests -p 'test_v60_200wma_paper_tape.py' -v
           python -m unittest discover -s tests -p 'test_v60_path_cost_sensitivity.py' -v
-          python -m py_compile engines/research/v59_200wma_distance_dynamic_dca.py engines/research/v60_200wma_policy.py engines/research/v60_200wma_backtest.py engines/research/v60_allocation_scale_report.py engines/research/v60_allocation_scale_stress_report.py engines/research/v60_historical_report.py engines/research/v60_synthetic_stress.py engines/research/v60_deployment_cap_report.py engines/research/v60_historical_pacing_report.py engines/research/v60_200wma_paper_tape.py engines/research/v60_path_cost_sensitivity.py tests/test_v60_path_cost_sensitivity.py engines/shared/dca_purchase_status.py engines/production/production_model.py engines/research/research_model.py engines/production/production_app.py engines/research/research_app.py
+          python -m unittest discover -s tests -p 'test_cowen_onchain_risk.py' -v
+          python -m unittest discover -s tests -p 'test_coinmetrics_community.py' -v
+          python -m unittest discover -s tests -p 'test_explore21_public_data.py' -v
+          python -m unittest discover -s tests -p 'test_aethereal_public_data.py' -v
+          python -m unittest discover -s tests -p 'test_obm_cdd_public_data.py' -v
+          python -m py_compile engines/research/cowen_onchain_risk.py engines/research/aethereal_public_data.py engines/research/obm_cdd_public_data.py engines/research/coinmetrics_community.py engines/research/explore21_public_data.py tests/test_cowen_onchain_risk.py tests/test_coinmetrics_community.py tests/test_explore21_public_data.py engines/research/v59_200wma_distance_dynamic_dca.py engines/research/v60_200wma_policy.py engines/research/v60_200wma_backtest.py engines/research/v60_allocation_scale_report.py engines/research/v60_allocation_scale_stress_report.py engines/research/v60_historical_report.py engines/research/v60_synthetic_stress.py engines/research/v60_deployment_cap_report.py engines/research/v60_historical_pacing_report.py engines/research/v60_200wma_paper_tape.py engines/research/v60_path_cost_sensitivity.py tests/test_v60_path_cost_sensitivity.py engines/shared/dca_purchase_status.py engines/production/production_model.py engines/research/research_model.py engines/production/production_app.py engines/research/research_app.py
       - name: Run matched 200WMA discount-tier historical research
         run: |
           python -m engines.research.v59_200wma_distance_dynamic_dca --out artifacts/v59_200wma_distance_dynamic_dca.json
@@ -67,3 +72,62 @@ jobs:
           name: v59-200wma-distance-dynamic-dca-report
           path: artifacts/v59_200wma_distance_dynamic_dca.json
           if-no-files-found: error
+
+  v60-public-data-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Fetch Explore21 daily BTC history
+        run: python -m engines.research.explore21_public_data --output-dir artifacts/explore21
+      - name: Fetch Coin Metrics Community daily BTC history
+        run: python -m engines.research.coinmetrics_community --output artifacts/coinmetrics_btc_daily_community.csv
+      - name: Fetch Aethereal daily BTC network and fee history
+        run: python -m engines.research.aethereal_public_data --output artifacts/bitcoin_network_daily_aethereal.csv
+      - name: Fetch Open Bitcoin Metrics daily CDD history
+        run: python -m engines.research.obm_cdd_public_data --output artifacts/obm_cdd_btcxdays_daily.csv
+      - name: Summarise latest raw observations and source coverage
+        run: |
+          python - <<'PY'
+          import json
+          import pandas as pd
+          from pathlib import Path
+
+          for path in sorted(Path("artifacts/explore21").glob("*.csv")):
+              frame = pd.read_csv(path)
+              meta = json.loads(path.with_suffix(".metadata.json").read_text())
+              print(json.dumps({
+                  "source": "Explore21",
+                  "file": path.name,
+                  "rows": len(frame),
+                  "latest": frame.iloc[-1].to_dict(),
+                  "method_version": meta["method_version"],
+                  "license": meta["license"],
+              }, default=str))
+          path = Path("artifacts/coinmetrics_btc_daily_community.csv")
+          frame = pd.read_csv(path)
+          meta = json.loads(path.with_suffix(".metadata.json").read_text())
+          print(json.dumps({
+              "source": "Coin Metrics Community",
+              "rows": len(frame),
+              "latest": frame.iloc[-1].to_dict(),
+              "returned_metrics": meta["returned_metrics"],
+              "unavailable_metrics": meta["unavailable_metrics"],
+              "missing_values_by_metric": meta["missing_values_by_metric"],
+              "license": meta["license"],
+          }, default=str))
+          PY
+      - name: Upload raw data and provenance sidecars
+        uses: actions/upload-artifact@v4
+        with:
+          name: v60-onchain-public-source-snapshots
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30
