@@ -23,6 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -354,6 +355,37 @@ def _load_research7_series() -> Optional[pd.DataFrame]:
     return out
 
 
+def _risk_history_line(df: Optional[pd.DataFrame], series: dict, weights: dict) -> Optional[pd.Series]:
+    """Best-effort historical risk line for the risk-gauge chart:
+    1) the CSV 'composite_risk' column if present (BTC_Composite risk_history.csv),
+    2) otherwise a weighted mean of each metric's historical percentile."""
+    if df is not None and "composite_risk" in df.columns:
+        s = pd.to_numeric(df["composite_risk"], errors="coerce")
+        if s.notna().any():
+            return s.dropna().rename("risk")
+    frames = []
+    for k, w in weights.items():
+        if w <= 0 or k not in series:
+            continue
+        s = series[k].dropna()
+        if s.size < 2:
+            continue
+        s_sorted = np.sort(s.to_numpy())
+        # percentile of each value within the series: fraction ≤ value
+        pct = pd.Series(
+            np.searchsorted(s_sorted, s.to_numpy(), side="right") / s_sorted.size,
+            index=s.index,
+        )
+        frames.append(pct * w)
+    if not frames:
+        return None
+    out = pd.concat(frames, axis=1).sum(axis=1)
+    wsum = sum(weights[k] for k, w in weights.items() if w > 0 and k in series)
+    if wsum <= 0:
+        return None
+    return (out / wsum).rename("risk")
+
+
 def main() -> None:
     st.set_page_config(page_title="Cowen Risk Matrix", page_icon="₿")
     st.title("Cowen Risk Matrix")
@@ -465,6 +497,18 @@ def main() -> None:
     st.subheader("Total On-Chain Risk")
     st.metric("Total Risk (0 = floor, 1 = top)", f"{total:.3f}")
     st.caption(band_label(total))
+
+    # ---- historical risk chart (Cowen-style risk gauge) -------------------
+    st.subheader("Total On-Chain Risk (historical)")
+    risk_line = _risk_history_line(df, series, weights)
+    if risk_line is None:
+        st.caption("No historical risk series available — load data above or wait for live data.")
+    else:
+        st.line_chart(risk_line.to_frame("risk"))
+        st.caption(
+            "0 = floor/accumulation zone · 0.2–0.3 = early-cycle · "
+            "0.3–0.5 = late-cycle warning · > 0.5 = high risk (sell / slow down)."
+        )
 
     # ---- dynamic DCA matrix + interpretation ------------------------------
     st.subheader("Dynamic DCA (risk matrix)")
