@@ -19,6 +19,7 @@ from engines.research.cowen_onchain_risk import (
     ZERO_WEIGHT_DIAGNOSTICS,
     build_existing_raw_candidates,
     prior_only_percentile_risk,
+    build_seven_metric_composite,
 )
 
 st.markdown("""
@@ -187,28 +188,251 @@ for row_start in range(0, len(COMPONENTS), 3):
                     unsafe_allow_html=True,
                 )
 
-st.subheader("Historical component history")
-if not risk_frame.empty:
-    choices = [m for m in risk_frame.columns if risk_frame[m].notna().any()]
-    labels = {
-        "puell_multiple": "Puell Multiple",
-        "mvrv": "MVRV (PlanB realised-price proxy)",
-        "mvrv_z_score": "MVRV Z-Score (Explore21)",
-        "transaction_fees": "Transaction Fees (BTC/day candidate)",
-        "terminal_price": "Terminal Price (price/terminal ratio candidate)",
-        "mctc": "MCTC (market cap / ThermoCap candidate)",
-    }
-    selected = st.multiselect(
-        "Display components", choices, default=choices,
-        format_func=lambda x: labels.get(x, x),
+# Cowen-style historical chart: nine component controls, dual-axis price/risk view.
+# The seven active components are fixed at weight 1 by default; RHODL and Supply P/L
+# remain visible as zero-weight diagnostics. Missing data never becomes a zero score.
+st.subheader("On-Chain Metrics Historical Risk")
+
+short_names = {
+    "puell_multiple": "Puell",
+    "mvrv": "MVRV",
+    "mvrv_z_score": "MVRV Z",
+    "transaction_fees": "Fees",
+    "terminal_price": "Terminal",
+    "mctc": "MCTC",
+    "mctc_miner": "mCTC",
+    "rhodl_ratio": "RHODL",
+    "supply_pnl": "Supply P/L",
+}
+weight_values = {}
+slider_cols = st.columns(9, gap="small")
+for col, (label, metric, default_weight, _) in zip(slider_cols, COMPONENTS):
+    with col:
+        metric_available = metric in risk_frame.columns and risk_frame[metric].notna().any()
+        weight_values[metric] = st.slider(
+            short_names.get(metric, label),
+            min_value=0.0,
+            max_value=1.0,
+            value=float(default_weight),
+            step=0.05,
+            key=f"cowen_weight_{metric}",
+            disabled=(not metric_available and default_weight > 0),
+            help=("Verified historical candidate series available." if metric_available
+                  else "No eligible historical series yet; this component cannot contribute."),
+        )
+
+# Reconstruct a complete seven-of-seven score only where all seven active
+# component risk histories exist on the same date. No partial average is charted
+# as Total On-Chain Risk.
+try:
+    composite_history = build_seven_metric_composite(
+        risk_frame,
+        weights={
+            name: float(weight_values[name])
+            for name in (
+                "puell_multiple", "mvrv", "mvrv_z_score", "transaction_fees",
+                "terminal_price", "mctc", "mctc_miner",
+            )
+        },
     )
-    if selected:
-        chart = (risk_frame[selected] * 100).rename(columns=labels)
-        st.line_chart(chart, y_label="Prior-only historical risk percentile (0–100)")
-    else:
-        st.info("Select at least one component to display its history.")
+except Exception:
+    composite_history = pd.DataFrame(index=risk_frame.index)
+
+active_component_names = [
+    name for name in (
+        "puell_multiple", "mvrv", "mvrv_z_score", "transaction_fees",
+        "terminal_price", "mctc", "mctc_miner",
+    )
+    if weight_values.get(name, 0) > 0
+]
+complete_now = (
+    not composite_history.empty
+    and latest_date in composite_history.index
+    and pd.notna(composite_history.loc[latest_date, "composite_risk"])
+)
+if complete_now:
+    latest_total = float(composite_history.loc[latest_date, "composite_risk"])
+    st.metric("Total On-Chain Risk", f"{latest_total:.3f}")
 else:
-    st.info("No eligible historical component series are currently available.")
+    st.metric("Total On-Chain Risk", "INCOMPLETE")
+    st.caption(
+        f"{active_available}/7 active components currently have data on the common "
+        "latest date. The seven-component total is withheld until all seven are valid."
+    )
+
+control1, control2, control3 = st.columns([1, 1, 1.6])
+with control1:
+    renormalize_average = st.toggle(
+        "Re-normalize Average", value=False, key="cowen_renormalize_average",
+        help="When enabled, moving-average risk overlays are rescaled to the 0–1 risk axis.",
+    )
+with control2:
+    moving_average = st.selectbox(
+        "Moving Average", ["None", "7D", "30D", "90D", "365D"],
+        index=0, key="cowen_moving_average",
+    )
+with control3:
+    chart_type = st.radio(
+        "Chart Type", ["Raw Values", "Colour-Coded"],
+        horizontal=True, key="cowen_chart_type",
+    )
+
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+fig = make_subplots(specs=[[{"secondary_y": True}]])
+price_series = None
+for price_col in ("coinmetrics_price_usd", "price_usd", "btc_price_usd"):
+    if price_col in raw.columns and pd.to_numeric(raw[price_col], errors="coerce").notna().any():
+        price_series = pd.to_numeric(raw[price_col], errors="coerce").dropna()
+        break
+
+if price_series is not None:
+    fig.add_trace(
+        go.Scatter(
+            x=price_series.index, y=price_series.values, name="BTC Price",
+            mode="lines", line=dict(width=2.2, color="#168bd2"),
+            hovertemplate="%{x|%d %b %Y}<br>BTC: $%{y:,.0f}<extra></extra>",
+        ),
+        secondary_y=False,
+    )
+
+metric_labels = {
+    "puell_multiple": "Puell Multiple Risk",
+    "mvrv": "MVRV Risk",
+    "mvrv_z_score": "MVRV Z-Score Risk",
+    "transaction_fees": "Transaction Fees Risk",
+    "terminal_price": "Terminal Price Risk",
+    "mctc": "MCTC Risk",
+    "mctc_miner": "mCTC Risk",
+    "rhodl_ratio": "RHODL Ratio Risk",
+    "supply_pnl": "Supply P/L Risk",
+}
+for metric, label in metric_labels.items():
+    if metric not in risk_frame.columns or weight_values.get(metric, 0) <= 0:
+        continue
+    values = risk_frame[metric].dropna()
+    if values.empty:
+        continue
+    fig.add_trace(
+        go.Scatter(
+            x=values.index, y=values.values, name=label,
+            mode="lines", line=dict(width=1.35),
+            opacity=0.88,
+            hovertemplate="%{x|%d %b %Y}<br>" + label + ": %{y:.3f}<extra></extra>",
+        ),
+        secondary_y=True,
+    )
+
+if not composite_history.empty and "composite_risk" in composite_history:
+    total_line = composite_history["composite_risk"].dropna()
+    if not total_line.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=total_line.index, y=total_line.values,
+                name="Total On-Chain Risk (7/7 only)",
+                mode="lines", line=dict(width=2.6, color="#e56b72"),
+                hovertemplate="%{x|%d %b %Y}<br>Total Risk: %{y:.3f}<extra></extra>",
+            ),
+            secondary_y=True,
+        )
+
+ma_days = {"7D": 7, "30D": 30, "90D": 90, "365D": 365}.get(moving_average)
+if ma_days and price_series is not None:
+    price_ma = price_series.rolling(ma_days, min_periods=ma_days).mean().dropna()
+    fig.add_trace(
+        go.Scatter(
+            x=price_ma.index, y=price_ma.values,
+            name=f"BTC Price {moving_average} MA",
+            mode="lines", line=dict(width=1.5, dash="dot", color="#83bde2"),
+        ),
+        secondary_y=False,
+    )
+if ma_days and not risk_frame.empty:
+    active_lines = [
+        risk_frame[name] for name in active_component_names
+        if name in risk_frame.columns
+    ]
+    if active_lines:
+        mean_risk = pd.concat(active_lines, axis=1).mean(axis=1, skipna=False)
+        risk_ma = mean_risk.rolling(ma_days, min_periods=ma_days).mean().dropna()
+        if renormalize_average and not risk_ma.empty:
+            lo, hi = float(risk_ma.min()), float(risk_ma.max())
+            if hi > lo:
+                risk_ma = (risk_ma - lo) / (hi - lo)
+        fig.add_trace(
+            go.Scatter(
+                x=risk_ma.index, y=risk_ma.values,
+                name=f"Active risk {moving_average} MA",
+                mode="lines", line=dict(width=1.8, dash="dash", color="#f2b35e"),
+            ),
+            secondary_y=True,
+        )
+
+if chart_type == "Colour-Coded":
+    # Risk-zone bands echo Cowen's 0–1 gauge without implying proprietary colours.
+    for y0, y1, fill in (
+        (0.0, 0.1, "rgba(35,150,100,0.10)"),
+        (0.1, 0.3, "rgba(70,140,190,0.08)"),
+        (0.3, 0.5, "rgba(220,170,70,0.08)"),
+        (0.5, 1.0, "rgba(210,75,85,0.08)"),
+    ):
+        fig.add_hrect(y0=y0, y1=y1, fillcolor=fill, line_width=0, secondary_y=True)
+
+fig.update_layout(
+    template="plotly_dark",
+    height=560,
+    margin=dict(l=42, r=42, t=28, b=48),
+    paper_bgcolor="#050505",
+    plot_bgcolor="#050505",
+    font=dict(color="#d7dce2", size=11),
+    legend=dict(orientation="h", yanchor="top", y=-0.16, x=0.0),
+    hovermode="x unified",
+    title=None,
+)
+fig.update_xaxes(
+    title_text="Year", showgrid=True, gridcolor="rgba(150,150,150,0.15)",
+    rangeslider_visible=True,
+)
+fig.update_yaxes(
+    title_text="BTC Price (USD)", type="log", secondary_y=False,
+    showgrid=True, gridcolor="rgba(150,150,150,0.15)",
+)
+fig.update_yaxes(
+    title_text="Risk (0 = floor, 1 = top)", range=[0, 1],
+    showgrid=False, secondary_y=True,
+)
+if chart_type == "Colour-Coded":
+    fig.update_traces(selector=dict(name="BTC Price"), line=dict(color="#168bd2", width=2.5))
+st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+
+if price_series is None:
+    st.info("BTC price history is not present in the currently loaded source snapshot.")
+if not complete_now:
+    st.warning(
+        "Total On-Chain Risk is not plotted: mCTC and/or another active component "
+        "is not yet available for every date. Individual available risk histories "
+        "remain visible; no partial composite is substituted."
+    )
+
+st.subheader("Component readings and source provenance")
+cards_cols = st.columns(3)
+for idx, (label, metric, default_weight, description) in enumerate(COMPONENTS):
+    col = cards_cols[idx % 3]
+    with col:
+        if metric in series_map and metric in metric_latest_dates:
+            metric_date = metric_latest_dates[metric]
+            value = series_map[metric].loc[metric_date]
+            score = risk_frame.loc[metric_date, metric] if metric in risk_frame else np.nan
+            value_text = f"{value:,.4f}" if pd.notna(value) else "—"
+            score_text = f"Prior-only risk: {score:.1%}" if pd.notna(score) else "Risk history building"
+            st.markdown(f"**{label}** · weight {weight_values.get(metric, default_weight):.2f}")
+            st.metric("Latest raw value", value_text, help=source_map.get(metric, ""))
+            st.caption(f"{score_text} · data through {metric_date:%d %b %Y}")
+            st.caption(source_map.get(metric, description))
+        else:
+            st.markdown(f"**{label}** · weight {weight_values.get(metric, default_weight):.2f}")
+            st.caption("Awaiting verified source data" if default_weight else "Zero-weight diagnostic; no source series")
 
 with st.expander("Methodology, weights and data limitations", expanded=False):
     st.markdown("""
