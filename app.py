@@ -229,15 +229,13 @@ button[data-testid="stSidebarCollapseButton"] {
 </style>
 """, unsafe_allow_html=True)
 
-# Keep each strategy independently selectable. Production remains the default and
-# unchanged; V5.9 and the original Day-500 Cycle Trading research are restored
-# as separate research pages rather than blended into the V6.0 programme.
+# Keep each strategy independently selectable. Production remains the default
+# and unchanged; research pages remain isolated from Production.
 section = st.sidebar.radio(
     "Model",
     [
         "Production",
         "Research V5.9",
-        "Research V6.0",
         "Research 10.0",
         "Cycle Trading — Research",
         "Cowen Risk Matrix",
@@ -247,7 +245,7 @@ section = st.sidebar.radio(
     key="combined_app_section_selector",
     help=(
         "Production is frozen at V5.8.2. V5.9 restores the historical risk-ladder "
-        "research; V6.0 is the separate 200WMA discount programme. Cycle Trading "
+        "research. Cycle Trading "
         "preserves the original halving Day-500 sell / 200WMA recovery research. "
         "Cowen Risk Matrix is the open-source On-Chain Metrics Historical Risk "
         "composite (9-metric risk gauge + dynamic-DCA risk matrix). "
@@ -261,7 +259,6 @@ uninstall_bgeometrics_guard()
 engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Research V5.9": Path(__file__).parent / "engines" / "research" / "research_app.py",
-    "Research V6.0": Path(__file__).parent / "engines" / "research" / "v60_research_app.py",
     "Research 10.0": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
     "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
     "Cowen Risk Matrix": Path(__file__).parent / "engines" / "cowen_risk_matrix_app.py",
