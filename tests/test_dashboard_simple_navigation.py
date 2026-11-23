@@ -33,7 +33,13 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertEqual(radio.args[1].id, "MODEL_OPTIONS")
         named = {kw.arg: kw.value for kw in radio.keywords}
         self.assertEqual(ast.literal_eval(named["index"]), 0)
-        self.assertEqual(ast.literal_eval(named["key"]), "combined_app_section_selector")
+        selector_assignment = next(
+            n for n in tree.body
+            if isinstance(n, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "MODEL_SELECTOR_KEY"
+                    for t in n.targets)
+        )
+        self.assertEqual(ast.literal_eval(named["key"]), ast.literal_eval(selector_assignment.value))
 
     def test_retired_v59_and_cowen_pages_are_not_routed_or_listed(self):
         source = APP.read_text(encoding="utf-8")
