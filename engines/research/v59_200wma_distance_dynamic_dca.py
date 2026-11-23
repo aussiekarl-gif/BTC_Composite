@@ -251,6 +251,82 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
     }
 
 
+def select_non_overlapping_cohorts(windows: list[dict]) -> list[dict]:
+    """Select earliest-starting disjoint 104-week windows within each split.
+
+    Disjoint windows reduce repeated weighting of the same market episode; they
+    are not assumed to be statistically independent cycles.
+    """
+    selected = []
+    for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
+        candidates = sorted(
+            (w for w in windows if w["split"] == split),
+            key=lambda w: (w["start"], w["anchor"]),
+        )
+        last_end = None
+        for window in candidates:
+            start = date.fromisoformat(window["start"])
+            end = date.fromisoformat(window["end"])
+            if last_end is None or start > last_end:
+                selected.append(window)
+                last_end = end
+    return selected
+
+
+def non_overlapping_cohort_audit(trials: list[dict], windows: list[dict]) -> dict:
+    """Summarise disjoint windows separately from overlapping rolling cohorts."""
+    selected = select_non_overlapping_cohorts(windows)
+    selected_keys = {(w["anchor"], w["split"]) for w in selected}
+    summary = []
+    for split in ("TRAIN", "HISTORICAL_HOLDOUT"):
+        anchors = sorted(w["anchor"] for w in selected if w["split"] == split)
+        if not anchors:
+            continue
+        for cash_yield in CASH_YIELDS:
+            for policy in (*LADDERS, "fixed_weekly"):
+                rows = [
+                    r for r in trials
+                    if r["split"] == split
+                    and (r["anchor"], r["split"]) in selected_keys
+                    and r["cash_yield_annual"] == cash_yield
+                    and r["policy"] == policy
+                ]
+                if not rows:
+                    continue
+                summary.append({
+                    "split": split,
+                    "cash_yield_annual": cash_yield,
+                    "policy": policy,
+                    "cohorts": len(rows),
+                    "selected_anchors": anchors,
+                    "median_btc_equivalent_uplift_vs_current_pct": median(
+                        r["btc_equivalent_uplift_vs_current_pct"] for r in rows),
+                    "worst_btc_equivalent_uplift_vs_current_pct": min(
+                        r["btc_equivalent_uplift_vs_current_pct"] for r in rows),
+                    "median_equity_uplift_vs_current_pct": median(
+                        r["equity_uplift_vs_current_pct"] for r in rows),
+                    "worst_equity_uplift_vs_current_pct": min(
+                        r["equity_uplift_vs_current_pct"] for r in rows),
+                    "positive_btc_equivalent_cohorts": sum(
+                        r["btc_equivalent_uplift_vs_current_pct"] > 0 for r in rows),
+                    "median_weeks_at_20pct_discount_or_deeper": median(
+                        sum(r["discount_tier_week_counts"][1:]) for r in rows),
+                    "median_weeks_at_30pct_discount_or_deeper": median(
+                        r["discount_tier_week_counts"][3] for r in rows),
+                    "median_max_observed_discount_pct": median(
+                        r["max_observed_discount_pct_below_200wma"] for r in rows),
+                })
+    return {
+        "selection_method": "Greedy earliest-starting 104-week windows, disjoint within each split",
+        "selected_cohorts": [
+            {k: w[k] for k in ("anchor", "start", "end", "split")}
+            for w in selected
+        ],
+        "caveat": "Disjoint windows avoid duplicate calendar observations but do not establish statistically independent market cycles; sample sizes remain small.",
+        "summary": summary,
+    }
+
+
 def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
     windows = base.cohort_windows(rows)
     trials = []
@@ -326,6 +402,7 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
         "completed_cohorts": len(windows),
         "candidate_ladders": {k: list(v) for k, v in LADDERS.items()},
         "summary": summary,
+        "non_overlapping_cohort_audit": non_overlapping_cohort_audit(trials, windows),
         "cohort_results": trials,
         "synthetic_stress_scenarios": synthetic_stress_scenarios(capital=capital),
         "cash_floor_sensitivity": evaluate_cash_floor_sensitivity(rows, capital=capital),
