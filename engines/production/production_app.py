@@ -661,12 +661,19 @@ with st.sidebar:
     elif mode == "DCA Today":
         st.header("DCA Today")
         if not portfolio_verified:
-            st.error(
-                "PURCHASE RECOMMENDATION BLOCKED — the authoritative Google/SQLite "
-                "portfolio could not be verified. Browser recovery data is not trusted "
-                "for cash sizing. Market data and risk signals remain available; "
-                "restore or verify the saved portfolio in My Portfolio, then reload."
-            )
+            if globals().get("BTC_SIDEBAR_ONLY", False):
+                st.info(
+                    "Production portfolio verification is intentionally skipped while "
+                    "its sidebar is displayed on a research dashboard. No Production "
+                    "purchase recommendation or trade calculation is active here."
+                )
+            else:
+                st.error(
+                    "PURCHASE RECOMMENDATION BLOCKED — the authoritative Google/SQLite "
+                    "portfolio could not be verified. Browser recovery data is not trusted "
+                    "for cash sizing. Market data and risk signals remain available; "
+                    "restore or verify the saved portfolio in My Portfolio, then reload."
+                )
         elif verified_portfolio_positions.get("broker_snapshot"):
             _bs = verified_portfolio_positions["broker_snapshot"]
             st.info(
