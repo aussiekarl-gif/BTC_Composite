@@ -192,15 +192,26 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         self.assertNotIn("def send_ntfy(",retired)
         self.assertIn("Retired: dual-model ntfy",retired)
 
-    def test_cycle_trading_is_first_and_fresh_session_default(self):
+    def test_current_launcher_pages_and_production_default(self):
+        import ast
         from pathlib import Path
         app=(Path(__file__).resolve().parents[1]/"app.py").read_text(encoding="utf-8")
-        self.assertIn(
-            '["Cycle Trading — Research", "Production", "Research", '
-            '"Bottom Signal Timeline"]',app)
+        tree=ast.parse(app)
+        options_assignment=next(
+            node for node in tree.body
+            if isinstance(node,ast.Assign)
+            and any(isinstance(target,ast.Name) and target.id=="MODEL_OPTIONS"
+                    for target in node.targets)
+        )
+        self.assertEqual(ast.literal_eval(options_assignment.value),[
+            "Production","Research 10.0","Cycle Trading — Research",
+            "Bottom Signal Timeline",
+        ])
+        self.assertIn("MODEL_OPTIONS,",app)
         self.assertIn('index=0,',app)
         self.assertIn('"Production": Path(__file__).parent',app)
-        self.assertIn('"Research": Path(__file__).parent',app)
+        self.assertIn('"Research 10.0": Path(__file__).parent',app)
+        self.assertIn('"Cycle Trading — Research": Path(__file__).parent',app)
 
 
 if __name__=="__main__":
