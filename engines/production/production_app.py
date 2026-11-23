@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Streamlit UI for V5.8.2 Production. Calculation/data logic lives in production_model.py."""
 from pathlib import Path as _Path
-from concurrent.futures import ThreadPoolExecutor
 import sys as _sys
 
 _REPO_ROOT = _Path(__file__).resolve().parents[2]
@@ -31,15 +30,6 @@ from engines.shared.portfolio_execution_accuracy import (
 # Preserve the historical UI namespace so the unchanged Streamlit UI behaves
 # exactly as before, including helpers whose names begin with an underscore.
 globals().update({k: v for k, v in vars(_model).items() if not k.startswith("__")})
-
-
-def _fetch_market_inputs(btc_start, btc_end, fx_start, bg_start, token):
-    """Fetch independent market inputs concurrently to reduce cold-load latency."""
-    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="btc-market-data") as pool:
-        btc_future = pool.submit(fetch_btc_history, btc_start, btc_end)
-        fx_future = pool.submit(fetch_aud_usd_rates, fx_start, btc_end)
-        bg_future = pool.submit(fetch_bgeometrics_bundle, bg_start, btc_end, token)
-        return btc_future.result(), fx_future.result(), bg_future.result()
 
 # ================================================================
 # Streamlit UI
@@ -921,14 +911,16 @@ if mode == "DCA Backtest":
     )
     params["day_of_week"] = selected_day
 
-    with st.spinner("Loading historical BTC, AUD/USD and risk inputs in parallel..."):
+    with st.spinner("Loading historical BTC and AUD/USD data..."):
+        df_full = fetch_btc_history(params["start_date"], params["end_date"])
         # Historical price loader includes 300 days of pre-start warmup.
         # Request PRIOR FX over that buffer; do not silently backfill it.
+        fx_series = fetch_aud_usd_rates(
+            params["start_date"] - timedelta(days=310), params["end_date"])
         bg_token = get_bgeometrics_token()
-        df_full, fx_series, bg_data = _fetch_market_inputs(
-            params["start_date"], params["end_date"],
-            params["start_date"] - timedelta(days=310),
+        bg_data = fetch_bgeometrics_bundle(
             params["start_date"] - timedelta(days=300),
+            params["end_date"],
             bg_token,
         )
 
@@ -1093,13 +1085,12 @@ elif mode == "DCA Today":
     # Enough history for current cycle + previous two halving cycles.
     lookback_start = now_utc - timedelta(days=365 * 11)
 
-    with st.spinner("Loading today's BTC, AUD/USD and risk inputs in parallel..."):
+    with st.spinner("Calculating today's BTC valuation risk..."):
+        df_today = fetch_btc_history(lookback_start, now_utc)
+        fx_today = fetch_aud_usd_rates(lookback_start, now_utc)
         bg_token = get_bgeometrics_token()
-        df_today, fx_today, bg_today = _fetch_market_inputs(
-            lookback_start, now_utc,
-            lookback_start,
-            lookback_start - timedelta(days=300),
-            bg_token,
+        bg_today = fetch_bgeometrics_bundle(
+            lookback_start - timedelta(days=300), now_utc, bg_token
         )
 
     if df_today.empty:
