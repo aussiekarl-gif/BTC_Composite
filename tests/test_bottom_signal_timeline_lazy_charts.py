@@ -18,3 +18,9 @@ def test_overview_still_shows_heatmap_and_selected_week_values():
     assert "st.plotly_chart(heat, use_container_width=True)" in SOURCE
     assert 'st.subheader("Indicator values — selected week")' in SOURCE
     assert 'st.dataframe(detail, use_container_width=True, hide_index=True)' in SOURCE
+
+
+def test_causal_timeline_classification_is_cached():
+    assert '@st.cache_data(ttl=900, show_spinner=False)\ndef build_timeline(master):' in SOURCE
+    assert "pct = _expanding_percentile(series, min_periods=52)" in SOURCE
+    assert 'states["Bottom Consensus"] = consensus' in SOURCE
