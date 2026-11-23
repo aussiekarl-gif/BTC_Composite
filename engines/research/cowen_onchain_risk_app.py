@@ -90,8 +90,28 @@ st.markdown(
 )
 
 DATA_DIR = ROOT / "data"
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def cached_raw_candidates(data_dir):
+    """Cache local source-file parsing for interactive research reruns."""
+    return build_existing_raw_candidates(Path(data_dir))
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def cached_prior_risk_frame(series_map):
+    """Cache the rolling prior-only percentile calculations for 15 minutes."""
+    result = pd.DataFrame()
+    for metric, values in series_map.items():
+        result[metric] = prior_only_percentile_risk(
+            values, window_observations=1825, min_prior_observations=365,
+            higher_is_riskier=True,
+        )
+    return result
+
+
 try:
-    raw = build_existing_raw_candidates(DATA_DIR)
+    raw = cached_raw_candidates(str(DATA_DIR))
     load_error = None
 except Exception as exc:
     raw = pd.DataFrame()
@@ -131,13 +151,13 @@ COMPONENTS = [
     ("Supply in Profit / Loss", "supply_pnl", 0, "Zero-weight diagnostic"),
 ]
 
-risk_frame = pd.DataFrame(index=raw.index) if not raw.empty else pd.DataFrame()
-for metric, values in series_map.items():
-    # Five-year rolling reference, strictly prior observations only.
-    risk_frame[metric] = prior_only_percentile_risk(
-        values, window_observations=1825, min_prior_observations=365,
-        higher_is_riskier=True,
-    )
+# Five-year rolling reference, strictly prior observations only. Cache the
+# derived frame too: the rolling rank is the expensive part on slider/rerun events.
+risk_frame = (
+    cached_prior_risk_frame(series_map)
+    if series_map
+    else pd.DataFrame(index=raw.index)
+)
 
 latest_date = raw.index.max() if not raw.empty else None
 # Completeness is measured on one common as-of date. Each card separately displays
