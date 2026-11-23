@@ -277,3 +277,17 @@ References:
 - CoinGlass API Terms (bulk collection and redistribution restrictions): https://www.coinglass.com/api-terms
 - CoinGlass general Terms (bulk scraping/extraction and redistribution restrictions): https://www.coinglass.com/terms
 - CoinGlass API overview (subscription/API-key access): https://docs.coinglass.com/reference/getting-started-with-your-api
+
+
+### BGeometrics miner-balances CSV lead — licensing and automation review (2026-11-23)
+
+A public third-party research repository documents a manually downloaded BGeometrics metric named `miner-balances.csv`, with column `minerBalances` and reported coverage from 2012-05-09 through 2025-09-25. Its author explicitly states that the on-chain CSVs were downloaded individually from BGeometrics and are not included in the repository because BGeometrics' terms do not permit redistribution. This is a useful lead that a miner-balance history has been exposed for manual research, but it is not an independently sourced or openly licensed dataset.
+
+BGeometrics' current Terms (updated 2026-10-14) say its free charts are for personal, educational and non-commercial use; its free API tier is intended for personal projects, research and evaluation but requires a registered API key. The terms also restrict key use to the registered user's own use, prohibit bulk scraping/harvesting without written permission, and require a paid Professional plan or explicit agreement for commercial redistribution. Commercial publishing of derived chart values also has separate conditions. These terms do not establish permission for this repository's automated GitHub Actions ingestion, public Streamlit display, or redistribution of a historical series.
+
+Decision: do not copy the third-party CSV, scrape the chart, or wire BGeometrics into the scheduled public-source pipeline. It may be suitable for a user's own manual, non-commercial research under the provider's terms, but that would still need direct provider confirmation before using it as the mCTC source in a shared app. The reported history also begins in 2012, so early-cycle coverage would need separate consideration. mCTC remains unavailable.
+
+References:
+- Third-party repository documenting the manual BGeometrics CSV and its reported coverage: https://github.com/Aldo10F/BTC-Direction-ML/blob/main/assets/FEATURES.md
+- BGeometrics Terms and Conditions, updated 2026-10-14: https://charts.bgeometrics.com/terms.html
+- BGeometrics API overview: https://bgeometrics.com/api
