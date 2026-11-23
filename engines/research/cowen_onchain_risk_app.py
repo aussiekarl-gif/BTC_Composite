@@ -14,13 +14,50 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from engines.research.cowen_onchain_risk import (
-    ACTIVE_METRICS,
-    ZERO_WEIGHT_DIAGNOSTICS,
-    build_existing_raw_candidates,
-    prior_only_percentile_risk,
-    build_six_metric_research_composite,
-)
+from engines.research import cowen_onchain_risk as cowen_risk
+
+ACTIVE_METRICS = cowen_risk.ACTIVE_METRICS
+ZERO_WEIGHT_DIAGNOSTICS = cowen_risk.ZERO_WEIGHT_DIAGNOSTICS
+build_existing_raw_candidates = cowen_risk.build_existing_raw_candidates
+prior_only_percentile_risk = cowen_risk.prior_only_percentile_risk
+
+# Compatibility guard for a Streamlit instance that may briefly serve an older
+# cached module while the repository deployment is updating. The fallback is
+# deliberately identical in its strict six-of-six requirement and remains
+# research-only; it never fills missing values or emits a trade signal.
+if hasattr(cowen_risk, "build_six_metric_research_composite"):
+    build_six_metric_research_composite = cowen_risk.build_six_metric_research_composite
+else:
+    def build_six_metric_research_composite(component_scores, *, weights=None):
+        required = (
+            "puell_multiple", "mvrv", "mvrv_z_score",
+            "transaction_fees", "terminal_price", "mctc",
+        )
+        supplied = dict({name: 1.0 for name in required} if weights is None else weights)
+        if set(supplied) != set(required):
+            raise ValueError("weights must specify exactly the six research metrics")
+        if any(not np.isfinite(float(value)) or float(value) <= 0 for value in supplied.values()):
+            raise ValueError("all six research metric weights must be finite and positive")
+        scores = component_scores.reindex(columns=required).apply(pd.to_numeric, errors="coerce")
+        invalid = scores.notna() & ((scores < 0.0) | (scores > 1.0))
+        if invalid.any().any():
+            raise ValueError("component risk scores must be within [0, 1]")
+        complete = scores.notna().all(axis=1)
+        weight_series = pd.Series(supplied, dtype=float)
+        weighted = scores.mul(weight_series, axis=1).sum(axis=1, min_count=len(required))
+        result = pd.DataFrame(index=scores.index)
+        result["available_component_count"] = scores.notna().sum(axis=1).astype(int)
+        result["component_coverage_pct"] = 100.0 * result["available_component_count"] / len(required)
+        result["partial_mean_diagnostic_only"] = scores.mean(axis=1, skipna=True)
+        result["composite_risk"] = (weighted / float(weight_series.sum())).where(complete)
+        result["status"] = np.where(
+            complete, "COMPLETE — SIX-METRIC RESEARCH ONLY", "INCOMPLETE — NOT INVESTABLE"
+        )
+        result["missing_components"] = [
+            ", ".join(name for name in required if pd.isna(row[name]))
+            for _, row in scores.iterrows()
+        ]
+        return result
 
 st.markdown("""
 <style>
@@ -208,9 +245,16 @@ slider_cols = st.columns(9, gap="small")
 for col, (label, metric, default_weight, _) in zip(slider_cols, COMPONENTS):
     with col:
         metric_available = metric in risk_frame.columns and risk_frame[metric].notna().any()
+        # The experimental six-metric builder requires strictly positive
+        # weights. Keep its six controls above zero; zero-weight diagnostics
+        # retain the original 0–1 range.
+        minimum_weight = 0.05 if metric in (
+            "puell_multiple", "mvrv", "mvrv_z_score",
+            "transaction_fees", "terminal_price", "mctc",
+        ) else 0.0
         weight_values[metric] = st.slider(
             short_names.get(metric, label),
-            min_value=0.0,
+            min_value=minimum_weight,
             max_value=1.0,
             value=float(default_weight),
             step=0.05,
@@ -346,18 +390,20 @@ if ma_days and price_series is not None:
         ),
         secondary_y=False,
     )
-if ma_days and not risk_frame.empty:
-    active_lines = [
-        risk_frame[name] for name in active_component_names
-        if name in risk_frame.columns
-    ]
-    if active_lines:
-        mean_risk = pd.concat(active_lines, axis=1).mean(axis=1, skipna=False)
-        risk_ma = mean_risk.rolling(ma_days, min_periods=ma_days).mean().dropna()
-        if renormalize_average and not risk_ma.empty:
-            lo, hi = float(risk_ma.min()), float(risk_ma.max())
-            if hi > lo:
-                risk_ma = (risk_ma - lo) / (hi - lo)
+if ma_days and not six_composite_history.empty:
+    # Use the same complete six-of-six score as the main chart; never average
+    # a changing subset of components for the moving-average overlay.
+    risk_ma = (
+        six_composite_history["composite_risk"]
+        .rolling(ma_days, min_periods=ma_days)
+        .mean()
+        .dropna()
+    )
+    if renormalize_average and not risk_ma.empty:
+        lo, hi = float(risk_ma.min()), float(risk_ma.max())
+        if hi > lo:
+            risk_ma = (risk_ma - lo) / (hi - lo)
+    if not risk_ma.empty:
         fig.add_trace(
             go.Scatter(
                 x=risk_ma.index, y=risk_ma.values,
@@ -406,7 +452,7 @@ st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
 if price_series is None:
     st.info("BTC price history is not present in the currently loaded source snapshot.")
-if not complete_now:
+if not six_complete_now:
     st.warning(
         "The six-metric experimental score is not plotted because one or more inputs "
         "are not available for every date. Individual available risk histories "

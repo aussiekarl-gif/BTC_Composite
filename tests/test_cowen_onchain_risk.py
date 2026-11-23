@@ -203,6 +203,16 @@ class CowenOnchainRiskTests(unittest.TestCase):
             self.assertEqual(raw.index.max(), dates[-1])
 
 
+    def test_research_10_dashboard_has_safe_runtime_guards(self):
+        from pathlib import Path
+
+        app_source = Path("engines/research/cowen_onchain_risk_app.py").read_text()
+        self.assertIn("if not six_complete_now:", app_source)
+        self.assertNotIn("if not complete_now:", app_source)
+        self.assertNotIn("active_component_names", app_source)
+        self.assertIn("minimum_weight = 0.05 if metric in", app_source)
+        self.assertIn('six_composite_history["composite_risk"]', app_source)
+
     def test_six_metric_research_composite_requires_all_six_and_is_separate(self):
         from engines.research.cowen_onchain_risk import SIX_METRIC_RESEARCH_SET
 
