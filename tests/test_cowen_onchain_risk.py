@@ -6,6 +6,7 @@ import pandas as pd
 from engines.research.cowen_onchain_risk import (
     ACTIVE_METRICS,
     build_seven_metric_composite,
+    build_six_metric_research_composite,
     calculate_terminal_price,
     prior_only_percentile_risk,
 )
@@ -200,6 +201,19 @@ class CowenOnchainRiskTests(unittest.TestCase):
             expected_age = (dates[-1] - pd.Timestamp("2009-01-03", tz="UTC")).days + 1
             self.assertEqual(raw["terminal_market_age_days"].iloc[-1], expected_age)
             self.assertEqual(raw.index.max(), dates[-1])
+
+
+    def test_six_metric_research_composite_requires_all_six_and_is_separate(self):
+        from engines.research.cowen_onchain_risk import SIX_METRIC_RESEARCH_SET
+
+        dates = pd.date_range("2024-01-01", periods=3, freq="D", tz="UTC")
+        scores = pd.DataFrame(0.5, index=dates, columns=SIX_METRIC_RESEARCH_SET)
+        scores.loc[dates[1], "mctc"] = np.nan
+        result = build_six_metric_research_composite(scores)
+        self.assertAlmostEqual(result.loc[dates[0], "composite_risk"], 0.5)
+        self.assertTrue(np.isnan(result.loc[dates[1], "composite_risk"]))
+        self.assertEqual(result.loc[dates[1], "available_component_count"], 5)
+        self.assertEqual(result.loc[dates[0], "status"], "COMPLETE — SIX-METRIC RESEARCH ONLY")
 
 
 if __name__ == "__main__":
