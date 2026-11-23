@@ -22,7 +22,7 @@ class SimplifiedLauncherTests(unittest.TestCase):
         self.assertIsInstance(radio.args[1], ast.List)
         self.assertEqual(ast.literal_eval(radio.args[1]), [
             "Production", "Research V5.9", "Research V6.0", "Research 10.0",
-            "Cycle Trading — Research", "Bottom Signal Timeline",
+            "Cycle Trading — Research", "Cowen Risk Matrix", "Bottom Signal Timeline",
         ])
         named = {kw.arg: kw.value for kw in radio.keywords}
         self.assertEqual(ast.literal_eval(named["index"]), 0)
