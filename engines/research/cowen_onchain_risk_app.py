@@ -281,7 +281,7 @@ from plotly.subplots import make_subplots
 
 fig = make_subplots(specs=[[{"secondary_y": True}]])
 price_series = None
-for price_col in ("coinmetrics_price_usd", "price_usd", "btc_price_usd"):
+for price_col in ("coinmetrics_price_usd", "btc_price_usd", "price_usd"):
     if price_col in raw.columns and pd.to_numeric(raw[price_col], errors="coerce").notna().any():
         price_series = pd.to_numeric(raw[price_col], errors="coerce").dropna()
         break
@@ -307,24 +307,55 @@ metric_labels = {
     "rhodl_ratio": "RHODL Ratio Risk",
     "supply_pnl": "Supply P/L Risk",
 }
-for metric, label in metric_labels.items():
-    if metric not in risk_frame.columns:
-        continue
-    values = risk_frame[metric].dropna()
-    if values.empty:
-        continue
-    is_active_weight = weight_values.get(metric, 0) > 0
+available_chart_metrics = [
+    metric for metric in metric_labels
+    if metric in risk_frame.columns and risk_frame[metric].notna().any()
+]
+chart_view = st.selectbox(
+    "Historical chart view",
+    ["BTC price + selected component", "Risk components (small multiples)"],
+    index=0,
+    key="cowen_chart_view",
+    help="The default shows one risk series at a time to avoid overlapping noisy lines.",
+)
+selected_metric = st.selectbox(
+    "Component to display",
+    available_chart_metrics,
+    format_func=lambda value: metric_labels[value].replace(" Risk", ""),
+    key="cowen_selected_component",
+    disabled=(not available_chart_metrics or chart_view != "BTC price + selected component"),
+)
+if chart_view == "BTC price + selected component" and selected_metric:
+    values = risk_frame[selected_metric].dropna()
     fig.add_trace(
         go.Scatter(
             x=values.index, y=values.values,
-            name=label + ("" if is_active_weight else " (weight 0)"),
+            name=metric_labels[selected_metric],
             mode="lines",
-            line=dict(width=1.35 if is_active_weight else 1.0, dash="solid" if is_active_weight else "dot"),
-            opacity=0.88 if is_active_weight else 0.55,
-            hovertemplate="%{x|%d %b %Y}<br>" + label + ": %{y:.3f}<extra></extra>",
+            line=dict(width=2.0),
+            hovertemplate="%{x|%d %b %Y}<br>" + metric_labels[selected_metric] + ": %{y:.1%}<extra></extra>",
         ),
         secondary_y=True,
     )
+elif chart_view == "Risk components (small multiples)":
+    st.caption("Each component has its own panel, with a shared date axis and 0–100% risk scale.")
+    panel_cols = st.columns(2)
+    for idx, metric in enumerate(available_chart_metrics):
+        values = risk_frame[metric].dropna()
+        with panel_cols[idx % 2]:
+            mini = go.Figure(go.Scatter(
+                x=values.index, y=values.values, mode="lines",
+                name=metric_labels[metric], line=dict(width=1.6),
+                hovertemplate="%{x|%d %b %Y}<br>%{y:.1%}<extra></extra>",
+            ))
+            mini.update_layout(
+                template="plotly_dark", height=230,
+                margin=dict(l=12, r=12, t=30, b=12),
+                paper_bgcolor="#050505", plot_bgcolor="#050505",
+                title=metric_labels[metric], showlegend=False,
+            )
+            mini.update_yaxes(range=[0, 1], tickformat=".0%")
+            st.plotly_chart(mini, use_container_width=True, config={"displaylogo": False})
 
 if not composite_history.empty and "composite_risk" in composite_history:
     total_line = composite_history["composite_risk"].dropna()
@@ -383,7 +414,7 @@ if chart_type == "Colour-Coded":
 
 fig.update_layout(
     template="plotly_dark",
-    height=560,
+    height=460,
     margin=dict(l=42, r=42, t=28, b=48),
     paper_bgcolor="#050505",
     plot_bgcolor="#050505",
@@ -394,7 +425,7 @@ fig.update_layout(
 )
 fig.update_xaxes(
     title_text="Year", showgrid=True, gridcolor="rgba(150,150,150,0.15)",
-    rangeslider_visible=True,
+    rangeslider_visible=False,
 )
 fig.update_yaxes(
     title_text="BTC Price (USD)", type="log", secondary_y=False,

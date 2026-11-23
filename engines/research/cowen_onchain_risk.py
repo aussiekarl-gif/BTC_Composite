@@ -514,7 +514,8 @@ def build_existing_raw_candidates(data_dir):
     mvrv_z.name = "mvrv_z_score_provider_export"
 
     result = pd.concat(
-        [puell, mvrv_proxy, mvrv_z], axis=1, join="outer"
+        [puell, mvrv_proxy, mvrv_z, planb["price_usd"].rename("btc_price_usd")],
+        axis=1, join="outer"
     ).sort_index()
     result.index.name = "date_utc"
     return result
