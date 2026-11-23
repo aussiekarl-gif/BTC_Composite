@@ -1,0 +1,41 @@
+{
+  "provider": "Aethereal Data",
+  "dataset": "Bitcoin Network Daily",
+  "dataset_url": "https://dataset.aethereal.top/datasets/bitcoin-network-daily",
+  "source_csv_url": "https://dataset.aethereal.top/files/bitcoin-network-daily.csv",
+  "license": "Free for research and education; not a blanket commercial redistribution licence",
+  "attribution": "Aethereal (2026), Bitcoin Network Daily, https://dataset.aethereal.top/datasets/bitcoin-network-daily",
+  "retrieved_at_utc": "2026-11-23T10:47:32.121570+00:00",
+  "first_date_utc": "2009-01-03",
+  "last_date_utc": "2026-11-22",
+  "observations": 6533,
+  "columns": [
+    "price_usd",
+    "hashrate_ths",
+    "difficulty",
+    "transactions",
+    "unique_addresses",
+    "tx_per_block",
+    "avg_block_size_mb",
+    "fees_btc",
+    "miners_revenue_usd",
+    "cost_per_tx_usd",
+    "tx_volume_usd"
+  ],
+  "missing_values_by_column": {
+    "price_usd": 0,
+    "hashrate_ths": 3,
+    "difficulty": 3,
+    "transactions": 17,
+    "unique_addresses": 31,
+    "tx_per_block": 17,
+    "avg_block_size_mb": 17,
+    "fees_btc": 17,
+    "miners_revenue_usd": 14,
+    "cost_per_tx_usd": 14,
+    "tx_volume_usd": 624
+  },
+  "fee_unit": "BTC per UTC day; block timestamp assigns blocks to UTC day",
+  "price_note": "Aethereal price_usd may use a different daily price convention from Coin Metrics; do not multiply fees by this price for cross-provider USD parity without checking.",
+  "sha256_csv": "cfaeeab34450ddb217bb331f12f2a9fda72681f229e0c532b7549ff83eb98bf5"
+}

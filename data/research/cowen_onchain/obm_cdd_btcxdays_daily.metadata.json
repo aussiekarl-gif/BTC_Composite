@@ -1,0 +1,18 @@
+{
+  "provider": "Open Bitcoin Metrics",
+  "dataset_url": "https://github.com/diegorllanos/open-bitcoin-metrics",
+  "source_csv_url": "https://raw.githubusercontent.com/diegorllanos/open-bitcoin-metrics/main/metrics/obm_cdd_btcxdays_daily/obm_cdd_btcxdays_daily.csv",
+  "series_id": "obm_cdd_btcxdays_daily",
+  "release_version": "OBM v0.1.0",
+  "unit": "BTC-days",
+  "frequency": "daily UTC",
+  "license": "CC BY 4.0",
+  "attribution": "Llanos, D. R., Open Bitcoin Metrics, metric obm_cdd_btcxdays_daily, https://arxiv.org/abs/2607.03124",
+  "retrieved_at_utc": "2026-11-23T10:47:32.596885+00:00",
+  "first_date_utc": "2009-01-03",
+  "last_date_utc": "2026-11-18",
+  "observations": 6529,
+  "missing_values": 0,
+  "sha256_csv": "6f6b4a6158d82031f74300449f37422c9e9d562c0b7bfaef584e097b69482126",
+  "method_note": "Spent-output value in BTC multiplied by age in days, summed over outputs spent on each UTC calendar day. The source's zero values are valid zero-flow observations."
+}

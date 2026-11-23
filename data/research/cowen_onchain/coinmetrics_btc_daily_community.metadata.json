@@ -1,0 +1,44 @@
+{
+  "provider": "Coin Metrics Community API",
+  "endpoint": "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics",
+  "asset": "btc",
+  "frequency": "1d",
+  "requested_metrics": [
+    "CapMVRVCur",
+    "CapMVRVZ",
+    "FeeTotUSD",
+    "IssTotUSD",
+    "PuellMulTot",
+    "PriceUSD",
+    "SplyCur",
+    "RevAllTimeUSD",
+    "SplyMiner0HopAllNtv",
+    "SplyMiner1HopAllNtv"
+  ],
+  "returned_metrics": [
+    "CapMVRVCur",
+    "IssTotUSD",
+    "PriceUSD",
+    "SplyCur"
+  ],
+  "first_date_utc": "2009-01-03",
+  "last_date_utc": "2026-11-22",
+  "observations": 6533,
+  "retrieved_at_utc": "2026-11-23T10:47:31.473547+00:00",
+  "license": "Coin Metrics Community Data \u2014 CC BY-NC 4.0; non-commercial use only; attribution required",
+  "sha256_csv": "0e85eabce1e8f1f42719239f0efbbd943d9e5874ca3e3f6981cac304554b617b",
+  "missing_values_by_metric": {
+    "CapMVRVCur": 561,
+    "IssTotUSD": 561,
+    "PriceUSD": 561,
+    "SplyCur": 0
+  },
+  "unavailable_metrics": {
+    "CapMVRVZ": 403,
+    "FeeTotUSD": 403,
+    "PuellMulTot": 403,
+    "RevAllTimeUSD": 403,
+    "SplyMiner0HopAllNtv": 403,
+    "SplyMiner1HopAllNtv": 403
+  }
+}

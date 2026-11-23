@@ -1,0 +1,23 @@
+{
+  "provider": "Explore21",
+  "metric_id": "bitcoin-mvrv-z-score",
+  "chart_url": "https://charts.explore21.com/bitcoin-mvrv-z-score",
+  "source_csv_url": "https://charts.explore21.com/data/bitcoin-mvrv-z-score.csv",
+  "method_version": 1,
+  "license": "CC BY 4.0",
+  "attribution": "Explore21 Charts, https://charts.explore21.com/bitcoin-mvrv-z-score, accessed 2026-11-23",
+  "retrieved_at_utc": "2026-11-23T10:47:29.955002+00:00",
+  "first_date_utc": "2011-09-16",
+  "last_date_utc": "2026-11-22",
+  "observations": 5547,
+  "columns": [
+    "mvrv_z_score",
+    "btc_close_usd"
+  ],
+  "missing_values_by_column": {
+    "mvrv_z_score": 0,
+    "btc_close_usd": 0
+  },
+  "sha256_csv": "887cb2b41efddf74aec53ad8c18db9c29e8c7498f9d7f25a1c40035c70c8711d",
+  "historical_vintage_note": "Explore21's published point-in-time vintages begin 2026-11-18; earlier historical rows are not verified historical vintages."
+}
