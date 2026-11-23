@@ -509,15 +509,17 @@ def main() -> None:
     st.subheader("Per-metric risk (historical percentile of the current value)")
     rows = []
     for k in available:
-        cur = series[k].dropna().iloc[-1]
+        s_k = series[k].dropna()
+        cur = s_k.iloc[-1]
         rows.append({
             "metric": METRICS[k]["label"],
             "formula": METRICS[k]["formula"],
             "current": fmt(cur),
-            "risk": f"{risks[k]:.3f}",
+            "risk": f"{risks[k]:.4f}",
+            "points": int(s_k.size),
             "weight": f"{weights[k]:.2f}",
             "contribution": (
-                f"{weights[k] * risks[k] / den:.3f}" if k in active else "—"
+                f"{weights[k] * risks[k] / den:.4f}" if k in active else "—"
             ),
         })
     st.table(pd.DataFrame(rows))
@@ -534,6 +536,9 @@ def main() -> None:
         st.caption("No historical risk series available — load data above or wait for live data.")
     else:
         st.line_chart(risk_line.to_frame("risk"))
+        span = (f"{pd.to_datetime(risk_line.index.min()).date()} → "
+                f"{pd.to_datetime(risk_line.index.max()).date()} ({risk_line.size} points)")
+        st.caption(f"Risk line span: {span}")
         st.caption(
             "0 = floor/accumulation zone · 0.2–0.3 = early-cycle · "
             "0.3–0.5 = late-cycle warning · > 0.5 = high risk (sell / slow down)."
