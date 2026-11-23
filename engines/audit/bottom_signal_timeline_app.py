@@ -197,6 +197,7 @@ def _percentile_to_state(percentile):
     return 4
 
 
+@st.cache_data(ttl=900, show_spinner=False)
 def build_timeline(master):
     # Use the central master's full calendar instead of anchoring every series
     # to Risk Score, which only begins in 2016. Each indicator remains blank
@@ -595,127 +596,136 @@ if price_sources:
             ret = _forward_return(price, selected, weeks)
             st.metric(f"{weeks} weeks", "—" if not np.isfinite(ret) else f"{ret:+.1%}")
 
-st.subheader("Individual indicator histories")
-st.caption("Each chart uses the same Monday-aligned source values and selected week as the heatmap. Missing source periods remain blank.")
+timeline_detail_view = st.radio(
+    "Timeline detail",
+    ["Overview", "Individual indicator histories"],
+    horizontal=True,
+    key="bottom_timeline_detail_view",
+)
 
-combined_export_parts = []
-for export_label in indicator_rows:
-    if export_label not in show_values.columns:
-        continue
-    export_value = pd.to_numeric(show_values[export_label], errors="coerce")
-    export_state = pd.to_numeric(show_states[export_label], errors="coerce")
-    export_frame = pd.DataFrame({
-        "date": export_value.index,
-        "indicator": export_label,
-        "value": export_value.to_numpy(),
-        "state_code": export_state.to_numpy(),
-        "state": export_state.map(
-            lambda value: "" if pd.isna(value)
-            else STATE_NAMES[int(round(float(value)))]
-        ).to_numpy(),
-    })
-    # Keep genuine missing weeks visible in the export rather than filling them.
-    combined_export_parts.append(export_frame)
+if timeline_detail_view == "Individual indicator histories":
+    st.subheader("Individual indicator histories")
+    st.caption("Each chart uses the same Monday-aligned source values and selected week as the heatmap. Missing source periods remain blank.")
 
-if combined_export_parts:
-    combined_indicator_export = pd.concat(
-        combined_export_parts, ignore_index=True
-    ).sort_values(["date", "indicator"])
-    st.download_button(
-        "DOWNLOAD ALL TIMELINE INDICATORS (.CSV)",
-        combined_indicator_export.to_csv(index=False).encode("utf-8"),
-        "btc_bottom_timeline_all_indicators.csv",
-        "text/csv",
-        key="download_all_timeline_indicators",
-        help="Long-format export of every displayed weekly indicator value and state. Genuine gaps remain blank.",
-    )
-
-chart_columns = st.columns(2)
-for chart_index, label in enumerate(indicator_rows):
-    raw = pd.to_numeric(show_values[label], errors="coerce") if label in show_values.columns else pd.Series(np.nan, index=show_values.index)
-    state_series = show_states[label] if label in show_states.columns else pd.Series(np.nan, index=show_states.index)
-    available_raw = raw.dropna()
-    with chart_columns[chart_index % 2]:
-        if available_raw.empty:
-            st.info(f"{label}: no values are available in the selected history range.")
+    combined_export_parts = []
+    for export_label in indicator_rows:
+        if export_label not in show_values.columns:
             continue
-
-        # Give every chart its own honest time range. Plotly otherwise includes
-        # leading/trailing dates even when all corresponding values are null.
-        first_actual = available_raw.index[0]
-        last_actual = available_raw.index[-1]
-        raw = raw.loc[first_actual:last_actual]
-        state_series = state_series.reindex(raw.index)
-
-        indicator_fig = go.Figure()
-        indicator_fig.add_trace(
-            go.Scatter(
-                x=raw.index,
-                y=raw,
-                mode="lines",
-                name=label,
-                line=dict(color="#60b8f4", width=1.7),
-                connectgaps=False,
-                hovertemplate="%{x|%d %b %Y}<br>Value: %{y:.4g}<extra></extra>",
-            )
-        )
-        selected_in_range = first_actual <= selected <= last_actual
-        selected_value = raw.get(selected, np.nan) if selected_in_range else np.nan
-        selected_state = state_series.get(selected, np.nan) if selected_in_range else np.nan
-        if np.isfinite(selected_value):
-            selected_name = "Unavailable" if pd.isna(selected_state) else STATE_NAMES[int(round(float(selected_state)))]
-            indicator_fig.add_trace(
-                go.Scatter(
-                    x=[selected],
-                    y=[selected_value],
-                    mode="markers",
-                    name=f"Selected week: {selected_name}",
-                    marker=dict(color="#ff4b55", size=9, line=dict(color="#ffffff", width=1)),
-                    hovertemplate=(
-                        f"{pd.Timestamp(selected).strftime('%d %b %Y')}<br>"
-                        f"Value: {selected_value:.4g}<br>State: {selected_name}<extra></extra>"
-                    ),
-                )
-            )
-        if selected_in_range:
-            indicator_fig.add_vline(x=selected, line_dash="dash", line_width=1.2, line_color="#ff4b55")
-        indicator_fig.update_layout(
-            height=300,
-            margin=dict(l=8, r=8, t=42, b=8),
-            title=label,
-            showlegend=False,
-            xaxis=dict(title=None, rangeslider=dict(visible=False)),
-            yaxis=dict(title="Value", fixedrange=False),
-            hovermode="x unified",
-        )
-        st.plotly_chart(
-            indicator_fig,
-            use_container_width=True,
-            key=f"indicator_history_{chart_index}_{label}",
-        )
-        indicator_export = pd.DataFrame({
-            "date": raw.index,
-            "indicator": label,
-            "value": raw.to_numpy(),
-            "state_code": pd.to_numeric(
-                state_series, errors="coerce"
-            ).to_numpy(),
-            "state": pd.to_numeric(state_series, errors="coerce").map(
+        export_value = pd.to_numeric(show_values[export_label], errors="coerce")
+        export_state = pd.to_numeric(show_states[export_label], errors="coerce")
+        export_frame = pd.DataFrame({
+            "date": export_value.index,
+            "indicator": export_label,
+            "value": export_value.to_numpy(),
+            "state_code": export_state.to_numpy(),
+            "state": export_state.map(
                 lambda value: "" if pd.isna(value)
                 else STATE_NAMES[int(round(float(value)))]
             ).to_numpy(),
         })
-        safe_label = "".join(
-            char.lower() if char.isalnum() else "_" for char in label
-        ).strip("_")
+        # Keep genuine missing weeks visible in the export rather than filling them.
+        combined_export_parts.append(export_frame)
+
+    if combined_export_parts:
+        combined_indicator_export = pd.concat(
+            combined_export_parts, ignore_index=True
+        ).sort_values(["date", "indicator"])
         st.download_button(
-            f"DOWNLOAD {label} (.CSV)",
-            indicator_export.to_csv(index=False).encode("utf-8"),
-            f"btc_bottom_timeline_{safe_label}.csv",
+            "DOWNLOAD ALL TIMELINE INDICATORS (.CSV)",
+            combined_indicator_export.to_csv(index=False).encode("utf-8"),
+            "btc_bottom_timeline_all_indicators.csv",
             "text/csv",
-            key=f"download_indicator_{chart_index}_{safe_label}",
-            help="The exact Monday-aligned values and states displayed in this chart. Genuine gaps remain blank.",
+            key="download_all_timeline_indicators",
+            help="Long-format export of every displayed weekly indicator value and state. Genuine gaps remain blank.",
         )
+
+    chart_columns = st.columns(2)
+    for chart_index, label in enumerate(indicator_rows):
+        raw = pd.to_numeric(show_values[label], errors="coerce") if label in show_values.columns else pd.Series(np.nan, index=show_values.index)
+        state_series = show_states[label] if label in show_states.columns else pd.Series(np.nan, index=show_states.index)
+        available_raw = raw.dropna()
+        with chart_columns[chart_index % 2]:
+            if available_raw.empty:
+                st.info(f"{label}: no values are available in the selected history range.")
+                continue
+
+            # Give every chart its own honest time range. Plotly otherwise includes
+            # leading/trailing dates even when all corresponding values are null.
+            first_actual = available_raw.index[0]
+            last_actual = available_raw.index[-1]
+            raw = raw.loc[first_actual:last_actual]
+            state_series = state_series.reindex(raw.index)
+
+            indicator_fig = go.Figure()
+            indicator_fig.add_trace(
+                go.Scatter(
+                    x=raw.index,
+                    y=raw,
+                    mode="lines",
+                    name=label,
+                    line=dict(color="#60b8f4", width=1.7),
+                    connectgaps=False,
+                    hovertemplate="%{x|%d %b %Y}<br>Value: %{y:.4g}<extra></extra>",
+                )
+            )
+            selected_in_range = first_actual <= selected <= last_actual
+            selected_value = raw.get(selected, np.nan) if selected_in_range else np.nan
+            selected_state = state_series.get(selected, np.nan) if selected_in_range else np.nan
+            if np.isfinite(selected_value):
+                selected_name = "Unavailable" if pd.isna(selected_state) else STATE_NAMES[int(round(float(selected_state)))]
+                indicator_fig.add_trace(
+                    go.Scatter(
+                        x=[selected],
+                        y=[selected_value],
+                        mode="markers",
+                        name=f"Selected week: {selected_name}",
+                        marker=dict(color="#ff4b55", size=9, line=dict(color="#ffffff", width=1)),
+                        hovertemplate=(
+                            f"{pd.Timestamp(selected).strftime('%d %b %Y')}<br>"
+                            f"Value: {selected_value:.4g}<br>State: {selected_name}<extra></extra>"
+                        ),
+                    )
+                )
+            if selected_in_range:
+                indicator_fig.add_vline(x=selected, line_dash="dash", line_width=1.2, line_color="#ff4b55")
+            indicator_fig.update_layout(
+                height=300,
+                margin=dict(l=8, r=8, t=42, b=8),
+                title=label,
+                showlegend=False,
+                xaxis=dict(title=None, rangeslider=dict(visible=False)),
+                yaxis=dict(title="Value", fixedrange=False),
+                hovermode="x unified",
+            )
+            st.plotly_chart(
+                indicator_fig,
+                use_container_width=True,
+                key=f"indicator_history_{chart_index}_{label}",
+            )
+            indicator_export = pd.DataFrame({
+                "date": raw.index,
+                "indicator": label,
+                "value": raw.to_numpy(),
+                "state_code": pd.to_numeric(
+                    state_series, errors="coerce"
+                ).to_numpy(),
+                "state": pd.to_numeric(state_series, errors="coerce").map(
+                    lambda value: "" if pd.isna(value)
+                    else STATE_NAMES[int(round(float(value)))]
+                ).to_numpy(),
+            })
+            safe_label = "".join(
+                char.lower() if char.isalnum() else "_" for char in label
+            ).strip("_")
+            st.download_button(
+                f"DOWNLOAD {label} (.CSV)",
+                indicator_export.to_csv(index=False).encode("utf-8"),
+                f"btc_bottom_timeline_{safe_label}.csv",
+                "text/csv",
+                key=f"download_indicator_{chart_index}_{safe_label}",
+                help="The exact Monday-aligned values and states displayed in this chart. Genuine gaps remain blank.",
+            )
+
 
 st.subheader("Indicator values — selected week")
 detail_rows = []
