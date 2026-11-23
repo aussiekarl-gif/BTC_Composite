@@ -90,7 +90,14 @@ class StreamlitOfflineSmoke(unittest.TestCase):
             and node.func.attr == "radio"
         ]
         self.assertEqual(len(radios), 1)
-        options = ast.literal_eval(radios[0].args[1])
+        options_node = next(
+            node for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "MODEL_OPTIONS"
+                    for target in node.targets)
+        )
+        options = ast.literal_eval(options_node.value)
+        self.assertEqual(radios[0].args[1].id, "MODEL_OPTIONS")
         self.assertEqual(options[0], "Production")
         self.assertNotIn("Research V6.0", options)
         self.assertNotIn("Research V5.9", options)
