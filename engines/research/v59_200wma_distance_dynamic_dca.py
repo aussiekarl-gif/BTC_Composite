@@ -140,6 +140,11 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
     max_drawdown = 0.0
     previous_day = rows[0]["date"]
     biggest_buy = 0.0
+    # Show whether deeper discount tiers were actually encountered and used.
+    tier_week_counts = [0, 0, 0, 0]
+    tier_buy_counts = [0, 0, 0, 0]
+    tier_spend_aud = [0.0, 0.0, 0.0, 0.0]
+    max_discount_pct = 0.0
     weekly_cap = capital * max_weekly_fraction
 
     for index, row in enumerate(rows):
@@ -161,6 +166,11 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
         ratio = float(row["ratio_to_200wma"])
         if not math.isfinite(ratio) or ratio <= 0:
             raise ValueError("Missing strictly prior 200WMA; refusing fallback")
+        discount = discount_pct(ratio)
+        max_discount_pct = max(max_discount_pct, discount)
+        tier = sum(discount + 1e-12 >= threshold * 100.0
+                   for threshold in THRESHOLDS)
+        tier_week_counts[tier] += 1
         if last_buy_date is not None and (day - last_buy_date).days < COOLDOWN_DAYS:
             target_pct = 0.0
         elif policy == "fixed_weekly":
@@ -183,6 +193,9 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
             buys += spend
             buy_count += 1
             biggest_buy = max(biggest_buy, spend)
+            if policy != "fixed_weekly":
+                tier_buy_counts[tier] += 1
+                tier_spend_aud[tier] += spend
             last_buy_date = day
 
         equity = cash + btc * price
@@ -225,6 +238,10 @@ def simulate(rows: list[dict], *, policy: str, capital: float = CAPITAL_AUD,
         "deployed_pct_initial_cash": 100.0 * spent / starting_cash if starting_cash else 0.0,
         "remaining_cash_pct_initial_cash": 100.0 * cash / starting_cash if starting_cash else 0.0,
         "buy_count": buy_count,
+        "max_observed_discount_pct_below_200wma": max_discount_pct,
+        "discount_tier_week_counts": tier_week_counts,
+        "discount_tier_buy_counts": tier_buy_counts,
+        "discount_tier_spend_aud": tier_spend_aud,
         "biggest_buy_pct_original_capital": 100.0 * biggest_buy / capital,
         "average_net_entry_aud": net_cost / net_btc_bought if net_btc_bought else None,
         "new_btc_bought_before_drag": net_btc_bought,
@@ -286,6 +303,14 @@ def evaluate(rows: list[dict], *, capital: float = CAPITAL_AUD) -> dict:
                 "median_incremental_same_spend_timing_vs_current_pp_hindsight": median(
                     r["same_spend_timing_uplift_vs_current_pp_hindsight"] for r in selected),
                 "median_buy_count": median(r["buy_count"] for r in selected),
+                "median_weeks_at_20pct_discount_or_deeper": median(
+                    sum(r["discount_tier_week_counts"][1:]) for r in selected),
+                "median_weeks_at_30pct_discount_or_deeper": median(
+                    r["discount_tier_week_counts"][3] for r in selected),
+                "median_buys_at_20pct_discount_or_deeper": median(
+                    sum(r["discount_tier_buy_counts"][1:]) for r in selected),
+                "median_max_observed_discount_pct": median(
+                    r["max_observed_discount_pct_below_200wma"] for r in selected),
             })
     return {
         "status": "RESEARCH_ONLY_RETROSPECTIVE_NOT_LIVE",
