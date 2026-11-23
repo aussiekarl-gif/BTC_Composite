@@ -172,7 +172,7 @@ def derive_series(df: pd.DataFrame) -> dict[str, pd.Series]:
         s["MVRV"] = m
     elif mc is not None and rc is not None:
         s["MVRV"] = mc / rc
-    if (z := _col(df, "mvrv_zscore", "mvrv_z", "mvrv_zScore")) is not None:
+    if (z := _col(df, "mvrz", "mvrv_zscore", "mvrv_z", "mvrv_zScore")) is not None:
         s["MVRVZScore"] = z
     elif mc is not None and rc is not None:
         sd = mc.std()
@@ -309,14 +309,44 @@ def _repo_root() -> Path:
     return p.parent
 
 
+def _load_btc_composite_mvrz_series() -> Optional[pd.Series]:
+    """BTC_Composite/data/mvrv_z_score_*.csv — MVRZ series starting ~Nov 2010
+    (risk_history.csv itself starts 2026)."""
+    data_dir = _repo_root() / "data"
+    if not data_dir.exists():
+        return None
+    frames = []
+    for f in sorted(data_dir.glob("mvrv_z_score_*.csv")):
+        df = pd.read_csv(f)
+        if "timestamp" not in df.columns or "MVRV Z-Score" not in df.columns:
+            continue
+        frames.append(pd.DataFrame({
+            "date": pd.to_datetime(df["timestamp"], unit="ms", errors="coerce"),
+            "mvrz": pd.to_numeric(df["MVRV Z-Score"], errors="coerce"),
+        }).dropna(subset=["date", "mvrz"]).sort_values("date"))
+    if not frames:
+        return None
+    out = pd.concat(frames, ignore_index=True).drop_duplicates(subset=["date"]).sort_values("date")
+    return out.set_index("date")["mvrz"]
+
+
 def _load_btc_composite_data() -> Optional[pd.DataFrame]:
-    """BTC_Composite/data/risk_history.csv — the user's own risk-ladder CSV."""
+    """BTC_Composite/data/risk_history.csv — the user's own risk-ladder CSV.
+
+    Also merges the earlier MVRZ series from BTC_Composite/data/mvrv_z_score_*.csv
+    so the risk line can span back to ~2010."""
     f = _repo_root() / "data" / "risk_history.csv"
     if not f.exists():
         return None
     df = pd.read_csv(f)
     if "date_utc" in df.columns:
         df = df.rename(columns={"date_utc": "date"})
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    # risk_history.csv contains duplicate dates — keep one row per date.
+    df = df.drop_duplicates(subset=["date"], keep="last").sort_values("date")
+    extra = _load_btc_composite_mvrz_series()
+    if extra is not None:
+        df = pd.concat([df.set_index("date"), extra.to_frame("mvrz")], axis=1, join="outer").reset_index()
     return df
 
 
@@ -326,7 +356,7 @@ def _load_research7_series() -> Optional[pd.DataFrame]:
     if not base.exists():
         return None
     maps = {
-        "risk_history_mvrv_z.csv": "mvrv_zscore",
+        "risk_history_mvrv_z.csv": "mvrz",
         "risk_history_puell_multiple.csv": "puell_multiple",
         "risk_history_realised_price_usd.csv": "realized_price_usd",
         "risk_history_price_usd.csv": "price_usd",
@@ -356,13 +386,9 @@ def _load_research7_series() -> Optional[pd.DataFrame]:
 
 
 def _risk_history_line(df: Optional[pd.DataFrame], series: dict, weights: dict) -> Optional[pd.Series]:
-    """Best-effort historical risk line for the risk-gauge chart:
-    1) the CSV 'composite_risk' column if present (BTC_Composite risk_history.csv),
-    2) otherwise a weighted mean of each metric's historical percentile."""
-    if df is not None and "composite_risk" in df.columns:
-        s = pd.to_numeric(df["composite_risk"], errors="coerce")
-        if s.notna().any():
-            return s.dropna().rename("risk")
+    """Historical risk line for the risk-gauge chart: the weighted mean of each
+    metric's historical percentile (spans ~2010 via the merged MVRZ data);
+    falls back to the CSV 'composite_risk' column when no weighted line is available."""
     frames = []
     for k, w in weights.items():
         if w <= 0 or k not in series:
@@ -377,13 +403,16 @@ def _risk_history_line(df: Optional[pd.DataFrame], series: dict, weights: dict) 
             index=s.index,
         )
         frames.append(pct * w)
-    if not frames:
-        return None
-    out = pd.concat(frames, axis=1).sum(axis=1)
-    wsum = sum(weights[k] for k, w in weights.items() if w > 0 and k in series)
-    if wsum <= 0:
-        return None
-    return (out / wsum).rename("risk")
+    if frames:
+        out = pd.concat(frames, axis=1).sum(axis=1)
+        wsum = sum(weights[k] for k, w in weights.items() if w > 0 and k in series)
+        if wsum > 0:
+            return (out / wsum).rename("risk")
+    if df is not None and "composite_risk" in df.columns:
+        s = pd.to_numeric(df["composite_risk"], errors="coerce")
+        if s.notna().any():
+            return s.dropna().rename("risk")
+    return None
 
 
 def main() -> None:
