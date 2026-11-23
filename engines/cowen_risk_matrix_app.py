@@ -415,6 +415,28 @@ def _risk_history_line(df: Optional[pd.DataFrame], series: dict, weights: dict) 
     return None
 
 
+def _plot_risk_line(risk_line: pd.Series) -> None:
+    """Plot the risk line with year labels on the horizontal axis."""
+    import plotly.graph_objects as go
+    fig = go.Figure(go.Scatter(
+        x=risk_line.index, y=risk_line.values, mode="lines", name="risk",
+    ))
+    # Year ticks on the horizontal axis ("just write the year on the bar")
+    years = [pd.Timestamp(f"{y}-01-01")
+             for y in range(pd.Timestamp(risk_line.index.min()).year,
+                            pd.Timestamp(risk_line.index.max()).year + 1)]
+    fig.update_xaxes(tickvals=years, tickformat="%Y")
+    fig.update_yaxes(tickformat=".2f", range=[0, 1.05])
+    fig.update_layout(
+        height=320,
+        margin=dict(l=32, r=16, t=24, b=44),
+        xaxis_title="Year",
+        yaxis_title="Risk",
+        hovermode="x unified",
+    )
+    st.plotly_chart(fig)
+
+
 def main() -> None:
     st.set_page_config(page_title="Cowen Risk Matrix", page_icon="₿")
     st.title("Cowen Risk Matrix")
@@ -506,6 +528,27 @@ def main() -> None:
     den = sum(weights[k] for k in active)
     total = sum(weights[k] * risks[k] for k in active) / den
 
+    # ---- total risk -------------------------------------------------------
+    st.subheader("Total On-Chain Risk")
+    st.metric("Total Risk (0 = floor, 1 = top)", f"{total:.3f}")
+    st.caption(band_label(total))
+
+    # ---- historical risk chart (right below the sliders) -----------------
+    st.subheader("Total On-Chain Risk (historical)")
+    risk_line = _risk_history_line(df, series, weights)
+    if risk_line is None:
+        st.caption("No historical risk series available — load data above or wait for live data.")
+    else:
+        _plot_risk_line(risk_line)
+        span = (f"{pd.to_datetime(risk_line.index.min()).date()} → "
+                f"{pd.to_datetime(risk_line.index.max()).date()} ({risk_line.size} points)")
+        st.caption(f"Risk line span: {span}")
+        st.caption(
+            "0 = floor/accumulation zone · 0.2–0.3 = early-cycle · "
+            "0.3–0.5 = late-cycle warning · > 0.5 = high risk (sell / slow down)."
+        )
+
+    # ---- per-metric risk table (details) ----------------------------------
     st.subheader("Per-metric risk (historical percentile of the current value)")
     rows = []
     for k in available:
@@ -523,26 +566,6 @@ def main() -> None:
             ),
         })
     st.table(pd.DataFrame(rows))
-
-    # ---- total risk -------------------------------------------------------
-    st.subheader("Total On-Chain Risk")
-    st.metric("Total Risk (0 = floor, 1 = top)", f"{total:.3f}")
-    st.caption(band_label(total))
-
-    # ---- historical risk chart (Cowen-style risk gauge) -------------------
-    st.subheader("Total On-Chain Risk (historical)")
-    risk_line = _risk_history_line(df, series, weights)
-    if risk_line is None:
-        st.caption("No historical risk series available — load data above or wait for live data.")
-    else:
-        st.line_chart(risk_line.to_frame("risk"))
-        span = (f"{pd.to_datetime(risk_line.index.min()).date()} → "
-                f"{pd.to_datetime(risk_line.index.max()).date()} ({risk_line.size} points)")
-        st.caption(f"Risk line span: {span}")
-        st.caption(
-            "0 = floor/accumulation zone · 0.2–0.3 = early-cycle · "
-            "0.3–0.5 = late-cycle warning · > 0.5 = high risk (sell / slow down)."
-        )
 
     # ---- dynamic DCA matrix + interpretation ------------------------------
     st.subheader("Dynamic DCA (risk matrix)")
