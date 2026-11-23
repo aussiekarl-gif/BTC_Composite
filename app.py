@@ -231,18 +231,26 @@ button[data-testid="stSidebarCollapseButton"] {
 
 # Keep each strategy independently selectable. Production remains the default
 # and unchanged; research pages remain isolated from Production.
+MODEL_SELECTOR_KEY = "combined_app_section_selector"
+MODEL_OPTIONS = [
+    "Production",
+    "Research V5.9",
+    "Research 10.0",
+    "Cycle Trading — Research",
+    "Cowen Risk Matrix",
+    "Bottom Signal Timeline",
+]
+# Streamlit can retain widget state across a code redeploy. Remove a retired
+# page selection (or any other stale value) before constructing the radio;
+# otherwise the stored value is no longer a member of the available options.
+if st.session_state.get(MODEL_SELECTOR_KEY) not in MODEL_OPTIONS:
+    st.session_state.pop(MODEL_SELECTOR_KEY, None)
+
 section = st.sidebar.radio(
     "Model",
-    [
-        "Production",
-        "Research V5.9",
-        "Research 10.0",
-        "Cycle Trading — Research",
-        "Cowen Risk Matrix",
-        "Bottom Signal Timeline",
-    ],
+    MODEL_OPTIONS,
     index=0,
-    key="combined_app_section_selector",
+    key=MODEL_SELECTOR_KEY,
     help=(
         "Production is frozen at V5.8.2. V5.9 restores the historical risk-ladder "
         "research. Cycle Trading "
