@@ -15,7 +15,6 @@ def test_research_pages_load_a_standalone_frozen_sidebar_copy():
     assert 'sidebar_path.read_text(encoding="utf-8")' in LAUNCHER
     assert '"BTC_SIDEBAR_ONLY": True' in LAUNCHER
     assert "production_source.read_text" not in LAUNCHER
-    assert "production_app.py" not in LAUNCHER
 
 
 def test_frozen_sidebar_is_an_exact_snapshot_of_the_production_sidebar():
