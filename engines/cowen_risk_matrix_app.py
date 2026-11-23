@@ -336,7 +336,9 @@ def _load_btc_composite_data() -> Optional[pd.DataFrame]:
     """BTC_Composite/data/risk_history.csv — the user's own risk-ladder CSV.
 
     Also merges the earlier MVRZ series from BTC_Composite/data/mvrv_z_score_*.csv
-    so the risk line can span back to ~2010."""
+    so the risk line can span back to ~2010.  Returns a DataFrame indexed by
+    date (DatetimeIndex named "date") so the risk-gauge chart gets a proper
+    timeline on the horizontal axis."""
     f = _repo_root() / "data" / "risk_history.csv"
     if not f.exists():
         return None
@@ -348,7 +350,12 @@ def _load_btc_composite_data() -> Optional[pd.DataFrame]:
     df = df.drop_duplicates(subset=["date"], keep="last").sort_values("date")
     extra = _load_btc_composite_mvrz_series()
     if extra is not None:
-        df = pd.concat([df.set_index("date"), extra.to_frame("mvrz")], axis=1, join="outer").reset_index()
+        # Keep dates as the DatetimeIndex (no reset_index) so the merged
+        # 'mvrz' column and the other series stay date-indexed; the
+        # risk-gauge chart then gets year ticks instead of a 0..N axis.
+        df = pd.concat([df.set_index("date"), extra.to_frame("mvrz")], axis=1, join="outer").sort_index()
+    else:
+        df = df.set_index("date")
     return df
 
 
@@ -384,7 +391,8 @@ def _load_research7_series() -> Optional[pd.DataFrame]:
     out = frames[0]
     for df in frames[1:]:
         out = out.merge(df, on="date", how="outer")
-    return out
+    # Date-indexed so the risk-gauge chart gets a proper timeline.
+    return out.set_index("date").sort_index()
 
 
 def _risk_history_line(df: Optional[pd.DataFrame], series: dict, weights: dict) -> Optional[pd.Series]:
