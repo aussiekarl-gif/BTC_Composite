@@ -45,11 +45,12 @@ def _fetch_market_inputs(btc_start, btc_end, fx_start, bg_start, token):
 # Streamlit UI
 # ================================================================
 
-st.set_page_config(
-    page_title="BTC Dynamic DCA V5.8 FULL",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+if not globals().get("BTC_SIDEBAR_ONLY", False):
+    st.set_page_config(
+        page_title="BTC Dynamic DCA V5.8 FULL",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
 
 # Unified dashboard theme shared by V5.8.2 and V5.9 (UI only).
@@ -540,9 +541,10 @@ if (
     except Exception:
         verified_portfolio_positions = None
 
-st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
-st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
-st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
+if not globals().get("BTC_SIDEBAR_ONLY", False):
+    st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
+    st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
+    st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
 # Sidebar
@@ -818,6 +820,8 @@ with st.sidebar:
 
 
     # ================================================================
+# BTC_SHARED_PRODUCTION_SIDEBAR_END
+
 # Dates / Parameters
 # ================================================================
 
