@@ -116,7 +116,8 @@ def load_audit_master():
         ("provider/difficulty_blockchain_sampled.csv", "source__blockchain_difficulty"),
         ("provider/mvrv_blockchain_daily.csv", "source__blockchain_mvrv"),
     )
-    for digitized_path, chart_col in digitized_artifacts:
+    def _load_optional_digitized(item):
+        digitized_path, chart_col = item
         try:
             digitized_meta = requests.get(
                 f"https://api.github.com/repos/{repo}/contents/{digitized_path}",
@@ -126,17 +127,32 @@ def load_audit_master():
             )
             digitized_meta.raise_for_status()
             digitized_obj = digitized_meta.json()
-            digitized_raw = base64.b64decode(digitized_obj["content"].encode())
+            encoded = digitized_obj.get("content")
+            if not encoded:
+                return chart_col, None
+            digitized_raw = base64.b64decode(encoded.encode())
             digitized = pd.read_csv(io.BytesIO(digitized_raw))
+            if "date" not in digitized.columns or chart_col not in digitized.columns:
+                return chart_col, None
             digitized["date"] = pd.to_datetime(digitized["date"], utc=True, errors="coerce")
             digitized = digitized.dropna(subset=["date"]).set_index("date").sort_index()
-            if chart_col in digitized.columns:
-                chart_values = pd.to_numeric(digitized[chart_col], errors="coerce")
-                df[chart_col] = chart_values.reindex(df.index)
+            return chart_col, pd.to_numeric(digitized[chart_col], errors="coerce")
         except Exception:
             # The main audit master must remain usable if an optional research
             # artifact is missing or temporarily unavailable.
-            pass
+            return chart_col, None
+
+    # These are independent optional sources. Fetch them concurrently so a slow
+    # or unavailable artifact does not serially delay the other four.
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(
+        max_workers=len(digitized_artifacts),
+        thread_name_prefix="bottom-timeline-source",
+    ) as pool:
+        for chart_col, chart_values in pool.map(_load_optional_digitized, digitized_artifacts):
+            if chart_values is not None:
+                df[chart_col] = chart_values.reindex(df.index)
     return df
 
 
