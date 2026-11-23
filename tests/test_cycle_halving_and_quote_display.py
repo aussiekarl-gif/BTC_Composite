@@ -325,13 +325,13 @@ class HalvingCountdownTests(unittest.TestCase):
                 ("2028","2028-04-17","estimated"),
                 ("2032","2032-04-14","estimated"),
                 ("2036","2036-04-11","estimated"),
-                ("2040","2040-04-08","estimated"),
+                ("2040","2040-04-09","estimated"),
             ],
         )
         self.assertEqual(schedule[4]["before_500d"],"2026-12-04")
         self.assertEqual(schedule[4]["after_500d"],"2029-08-30")
-        self.assertEqual(schedule[-1]["before_500d"],"2038-11-25")
-        self.assertEqual(schedule[-1]["after_500d"],"2041-08-21")
+        self.assertEqual(schedule[-1]["before_500d"],"2038-11-26")
+        self.assertEqual(schedule[-1]["after_500d"],"2041-08-22")
 
     def test_long_range_chart_includes_full_history_and_future_2040_review_window(self):
         import pandas as pd
@@ -342,7 +342,7 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertEqual(figure.data[0].x[0],idx[0])
         self.assertEqual(figure.data[0].x[-1],idx[-1])
         self.assertEqual(len(figure.layout.annotations),8)
-        self.assertEqual(str(figure.layout.xaxis.range[1]),"2041-08-21")
+        self.assertEqual(str(figure.layout.xaxis.range[1]),"2041-08-22")
         self.assertEqual(figure.layout.yaxis.type,"log")
 
     def test_long_range_schedule_rejects_invalid_estimates(self):
