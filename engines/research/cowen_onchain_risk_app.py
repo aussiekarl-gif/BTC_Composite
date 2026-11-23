@@ -20,6 +20,7 @@ from engines.research.cowen_onchain_risk import (
     build_existing_raw_candidates,
     prior_only_percentile_risk,
     build_seven_metric_composite,
+    build_six_metric_research_composite,
 )
 
 st.markdown("""
@@ -42,14 +43,14 @@ st.markdown("""
 <div class="cowen-wrap">
  <div class="cowen-kicker">RESEARCH 10.0 • INTO THE CRYPTOVERSE RECONSTRUCTION</div>
  <div class="cowen-heading">On-Chain Metrics Historical Risk</div>
- <div class="cowen-sub">Standalone on-chain risk research page • seven active metrics • two zero-weight diagnostics</div>
+ <div class="cowen-sub">Standalone on-chain risk research page • six-metric experiment • mCTC tracked separately</div>
 </div>
 """, unsafe_allow_html=True)
 
 st.warning(
     "RESEARCH DISPLAY ONLY — this is not Benjamin Cowen's live indicator and does not "
     "reproduce its proprietary transformations. No DCA, buy or sell signal is generated. "
-    "Missing components are left missing; no partial composite is presented as a risk score."
+    "Missing components are left missing; the experimental six-metric score requires all six inputs."
 )
 
 DATA_DIR = ROOT / "data"
@@ -220,45 +221,19 @@ for col, (label, metric, default_weight, _) in zip(slider_cols, COMPONENTS):
                   else "No eligible historical series yet; this component cannot contribute."),
         )
 
-# Reconstruct a complete seven-of-seven score only where all seven active
-# component risk histories exist on the same date. No partial average is charted
-# as Total On-Chain Risk.
-try:
-    composite_history = build_seven_metric_composite(
-        risk_frame,
-        weights={
-            name: float(weight_values[name])
-            for name in (
-                "puell_multiple", "mvrv", "mvrv_z_score", "transaction_fees",
-                "terminal_price", "mctc", "mctc_miner",
-            )
-        },
-    )
-except Exception:
-    composite_history = pd.DataFrame(index=risk_frame.index)
-
-active_component_names = [
-    name for name in (
-        "puell_multiple", "mvrv", "mvrv_z_score", "transaction_fees",
-        "terminal_price", "mctc", "mctc_miner",
-    )
-    if weight_values.get(name, 0) > 0
-]
-complete_now = (
-    not composite_history.empty
-    and latest_date in composite_history.index
-    and pd.notna(composite_history.loc[latest_date, "composite_risk"])
-)
-if complete_now:
-    latest_total = float(composite_history.loc[latest_date, "composite_risk"])
-    st.metric("Total On-Chain Risk", f"{latest_total:.3f}")
+# Experimental six-metric composite; mCTC remains a separate missing seventh component.
+SIX_METRICS = ("puell_multiple", "mvrv", "mvrv_z_score", "transaction_fees", "terminal_price", "mctc")
+six_weights = {name: float(weight_values.get(name, 1.0)) for name in SIX_METRICS}
+six_composite_history = build_six_metric_research_composite(risk_frame, weights=six_weights)
+six_complete_now = (latest_date is not None and latest_date in six_composite_history.index and pd.notna(six_composite_history.loc[latest_date, "composite_risk"]))
+if six_complete_now:
+    latest_total = float(six_composite_history.loc[latest_date, "composite_risk"])
+    st.metric("Experimental Six-Metric Risk", f"{latest_total:.3f}")
 else:
-    st.metric("Total On-Chain Risk", "INCOMPLETE")
-    st.caption(
-        f"{active_available}/7 active components currently have data on the common "
-        "latest date. The seven-component total is withheld until all seven are valid."
-    )
-
+    st.metric("Experimental Six-Metric Risk", "INCOMPLETE")
+    count = int(six_composite_history.loc[latest_date, "available_component_count"]) if latest_date in six_composite_history.index else 0
+    st.caption(f"{count}/6 components valid on the common latest date. No partial score is substituted.")
+st.caption("Experimental equal-weight six-of-six score; excludes mCTC and is not Cowen's proprietary indicator. Research only; backtesting and forward validation required.")
 control1, control2, control3 = st.columns([1, 1, 1.6])
 with control1:
     renormalize_average = st.toggle(
@@ -313,7 +288,7 @@ available_chart_metrics = [
 ]
 chart_view = st.selectbox(
     "Historical chart view",
-    ["BTC price + selected component", "Risk components (small multiples)"],
+    ["BTC price + six-metric risk", "BTC price + selected component", "Risk components (small multiples)"],
     index=0,
     key="cowen_chart_view",
     help="The default shows one risk series at a time to avoid overlapping noisy lines.",
@@ -325,7 +300,10 @@ selected_metric = st.selectbox(
     key="cowen_selected_component",
     disabled=(not available_chart_metrics or chart_view != "BTC price + selected component"),
 )
-if chart_view == "BTC price + selected component" and selected_metric:
+if chart_view == "BTC price + six-metric risk" and six_complete_now:
+    six_line = six_composite_history["composite_risk"].dropna()
+    fig.add_trace(go.Scatter(x=six_line.index, y=six_line.values, name="Experimental Six-Metric Risk (6/6)", mode="lines", line=dict(width=2.4, color="#e56b72"), hovertemplate="%{x|%d %b %Y}<br>Six-Metric Risk: %{y:.1%}<extra></extra>"), secondary_y=True)
+elif chart_view == "BTC price + selected component" and selected_metric:
     values = risk_frame[selected_metric].dropna()
     fig.add_trace(
         go.Scatter(
@@ -357,13 +335,13 @@ elif chart_view == "Risk components (small multiples)":
             mini.update_yaxes(range=[0, 1], tickformat=".0%")
             st.plotly_chart(mini, use_container_width=True, config={"displaylogo": False})
 
-if not composite_history.empty and "composite_risk" in composite_history:
-    total_line = composite_history["composite_risk"].dropna()
+if not six_composite_history.empty and "composite_risk" in six_composite_history:
+    total_line = six_composite_history["composite_risk"].dropna()
     if not total_line.empty:
         fig.add_trace(
             go.Scatter(
                 x=total_line.index, y=total_line.values,
-                name="Total On-Chain Risk (7/7 only)",
+                name="Experimental Six-Metric Risk (6/6 only)",
                 mode="lines", line=dict(width=2.6, color="#e56b72"),
                 hovertemplate="%{x|%d %b %Y}<br>Total Risk: %{y:.3f}<extra></extra>",
             ),
@@ -443,9 +421,9 @@ if price_series is None:
     st.info("BTC price history is not present in the currently loaded source snapshot.")
 if not complete_now:
     st.warning(
-        "Total On-Chain Risk is not plotted: mCTC and/or another active component "
-        "is not yet available for every date. Individual available risk histories "
-        "remain visible; no partial composite is substituted."
+        "The six-metric experimental score is not plotted because one or more inputs "
+        "are not available for every date. Individual available risk histories "
+        "remain visible; no partial composite is substituted. mCTC remains unavailable."
     )
 
 st.subheader("Component readings and source provenance")
