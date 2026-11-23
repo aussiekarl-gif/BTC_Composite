@@ -99,6 +99,31 @@ class StreamlitOfflineSmoke(unittest.TestCase):
                          "Cycle Trading — Research", "Cowen Risk Matrix"):
             self.assertIn(retained, options)
 
+    def test_retired_model_radio_state_is_reset_after_deploy(self):
+        # A browser session can retain the removed V6.0 radio value when the
+        # app redeploys. Exercise the exact guard pattern used by app.py.
+        page_source = r'''
+import streamlit as st
+MODEL_SELECTOR_KEY = "combined_app_section_selector"
+MODEL_OPTIONS = [
+    "Production", "Research V5.9", "Research 10.0",
+    "Cycle Trading — Research", "Cowen Risk Matrix",
+    "Bottom Signal Timeline",
+]
+if st.session_state.get(MODEL_SELECTOR_KEY) not in MODEL_OPTIONS:
+    st.session_state.pop(MODEL_SELECTOR_KEY, None)
+section = st.sidebar.radio("Model", MODEL_OPTIONS, key=MODEL_SELECTOR_KEY)
+st.write(section)
+'''
+        page = AppTest.from_string(page_source, default_timeout=25).run()
+        self.assertFalse(page.exception)
+        page.session_state["combined_app_section_selector"] = "Research V6.0"
+        page = page.run()
+        self.assertFalse(page.exception, repr([x.message for x in page.exception]))
+        self.assertEqual(
+            page.radio(key="combined_app_section_selector").value, "Production"
+        )
+
     def test_streamlit_date_widget_persists_across_sessions_without_portfolio_write(self):
         # The real Production & Research Streamlit pages use these helpers
         # and distinct widget keys. This is the isolated INTERACTIVE UI
