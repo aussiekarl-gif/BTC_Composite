@@ -111,6 +111,35 @@ class DynamicWmaDcaTests(unittest.TestCase):
             self.assertGreaterEqual(row["remaining_cash_pct_initial_cash"], 0.0)
             self.assertLessEqual(row["max_drawdown_pct"], 0.0)
 
+
+    def test_report_exposes_whether_discount_tiers_were_reached_and_used(self):
+        start = date(2020, 1, 6)
+        rows = []
+        for i in range(104):
+            day = start + timedelta(weeks=i)
+            rows.append({"date": day, "signal_date": day-timedelta(days=1),
+                         "btc_price_aud": 100000.0, "ratio_to_200wma": .75})
+        result = study.simulate(rows, policy="B_stepped")
+        self.assertEqual(result["discount_tier_week_counts"], [0, 0, 104, 0])
+        self.assertEqual(result["discount_tier_buy_counts"][2], result["buy_count"])
+        self.assertEqual(result["discount_tier_buy_counts"][3], 0)
+        self.assertAlmostEqual(result["discount_tier_spend_aud"][2], result["spent_aud"])
+        self.assertAlmostEqual(result["max_observed_discount_pct_below_200wma"], 25.0)
+
+    def test_shallow_discount_explains_identical_ladder_outcomes(self):
+        start = date(2020, 1, 6)
+        rows = []
+        for i in range(104):
+            day = start + timedelta(weeks=i)
+            rows.append({"date": day, "signal_date": day-timedelta(days=1),
+                         "btc_price_aud": 100000.0, "ratio_to_200wma": .90})
+        current = study.simulate(rows, policy="current_2_5pct")
+        aggressive = study.simulate(rows, policy="C_aggressive")
+        self.assertEqual(current["discount_tier_week_counts"], [104, 0, 0, 0])
+        self.assertEqual(aggressive["discount_tier_week_counts"], [104, 0, 0, 0])
+        self.assertEqual(current["btc_units"], aggressive["btc_units"])
+        self.assertEqual(aggressive["discount_tier_buy_counts"], [aggressive["buy_count"], 0, 0, 0])
+
     def test_wma_excludes_the_signal_sunday_close(self):
         index = pd.date_range("2013-01-06", periods=400 * 7 + 2, freq="D", tz="UTC")
         prices = pd.Series([100.0 + i for i in range(len(index))], index=index)
