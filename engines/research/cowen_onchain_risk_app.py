@@ -225,14 +225,15 @@ for col, (label, metric, default_weight, _) in zip(slider_cols, COMPONENTS):
 SIX_METRICS = ("puell_multiple", "mvrv", "mvrv_z_score", "transaction_fees", "terminal_price", "mctc")
 six_weights = {name: float(weight_values.get(name, 1.0)) for name in SIX_METRICS}
 six_composite_history = build_six_metric_research_composite(risk_frame, weights=six_weights)
-six_complete_now = (latest_date is not None and latest_date in six_composite_history.index and pd.notna(six_composite_history.loc[latest_date, "composite_risk"]))
+six_valid_history = six_composite_history["composite_risk"].dropna() if not six_composite_history.empty else pd.Series(dtype=float)
+six_latest_date = six_valid_history.index.max() if not six_valid_history.empty else None
+six_complete_now = six_latest_date is not None
 if six_complete_now:
-    latest_total = float(six_composite_history.loc[latest_date, "composite_risk"])
-    st.metric("Experimental Six-Metric Risk", f"{latest_total:.3f}")
+    latest_total = float(six_valid_history.loc[six_latest_date])
+    st.metric("Experimental Six-Metric Risk", f"{latest_total:.3f}", help=f"Latest complete six-input date: {six_latest_date:%d %b %Y}")
 else:
     st.metric("Experimental Six-Metric Risk", "INCOMPLETE")
-    count = int(six_composite_history.loc[latest_date, "available_component_count"]) if latest_date in six_composite_history.index else 0
-    st.caption(f"{count}/6 components valid on the common latest date. No partial score is substituted.")
+    st.caption("All six component histories must overlap. No partial score is substituted.")
 st.caption("Experimental equal-weight six-of-six score; excludes mCTC and is not Cowen's proprietary indicator. Research only; backtesting and forward validation required.")
 control1, control2, control3 = st.columns([1, 1, 1.6])
 with control1:
