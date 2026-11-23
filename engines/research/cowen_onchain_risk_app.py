@@ -208,9 +208,16 @@ slider_cols = st.columns(9, gap="small")
 for col, (label, metric, default_weight, _) in zip(slider_cols, COMPONENTS):
     with col:
         metric_available = metric in risk_frame.columns and risk_frame[metric].notna().any()
+        # The experimental six-metric builder requires strictly positive
+        # weights. Keep its six controls above zero; zero-weight diagnostics
+        # retain the original 0–1 range.
+        minimum_weight = 0.05 if metric in (
+            "puell_multiple", "mvrv", "mvrv_z_score",
+            "transaction_fees", "terminal_price", "mctc",
+        ) else 0.0
         weight_values[metric] = st.slider(
             short_names.get(metric, label),
-            min_value=0.0,
+            min_value=minimum_weight,
             max_value=1.0,
             value=float(default_weight),
             step=0.05,
@@ -346,14 +353,15 @@ if ma_days and price_series is not None:
         ),
         secondary_y=False,
     )
-if ma_days and not risk_frame.empty:
-    active_lines = [
-        risk_frame[name] for name in active_component_names
-        if name in risk_frame.columns
-    ]
-    if active_lines:
-        mean_risk = pd.concat(active_lines, axis=1).mean(axis=1, skipna=False)
-        risk_ma = mean_risk.rolling(ma_days, min_periods=ma_days).mean().dropna()
+if ma_days and not six_composite_history.empty:
+    # Use the same complete six-of-six score as the main chart; never average
+    # a changing subset of components for the moving-average overlay.
+    risk_ma = (
+        six_composite_history["composite_risk"]
+        .rolling(ma_days, min_periods=ma_days)
+        .mean()
+        .dropna()
+    )
         if renormalize_average and not risk_ma.empty:
             lo, hi = float(risk_ma.min()), float(risk_ma.max())
             if hi > lo:
