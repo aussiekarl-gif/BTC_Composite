@@ -121,6 +121,53 @@ def build_seven_metric_composite(
     return out
 
 
+
+SIX_METRIC_RESEARCH_SET = (
+    "puell_multiple",
+    "mvrv",
+    "mvrv_z_score",
+    "transaction_fees",
+    "terminal_price",
+    "mctc",
+)
+
+
+def build_six_metric_research_composite(
+    component_scores: pd.DataFrame,
+    *,
+    weights: Mapping[str, float] | None = None,
+) -> pd.DataFrame:
+    """Build an explicitly experimental six-of-six composite, never a Cowen score."""
+    if not isinstance(component_scores, pd.DataFrame):
+        raise TypeError("component_scores must be a pandas DataFrame")
+    if not component_scores.index.is_monotonic_increasing or component_scores.index.has_duplicates:
+        raise ValueError("component_scores index must be sorted and unique")
+    supplied = dict({name: 1.0 for name in SIX_METRIC_RESEARCH_SET} if weights is None else weights)
+    if set(supplied) != set(SIX_METRIC_RESEARCH_SET):
+        raise ValueError("weights must specify exactly the six research metrics")
+    if any(not np.isfinite(float(v)) or float(v) <= 0 for v in supplied.values()):
+        raise ValueError("all six research metric weights must be finite and positive")
+    scores = component_scores.reindex(columns=SIX_METRIC_RESEARCH_SET).apply(pd.to_numeric, errors="coerce")
+    invalid = scores.notna() & ((scores < 0.0) | (scores > 1.0))
+    if invalid.any().any():
+        raise ValueError("component risk scores must be within [0, 1]")
+    count = scores.notna().sum(axis=1)
+    complete = count.eq(len(SIX_METRIC_RESEARCH_SET))
+    weights_series = pd.Series(supplied, dtype=float)
+    weighted_sum = scores.mul(weights_series, axis=1).sum(axis=1, min_count=len(SIX_METRIC_RESEARCH_SET))
+    out = pd.DataFrame(index=scores.index)
+    out["available_component_count"] = count.astype(int)
+    out["component_coverage_pct"] = 100.0 * count / len(SIX_METRIC_RESEARCH_SET)
+    out["partial_mean_diagnostic_only"] = scores.mean(axis=1, skipna=True)
+    out["composite_risk"] = (weighted_sum / float(weights_series.sum())).where(complete)
+    out["status"] = np.where(complete, "COMPLETE — SIX-METRIC RESEARCH ONLY", "INCOMPLETE — NOT INVESTABLE")
+    out["missing_components"] = [
+        ", ".join(name for name in SIX_METRIC_RESEARCH_SET if pd.isna(row[name]))
+        for _, row in scores.iterrows()
+    ]
+    return out
+
+
 def component_contributions(
     component_scores: pd.DataFrame,
     *,
