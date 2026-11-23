@@ -259,6 +259,39 @@ st.caption(
     + halving_countdown["source"] + " • " + halving_countdown["estimate_basis"] + "."
 )
 
+# Long-range cycle context: historical confirmed halvings plus future estimates.
+# This is a read-only research visual; it does not feed any decision or sizing logic.
+with st.expander("200WMA, halving dates and BTC price chart", expanded=False):
+    try:
+        next_halving_date = str(halving_countdown["estimated_date_utc"])[:10]
+        halving_schedule = build_halving_schedule(next_halving_date, final_year=2040)
+        st.plotly_chart(
+            build_halving_horizon_chart(daily, halving_schedule),
+            use_container_width=True,
+            config={"displayModeBar": True},
+            key="cycle_long_range_halving_horizon",
+        )
+        halving_table = pd.DataFrame(halving_schedule)
+        halving_table = halving_table.rename(columns={
+            "year": "Halving year",
+            "date": "Approx. halving date (UTC)",
+            "status": "Date status",
+            "before_500d": "500 days before",
+            "after_500d": "500 days after",
+        })
+        st.dataframe(halving_table, use_container_width=True, hide_index=True)
+        st.caption(
+            "Historical dates are confirmed. Future dates are estimates based on "
+            "the current block-height estimate and an average 10-minute block interval. "
+            "The shaded regions mark 500 days before and after each halving. "
+            "No future BTC prices are projected and no trading rules use this chart."
+        )
+    except Exception as exc:
+        st.warning(
+            "The long-range halving chart is temporarily unavailable: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
 tabs=st.tabs(["Trading decision", "My Portfolio — Buy & Sell", "Historical sell & buyback"])
 
 with tabs[0]:
