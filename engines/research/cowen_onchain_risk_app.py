@@ -19,7 +19,6 @@ from engines.research.cowen_onchain_risk import (
     ZERO_WEIGHT_DIAGNOSTICS,
     build_existing_raw_candidates,
     prior_only_percentile_risk,
-    build_seven_metric_composite,
     build_six_metric_research_composite,
 )
 
@@ -335,19 +334,6 @@ elif chart_view == "Risk components (small multiples)":
             )
             mini.update_yaxes(range=[0, 1], tickformat=".0%")
             st.plotly_chart(mini, use_container_width=True, config={"displaylogo": False})
-
-if not six_composite_history.empty and "composite_risk" in six_composite_history:
-    total_line = six_composite_history["composite_risk"].dropna()
-    if not total_line.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=total_line.index, y=total_line.values,
-                name="Experimental Six-Metric Risk (6/6 only)",
-                mode="lines", line=dict(width=2.6, color="#e56b72"),
-                hovertemplate="%{x|%d %b %Y}<br>Total Risk: %{y:.3f}<extra></extra>",
-            ),
-            secondary_y=True,
-        )
 
 ma_days = {"7D": 7, "30D": 30, "90D": 90, "365D": 365}.get(moving_average)
 if ma_days and price_series is not None:
