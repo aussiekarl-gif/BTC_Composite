@@ -259,6 +259,26 @@ section = st.sidebar.radio(
 # Ensure audit quota guards never leak into either user-facing model.
 uninstall_bgeometrics_guard()
 
+# Keep the Production sidebar identical on every dashboard. Execute only the
+# Production module's setup + sidebar section on research pages; stop before
+# dates, market-data downloads, model calculations, or Production main content.
+if section != "Production":
+    production_path = Path(__file__).parent / "engines" / "production" / "production_app.py"
+    production_source = production_path.read_text(encoding="utf-8")
+    sidebar_end = "# BTC_SHARED_PRODUCTION_SIDEBAR_END"
+    if sidebar_end not in production_source:
+        st.error("Shared Production sidebar section is unavailable.")
+        st.stop()
+    sidebar_source = production_source.split(sidebar_end, 1)[0]
+    sidebar_globals = {
+        "__name__": "__main__",
+        "__file__": str(production_path),
+        "__package__": None,
+        "BTC_SIDEBAR_ONLY": True,
+    }
+    sidebar_code = compile(sidebar_source, str(production_path), "exec")
+    exec(sidebar_code, sidebar_globals)
+
 engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Research 10.0": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
