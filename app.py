@@ -280,11 +280,12 @@ exec(sidebar_code, sidebar_globals)
 # The snapshot renders the complete Production page itself. Other modes render
 # their own isolated page after the shared Production sidebar has been drawn.
 engine_paths = {
+    "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Research 10.0": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
     "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
 }
-engine_path = engine_paths.get(section)
+engine_path = engine_paths.get(section) if section != "Production" else None
 if engine_path is not None:
     if not engine_path.exists():
         st.error(f"Missing engine file: {engine_path}")
