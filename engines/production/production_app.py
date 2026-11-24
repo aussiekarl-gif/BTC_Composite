@@ -45,12 +45,11 @@ def _fetch_market_inputs(btc_start, btc_end, fx_start, bg_start, token):
 # Streamlit UI
 # ================================================================
 
-if not globals().get("BTC_SIDEBAR_ONLY", False):
-    st.set_page_config(
-        page_title="BTC Dynamic DCA V5.8 FULL",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
+st.set_page_config(
+    page_title="BTC Dynamic DCA V5.8 FULL",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 
 # Unified dashboard theme shared by V5.8.2 and V5.9 (UI only).
@@ -495,67 +494,56 @@ portfolio_verified = False
 broker_snapshot_error = None
 broker_snapshot_ledger_warning = None
 
-if globals().get("BTC_SIDEBAR_ONLY", False):
-    # Research dashboards need the Production controls, not its portfolio.
-    # Avoid browser recovery scans and durable Google/SQLite reads on every
-    # research-page rerun. Production itself retains the full verification path.
-    portfolio_snapshots = []
-    browser_portfolio = {}
-    server_portfolio = {}
-    shared_portfolio = {}
-    portfolio_storage_error = "Portfolio loading is intentionally skipped in sidebar-only mode."
-else:
-    portfolio_snapshots = _load_portfolio_snapshots(browser_state)
-    browser_portfolio = _load_shared_portfolio(browser_state)
-    server_portfolio, portfolio_storage_error = load_portfolio()
-    shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
-    if server_portfolio.get("broker_snapshot"):
-        shared_portfolio = dict(shared_portfolio) if isinstance(shared_portfolio, dict) else {}
-        shared_portfolio["broker_snapshot"] = server_portfolio["broker_snapshot"]
-    # DCA Today may use only the authoritative durable portfolio. Browser snapshots
-    # remain available to My Portfolio recovery, but never authorise a cash recommendation.
-    if not portfolio_storage_error and isinstance(server_portfolio, dict):
-        _broker_snapshot = server_portfolio.get("broker_snapshot")
-        if _broker_snapshot:
-            try:
-                verified_portfolio_positions = snapshot_as_portfolio_positions(_broker_snapshot)
-                portfolio_verified = True
-                _ledger_candidate = server_portfolio
-                if not _ledger_candidate.get("rows") and isinstance(browser_portfolio, dict):
-                    _ledger_candidate = browser_portfolio
-                if _ledger_candidate.get("rows"):
-                    try:
-                        _ledger_positions = portfolio_positions(_ledger_candidate)
-                        if abs(float(_ledger_positions["ibit_units"]) - float(verified_portfolio_positions["ibit_units"])) > 0.5:
-                            broker_snapshot_ledger_warning = (
-                                f"Broker snapshot shows {verified_portfolio_positions['ibit_units']:,.0f} IBIT units; "
-                                f"the selected transaction ledger records {_ledger_positions['ibit_units']:,.0f}. "
-                                "Current cash sizing uses the dated broker snapshot; reconcile the historical ledger separately."
-                            )
-                    except (ValueError, TypeError, KeyError) as ledger_exc:
-                        broker_snapshot_ledger_warning = (
-                            f"The historical transaction ledger is not currently reconcilable ({ledger_exc}). "
-                            "Current cash sizing uses the separate dated broker snapshot."
-                        )
-            except (ValueError, TypeError, KeyError) as exc:
-                broker_snapshot_error = str(exc)
-    if (
-        not portfolio_verified
-        and not portfolio_storage_error
-        and isinstance(server_portfolio, dict)
-        and isinstance(server_portfolio.get("rows"), list)
-        and len(server_portfolio.get("rows", [])) > 0
-    ):
+portfolio_snapshots = _load_portfolio_snapshots(browser_state)
+browser_portfolio = _load_shared_portfolio(browser_state)
+server_portfolio, portfolio_storage_error = load_portfolio()
+shared_portfolio = server_portfolio if server_portfolio.get("rows") else browser_portfolio
+if server_portfolio.get("broker_snapshot"):
+    shared_portfolio = dict(shared_portfolio) if isinstance(shared_portfolio, dict) else {}
+    shared_portfolio["broker_snapshot"] = server_portfolio["broker_snapshot"]
+# DCA Today may use only the authoritative durable portfolio. Browser snapshots
+# remain available to My Portfolio recovery, but never authorise a cash recommendation.
+if not portfolio_storage_error and isinstance(server_portfolio, dict):
+    _broker_snapshot = server_portfolio.get("broker_snapshot")
+    if _broker_snapshot:
         try:
-            verified_portfolio_positions = portfolio_positions(server_portfolio)
+            verified_portfolio_positions = snapshot_as_portfolio_positions(_broker_snapshot)
             portfolio_verified = True
-        except Exception:
-            verified_portfolio_positions = None
+            _ledger_candidate = server_portfolio
+            if not _ledger_candidate.get("rows") and isinstance(browser_portfolio, dict):
+                _ledger_candidate = browser_portfolio
+            if _ledger_candidate.get("rows"):
+                try:
+                    _ledger_positions = portfolio_positions(_ledger_candidate)
+                    if abs(float(_ledger_positions["ibit_units"]) - float(verified_portfolio_positions["ibit_units"])) > 0.5:
+                        broker_snapshot_ledger_warning = (
+                            f"Broker snapshot shows {verified_portfolio_positions['ibit_units']:,.0f} IBIT units; "
+                            f"the selected transaction ledger records {_ledger_positions['ibit_units']:,.0f}. "
+                            "Current cash sizing uses the dated broker snapshot; reconcile the historical ledger separately."
+                        )
+                except (ValueError, TypeError, KeyError) as ledger_exc:
+                    broker_snapshot_ledger_warning = (
+                        f"The historical transaction ledger is not currently reconcilable ({ledger_exc}). "
+                        "Current cash sizing uses the separate dated broker snapshot."
+                    )
+        except (ValueError, TypeError, KeyError) as exc:
+            broker_snapshot_error = str(exc)
+if (
+    not portfolio_verified
+    and not portfolio_storage_error
+    and isinstance(server_portfolio, dict)
+    and isinstance(server_portfolio.get("rows"), list)
+    and len(server_portfolio.get("rows", [])) > 0
+):
+    try:
+        verified_portfolio_positions = portfolio_positions(server_portfolio)
+        portfolio_verified = True
+    except Exception:
+        verified_portfolio_positions = None
 
-if not globals().get("BTC_SIDEBAR_ONLY", False):
-    st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
-    st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
-    st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
+st.title("Bitcoin Dynamic DCA V5.8.2 FULL — Smart DCA")
+st.caption("Version 5.8.2 FULL • Risk-only sizing • Cycle context • Persistent portfolio")
+st.caption("Simple three-mode app • Backtest • DCA Today • My Portfolio")
 
 # ------------------------------------------------
 # Sidebar
@@ -661,19 +649,12 @@ with st.sidebar:
     elif mode == "DCA Today":
         st.header("DCA Today")
         if not portfolio_verified:
-            if globals().get("BTC_SIDEBAR_ONLY", False):
-                st.info(
-                    "Production portfolio verification is intentionally skipped while "
-                    "its sidebar is displayed on a research dashboard. No Production "
-                    "purchase recommendation or trade calculation is active here."
-                )
-            else:
-                st.error(
-                    "PURCHASE RECOMMENDATION BLOCKED — the authoritative Google/SQLite "
-                    "portfolio could not be verified. Browser recovery data is not trusted "
-                    "for cash sizing. Market data and risk signals remain available; "
-                    "restore or verify the saved portfolio in My Portfolio, then reload."
-                )
+            st.error(
+                "PURCHASE RECOMMENDATION BLOCKED — the authoritative Google/SQLite "
+                "portfolio could not be verified. Browser recovery data is not trusted "
+                "for cash sizing. Market data and risk signals remain available; "
+                "restore or verify the saved portfolio in My Portfolio, then reload."
+            )
         elif verified_portfolio_positions.get("broker_snapshot"):
             _bs = verified_portfolio_positions["broker_snapshot"]
             st.info(
@@ -838,7 +819,6 @@ with st.sidebar:
 
 
     # ================================================================
-# BTC_SHARED_PRODUCTION_SIDEBAR_END
 
 # Dates / Parameters
 # ================================================================

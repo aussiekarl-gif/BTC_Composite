@@ -259,45 +259,21 @@ section = st.sidebar.radio(
 # Ensure audit quota guards never leak into either user-facing model.
 uninstall_bgeometrics_guard()
 
-# Production keeps its original full UI. Research modes use a tiny, static
-# visual copy of the fixed Production sidebar; never import or execute the
-# Production snapshot/model on research-page reruns.
-if section == "Production":
-    sidebar_path = Path(__file__).parent / "engines" / "shared" / "production_sidebar_snapshot.py"
-    if not sidebar_path.exists():
-        st.error("Production sidebar snapshot is unavailable.")
-        st.stop()
-
-    sidebar_globals = {
-        "__name__": "__main__",
-        "__file__": str(sidebar_path),
-        "__package__": None,
-        "BTC_SIDEBAR_ONLY": False,
-    }
-    sidebar_code = compile(sidebar_path.read_text(encoding="utf-8"), str(sidebar_path), "exec")
-    exec(sidebar_code, sidebar_globals)
-else:
-    from engines.shared.static_production_sidebar import render_static_production_sidebar
-    render_static_production_sidebar(st)
-
-# Production snapshot renders its complete page. Research modes render their
-# own isolated page after the lightweight static sidebar.
-engine_paths = {
+engine_path = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Research 10.0": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
     "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
-}
-engine_path = engine_paths.get(section) if section != "Production" else None
-if engine_path is not None:
-    if not engine_path.exists():
-        st.error(f"Missing engine file: {engine_path}")
-        st.stop()
+}[section]
 
-    engine_globals = {
-        "__name__": "__main__",
-        "__file__": str(engine_path),
-        "__package__": None,
-    }
-    code = compile(engine_path.read_text(encoding="utf-8"), str(engine_path), "exec")
-    exec(code, engine_globals)
+if not engine_path.exists():
+    st.error(f"Missing engine file: {engine_path}")
+    st.stop()
+
+engine_globals = {
+    "__name__": "__main__",
+    "__file__": str(engine_path),
+    "__package__": None,
+}
+code = compile(engine_path.read_text(encoding="utf-8"), str(engine_path), "exec")
+exec(code, engine_globals)
