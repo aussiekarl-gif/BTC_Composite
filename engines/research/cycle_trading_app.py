@@ -239,9 +239,12 @@ with elapsed_col:
                else "Waiting for verified block event")
 with chart_col:
     if halving_timeline:
-        st.caption(f"Halving cycle progress · {halving_timeline['progress_pct']:.1f}% elapsed")
+        halving_schedule_2040 = build_halving_schedule(
+            halving_countdown["estimated_date_utc"], final_year=2040,
+        )
+        st.caption("Halving cycle timeline · confirmed 2024 and approximate future halvings through 2040 · shaded ±500-day review windows")
         st.plotly_chart(
-            build_halving_progress_bar(halving_timeline),
+            build_halving_progress_bar(halving_timeline, halving_schedule_2040),
             use_container_width=True,
             config={"displayModeBar": False},
             key="cycle_halving_timeline_bar",
@@ -1248,9 +1251,7 @@ if cycle_section == "Trading decision":
         )
         st.subheader("Long-range halving cycle map · through 2040")
         hist=market["price_history"]
-        halving_schedule=build_halving_schedule(
-            halving_countdown["estimated_date_utc"], final_year=2040,
-        )
+        halving_schedule=halving_schedule_2040
         schedule_table=pd.DataFrame([{
             "Halving": f"{row['year']} halving",
             "Approx. date (UTC)": row["date"],
