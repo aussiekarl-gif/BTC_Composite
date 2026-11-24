@@ -103,6 +103,7 @@ class PublicationGuardTests(unittest.TestCase):
         result = publish(repo=self.worker, verify=lambda: verified.append(True), retry_delay=0)
         self.assertEqual(result, "PUBLISHED_VERIFIED_PAPER_DATA")
         self.assertEqual(len(verified), 1)
+        git(self.other, "fetch", "origin", "main")
         self.assertIn(
             "new V5.9 paper signal",
             git(self.other, "show", "origin/main:" + signal_path),
