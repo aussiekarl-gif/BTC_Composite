@@ -40,7 +40,10 @@ on:
       - '.github/workflows/research_forward_cycle_tape.yml'
   workflow_dispatch:
   schedule:
-    # 12:25 UTC = 22:25 Brisbane. Last UTC day is complete.
+    # 06:25 UTC (16:25 Brisbane) is an earlier same-day fallback; 12:25 UTC remains primary.
+    # Both attempts serialize in the same concurrency group. The recorder still
+    # accepts only the latest completed prior UTC close; duplicates are no-ops and gaps are never backfilled.
+    - cron: '25 6 * * *'
     - cron: '25 12 * * *'
 
 permissions:
