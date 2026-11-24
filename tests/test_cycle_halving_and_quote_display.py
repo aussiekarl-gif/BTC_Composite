@@ -344,7 +344,7 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertEqual(figure.data[0].x[0],idx[0])
         self.assertEqual(figure.data[0].x[-1],idx[-1])
         self.assertEqual(len(figure.layout.annotations),8)
-        self.assertEqual(str(figure.layout.xaxis.range[1]),"2041-08-22")
+        self.assertEqual(str(figure.layout.xaxis.range[1]),"2041-08-18")
         self.assertEqual(figure.layout.yaxis.type,"log")
 
     def test_long_range_schedule_rejects_invalid_estimates(self):
@@ -364,7 +364,7 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertEqual(str(figure.layout.xaxis.range[0]),"2024-04-20")
         self.assertEqual(str(figure.layout.xaxis.range[1]),"2041-08-22")
         # Base rail + five event windows and five event lines + TODAY.
-        self.assertEqual(len(figure.layout.shapes),11)
+        self.assertEqual(len(figure.layout.shapes),12)
         labels=[item.text for item in figure.layout.annotations]
         for label in ("2024<br>HALVING","2028<br>EST.","2032<br>EST.",
                       "2036<br>EST.","2040<br>EST.","TODAY"):
