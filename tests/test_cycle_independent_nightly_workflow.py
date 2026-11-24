@@ -40,9 +40,15 @@ class IndependentNightlyHealthWorkflowTests(unittest.TestCase):
         self.assertNotIn("steps.capture_validation",content)
         self.assertNotIn("steps.readiness",content)
 
-    def test_existing_one_nightly_schedule_preserved_and_no_send(self):
+    def test_redundant_daily_schedule_is_serialized_and_no_send(self):
+        # An earlier same-day retry gives the delayed daily capture another
+        # opportunity before UTC rollover. Both attempts share one queue.
+        self.assertIn("cron: '25 6 * * *'",self.source)
         self.assertIn("cron: '25 12 * * *'",self.source)
-        self.assertEqual(self.source.count("cron:"),1)
+        self.assertEqual(self.source.count("cron:"),2)
+        self.assertIn("group: research-cycle-forward-signal-tape",self.source)
+        self.assertIn("cancel-in-progress: false",self.source)
+        self.assertIn("python -m engines.research.cycle_forward_publish_guard",self.source)
         self.assertNotIn("ntfy.sh",self.source)
         self.assertNotIn("requests.post",self.source)
 
