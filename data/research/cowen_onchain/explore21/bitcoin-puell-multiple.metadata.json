@@ -5,11 +5,11 @@
   "source_csv_url": "https://charts.explore21.com/data/bitcoin-puell-multiple.csv",
   "method_version": 1,
   "license": "CC BY 4.0",
-  "attribution": "Explore21 Charts, https://charts.explore21.com/bitcoin-puell-multiple, accessed 2026-11-23",
-  "retrieved_at_utc": "2026-11-23T10:53:58.297846+00:00",
+  "attribution": "Explore21 Charts, https://charts.explore21.com/bitcoin-puell-multiple, accessed 2026-11-24",
+  "retrieved_at_utc": "2026-11-24T14:52:08.053149+00:00",
   "first_date_utc": "2012-08-16",
-  "last_date_utc": "2026-11-22",
-  "observations": 5212,
+  "last_date_utc": "2026-11-20",
+  "observations": 5210,
   "columns": [
     "puell_multiple",
     "issuance_btc",
@@ -24,6 +24,6 @@
     "issuance_usd_365d_avg": 0,
     "btc_close_usd": 0
   },
-  "sha256_csv": "90a3ac08d75d0df3f8e3f512f0ebb4576b35da077a3882a0ca3435161c95ac40",
+  "sha256_csv": "a006313310811fc9bc0fc9c42f151a18ecb48864a09125567aac32fc4848ea0f",
   "historical_vintage_note": "Explore21's published point-in-time vintages begin 2026-11-18; earlier historical rows are not verified historical vintages."
 }

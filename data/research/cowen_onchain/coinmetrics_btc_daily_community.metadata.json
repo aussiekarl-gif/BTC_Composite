@@ -22,11 +22,11 @@
     "SplyCur"
   ],
   "first_date_utc": "2009-01-03",
-  "last_date_utc": "2026-11-22",
-  "observations": 6533,
-  "retrieved_at_utc": "2026-11-23T10:54:00.083030+00:00",
+  "last_date_utc": "2026-11-23",
+  "observations": 6534,
+  "retrieved_at_utc": "2026-11-24T14:52:11.502811+00:00",
   "license": "Coin Metrics Community Data \u2014 CC BY-NC 4.0; non-commercial use only; attribution required",
-  "sha256_csv": "0e85eabce1e8f1f42719239f0efbbd943d9e5874ca3e3f6981cac304554b617b",
+  "sha256_csv": "3016c4ff054cf4652e217c8b38c58f9c504fcfcb5c32009c72a30e9453e9d6b6",
   "missing_values_by_metric": {
     "CapMVRVCur": 561,
     "IssTotUSD": 561,

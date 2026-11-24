@@ -5,10 +5,10 @@
   "source_csv_url": "https://dataset.aethereal.top/files/bitcoin-network-daily.csv",
   "license": "Free for research and education; not a blanket commercial redistribution licence",
   "attribution": "Aethereal (2026), Bitcoin Network Daily, https://dataset.aethereal.top/datasets/bitcoin-network-daily",
-  "retrieved_at_utc": "2026-11-23T10:54:00.795850+00:00",
+  "retrieved_at_utc": "2026-11-24T14:52:13.370849+00:00",
   "first_date_utc": "2009-01-03",
-  "last_date_utc": "2026-11-22",
-  "observations": 6533,
+  "last_date_utc": "2026-11-23",
+  "observations": 6534,
   "columns": [
     "price_usd",
     "hashrate_ths",
@@ -37,5 +37,5 @@
   },
   "fee_unit": "BTC per UTC day; block timestamp assigns blocks to UTC day",
   "price_note": "Aethereal price_usd may use a different daily price convention from Coin Metrics; do not multiply fees by this price for cross-provider USD parity without checking.",
-  "sha256_csv": "cfaeeab34450ddb217bb331f12f2a9fda72681f229e0c532b7549ff83eb98bf5"
+  "sha256_csv": "4cd01b01424e5122d4d6cca0e850b7fc63b5780234a5752c44665b9f62373cdd"
 }
