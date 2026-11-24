@@ -1,4 +1,4 @@
-"""Fail-closed publication of already-captured paper-only Cycle forward records.
+"""Fail-closed publication of already-captured Cycle and V5.9 200WMA paper records.
 
 Called ONLY after the existing research workflow has committed new prospective
 rows and uploaded its original evidence artifact. Does not fetch market data,
@@ -17,6 +17,9 @@ ALLOWED_PATHS = frozenset({
     "data/research_forward_validation/cycle_market_signals.csv",
     "data/research_forward_validation/cycle_signal_outcomes.csv",
     "data/research_forward_validation/asx_ibit_closes_forward.csv",
+    # Derived, append-only V5.9 paper records; never broker orders or live signals.
+    "data/research_forward_validation/v59_200wma_paper_signals.csv",
+    "data/research_forward_validation/v59_200wma_paper_asx_observations.csv",
 })
 
 

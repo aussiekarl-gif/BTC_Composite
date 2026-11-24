@@ -37,6 +37,8 @@ on:
       - 'tests/test_v59_200wma_prospective_paper_tape.py'
       - 'engines/research/btc_unified_research_readiness.py'
       - 'tests/test_cycle_forward_signal_tape.py'
+      - 'engines/research/cycle_forward_publish_guard.py'
+      - 'tests/test_cycle_forward_publish_guard.py'
       - '.github/workflows/research_forward_cycle_tape.yml'
   workflow_dispatch:
   schedule:
