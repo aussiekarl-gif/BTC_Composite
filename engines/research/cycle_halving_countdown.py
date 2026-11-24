@@ -245,10 +245,68 @@ def build_halving_timeline(*, last_halving_date, today, countdown):
     }
 
 
-def build_halving_progress_bar(timeline):
-    """Compact horizontal stacked bar, with milestone lines and TODAY pointer."""
+def build_halving_progress_bar(timeline, schedule=None):
+    """Compact cycle bar; optional date-based view spans all halvings through 2040."""
     import plotly.graph_objects as go
 
+    if schedule:
+        start = dt.date.fromisoformat(timeline["last_halving_date"])
+        today = start + dt.timedelta(days=timeline["elapsed_days"])
+        last_event = max(dt.date.fromisoformat(row["date"]) for row in schedule)
+        end = last_event + dt.timedelta(days=500)
+        visible = [
+            row for row in schedule
+            if start <= dt.date.fromisoformat(row["date"]) <= end
+        ]
+        figure = go.Figure()
+        figure.add_shape(
+            type="line", x0=start, x1=end, y0=0, y1=0,
+            line=dict(color="#334155", width=18),
+        )
+        for row in visible:
+            event = dt.date.fromisoformat(row["date"])
+            before = max(start, dt.date.fromisoformat(row["before_500d"]))
+            after = min(end, dt.date.fromisoformat(row["after_500d"]))
+            confirmed = row["status"] == "confirmed"
+            colour = "rgba(20,184,166,0.28)" if confirmed else "rgba(245,158,11,0.25)"
+            figure.add_vrect(
+                x0=before, x1=after, fillcolor=colour,
+                line_width=0, layer="below",
+            )
+            figure.add_shape(
+                type="line", x0=event, x1=event, y0=-0.36, y1=0.36,
+                line=dict(color="#14b8a6" if confirmed else "#f59e0b",
+                          width=2.5, dash="solid" if confirmed else "dash"),
+            )
+            figure.add_annotation(
+                x=event, y=0.62,
+                text=f"{row['year']}<br>{'HALVING' if confirmed else 'EST.'}",
+                showarrow=False, font=dict(size=9, color="#e2e8f0"),
+            )
+        figure.add_shape(
+            type="line", x0=today, x1=today, y0=-0.52, y1=0.52,
+            line=dict(color="#fb923c", width=3),
+        )
+        figure.add_annotation(
+            x=today, y=-0.68, text="TODAY",
+            showarrow=False, font=dict(size=10, color="#fb923c"),
+        )
+        figure.update_layout(
+            showlegend=False, height=155,
+            margin=dict(l=8, r=8, t=8, b=8),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(
+                range=[start, end], type="date", dtick="M48",
+                tickformat="%Y", title=None, fixedrange=True,
+                showgrid=False, zeroline=False,
+            ),
+            yaxis=dict(range=[-0.95, 1.0], visible=False, fixedrange=True),
+            hovermode=False, dragmode=False,
+        )
+        return figure
+
+    """Legacy single-cycle view retained for existing callers and regression tests."""
     elapsed = timeline["elapsed_days"]
     remaining = timeline["remaining_days"]
     total = timeline["total_projected_days"]
@@ -269,7 +327,6 @@ def build_halving_progress_bar(timeline):
             type="line", x0=day, x1=day, y0=-0.23, y1=0.23,
             line=dict(color="#fbbf24", width=2),
         )
-        # Stagger the D500/D560 labels so close review days stay legible.
         ypos = -0.57 if day == 560 else 0.55
         figure.add_annotation(
             x=day, y=ypos, text=marker["short"],
