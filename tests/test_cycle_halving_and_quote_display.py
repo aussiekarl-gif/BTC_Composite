@@ -307,7 +307,9 @@ class HalvingCountdownTests(unittest.TestCase):
         self.assertIn('st.metric("Days from last BTC halving"', app)
         self.assertIn('st.metric("Approx. days until next BTC halving"', app)
         self.assertIn('elapsed_col,chart_col,remaining_col=st.columns', app)
-        self.assertIn('build_halving_progress_bar(halving_timeline)', app)
+        self.assertIn('build_halving_progress_bar(halving_timeline, halving_schedule_2040)', app)
+        self.assertIn('final_year=2040', app)
+        self.assertIn('±500-day review windows', app)
         self.assertIn('if manual_quote:', app)
         self.assertNotIn('else "Quote needed"', app)
 
@@ -350,6 +352,24 @@ class HalvingCountdownTests(unittest.TestCase):
             build_halving_schedule("not-a-date")
         with self.assertRaises(ValueError):
             build_halving_schedule("2028-04-17",final_year=2027)
+
+    def test_extended_progress_bar_spans_2040_and_marks_halving_windows(self):
+        countdown={"days_remaining":545,"estimated_date_utc":"2028-04-14"}
+        timeline=build_halving_timeline(
+            last_halving_date="2024-04-20",
+            today=dt.date(2026,11,24),countdown=countdown,
+        )
+        schedule=build_halving_schedule("2028-04-14",final_year=2040)
+        figure=build_halving_progress_bar(timeline,schedule)
+        self.assertEqual(str(figure.layout.xaxis.range[0]),"2024-04-20")
+        self.assertEqual(str(figure.layout.xaxis.range[1]),"2041-08-19")
+        # Base rail + five event windows and five event lines + TODAY.
+        self.assertEqual(len(figure.layout.shapes),12)
+        labels=[item.text for item in figure.layout.annotations]
+        for label in ("2024<br>HALVING","2028<br>EST.","2032<br>EST.",
+                      "2036<br>EST.","2040<br>EST.","TODAY"):
+            self.assertIn(label,labels)
+
 
 if __name__ == "__main__":
     unittest.main()
