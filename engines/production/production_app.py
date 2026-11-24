@@ -489,6 +489,11 @@ def _save_shared_portfolio(portfolio):
         pass
 
 browser_state = _load_browser_state()
+verified_portfolio_positions = None
+portfolio_verified = False
+broker_snapshot_error = None
+broker_snapshot_ledger_warning = None
+
 portfolio_snapshots = _load_portfolio_snapshots(browser_state)
 browser_portfolio = _load_shared_portfolio(browser_state)
 server_portfolio, portfolio_storage_error = load_portfolio()
@@ -498,10 +503,6 @@ if server_portfolio.get("broker_snapshot"):
     shared_portfolio["broker_snapshot"] = server_portfolio["broker_snapshot"]
 # DCA Today may use only the authoritative durable portfolio. Browser snapshots
 # remain available to My Portfolio recovery, but never authorise a cash recommendation.
-verified_portfolio_positions = None
-portfolio_verified = False
-broker_snapshot_error = None
-broker_snapshot_ledger_warning = None
 if not portfolio_storage_error and isinstance(server_portfolio, dict):
     _broker_snapshot = server_portfolio.get("broker_snapshot")
     if _broker_snapshot:
@@ -818,6 +819,7 @@ with st.sidebar:
 
 
     # ================================================================
+
 # Dates / Parameters
 # ================================================================
 
