@@ -259,26 +259,29 @@ section = st.sidebar.radio(
 # Ensure audit quota guards never leak into either user-facing model.
 uninstall_bgeometrics_guard()
 
-# Render the frozen Production application/sidebar on every mode. In Production
-# mode it runs as the complete Production page; on research modes it runs in
-# sidebar-only mode, preserving the same controls without portfolio reads,
-# market downloads, Production calculations, or duplicate main-page content.
-sidebar_path = Path(__file__).parent / "engines" / "shared" / "production_sidebar_snapshot.py"
-if not sidebar_path.exists():
-    st.error("Shared Production sidebar snapshot is unavailable.")
-    st.stop()
+# Production keeps its original full UI. Research modes use a tiny, static
+# visual copy of the fixed Production sidebar; never import or execute the
+# Production snapshot/model on research-page reruns.
+if section == "Production":
+    sidebar_path = Path(__file__).parent / "engines" / "shared" / "production_sidebar_snapshot.py"
+    if not sidebar_path.exists():
+        st.error("Production sidebar snapshot is unavailable.")
+        st.stop()
 
-sidebar_globals = {
-    "__name__": "__main__",
-    "__file__": str(sidebar_path),
-    "__package__": None,
-    "BTC_SIDEBAR_ONLY": section != "Production",
-}
-sidebar_code = compile(sidebar_path.read_text(encoding="utf-8"), str(sidebar_path), "exec")
-exec(sidebar_code, sidebar_globals)
+    sidebar_globals = {
+        "__name__": "__main__",
+        "__file__": str(sidebar_path),
+        "__package__": None,
+        "BTC_SIDEBAR_ONLY": False,
+    }
+    sidebar_code = compile(sidebar_path.read_text(encoding="utf-8"), str(sidebar_path), "exec")
+    exec(sidebar_code, sidebar_globals)
+else:
+    from engines.shared.static_production_sidebar import render_static_production_sidebar
+    render_static_production_sidebar(st)
 
-# The snapshot renders the complete Production page itself. Other modes render
-# their own isolated page after the shared Production sidebar has been drawn.
+# Production snapshot renders its complete page. Research modes render their
+# own isolated page after the lightweight static sidebar.
 engine_paths = {
     "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
     "Research 10.0": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
