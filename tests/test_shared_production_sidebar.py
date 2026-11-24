@@ -34,6 +34,7 @@ def test_static_sidebar_has_no_production_or_data_dependencies_or_widgets():
     assert "st.number_input" not in STATIC
     assert "st.date_input" not in STATIC
     assert "st.button" not in STATIC
+    assert "with st.sidebar:" in STATIC
     assert "unsafe_allow_html=True" in STATIC
     assert "Static reference panel on research pages" in STATIC
 
@@ -47,3 +48,9 @@ def test_snapshot_stops_before_production_market_data_and_model_calculations():
     assert "_fetch_market_inputs(" not in SNAPSHOT
     assert "fetch_btc_history(" not in SNAPSHOT
     assert "params =" not in SNAPSHOT
+
+
+def test_production_portfolio_verification_path_is_unchanged():
+    assert "server_portfolio, portfolio_storage_error = load_portfolio()" in PRODUCTION
+    assert "snapshot_as_portfolio_positions(_broker_snapshot)" in PRODUCTION
+    assert "portfolio_positions(server_portfolio)" in PRODUCTION
