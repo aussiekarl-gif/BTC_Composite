@@ -83,9 +83,9 @@ class PublicationGuardTests(unittest.TestCase):
             publish(repo=self.worker, verify=lambda: None, retry_delay=0)
 
     def test_extra_staged_research_file_is_not_published(self):
-        self.commit(self.worker, self.data_path, "new paper record\\n")
+        self.commit(self.worker, self.data_path, "new paper record\n")
         self.commit(self.worker, "data/research_forward_validation/unexpected.csv",
-                    "unexpected\\n")
+                    "unexpected\n")
         with self.assertRaisesRegex(PublicationBlocked, "Unexpected publication paths"):
             publish(repo=self.worker, verify=lambda: None, retry_delay=0)
         remote = git(self.worker, "ls-remote", "origin", "refs/heads/main").split()[0]
@@ -94,17 +94,23 @@ class PublicationGuardTests(unittest.TestCase):
     def test_v59_200wma_paper_tapes_are_allowed(self):
         # The main Cycle workflow appends these after validating their own
         # immutable schemas. They are paper-only records, not live signals.
-        self.commit(self.worker, self.data_path, "new Cycle paper row\\n")
+        self.commit(self.worker, self.data_path, "new Cycle paper row\n")
         signal_path = "data/research_forward_validation/v59_200wma_paper_signals.csv"
         execution_path = "data/research_forward_validation/v59_200wma_paper_asx_observations.csv"
-        self.commit(self.worker, signal_path, "new V5.9 paper signal\\n")
-        self.commit(self.worker, execution_path, "new V5.9 indicative ASX paper observation\\n")
+        self.commit(self.worker, signal_path, "new V5.9 paper signal\n")
+        self.commit(self.worker, execution_path, "new V5.9 indicative ASX paper observation\n")
         verified = []
         result = publish(repo=self.worker, verify=lambda: verified.append(True), retry_delay=0)
         self.assertEqual(result, "PUBLISHED_VERIFIED_PAPER_DATA")
         self.assertEqual(len(verified), 1)
-        self.assertIn("new V5.9 paper signal", git(self.other, "show", "origin/main:" + signal_path))
-        self.assertIn("new V5.9 indicative ASX paper observation", git(self.other, "show", "origin/main:" + execution_path))
+        self.assertIn(
+            "new V5.9 paper signal",
+            git(self.other, "show", "origin/main:" + signal_path),
+        )
+        self.assertIn(
+            "new V5.9 indicative ASX paper observation",
+            git(self.other, "show", "origin/main:" + execution_path),
+        )
 
     def test_already_published_is_idempotent(self):
         self.commit(self.worker, self.data_path, "new record\n")
