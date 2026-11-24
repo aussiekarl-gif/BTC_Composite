@@ -259,37 +259,41 @@ section = st.sidebar.radio(
 # Ensure audit quota guards never leak into either user-facing model.
 uninstall_bgeometrics_guard()
 
-# Research dashboards use a frozen, hard-copy snapshot of the Production
-# sidebar. It is intentionally separate from Production execution: no
-# Production portfolio reads, market-data work, or model calculations run here.
-if section != "Production":
-    sidebar_path = Path(__file__).parent / "engines" / "shared" / "production_sidebar_snapshot.py"
-    if not sidebar_path.exists():
-        st.error("Shared Production sidebar snapshot is unavailable.")
-        st.stop()
-    sidebar_globals = {
-        "__name__": "__main__",
-        "__file__": str(sidebar_path),
-        "__package__": None,
-        "BTC_SIDEBAR_ONLY": True,
-    }
-    sidebar_code = compile(sidebar_path.read_text(encoding="utf-8"), str(sidebar_path), "exec")
-    exec(sidebar_code, sidebar_globals)
-engine_path = {
-    "Production": Path(__file__).parent / "engines" / "production" / "production_app.py",
+# Render the frozen Production application/sidebar on every mode. In Production
+# mode it runs as the complete Production page; on research modes it runs in
+# sidebar-only mode, preserving the same controls without portfolio reads,
+# market downloads, Production calculations, or duplicate main-page content.
+sidebar_path = Path(__file__).parent / "engines" / "shared" / "production_sidebar_snapshot.py"
+if not sidebar_path.exists():
+    st.error("Shared Production sidebar snapshot is unavailable.")
+    st.stop()
+
+sidebar_globals = {
+    "__name__": "__main__",
+    "__file__": str(sidebar_path),
+    "__package__": None,
+    "BTC_SIDEBAR_ONLY": section != "Production",
+}
+sidebar_code = compile(sidebar_path.read_text(encoding="utf-8"), str(sidebar_path), "exec")
+exec(sidebar_code, sidebar_globals)
+
+# The snapshot renders the complete Production page itself. Other modes render
+# their own isolated page after the shared Production sidebar has been drawn.
+engine_paths = {
     "Research 10.0": Path(__file__).parent / "engines" / "research" / "cowen_onchain_risk_app.py",
     "Cycle Trading — Research": Path(__file__).parent / "engines" / "research" / "cycle_trading_app.py",
     "Bottom Signal Timeline": Path(__file__).parent / "engines" / "audit" / "bottom_signal_timeline_app.py",
-}[section]
-
-if not engine_path.exists():
-    st.error(f"Missing engine file: {engine_path}")
-    st.stop()
-
-engine_globals = {
-    "__name__": "__main__",
-    "__file__": str(engine_path),
-    "__package__": None,
 }
-code = compile(engine_path.read_text(encoding="utf-8"), str(engine_path), "exec")
-exec(code, engine_globals)
+engine_path = engine_paths.get(section)
+if engine_path is not None:
+    if not engine_path.exists():
+        st.error(f"Missing engine file: {engine_path}")
+        st.stop()
+
+    engine_globals = {
+        "__name__": "__main__",
+        "__file__": str(engine_path),
+        "__package__": None,
+    }
+    code = compile(engine_path.read_text(encoding="utf-8"), str(engine_path), "exec")
+    exec(code, engine_globals)
