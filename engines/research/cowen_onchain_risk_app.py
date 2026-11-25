@@ -325,12 +325,32 @@ for price_col in ("coinmetrics_price_usd", "btc_price_usd", "price_usd"):
         price_series = pd.to_numeric(raw[price_col], errors="coerce").dropna()
         break
 
+hover_risk_line = None
 if price_series is not None:
+    if chart_view == "BTC price + six-metric risk" and six_complete_now:
+        hover_risk_line = six_composite_history["composite_risk"].dropna()
+    elif chart_view == "BTC price + selected component" and selected_metric:
+        hover_risk_line = risk_frame[selected_metric].dropna()
+    price_custom = (
+        [
+            [f"${price:,.2f}", f"{risk:.3f}" if pd.notna(risk) else "n/a"]
+            for price, risk in zip(
+                price_series.to_numpy(),
+                hover_risk_line.reindex(price_series.index).to_numpy(),
+            )
+        ]
+        if hover_risk_line is not None else None
+    )
     fig.add_trace(
         go.Scatter(
             x=price_series.index, y=price_series.values, name="BTC Price",
             mode="lines", line=dict(width=2.2, color="#168bd2"),
-            hovertemplate="%{x|%d %b %Y}<br>BTC: $%{y:,.0f}<extra></extra>",
+            customdata=price_custom,
+            hovertemplate=(
+                "%{x|%d %b %Y}<br>BTC Price: %{customdata[0]}<br>"
+                "BTC Risk: %{customdata[1]}<extra></extra>"
+            ) if price_custom is not None else
+            "%{x|%d %b %Y}<br>BTC Price: $%{y:,.2f}<extra></extra>",
         ),
         secondary_y=False,
     )
@@ -366,16 +386,19 @@ selected_metric = st.selectbox(
 )
 if chart_view == "BTC price + six-metric risk" and six_complete_now:
     six_line = six_composite_history["composite_risk"].dropna()
-    fig.add_trace(go.Scatter(x=six_line.index, y=six_line.values, name="Experimental Six-Metric Risk (6/6)", mode="lines", line=dict(width=2.4, color="#e56b72"), hovertemplate="%{x|%d %b %Y}<br>Six-Metric Risk: %{y:.1%}<extra></extra>"), secondary_y=True)
+    six_custom = historical_risk_hover_data(six_line, price_series) if price_series is not None else [["n/a", f"{value:.3f}"] for value in six_line.values]
+    fig.add_trace(go.Scatter(x=six_line.index, y=six_line.values, name="Experimental Six-Metric Risk (6/6)", mode="lines", line=dict(width=2.4, color="#e56b72"), customdata=six_custom, hovertemplate="%{x|%d %b %Y}<br>BTC Price: %{customdata[0]}<br>BTC Risk: %{customdata[1]}<extra></extra>"), secondary_y=True)
 elif chart_view == "BTC price + selected component" and selected_metric:
     values = risk_frame[selected_metric].dropna()
+    component_custom = historical_risk_hover_data(values, price_series) if price_series is not None else [["n/a", f"{value:.3f}"] for value in values.values]
     fig.add_trace(
         go.Scatter(
             x=values.index, y=values.values,
             name=metric_labels[selected_metric],
             mode="lines",
             line=dict(width=2.0),
-            hovertemplate="%{x|%d %b %Y}<br>" + metric_labels[selected_metric] + ": %{y:.1%}<extra></extra>",
+            customdata=component_custom,
+            hovertemplate="%{x|%d %b %Y}<br>BTC Price: %{customdata[0]}<br>" + metric_labels[selected_metric] + ": %{customdata[1]}<extra></extra>",
         ),
         secondary_y=True,
     )
