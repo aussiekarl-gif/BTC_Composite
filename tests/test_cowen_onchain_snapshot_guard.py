@@ -96,7 +96,11 @@ class SnapshotGuardTests(unittest.TestCase):
 
     def test_rejects_observation_count_regression(self):
         write_snapshot(
-            self.candidate, SOURCE_FILES[0], ["2026-11-22", "2026-11-23"],
+            self.base, SOURCE_FILES[0], ["2026-11-21", "2026-11-22", "2026-11-23"],
+            "2026-11-24T14:00:00+00:00",
+        )
+        write_snapshot(
+            self.candidate, SOURCE_FILES[0], ["2026-11-21", "2026-11-23"],
             "2026-11-25T14:00:00+00:00",
         )
         with self.assertRaisesRegex(SnapshotGuardError, "observation count regressed"):
