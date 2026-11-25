@@ -37,6 +37,11 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Preserve published source snapshots for integrity comparison
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cowen_onchain_baseline
+          cp -a data/research/cowen_onchain/. /tmp/cowen_onchain_baseline/
       - name: Fetch Explore21 daily BTC metrics
         run: |
           python -m engines.research.explore21_public_data \
@@ -53,6 +58,8 @@ jobs:
         run: |
           python -m engines.research.obm_cdd_public_data \
             --output data/research/cowen_onchain/obm_cdd_btcxdays_daily.csv
+      - name: Reject corrupted or regressed source snapshots before publication
+        run: python -m engines.research.cowen_onchain_snapshot_guard --baseline /tmp/cowen_onchain_baseline --candidate data/research/cowen_onchain
       - name: Commit changed source snapshots
         run: |
           git add data/research/cowen_onchain
