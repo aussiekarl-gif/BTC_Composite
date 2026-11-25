@@ -220,8 +220,8 @@ def derive_series(df: pd.DataFrame) -> dict[str, pd.Series]:
     if mc is not None and tc is not None:
         s["MCTC"] = mc / tc
 
-    # 7) mCTC: Miner Cap ÷ Thermocap. Miner Cap = value of coins held by miners
-    #    (CoinMetrics SplyMiner0HopAllUSD + SplyMiner1HopAllUSD).
+    # 7) mCTC: Miner Cap ÷ Thermocap. USD Miner Cap is sourced from the
+    #    provider miner-reserve-USD series; it is an independent proxy, not Cowen exact.
     if (mcap := _col(df, "miner_cap_usd")) is not None and tc is not None:
         s["mCTC"] = mctc_miner_ratio(mcap, tc)
 
@@ -531,7 +531,7 @@ def main() -> None:
                 "series (see README) or try again after the cache expires."
             )
             return
-        source_label = "live free data — BGeometrics bitcoin-data.com (anonymous, cached 30 min)"
+        source_label = "live data — BGeometrics bitcoin-data.com (cached 60 min)"
     st.success("Source: " + source_label)
 
     series = derive_series(df)
