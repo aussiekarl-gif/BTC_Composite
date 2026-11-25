@@ -110,6 +110,21 @@ def cached_prior_risk_frame(series_map):
     return result
 
 
+
+def historical_risk_hover_data(risk_series, price_series):
+    """Build aligned custom hover data: BTC price USD and risk score.
+
+    Uses exact date alignment only; missing prices remain n/a rather than
+    silently forward-filling or introducing look-ahead.
+    """
+    risk_values = pd.to_numeric(risk_series, errors="coerce")
+    prices = pd.to_numeric(price_series, errors="coerce") if price_series is not None else pd.Series(dtype=float)
+    aligned_prices = prices.reindex(risk_values.index)
+    return [
+        [f"${price:,.2f}" if pd.notna(price) else "n/a", f"{risk:.3f}" if pd.notna(risk) else "n/a"]
+        for price, risk in zip(aligned_prices.to_numpy(), risk_values.to_numpy())
+    ]
+
 try:
     raw = cached_raw_candidates(str(DATA_DIR))
     load_error = None
