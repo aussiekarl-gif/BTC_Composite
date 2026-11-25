@@ -2,7 +2,7 @@
   "capped_comparator_policy_version": "v59_current_ladder_5pct_weekly_cap_v1",
   "capped_comparator_weekly_purchase_cap_aud": 25500.0,
   "first_actual_capture": "2026-11-12T11:19:52.234443+00:00",
-  "last_signal_day": "2026-11-23",
+  "last_signal_day": "2026-11-24",
   "legacy_realized_rows_not_scored": 3,
   "matured_paper_BTC_AUD_returns": {
     "28d": {
@@ -41,35 +41,35 @@
     "7d": {
       "btc_aud_excess_over_5pct_cash_on_signals_pct": {
         "below_200wma": {
-          "count": 2,
-          "mean_pct": -4.638684765325657
+          "count": 3,
+          "mean_pct": -4.533665623534289
         },
         "below_to_plus10": {
-          "count": 5,
-          "mean_pct": -9.398856633326263
+          "count": 6,
+          "mean_pct": -8.552985084430476
         },
         "piecewise_tail_3x_mid": {
-          "count": 0,
-          "mean_pct": null
+          "count": 1,
+          "mean_pct": -4.323627339951552
         },
         "realized110_and_risk050": {
           "count": 0,
           "mean_pct": null
         },
         "risk_1x": {
-          "count": 5,
-          "mean_pct": -9.398856633326263
+          "count": 6,
+          "mean_pct": -8.552985084430476
         },
         "risk_3x": {
-          "count": 5,
-          "mean_pct": -9.398856633326263
+          "count": 6,
+          "mean_pct": -8.552985084430476
         },
         "risk_3x_risk_le_020": {
-          "count": 5,
-          "mean_pct": -9.398856633326263
+          "count": 6,
+          "mean_pct": -8.552985084430476
         }
       },
-      "observed_exact_horizon_pairs": 5
+      "observed_exact_horizon_pairs": 6
     },
     "84d": {
       "btc_aud_excess_over_5pct_cash_on_signals_pct": {
@@ -108,8 +108,8 @@
   "new_day_appended": true,
   "no_live_recommendations_orders_notifications": true,
   "not_asx_ibit_execution_or_personal_portfolio": true,
-  "observations": 12,
-  "piecewise_tail_shadow_eligible_observations": 6,
+  "observations": 13,
+  "piecewise_tail_shadow_eligible_observations": 7,
   "prospective_shadow": {
     "broker_fills_verified": false,
     "first_paper_monday": "2026-11-16",
@@ -310,7 +310,7 @@
   "realized_current_signal_is_tradeable": false,
   "realized_gate_eligible_observations": 6,
   "realized_gate_method_version": "explore21_same_day_close_v2",
-  "realized_observation_status": "STALE_DATE_MISMATCH",
+  "realized_observation_status": "STALE_OR_DELAYED",
   "realized_reference_is_research_only": true,
   "simulation_policy_version": "v59_current_ladder_no_fixed_weekly_cap_v1",
   "status": "RESEARCH_ONLY_FORWARD_DATA",
