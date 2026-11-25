@@ -86,7 +86,7 @@ def inspect_snapshot(root: Path, relative: str, *, as_of_utc: dt.datetime) -> di
     now = as_of_utc.astimezone(UTC)
     if retrieved > now + dt.timedelta(minutes=5):
         raise SnapshotGuardError(f"{relative}: metadata retrieval timestamp is in the future")
-    if dates[-1] > now.date() + dt.timedelta(days=1):
+    if dates[-1] > now.date():
         raise SnapshotGuardError(f"{relative}: source observation date is in the future")
     return {
         "path": relative,
