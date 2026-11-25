@@ -65,6 +65,7 @@ BG_SERIES = {
     "thermo-cap": "thermo_cap",
     "profit-loss": "profit_loss",
     "market-cap": "market_cap",
+    "miner-reserve-usd": "miner_cap_usd",
 }
 
 # Candidate field names accepted when parsing BGeometrics responses
@@ -78,6 +79,7 @@ BG_CANDIDATES = {
     "thermo-cap": ["thermoCap", "thermocap", "thermo_cap"],
     "profit-loss": ["profitLoss", "profit_loss"],
     "market-cap": ["marketCap", "market_cap"],
+    "miner-reserve-usd": ["minerReserveUsd", "miner_reserve_usd", "reserve_usd"],
 }
 
 BTC_GENESIS = pd.Timestamp("2009-01-03")
@@ -107,7 +109,6 @@ CQ_V1_FILLS = {
         ["fees_transaction_mean_usd", "fees_transaction_median_usd",
          "fees_block_mean_usd", "fees_total_usd"],
     ),
-    "miner_cap_usd": ("btc/miner-flows/reserve", ["reserve_usd", "reserve"]),
     "supply_current": ("btc/network-data/supply", ["supply_total", "supply_new"]),
 }
 
