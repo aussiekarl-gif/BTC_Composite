@@ -325,6 +325,39 @@ for price_col in ("coinmetrics_price_usd", "btc_price_usd", "price_usd"):
         price_series = pd.to_numeric(raw[price_col], errors="coerce").dropna()
         break
 
+metric_labels = {
+    "puell_multiple": "Puell Multiple Risk",
+    "mvrv": "MVRV Risk",
+    "mvrv_z_score": "MVRV Z-Score Risk",
+    "transaction_fees": "Transaction Fees Risk",
+    "terminal_price": "Terminal Price Risk",
+    "mctc": "MCTC Risk",
+    "mctc_miner": "mCTC Risk",
+    "rhodl_ratio": "RHODL Ratio Risk",
+    "supply_pnl": "Supply P/L Risk",
+}
+
+available_chart_metrics = [
+    metric for metric in metric_labels
+    if metric in risk_frame.columns and risk_frame[metric].notna().any()
+]
+chart_view = st.selectbox(
+    "Historical chart view",
+    ["BTC price + six-metric risk", "BTC price + selected component", "Risk components (small multiples)"],
+    index=0,
+    key="cowen_chart_view",
+    help="The default shows one risk series at a time to avoid overlapping noisy lines.",
+)
+selected_metric = st.selectbox(
+    "Component to display",
+    available_chart_metrics,
+    format_func=lambda value: metric_labels[value].replace(" Risk", ""),
+    key="cowen_selected_component",
+    disabled=(not available_chart_metrics or chart_view != "BTC price + selected component"),
+)
+
+
+
 hover_risk_line = None
 if price_series is not None:
     if chart_view == "BTC price + six-metric risk" and six_complete_now:
@@ -355,35 +388,6 @@ if price_series is not None:
         secondary_y=False,
     )
 
-metric_labels = {
-    "puell_multiple": "Puell Multiple Risk",
-    "mvrv": "MVRV Risk",
-    "mvrv_z_score": "MVRV Z-Score Risk",
-    "transaction_fees": "Transaction Fees Risk",
-    "terminal_price": "Terminal Price Risk",
-    "mctc": "MCTC Risk",
-    "mctc_miner": "mCTC Risk",
-    "rhodl_ratio": "RHODL Ratio Risk",
-    "supply_pnl": "Supply P/L Risk",
-}
-available_chart_metrics = [
-    metric for metric in metric_labels
-    if metric in risk_frame.columns and risk_frame[metric].notna().any()
-]
-chart_view = st.selectbox(
-    "Historical chart view",
-    ["BTC price + six-metric risk", "BTC price + selected component", "Risk components (small multiples)"],
-    index=0,
-    key="cowen_chart_view",
-    help="The default shows one risk series at a time to avoid overlapping noisy lines.",
-)
-selected_metric = st.selectbox(
-    "Component to display",
-    available_chart_metrics,
-    format_func=lambda value: metric_labels[value].replace(" Risk", ""),
-    key="cowen_selected_component",
-    disabled=(not available_chart_metrics or chart_view != "BTC price + selected component"),
-)
 if chart_view == "BTC price + six-metric risk" and six_complete_now:
     six_line = six_composite_history["composite_risk"].dropna()
     six_custom = historical_risk_hover_data(six_line, price_series) if price_series is not None else [["n/a", f"{value:.3f}"] for value in six_line.values]
