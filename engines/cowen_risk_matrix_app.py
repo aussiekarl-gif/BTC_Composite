@@ -395,6 +395,18 @@ def _load_research7_series() -> Optional[pd.DataFrame]:
     return out.set_index("date").sort_index()
 
 
+
+def _btc_price_series(df: Optional[pd.DataFrame]) -> Optional[pd.Series]:
+    """Extract the best available BTC USD price series for the risk chart."""
+    if df is None:
+        return None
+    for column in ("price_usd", "btc_price_usd", "BTC Price", "price"):
+        if column in df.columns:
+            values = pd.to_numeric(df[column], errors="coerce").dropna()
+            if not values.empty:
+                return values.rename("btc_price_usd")
+    return None
+
 def _risk_history_line(df: Optional[pd.DataFrame], series: dict, weights: dict) -> Optional[pd.Series]:
     """Historical risk line for the risk-gauge chart: the weighted mean of each
     metric's historical percentile (spans ~2010 via the merged MVRZ data);
@@ -425,31 +437,46 @@ def _risk_history_line(df: Optional[pd.DataFrame], series: dict, weights: dict) 
     return None
 
 
-def _plot_risk_line(risk_line: pd.Series) -> None:
-    """Plot the risk line with a proper timeline on the horizontal axis."""
+def _plot_risk_line(risk_line: pd.Series, price_line: Optional[pd.Series] = None) -> None:
+    """Plot historical risk and BTC price with Cowen-style date/value hover details."""
+    from plotly.subplots import make_subplots
     import plotly.graph_objects as go
-    fig = go.Figure(go.Scatter(
-        x=risk_line.index, y=risk_line.values, mode="lines", name="risk",
-    ))
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    risk_custom = risk_history_hover_customdata(risk_line, price_line)
+    fig.add_trace(go.Scatter(
+        x=risk_line.index, y=risk_line.values, mode="lines", name="BTC Risk",
+        line=dict(color="#EF5350", width=1.7),
+        customdata=risk_custom,
+        hovertemplate=(
+            "%{x|%d %B %Y}<br>BTC Price: %{customdata[0]}<br>"
+            "BTC Risk: %{y:.3f}<extra></extra>"
+        ),
+    ), secondary_y=False)
+    if price_line is not None and pd.to_numeric(price_line, errors="coerce").notna().any():
+        price_aligned = pd.to_numeric(price_line, errors="coerce").reindex(risk_line.index)
+        fig.add_trace(go.Scatter(
+            x=price_aligned.index, y=price_aligned.values, mode="lines", name="BTC Price",
+            line=dict(color="#2196F3", width=1.6),
+            customdata=risk_line.reindex(price_aligned.index).to_numpy(),
+            hovertemplate=(
+                "%{x|%d %B %Y}<br>BTC Price: $%{y:,.2f}<br>"
+                "BTC Risk: %{customdata:.3f}<extra></extra>"
+            ),
+        ), secondary_y=True)
     start = pd.Timestamp(risk_line.index.min())
     end = pd.Timestamp(risk_line.index.max())
-    # Proper timeline: a tick at each year in the span, labeled with the year.
     years = [pd.Timestamp(y, 1, 1) for y in range(start.year, end.year + 1)]
     fig.update_xaxes(
-        range=[start, end],
-        tickvals=years,
-        ticktext=[f"{y.year}" for y in years],
-        showgrid=True,
-        gridcolor="rgba(128,128,128,0.25)",
-        zeroline=False,
+        range=[start, end], tickvals=years, ticktext=[f"{y.year}" for y in years],
+        showgrid=True, gridcolor="rgba(128,128,128,0.25)", zeroline=False,
     )
-    fig.update_yaxes(tickformat=".2f", range=[0, 1.05])
+    fig.update_yaxes(tickformat=".2f", range=[0, 1.05], title_text="BTC Risk", secondary_y=False)
+    fig.update_yaxes(title_text="BTC Price (USD)", type="log", secondary_y=True)
     fig.update_layout(
-        height=320,
-        margin=dict(l=32, r=16, t=24, b=44),
-        xaxis_title="Year",
-        yaxis_title="Risk",
-        hovermode="x unified",
+        height=360, margin=dict(l=32, r=16, t=24, b=44),
+        xaxis_title="Year", hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
     )
     st.plotly_chart(fig)
 
@@ -567,7 +594,7 @@ def main() -> None:
     if risk_line is None:
         st.caption("No historical risk series available — load data above or wait for live data.")
     else:
-        _plot_risk_line(risk_line)
+        _plot_risk_line(risk_line, _btc_price_series(df))
         span = (f"{pd.to_datetime(risk_line.index.min()).date()} → "
                 f"{pd.to_datetime(risk_line.index.max()).date()} ({risk_line.size} points)")
         st.caption(f"Risk line span: {span}")
