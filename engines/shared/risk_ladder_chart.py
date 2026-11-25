@@ -28,3 +28,11 @@ def risk_ladder_chart_labels(risk_ranges, lower_bounds, ladder):
         labels.append(f"{label}<br>{selected:g}×")
         multipliers.append(selected)
     return labels, multipliers
+
+
+def risk_history_hover_customdata(risk_line, price_line=None):
+    """Return hover customdata aligned to risk dates, with price or a clear n/a."""
+    if price_line is None:
+        return [["n/a"] for _ in risk_line.index]
+    aligned = price_line.reindex(risk_line.index)
+    return [[f"$\u007bvalue:,.2f\u007d" if value == value else "n/a"] for value in aligned.to_numpy()]
