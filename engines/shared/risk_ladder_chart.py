@@ -35,4 +35,4 @@ def risk_history_hover_customdata(risk_line, price_line=None):
     if price_line is None:
         return [["n/a"] for _ in risk_line.index]
     aligned = price_line.reindex(risk_line.index)
-    return [[f"$\u007bvalue:,.2f\u007d" if value == value else "n/a"] for value in aligned.to_numpy()]
+    return [[f"${value:,.2f}" if value == value else "n/a"] for value in aligned.to_numpy()]
