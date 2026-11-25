@@ -5,8 +5,8 @@ Primary source — BGeometrics (bitcoin-data.com):
   * "Free plan: No registration needed — just call the API directly."
   * Endpoints used here (all GET https://bitcoin-data.com/v1/<endpoint>):
       - market-cap, mvrv, mvrv-zscore, puell-multiple, terminal-price,
-        thermo-cap, profit-loss (fraction in [0,1]), realized-cap-hodl-waves
-        (per-band realized cap for the RHODL approximation).
+        thermo-cap, profit-loss (fraction in [0,1]), miner-reserve-usd
+        (USD value of miners' reserves), realized-cap-hodl-waves (per-band realized cap).
   * Limit: 10 requests / hour (hourly counter on your IP).
   * Token: BGEOMETRICS_TOKEN / BITCOIN_DATA_API_TOKEN — sent as
     Authorization: Bearer (the free plan is anonymous-capable; a token may
@@ -15,9 +15,9 @@ Primary source — BGeometrics (bitcoin-data.com):
 Token sources (env vars — see README for why GitHub secrets are NOT
 readable via the GitHub API; export them or paste them into the environment):
   * CryptoQuant v1 — CRYPTOQUANT_API_KEY: fills MVRV, Realized Price
-    (realized_price_usd), Fees (transaction_fees_usd), MinerCap
-    (miner_cap_usd → mCTC), Supply (supply_current).  Market-indicator data
-    there requires Professional+ — used opportunistically, silent fallback.
+    (realized_price_usd), Fees (transaction_fees_usd), Supply (supply_current).
+    Miner reserve is deliberately not mapped to USD Miner Cap: CryptoQuant's
+    reserve metric is BTC-denominated unless an explicit USD field is returned.
   * CryptoQuant community — CQ_API_KEY (free-account token): MVRV Z-Score.
   * Coinglass Pro — COINGLASS_API_KEY (CG-API-KEY header): Bitcoin RHODL Ratio
     (/api/index/bitcoin-rhodl-ratio); opportunistic Terminal Price candidates.
@@ -65,6 +65,7 @@ BG_SERIES = {
     "thermo-cap": "thermo_cap",
     "profit-loss": "profit_loss",
     "market-cap": "market_cap",
+    "miner-reserve-usd": "miner_cap_usd",
 }
 
 # Candidate field names accepted when parsing BGeometrics responses
@@ -78,6 +79,7 @@ BG_CANDIDATES = {
     "thermo-cap": ["thermoCap", "thermocap", "thermo_cap"],
     "profit-loss": ["profitLoss", "profit_loss"],
     "market-cap": ["marketCap", "market_cap"],
+    "miner-reserve-usd": ["minerReserveUsd", "miner_reserve_usd", "reserve_usd"],
 }
 
 BTC_GENESIS = pd.Timestamp("2009-01-03")
@@ -107,7 +109,6 @@ CQ_V1_FILLS = {
         ["fees_transaction_mean_usd", "fees_transaction_median_usd",
          "fees_block_mean_usd", "fees_total_usd"],
     ),
-    "miner_cap_usd": ("btc/miner-flows/reserve", ["reserve_usd", "reserve"]),
     "supply_current": ("btc/network-data/supply", ["supply_total", "supply_new"]),
 }
 
@@ -473,3 +474,16 @@ def fetch_live_df() -> Optional[pd.DataFrame]:
     if df.empty:
         return None
     return df
+
+
+def mctc_miner_ratio(miner_cap_usd: pd.Series, thermocap_usd: pd.Series) -> pd.Series:
+    """Compute research mCTC from USD Miner Cap and USD ThermoCap.
+
+    Both inputs are date-indexed USD series. BTC-denominated miner reserves
+    must not be passed as Miner Cap; they require a price conversion first.
+    Invalid/nonpositive ThermoCap observations are omitted, not zero-filled.
+    """
+    miner_cap = pd.to_numeric(miner_cap_usd, errors="coerce")
+    thermocap = pd.to_numeric(thermocap_usd, errors="coerce")
+    ratio = miner_cap.div(thermocap).where(thermocap.gt(0))
+    return ratio.dropna().rename("mctc_miner_ratio")

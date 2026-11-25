@@ -30,10 +30,10 @@ import streamlit as st
 from engines.shared.risk_ladder_chart import risk_history_hover_customdata
 
 try:
-    from engines.cowen_risk_fetchers import fetch_live_df
+    from engines.cowen_risk_fetchers import fetch_live_df, mctc_miner_ratio
     from engines import cowen_risk_fetchers as fetchers
 except ImportError:  # standalone cowen-risk-matrix layout
-    from fetchers import fetch_live_df
+    from fetchers import fetch_live_df, mctc_miner_ratio
     import fetchers
 
 # ---------------------------------------------------------------------------
@@ -220,10 +220,10 @@ def derive_series(df: pd.DataFrame) -> dict[str, pd.Series]:
     if mc is not None and tc is not None:
         s["MCTC"] = mc / tc
 
-    # 7) mCTC: Miner Cap ÷ Thermocap. Miner Cap = value of coins held by miners
-    #    (CoinMetrics SplyMiner0HopAllUSD + SplyMiner1HopAllUSD).
+    # 7) mCTC: Miner Cap ÷ Thermocap. USD Miner Cap is sourced from the
+    #    provider miner-reserve-USD series; it is an independent proxy, not Cowen exact.
     if (mcap := _col(df, "miner_cap_usd")) is not None and tc is not None:
-        s["mCTC"] = mcap / tc
+        s["mCTC"] = mctc_miner_ratio(mcap, tc)
 
     # 8) RHODL Ratio: (Realized Value of 1-week coins ÷ 1y–2y coins) × market age (days).
     if (r := _col(df, "rhodl_ratio")) is not None:
@@ -531,7 +531,7 @@ def main() -> None:
                 "series (see README) or try again after the cache expires."
             )
             return
-        source_label = "live free data — BGeometrics bitcoin-data.com (anonymous, cached 30 min)"
+        source_label = "live data — BGeometrics bitcoin-data.com (cached 60 min)"
     st.success("Source: " + source_label)
 
     series = derive_series(df)
