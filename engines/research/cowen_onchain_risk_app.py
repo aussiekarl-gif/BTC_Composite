@@ -325,6 +325,18 @@ for price_col in ("coinmetrics_price_usd", "btc_price_usd", "price_usd"):
         price_series = pd.to_numeric(raw[price_col], errors="coerce").dropna()
         break
 
+metric_labels = {
+    "puell_multiple": "Puell Multiple Risk",
+    "mvrv": "MVRV Risk",
+    "mvrv_z_score": "MVRV Z-Score Risk",
+    "transaction_fees": "Transaction Fees Risk",
+    "terminal_price": "Terminal Price Risk",
+    "mctc": "MCTC Risk",
+    "mctc_miner": "mCTC Risk",
+    "rhodl_ratio": "RHODL Ratio Risk",
+    "supply_pnl": "Supply P/L Risk",
+}
+
 available_chart_metrics = [
     metric for metric in metric_labels
     if metric in risk_frame.columns and risk_frame[metric].notna().any()
@@ -344,17 +356,7 @@ selected_metric = st.selectbox(
     disabled=(not available_chart_metrics or chart_view != "BTC price + selected component"),
 )
 
-metric_labels = {
-    "puell_multiple": "Puell Multiple Risk",
-    "mvrv": "MVRV Risk",
-    "mvrv_z_score": "MVRV Z-Score Risk",
-    "transaction_fees": "Transaction Fees Risk",
-    "terminal_price": "Terminal Price Risk",
-    "mctc": "MCTC Risk",
-    "mctc_miner": "mCTC Risk",
-    "rhodl_ratio": "RHODL Ratio Risk",
-    "supply_pnl": "Supply P/L Risk",
-}
+
 
 hover_risk_line = None
 if price_series is not None:
