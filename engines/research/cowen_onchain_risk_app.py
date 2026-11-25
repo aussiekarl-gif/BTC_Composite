@@ -344,6 +344,18 @@ selected_metric = st.selectbox(
     disabled=(not available_chart_metrics or chart_view != "BTC price + selected component"),
 )
 
+metric_labels = {
+    "puell_multiple": "Puell Multiple Risk",
+    "mvrv": "MVRV Risk",
+    "mvrv_z_score": "MVRV Z-Score Risk",
+    "transaction_fees": "Transaction Fees Risk",
+    "terminal_price": "Terminal Price Risk",
+    "mctc": "MCTC Risk",
+    "mctc_miner": "mCTC Risk",
+    "rhodl_ratio": "RHODL Ratio Risk",
+    "supply_pnl": "Supply P/L Risk",
+}
+
 hover_risk_line = None
 if price_series is not None:
     if chart_view == "BTC price + six-metric risk" and six_complete_now:
@@ -374,17 +386,6 @@ if price_series is not None:
         secondary_y=False,
     )
 
-metric_labels = {
-    "puell_multiple": "Puell Multiple Risk",
-    "mvrv": "MVRV Risk",
-    "mvrv_z_score": "MVRV Z-Score Risk",
-    "transaction_fees": "Transaction Fees Risk",
-    "terminal_price": "Terminal Price Risk",
-    "mctc": "MCTC Risk",
-    "mctc_miner": "mCTC Risk",
-    "rhodl_ratio": "RHODL Ratio Risk",
-    "supply_pnl": "Supply P/L Risk",
-}
 if chart_view == "BTC price + six-metric risk" and six_complete_now:
     six_line = six_composite_history["composite_risk"].dropna()
     six_custom = historical_risk_hover_data(six_line, price_series) if price_series is not None else [["n/a", f"{value:.3f}"] for value in six_line.values]
