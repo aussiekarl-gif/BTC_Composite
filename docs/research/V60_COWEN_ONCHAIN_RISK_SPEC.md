@@ -18,7 +18,7 @@ The screenshot describes nine component metrics. Match the shown weights initial
 | Transaction Fees | 1.0 | Establish exact fee metric and historical normalization |
 | Terminal Price | 1.0 | Verify transferred price / CDD definition and supply multiplier |
 | MCTC | 1.0 | Market cap / ThermoCap; verify exact ThermoCap definition |
-| mCTC | 1.0 | Verify miner-cap numerator and ThermoCap denominator |
+| mCTC | 1.0 | Verify miner-cap numerator and ThermoCap denominator; reconstruct using BGeometrics USD Miner Reserve where available |
 | RHODL Ratio | 0.0 | Retain as optional diagnostic; excluded from default composite |
 | Supply P/L | 0.0 | Retain as optional diagnostic; excluded from default composite |
 
@@ -35,7 +35,7 @@ The seven active metrics should be equally weighted initially. The screenshot's 
 7. Preserve full raw data and calculation lineage to make every daily composite reproducible.
 8. Production V5.8.2, Research V5.9, original Cycle Trading / Day-500 research and existing dashboards must remain unchanged.
 
-## Repository evidence / known limitations
+## Repository evidence / known limitations\n\n- The research-only Cowen Risk Matrix now has a source adapter for BGeometrics `miner-reserve-usd`. The raw USD series is divided by the selected USD ThermoCap series to derive mCTC. This is a provider-based reconstruction/proxy, not an exact Cowen series; miner-wallet labeling can differ across providers.\n- Do not treat a BTC-denominated `miner-reserve` value as USD Miner Cap. It must be price-converted on matching dates before dividing by USD ThermoCap. The current CryptoQuant reserve fallback is intentionally not labeled USD Miner Cap.
 
 - `engines/audit/public_model_audit.py` already lists free-first candidates and Coin Metrics acquisition routes for Puell, MVRV, NUPL, NVT and ThermoCap-related calculations.
 - `engines/audit/provider_source_matrix.py` documents that CoinGlass specialist on-chain endpoints are blocked by the current plan and tested CryptoQuant BTC on-chain endpoints return HTTP 403 under the current entitlement.
