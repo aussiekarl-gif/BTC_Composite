@@ -332,7 +332,13 @@ if price_series is not None:
     elif chart_view == "BTC price + selected component" and selected_metric:
         hover_risk_line = risk_frame[selected_metric].dropna()
     price_custom = (
-        historical_risk_hover_data(hover_risk_line, price_series)
+        [
+            [f"${price:,.2f}", f"{risk:.3f}" if pd.notna(risk) else "n/a"]
+            for price, risk in zip(
+                price_series.to_numpy(),
+                hover_risk_line.reindex(price_series.index).to_numpy(),
+            )
+        ]
         if hover_risk_line is not None else None
     )
     fig.add_trace(
