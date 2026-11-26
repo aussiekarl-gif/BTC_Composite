@@ -20,16 +20,17 @@ on:
       - '.github/workflows/research_cycle_mid_session_watch.yml'
   workflow_dispatch:
   schedule:
-    # Weekdays 01:30 UTC = 11:30 Brisbane; Sydney 12:30 DST / 11:30 standard.
-    # Actual capture must still pass the 11:00-15:00 Sydney time window.
-    # One backup attempt at 02:30 UTC (12:30 Brisbane, 13:30 Sydney DST).
+    # Earlier weekday attempts hedge GitHub queue delays:
+    # 00:17 UTC = 11:17 Sydney AEDT / 10:17 AEST; 01:17 UTC = 12:17 AEDT / 11:17 AEST.
+    # The second attempt is within the actual window in both seasons; first-start wins
+    # and the actual Sydney 11:00-15:00 gate still controls any provider request.
     # Already-saved Sydney dates are NOT refreshed or duplicated.
     # Delay hedge: 23:15 UTC Sunday-Thursday is 10:15 Sydney AEDT
     # / 09:15 Sydney AEST on the NEXT Sydney weekday. If GitHub starts
     # promptly, skip before the 11am actual-time window with NO feed call.
     # If GitHub queues for several hours, this may land 11am-3pm.
     - cron: '15 23 * * 0-4'
-    - cron: '30 1,2 * * 1-5'
+    - cron: '17 0,1 * * 1-5'
 
 permissions:
   contents: write
