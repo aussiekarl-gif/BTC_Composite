@@ -2,7 +2,7 @@
   "capped_comparator_policy_version": "v59_current_ladder_5pct_weekly_cap_v1",
   "capped_comparator_weekly_purchase_cap_aud": 25500.0,
   "first_actual_capture": "2026-11-12T11:19:52.234443+00:00",
-  "last_signal_day": "2026-11-24",
+  "last_signal_day": "2026-11-25",
   "legacy_realized_rows_not_scored": 3,
   "matured_paper_BTC_AUD_returns": {
     "28d": {
@@ -108,8 +108,8 @@
   "new_day_appended": true,
   "no_live_recommendations_orders_notifications": true,
   "not_asx_ibit_execution_or_personal_portfolio": true,
-  "observations": 13,
-  "piecewise_tail_shadow_eligible_observations": 7,
+  "observations": 14,
+  "piecewise_tail_shadow_eligible_observations": 8,
   "prospective_shadow": {
     "broker_fills_verified": false,
     "first_paper_monday": "2026-11-16",
@@ -308,9 +308,9 @@
   },
   "purchase_limit_policy": "No fixed weekly cap; limited by available cash and remaining deployment runway.",
   "realized_current_signal_is_tradeable": false,
-  "realized_gate_eligible_observations": 6,
+  "realized_gate_eligible_observations": 7,
   "realized_gate_method_version": "explore21_same_day_close_v2",
-  "realized_observation_status": "STALE_OR_DELAYED",
+  "realized_observation_status": "VALID_DATED_RESEARCH_REFERENCE",
   "realized_reference_is_research_only": true,
   "simulation_policy_version": "v59_current_ladder_no_fixed_weekly_cap_v1",
   "status": "RESEARCH_ONLY_FORWARD_DATA",
