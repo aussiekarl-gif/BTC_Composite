@@ -266,3 +266,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - New report committed to PR #410: `docs/research/EXPLORE21_BITVIEW_REALIZED_PRICE_SUPPLY_HASHRATE_2026-11-27.md`. PR body updated. Latest head **bc35a4cd1c192cf2f2afedeba34ad97e68ebcb27**, draft/open/unmerged. Awaiting CI for this new report/body update.
 - No metric approved; no Production, dashboard, model, signal or notification changes.
 - Next: inspect CI for latest PR head; continue investigating supply-in-profit discrepancies and earliest-history realized price/MVRV divergences. Hashrate should be compared after consistent averaging windows.
+
+
+## Continuation checkpoint — 27 Nov 2026 (outlier dates reviewed)
+
+- Follow-up date inspection added to the PR #410 comparison report. Supply-in-profit largest post-2013 disagreements: 2015-08-24 (15.42 pp), 2015-08-18 (9.40 pp), 2017-03-10 (7.26 pp), 2013-01-14 (7.10 pp), and 2015-09-05 (6.77 pp). These are notable volatility/early-history periods; source-specific price/UTXO/supply methods are hypotheses only.
+- Realized Price largest post-2013 relative differences cluster 2013-01-01 through 2013-01-10 (~26.7% APE, ~USD 1.57 absolute gap), indicating sustained early-period offset rather than a calendar alignment problem. No date shifting applied.
+- PR #410 comparison report extended with outlier-date review, latest head **ad2aa76b47e1903ec6a0de5dbdb6c281991540c1**, draft/open/unmerged. Checks were in progress on prior head bc35a4cd1c192cf2f2afedeba34ad97e68ebcb27; check latest status before reporting CI complete.
+- Next: validate latest checks; investigate source price input provenance and formula/version history for 2013 RP and 2015/2017 supply-profit discrepancies. Production remains untouched.
