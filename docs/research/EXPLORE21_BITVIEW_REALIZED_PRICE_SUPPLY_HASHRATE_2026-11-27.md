@@ -205,3 +205,10 @@ The formula reconstruction matches the first published observations to floating-
 The raw API changelog capture succeeded (HTTP 200) and reports: metric id `bitcoin-mvrv-z-score`, `method_version=1`, first published **2026-07-15**, with no subsequent method-change entries. This does not prove historical data inputs have never been revised, but it means the API changelog does not document a method-version change that explains the residuals. Captured raw JSON and SHA-256 in diagnostic run 27 artifact **15187998679**.
 
 **Remaining question:** the MVRV ratio reconstructed from Explore21 realized-cap CSV (market cap ÷ realized cap) matches its published MVRV series within ~5e-7, so numerator inputs are internally consistent. The Z-Score denominator remains the unexplained part of the historical reconstruction. Do not assume this is an E21 error; it may be a mismatch in our reconstruction/input series or a historical data-version difference not represented in the changelog.
+
+
+### Further isolation of the Z-Score reconstruction residual
+
+- Explore21 Z-Score CSV and its separate Bitcoin Price CSV have exactly identical daily price values on all 5,551 matched dates (0 difference).
+- The Explore21 MVRV Ratio is independently reconstructed as `market_cap_usd / realized_cap_usd` from the Realized Cap CSV and matches the published ratio within ~5e-7 throughout.
+- These checks isolate the remaining discrepancy to the **standard-deviation denominator calculation/input series**, not a daily price mismatch or the numerator's market-cap-minus-realized-cap spread. This still cannot distinguish our reconstruction implementation from historical input/version differences in the Z-score calculation. No error attribution is made.
