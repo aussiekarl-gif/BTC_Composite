@@ -103,7 +103,24 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(research): refresh Cowen on-chain source snapshots"
-          git push origin HEAD:main
+          # Concurrent schedule/workflow commits can advance main during a refresh.
+          # Rebase the validated data commit onto the latest main and retry push.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            if git rebase origin/main; then
+              if git push origin HEAD:main; then
+                echo "Source snapshots published successfully."
+                exit 0
+              fi
+            else
+              git rebase --abort || true
+              echo "Rebase conflict; refusing to overwrite concurrent changes."
+              exit 1
+            fi
+            if [ "${attempt}" -lt 3 ]; then sleep $((attempt * 15)); fi
+          done
+          echo "Unable to publish after three push/rebase attempts."
+          exit 1
       - name: Publish refresh health summary and mark incomplete refresh as failed
         if: always()
         env:
