@@ -242,7 +242,7 @@ def build_report(output_dir: Path) -> dict:
         "leaderboards": reference_leaderboards(ranked),
         "limitations": [
             "Buy-only accumulation: no top-sell, tax or re-entry timing is modelled.",
-            "Leaderboard winners mainly reflect faster cash deployment, not proven 200WMA timing skill; discount tiers were inactive in the pre-2022 train era.",
+            "Leaderboard winners mainly reflect faster cash deployment, not proven 200WMA timing skill; discount tiers were inactive in the pre-2022 train era. Legacy equal-buy-amount uniform-date diagnostic mixes amount distribution with timing; the new actual-spend-distribution uniform-date metric isolates price timing, but its shifted-date cash feasibility is not modelled.",
             "Historical BTC export ends 2026-10-05 and is not a contemporaneous point-in-time vintage.",
             "Execution is a next-Monday BTC/AUD spot proxy, not an ASX:IBIT fill.",
             "Cash yield is gross and not tax-adjusted; BTC drag and buy friction are assumptions.",
