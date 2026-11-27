@@ -242,8 +242,8 @@ def hybrid_summary_table(cohorts):
     rows=[]
     for entry_period,group in cohorts.groupby("entry_period"):
         for policy,sub in group.groupby("policy"):
-            btc_uplift=pd.Series(100*(sub.btc_accumulated/sub.fixed_weekly_btc-1,index=sub.index)
-            equity_uplift=pd.Series(100*(sub.terminal_equity_aud/sub.fixed_weekly_terminal_equity_aud-1,index=sub.index)
+            btc_uplift=pd.Series(100*(sub.btc_accumulated.to_numpy()/sub.fixed_weekly_btc.to_numpy()-1),index=sub.index)
+            equity_uplift=pd.Series(100*(sub.terminal_equity_aud.to_numpy()/sub.fixed_weekly_terminal_equity_aud.to_numpy()-1),index=sub.index)
             active=sub.trigger_date.notna()
             rows.append({
                 "entry_period":entry_period,"policy":policy,"base_allocation_pct":int(sub.base_allocation_pct.iloc[0]),
