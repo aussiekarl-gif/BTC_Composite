@@ -130,11 +130,14 @@ def compare_series(left, right, *, min_observations=30):
 
 
 def compare_200wma_distance(firsthand, coinmetrics, *, start_date="2017-01-01"):
-    """Check whether price-source differences change 200WMA discount tiers."""
-    cm_ma = coinmetrics["PriceUSD"].rolling(1400, min_periods=1400).mean()
+    """Compare discount tiers using the exact V6.0 prior-200-Sunday-close signal."""
+    from engines.research.v60_200wma_policy import weekly_prior_200wma_signals
+
+    fh = weekly_prior_200wma_signals(firsthand["btc"]).set_index("signal_date")
+    cm = weekly_prior_200wma_signals(coinmetrics["PriceUSD"]).set_index("signal_date")
     pair = pd.concat({
-        "firsthand_distance_pct": (firsthand["btc"] / firsthand["ma200w"] - 1.0) * 100.0,
-        "coinmetrics_distance_pct": (coinmetrics["PriceUSD"] / cm_ma - 1.0) * 100.0,
+        "firsthand_distance_pct": fh["discount_below_200wma_pct"],
+        "coinmetrics_distance_pct": cm["discount_below_200wma_pct"],
     }, axis=1).dropna()
     pair = pair.loc[pair.index >= pd.Timestamp(start_date, tz="UTC")]
     if pair.empty:
@@ -142,27 +145,28 @@ def compare_200wma_distance(firsthand, coinmetrics, *, start_date="2017-01-01"):
     delta = (pair["firsthand_distance_pct"] - pair["coinmetrics_distance_pct"]).abs()
     tiers = {}
     for threshold in (0, 5, 10, 15, 20, 25, 30):
-        a = pair["firsthand_distance_pct"] <= -threshold
-        b = pair["coinmetrics_distance_pct"] <= -threshold
+        a = pair["firsthand_distance_pct"] >= threshold
+        b = pair["coinmetrics_distance_pct"] >= threshold
         flips = pair.index[a != b]
         tiers[str(threshold)] = {
-            "firsthand_signal_days": int(a.sum()),
-            "coinmetrics_signal_days": int(b.sum()),
-            "disagreement_days": int(len(flips)),
+            "firsthand_signal_weeks": int(a.sum()),
+            "coinmetrics_signal_weeks": int(b.sum()),
+            "disagreement_weeks": int(len(flips)),
             "disagreement_pct": float(len(flips) / len(pair) * 100.0),
             "first_10_disagreement_dates": [d.date().isoformat() for d in flips[:10]],
         }
     return {
-        "status": "RESEARCH_ONLY_THRESHOLD_SENSITIVITY",
-        "first_date": pair.index.min().date().isoformat(),
-        "last_date": pair.index.max().date().isoformat(),
+        "status": "RESEARCH_ONLY_EXACT_V60_WEEKLY_THRESHOLD_SENSITIVITY",
+        "signal_definition": "Completed Sunday close / mean of previous 200 completed Sunday closes; signal Sunday excluded",
+        "first_signal_date": pair.index.min().date().isoformat(),
+        "last_signal_date": pair.index.max().date().isoformat(),
         "observations": int(len(pair)),
-        "absolute_distance_difference_pp": {
+        "absolute_discount_difference_percentage_points": {
             "mean": float(delta.mean()), "median": float(delta.median()),
             "p95": float(delta.quantile(0.95)), "max": float(delta.max()),
         },
         "thresholds": tiers,
-        "note": "Daily threshold classifications only; no simulated execution or portfolio outcome.",
+        "note": "Exact weekly V6.0 signal classifications only; no simulated execution or portfolio outcome.",
     }
 
 
