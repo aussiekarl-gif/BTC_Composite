@@ -1,6 +1,6 @@
 # BTC DCA Project Handover
 
-Last updated: 2026-11-27 (Brisbane; session update 08:25 UTC)
+Last updated: 2026-11-27 (Brisbane; session update 08:30 UTC)
 
 This file is the durable starting point for future ChatGPT sessions and human contributors. Update it when material decisions, validation results, or project status change. The repository and committed evidence are authoritative; chat summaries are secondary.
 
@@ -91,7 +91,11 @@ Official API catalogue: https://firsthandbitcoin.com/data/api
 
 - The series catalogue is live and was generated at 2026-11-27T08:23:56Z. It exposes public JSON/CSV endpoints without an API key and says free use is permitted with attribution/link to https://firsthandbitcoin.com/data; it reports updates a few times daily.
 - Candidate series include daily hashrate, difficulty, BTC fees, transactions, miner revenue, realised price, MVRV, UTXO count, 200WMA and 200DMA.
-- The API catalogue confirms endpoint names and units, but direct CSV fetches through the research browser timed out or returned unsupported content-type; JSON endpoints opened but their payloads were not rendered for inspection. Therefore end-to-end machine retrieval, row schema, full historical depth and completeness have NOT yet been verified.
+- GitHub Actions end-to-end JSON retrieval is now verified: run 45965988733 completed successfully and uploaded artifact `firsthand-api-raw-diagnostic` (artifact ID 15182219026; expires 11 Dec 2026). It fetched catalogue, summary and 19 candidate series. Raw files were inspected from the downloaded artifact.
+- Payloads use objects with metadata fields `source`, `url`, `license`, `generated`, `key`, `label`, `unit`, `from`, `to`, `points`, and `data`; data rows are [ISO date, numeric value] pairs. BTC price covers 2013-01-01 to 2026-11-27 (5,079 rows); daily hashrate 2013-03-18 to 2026-11-27 (4,999); difficulty 2013-01-01 to 2026-11-27 (5,079); daily fees 2013-01-01 to 2026-11-26 (5,075); realised price and MVRV 2013-01-01 to 2026-11-26 (5,078 each); 200WMA 2016-10-31 to 2026-11-27 (3,680).
+- Initial structural checks on the fetched payloads found no duplicate dates or non-numeric values in the inspected daily series. Some series have missing dates: daily hashrate has 3 date gaps, daily fees has one 3-day gap (12–16 Nov 2026), and several fee-derived/transaction series have a 7-day gap (13–21 Nov 2025). Difficulty is stepwise and naturally repeats values. Do not fill gaps.
+- Preliminary matched comparison against Coin Metrics Community data through 26 Nov 2026: Firsthand MVRV is effectively identical to Coin Metrics CapMVRVCur (mean absolute percentage difference ~0.0000013%), suggesting shared upstream data or methodology rather than an independent cross-check. Firsthand daily fees vs FeeTotNtv mean absolute percentage difference ~1.57%. Firsthand BTC price vs PriceUSD mean absolute percentage difference ~2.24%, with historical outliers up to ~92.9%; the recent 25/26 Nov Firsthand BTC price repeats 59,171.86 while Coin Metrics values differ. Investigate daily close conventions, repeated values, outliers and date alignment before considering use.
+- These comparisons are exploratory calculations on one downloaded snapshot, not a full validation. Firsthand is proven machine-retrievable, but data correctness, independence, full historical completeness, and metric formulas remain unapproved.
 - Published methodology evidence: Firsthand describes hashrate as a block-arrival-based estimate and explicitly notes high daily noise; its chart line is a 7-day average. Difficulty is consensus retarget data. Fee series is presented as daily BTC fees paid to miners and commonly charted as a 7-day average. Realised price is described as average BTC cost basis from the price at which each BTC last moved; MVRV is market value divided by realised value.
 - Independence caution: Firsthand is operated by NMine LLC, a mining hardware sales/hosting business. This is not a reason to reject its public on-chain series, but its incentive context should be recorded and its values independently cross-checked.
 - Preliminary suitability: promising independent research cross-check for hashrate, difficulty, fees and realised price; NOT yet approved as a production/research pipeline replacement. Need direct API retrieval in GitHub Actions, schema/units/date checks, historic overlap against Coin Metrics/Explore21/OBM/Aethereal snapshots where available, and formula validation before integration.
@@ -102,11 +106,12 @@ Official API catalogue: https://firsthandbitcoin.com/data/api
 
 URL: https://github.com/aussiekarl-gif/BTC_Composite/pull/409
 
-- Draft PR, branch `research/firsthand-api-validation`, head `83905cebdca77381239b883e5bf185913663dd1b`.
+- Draft PR, branch `research/firsthand-api-validation`, latest head `85cdf6340a0b0cbee6a265a0d5f2ba9b11ab91d3`.
 - Adds `engines/research/firsthand_api_diagnostic.py` to fetch and preserve raw JSON for the catalogue, summary, BTC price, daily hashrate, fees, difficulty, realised price and MVRV.
 - Adds a dedicated Actions workflow and 14-day raw-payload artifact. No data is normalised or integrated.
-- PR is intentionally draft; no workflow run has yet been returned by the GitHub connector. Confirm Actions run and inspect artifact payloads before treating retrieval as validated.
-- Do not merge or integrate until API schema, date coverage, units, freshness, historical overlap and formula definitions are inspected. Research-only; Production and notifications unchanged.
+- Dedicated diagnostic workflow run 45965988733 passed, and its raw artifact was downloaded and inspected. The workflow now runs on push and pull_request. Retrieval is validated; the series are not yet approved for model use.
+- Keep PR draft and do not integrate until price/fee differences, missing dates, upstream independence, realised-price formula, and 200WMA calculation are validated. Research-only; Production and notifications unchanged.
+- Latest related research regression run 45965988723: regression tests, matched 200WMA research and V6.0 path/cost report passed; public-data smoke failed at Aethereal after Explore21 and Coin Metrics succeeded. CDD/snapshot summary steps were skipped.
 
 ## Session continuation protocol
 
