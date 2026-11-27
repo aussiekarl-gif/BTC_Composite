@@ -154,6 +154,15 @@ def run_cohort(btc_usd,usd_per_aud,*,enrolment_date,budget_aud=DEFAULT_BUDGET_AU
                fee_aud=DEFAULT_FEE_AUD):
     btc=_series(btc_usd,"BTC/USD")
     fx=_series(usd_per_aud,"USD per AUD")
+    if not btc.index.equals(pd.date_range(btc.index[0],btc.index[-1],freq="D",tz="UTC")):
+        raise ValueError("BTC/USD history must contain complete consecutive daily observations")
+    numeric=(budget_aud,capital_aud,cash_yield,weekly_cap_pct,buy_friction,fee_aud)
+    if not all(math.isfinite(float(x)) for x in numeric):
+        raise ValueError("Simulation assumptions must be finite")
+    if budget_aud<=0 or capital_aud<=0 or cash_yield<0:
+        raise ValueError("Budget/capital must be positive and cash yield nonnegative")
+    if not 0<weekly_cap_pct<=100 or not 0<=buy_friction<1 or fee_aud<0:
+        raise ValueError("Invalid weekly cap, friction or fee")
     price=_aud_prices(btc,fx)
     enrol=pd.Timestamp(enrolment_date,tz="UTC").normalize()
     end=enrol+pd.Timedelta(days=7*COHORT_WEEKS)
@@ -162,49 +171,54 @@ def run_cohort(btc_usd,usd_per_aud,*,enrolment_date,budget_aud=DEFAULT_BUDGET_AU
         raise ValueError("Calendar cohort requires dated enrolment and 104-week terminal prices")
     if any(d not in price.index for d in dates):
         raise ValueError("Missing weekly execution price; cohort not imputed")
-    window=price.loc[enrol:end]
-    low=float(window.min())
+    low=float(price.loc[enrol:end].min())
     weekly_cap=capital_aud*weekly_cap_pct/100.
-    fixed=_simulate("fixed_weekly",dates,price,budget_aud,capital_aud,cash_yield,weekly_cap,buy_friction,fee_aud,low)
-    below=_simulate("remaining_cash_2_5pct_below_200wma",dates,price,budget_aud,capital_aud,cash_yield,weekly_cap,buy_friction,fee_aud,low)
+    fixed=_simulate("fixed_weekly",dates,price,budget_aud,capital_aud,cash_yield,
+                    weekly_cap,buy_friction,fee_aud,low,enrol)
+    below=_simulate("remaining_cash_2_5pct_below_200wma",dates,price,budget_aud,
+                    capital_aud,cash_yield,weekly_cap,buy_friction,fee_aud,low,enrol)
     schedule,trigger=_adaptive_schedule(price,enrol,end)
-    adaptive_dates=schedule
-    adaptive=_simulate("adaptive_recovery",adaptive_dates,price,budget_aud,capital_aud,cash_yield,weekly_cap,buy_friction,fee_aud,low) if adaptive_dates else {
-        "policy":"adaptive_recovery","btc_accumulated":0.,"cash_remaining_aud":budget_aud*((1+cash_yield)**(7*COHORT_WEEKS/365.25)),
-        "total_cash_outlay_aud":0.,"gross_buy_consideration_aud":0.,"buy_count":0,
-        "effective_vwap_aud_per_btc":None,"cohort_104w_low_aud":low,"vwap_premium_to_cohort_low_pct":None,
-        "terminal_btc_value_aud":0.,"terminal_equity_aud":budget_aud*((1+cash_yield)**(7*COHORT_WEEKS/365.25)),
-        "cash_budget_deployed_pct":0.,"buy_dates":[],
-    }
-    # Replace generic adaptive targets with exact original-budget weekly fractions,
-    # retaining existing signal/size helper, 5%-capital cap and cash yield.
-    adaptive_cash=float(budget_aud) if schedule else no_trigger_cash;adaptive_btc=adaptive_spent=adaptive_gross=0.;adaptive_count=0;adaptive_largest=0.
-    adaptive_dates=[];previous=enrol
+    no_trigger_cash=budget_aud*((1+cash_yield)**(7*COHORT_WEEKS/365.25))
+    adaptive_cash=budget_aud if schedule else no_trigger_cash
+    adaptive_btc=adaptive_spent=adaptive_gross=0.
+    adaptive_count=adaptive_largest=0.
+    adaptive_dates=[]
+    previous=enrol
     for day in schedule:
         elapsed=(day-previous).days
-        adaptive_cash*=((1+cash_yield)**(elapsed/365.25));previous=day
+        if elapsed<0:raise ValueError("Adaptive review dates are not monotonic")
+        adaptive_cash*=((1+cash_yield)**(elapsed/365.25))
+        previous=day
         px=float(price.loc[day])
         signal=recovery_buy_budget_fraction(btc,day,style="adaptive_recovery")
         target=budget_aud*signal["fraction_of_initial_buyback_cash"]
         adaptive_cash,units,outlay,consideration=_buy(
-            adaptive_cash,day,px,target,weekly_cap=weekly_cap,buy_friction=buy_friction,fee=fee_aud)
+            adaptive_cash,day,px,target,weekly_cap=weekly_cap,
+            friction=buy_friction,fee=fee_aud)
         if units:
-            adaptive_btc+=units;adaptive_spent+=outlay;adaptive_gross+=consideration
-            adaptive_count+=1;adaptive_largest=max(adaptive_largest,outlay);adaptive_dates.append(day)
+            adaptive_btc+=units
+            adaptive_spent+=outlay
+            adaptive_gross+=consideration
+            adaptive_count+=1
+            adaptive_largest=max(adaptive_largest,outlay)
+            adaptive_dates.append(day)
     if schedule:
         elapsed=(end-previous).days
         if elapsed>0:adaptive_cash*=((1+cash_yield)**(elapsed/365.25))
     adaptive_vwap=adaptive_spent/adaptive_btc if adaptive_btc else None
-    adaptive.update({
-        "btc_accumulated":adaptive_btc,"cash_remaining_aud":adaptive_cash,
-        "total_cash_outlay_aud":adaptive_spent,"gross_buy_consideration_aud":adaptive_gross,
-        "buy_count":adaptive_count,"largest_buy_outlay_aud":adaptive_largest,"effective_vwap_aud_per_btc":adaptive_vwap,
+    adaptive={
+        "policy":"adaptive_recovery","btc_accumulated":adaptive_btc,
+        "cash_remaining_aud":adaptive_cash,"total_cash_outlay_aud":adaptive_spent,
+        "gross_buy_consideration_aud":adaptive_gross,"buy_count":adaptive_count,
+        "largest_buy_outlay_aud":adaptive_largest,
+        "effective_vwap_aud_per_btc":adaptive_vwap,
+        "cohort_104w_low_aud":low,
         "vwap_premium_to_cohort_low_pct":100*(adaptive_vwap/low-1) if adaptive_vwap else None,
         "terminal_btc_value_aud":adaptive_btc*float(price.loc[end]),
         "terminal_equity_aud":adaptive_cash+adaptive_btc*float(price.loc[end]),
         "cash_budget_deployed_pct":100*adaptive_spent/budget_aud,
         "buy_dates":[str(d.date()) for d in adaptive_dates],
-    })
+    }
     return {
         "enrolment_date":str(enrol.date()),"terminal_date":str(end.date()),
         "validation_split":"train" if enrol.date()<HOLDOUT_START else "holdout",
