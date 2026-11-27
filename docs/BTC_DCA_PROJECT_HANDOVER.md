@@ -368,3 +368,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Remaining exact differences: strict < vs <= at break-even, daily-close vs final-block/day sample, differing price-source regimes, six-block confirmation vs sample depth, and possible denominator/supply conventions. This is a tighter comparability diagnosis, not validation or approval.
 - PR #410 report updated at **9f935aa1a19e0acc691d4e2706cfc5b44bfdc108**; still draft/open/unmerged. Documentation-only update; no CI rerun under current workflow path filters. Supply-in-profit remains provisional.
 - Next: examine source price/close/sampling conventions and historical UTXO cohort details if documented; then decide if residual discrepancy is acceptable for metric reliability only. No Production changes.
+
+
+## Continuation checkpoint — 27 Nov 2026 (direct Coin Metrics NUPL availability probe)
+
+- PR #410 diagnostic code now makes a raw no-key Coin Metrics Community API probe for direct BTC daily NUPL, retaining status/body excerpt and a summary if available. Commit **7ad93dce9898a1fe9c04841246e22f08bc157b61**.
+- Diagnostic run **45978508682** succeeded; artifact **15187578852** reviewed. Coin Metrics direct NUPL endpoint returned **403**: NUPL at daily frequency for BTC is not available with the supplied community credentials. No data file was saved. Community MVRV-based derived NUPL would not be independent from the MVRV input; Bitview remains the independent cross-source comparison. The raw probe remains as a low-risk availability test, not a dependency.
+- PR #410 report updated at **e911ff457432bcd1df013b831b8ff015a487a889**. CI on code head: diagnostic success (run 23), V5.9 risk validation success (run 558); regression run **45978508708** still in progress at checkpoint. Check final status. PR remains draft/unmerged; no Production/model/dashboard/signal/notification changes.
+- Next: await regression completion; continue metric provenance review only, keep candidate metrics provisional and avoid direct signal experimentation until data validation gates are met.
