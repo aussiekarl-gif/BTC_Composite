@@ -24,6 +24,10 @@ The catalogue also exposes many other market, mining, on-chain, ETF, derivatives
 
 Aethereal's adapter currently requires `fees_btc`, `price_usd`, `miners_revenue_usd`, and `transactions`. Candidate Firsthand matches exist for fee, miner revenue, transaction count and price series. But series labels alone are not proof of identical metric definitions, aggregation windows, timestamps, or price conventions. The catalogue's `fees7` and `tx7` are explicitly different from daily `fees`; do not use smoothed series for daily parity checks.
 
+## Terms / attribution review
+
+The API catalogue explicitly permits free use subject to attribution (credit **Data: Firsthand Bitcoin** linked to the provider's data page). The site's terms page also says figures may be delayed, incomplete or wrong, and prohibits reselling/redistributing its pricing or profitability data as one's own product. Our contemplated private research use appears consistent with the API attribution statement, but preserve attribution and do not publish/repackage raw datasets without checking terms.
+
 ## What this review does NOT establish
 
 - Individual series data URLs were identified but their raw payloads could not be reliably extracted by this review's web retrieval, so schema, actual first/last observation dates, gaps, and freshness of each series remain unverified.
@@ -36,7 +40,7 @@ Aethereal's adapter currently requires `fees_btc`, `price_usd`, `miners_revenue_
 2. Validate schema, date range, timezone/day boundary, numeric units, nulls, duplicate dates, and update freshness.
 3. Compare fees BTC/day, miner revenue USD/day, transactions/day and BTC price with existing independent series on exact matched dates. Report sample size, coverage, median absolute percentage error (guard against zero denominators), correlation, and outlier dates; inspect metric definitions before interpreting differences.
 4. Determine if daily fees and transactions are unsmoothed. Explicitly avoid `fees7` and `tx7` for daily exact-match comparisons unless an averaging transform is intentionally part of the test.
-5. Preserve provider and series-key provenance, raw source snapshots, and mandatory credit. Review terms/attribution requirements before distributing charts or data.
+5. Preserve provider and series-key provenance, raw source snapshots, and mandatory credit. The API page requires credit with a link wherever data appears. The provider's site terms also prohibit reselling or redistributing its profitability/pricing data as one's own product; avoid any redistribution beyond permitted use and confirm the relevant terms before publication.
 6. Add parser tests, fixture-based regression tests, and stale-source/failure behavior. Only then decide: accept for limited research use, reject, or keep as backup-only.
 
 ## Current recommendation
