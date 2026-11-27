@@ -360,3 +360,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Largest outlier 2015-08-24: E21 36.04% vs Bitview 51.4625% (15.4225 pp), price mismatch +19.72%. 2017-03-10 gap 7.2631 pp, price mismatch +11.67%. 2013-01-14 gap 7.104 pp despite spot prices only -0.92% apart. Causes remain unresolved hypotheses (price assignment, UTXO cohorts/exclusions, supply-accounting or provenance).
 - PR #410 report updated at **30c6375ba35ae45364029f533bf9d70e9f41ac03**; draft/open/unmerged. Documentation-only commit, no new tests triggered by configured path filters. Supply-in-profit remains provisional/unapproved.
 - Next: review metric definition and methodology version/source for supply-in-profit and investigate if independent direct NUPL/Z-score series exist; no strategy or Production integration.
+
+
+## Continuation checkpoint — 27 Nov 2026 (Supply-in-profit definitions reconciled at high level)
+
+- Official documentation indicates Explore21 and Bitview supply-in-profit-share are broadly aligned concepts: all-UTXO, BTC-weighted profit share. Explore21 method v2 uses last-move daily close below current close and zero basis for pre-price-history coins; Bitview metadata says all UTXOs, creation price at or below sampled spot, and share of cohort supply. Both percent variants weight by BTC amount (not output count).
+- Remaining exact differences: strict < vs <= at break-even, daily-close vs final-block/day sample, differing price-source regimes, six-block confirmation vs sample depth, and possible denominator/supply conventions. This is a tighter comparability diagnosis, not validation or approval.
+- PR #410 report updated at **9f935aa1a19e0acc691d4e2706cfc5b44bfdc108**; still draft/open/unmerged. Documentation-only update; no CI rerun under current workflow path filters. Supply-in-profit remains provisional.
+- Next: examine source price/close/sampling conventions and historical UTXO cohort details if documented; then decide if residual discrepancy is acceptable for metric reliability only. No Production changes.
