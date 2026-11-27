@@ -10,7 +10,8 @@ from engines.research.hybrid_calendar_adaptive_dca import (
 def synthetic(start="2010-01-01",end="2019-01-01",enrol="2016-01-04",rally_date=None,drop=True):
     idx=pd.date_range(start,end,freq="D",tz="UTC")
     btc=pd.Series(100.,index=idx)
-    btc.loc[idx>=pd.Timestamp(enrol,tz="UTC")]=50.
+    if drop:
+        btc.loc[idx>=pd.Timestamp(enrol,tz="UTC")]=50.
     if rally_date:
         btc.loc[idx>=pd.Timestamp(rally_date,tz="UTC")]=110.
     fx=pd.Series(.70,index=idx)
