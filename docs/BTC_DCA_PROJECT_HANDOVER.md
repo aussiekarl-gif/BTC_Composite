@@ -485,3 +485,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - PR #413 report confirmation workflow **940** passed regression, synthetic tests, replay and artifact upload. The earlier successful artifact run937 remains byte-identical.
 - PR #414 current-head workflow **941**: existing DCA regression and expanded 6 synthetic hybrid tests passed; historical 32-cohort replay is still running; Aethereal public-data smoke failure is upstream.
 - Results for 80/90% variants are pending. No Production/dashboard/signal/notification/portfolio changes.
+
+
+## Continuation checkpoint — 27 Nov 2026 (80/90% hybrid results; 95/100% sweep added)
+
+- PR #414 high-base replay run **941** completed successfully; artifact **15195007138** inspected. Same 32 overlapping complete 104-week calendar cohorts. 80% fixed/20% adaptive: median BTC 14.621 pre-2022 (−20% paired BTC) and 3.061 2022+ (−4.34% paired BTC; +6.61% paired final equity). 90% fixed/10% reserve: 16.449 pre-2022 (−10% paired BTC) and 3.444 2022+ (−2.18% BTC; +3.29% paired final equity). BTC win rates remain 20% pre-2022 / 50% 2022+; equity wins 35% / 66.67%. Cap compliance all cohorts. Full tables and caveats in updated report on PR #414 branch.
+- Updated PR #414 report to reflect completed 80/90% replay and next sweep. Docs confirmation run **944** in progress; main research DCA tests/replay running. V5.9 validation run **645** passed. Aethereal public source smoke still fails upstream, separate.
+- Draft PR #415 created: research/hybrid-calendar-dca-near-fixed-sweep, stacked on #414; adds 95% base/5% adaptive and 100% fixed weekly baseline, synthetic edge-case tests. Initial run **943** caught 2 test expectation errors (allocation tuple not extended; zero-reserve 100% variant should have no reserve cash). Corrected both. Current head **585efe27c701ce626cbe7a191189033b3c16a8bc**, CI run **945** pending. No Production/dashboard/signals/notifications/portfolio changes.
+- PR #412–#415 all remain draft/open/unmerged. #415 depends on #414 and earlier PR #413; do not merge any without user approval.
