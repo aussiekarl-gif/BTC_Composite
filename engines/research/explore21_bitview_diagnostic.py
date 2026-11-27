@@ -45,6 +45,19 @@ def fetch(url, path, accept=None):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     report = {"started_utc": datetime.now(timezone.utc).isoformat(), "explore21": {}, "bitview": {"search": {}, "series": {}}, "coin_metrics": {}}
+    # Capture the Explore21 MVRV Z-Score method changelog for historical input/version context.
+    e21_z_changelog_url = "https://data.explore21.com/v1/metrics/bitcoin-mvrv-z-score/changelog"
+    e21_z_meta, e21_z_response = fetch(e21_z_changelog_url, OUT / "explore21" / "bitcoin-mvrv-z-score-changelog.json", "application/json")
+    report["explore21"]["bitcoin-mvrv-z-score-changelog"] = {"fetch": e21_z_meta}
+    if e21_z_response is not None and e21_z_response.ok:
+        try:
+            e21_z_payload = e21_z_response.json()
+            report["explore21"]["bitcoin-mvrv-z-score-changelog"]["summary"] = {
+                "response_keys": list(e21_z_payload.keys()) if isinstance(e21_z_payload, dict) else None,
+                "entry_count": len(e21_z_payload.get("data", [])) if isinstance(e21_z_payload, dict) and isinstance(e21_z_payload.get("data"), list) else None,
+            }
+        except ValueError:
+            e21_z_meta["parse_error"] = "Explore21 Z-score changelog response was not JSON"
     # Capture Coin Metrics Community NUPL directly, without deriving it from MVRV.
     cm_meta, cm_response = fetch(COIN_METRICS_NUPL, OUT / "coin_metrics" / "nupl_community.json", "application/json")
     report["coin_metrics"]["nupl"] = {"fetch": cm_meta}
