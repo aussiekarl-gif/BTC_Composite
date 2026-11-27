@@ -2,7 +2,10 @@ name: Cowen on-chain daily source refresh
 
 on:
   schedule:
+    # Redundant daily windows: GitHub schedule may be delayed or dropped.
     - cron: "17 4 * * *"
+    - cron: "17 5 * * *"
+    - cron: "17 6 * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -24,7 +27,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out default branch
         uses: actions/checkout@v4
@@ -42,32 +45,70 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/cowen_onchain_baseline
           cp -a data/research/cowen_onchain/. /tmp/cowen_onchain_baseline/
-      - name: Fetch Explore21 daily BTC metrics
+      - name: Fetch Explore21 daily BTC metrics (retry)
+        continue-on-error: true
         run: |
-          python -m engines.research.explore21_public_data \
-            --output-dir data/research/cowen_onchain/explore21
-      - name: Fetch Coin Metrics Community cross-check
+          set -uo pipefail
+          for attempt in 1 2 3 4; do
+            echo "Explore21 attempt ${attempt}/4"
+            if python -m engines.research.explore21_public_data --output-dir data/research/cowen_onchain/explore21; then exit 0; fi
+            if [ "${attempt}" -lt 4 ]; then sleep $((attempt * 20)); fi
+          done
+          echo "Explore21 failed after four attempts"; exit 1
+      - name: Fetch Coin Metrics Community cross-check (retry)
+        continue-on-error: true
         run: |
-          python -m engines.research.coinmetrics_community \
-            --output data/research/cowen_onchain/coinmetrics_btc_daily_community.csv
-      - name: Fetch Aethereal daily transaction fees
+          set -uo pipefail
+          for attempt in 1 2 3 4; do
+            echo "Coin Metrics attempt ${attempt}/4"
+            if python -m engines.research.coinmetrics_community --output data/research/cowen_onchain/coinmetrics_btc_daily_community.csv; then exit 0; fi
+            if [ "${attempt}" -lt 4 ]; then sleep $((attempt * 20)); fi
+          done
+          echo "Coin Metrics failed after four attempts"; exit 1
+      - name: Fetch Aethereal daily transaction fees (retry)
+        continue-on-error: true
         run: |
-          python -m engines.research.aethereal_public_data \
-            --output data/research/cowen_onchain/bitcoin_network_daily_aethereal.csv
-      - name: Fetch Open Bitcoin Metrics daily CDD
+          set -uo pipefail
+          for attempt in 1 2 3 4; do
+            echo "Aethereal attempt ${attempt}/4"
+            if python -m engines.research.aethereal_public_data --output data/research/cowen_onchain/bitcoin_network_daily_aethereal.csv; then exit 0; fi
+            if [ "${attempt}" -lt 4 ]; then sleep $((attempt * 20)); fi
+          done
+          echo "Aethereal failed after four attempts"; exit 1
+      - name: Fetch Open Bitcoin Metrics daily CDD (retry)
+        continue-on-error: true
         run: |
-          python -m engines.research.obm_cdd_public_data \
-            --output data/research/cowen_onchain/obm_cdd_btcxdays_daily.csv
+          set -uo pipefail
+          for attempt in 1 2 3 4; do
+            echo "Open Bitcoin Metrics attempt ${attempt}/4"
+            if python -m engines.research.obm_cdd_public_data --output data/research/cowen_onchain/obm_cdd_btcxdays_daily.csv; then exit 0; fi
+            if [ "${attempt}" -lt 4 ]; then sleep $((attempt * 20)); fi
+          done
+          echo "Open Bitcoin Metrics failed after four attempts"; exit 1
       - name: Reject corrupted or regressed source snapshots before publication
         run: python -m engines.research.cowen_onchain_snapshot_guard --baseline /tmp/cowen_onchain_baseline --candidate data/research/cowen_onchain
-      - name: Commit changed source snapshots
+      - name: Commit successful source updates (partial refresh allowed)
         run: |
+          set -euo pipefail
           git add data/research/cowen_onchain
           if git diff --cached --quiet; then
-            echo "No source snapshot changes to commit."
+            echo "No valid source snapshot changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(research): refresh Cowen on-chain source snapshots"
           git push origin HEAD:main
+      - name: Publish daily refresh health summary and fail if any source unavailable
+        if: always()
+        run: |
+          {
+            echo "## Cowen on-chain refresh health"
+            echo "| Source | Attempt status |"
+            echo "|---|---|"
+            echo "| Explore21 | ${{ steps.explore21.outcome || 'check retry step logs' }} |"
+            echo "| Coin Metrics | ${{ steps.coinmetrics.outcome || 'check retry step logs' }} |"
+            echo "| Aethereal | ${{ steps.aethereal.outcome || 'check retry step logs' }} |"
+            echo "| Open Bitcoin Metrics | ${{ steps.obm.outcome || 'check retry step logs' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Refresh step outcomes are available in the job log; source snapshots only publish after integrity guard."
