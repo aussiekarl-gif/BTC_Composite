@@ -7,7 +7,7 @@ on:
       - "engines/research/run_prospective_adaptive_recovery_replay.py"
       - "tests/test_prospective_adaptive_recovery_replay.py"
       - ".github/workflows/prospective_adaptive_recovery_replay.yml"
-      - "engines/research/shared_cycle_policy.py"
+      - "docs/research/prospective_adaptive_recovery_replay_20261127.md"\n      - "engines/research/shared_cycle_policy.py"
       - "engines/research/v60_historical_report.py"
       - "data/mvrv_z_score_2026-10-06T21-46-14.csv"
   workflow_dispatch:
