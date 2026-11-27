@@ -22,7 +22,8 @@ class MidSessionWorkflowSchedulingTests(unittest.TestCase):
         y=self.yaml
         self.assertEqual(y.count("- cron:"),2)
         self.assertIn("15 23 * * 0-4",y)
-        self.assertIn("30 1,2 * * 1-5",y)
+        self.assertIn("17 0,1 * * 1-5",y)
+        self.assertNotIn("30 1,2 * * 1-5",y)
         self.assertIn("concurrency:",y)
         self.assertIn("cancel-in-progress: false",y)
 
