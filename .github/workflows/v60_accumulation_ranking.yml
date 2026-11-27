@@ -8,8 +8,13 @@ on:
       - "engines/research/v60_200wma_backtest.py"
       - "engines/research/v60_200wma_policy.py"
       - "engines/research/v60_historical_report.py"
+      - "engines/research/v60_allocation_scale_report.py"
+      - "engines/research/v60_historical_pacing_report.py"
       - "tests/test_v60_200wma_backtest.py"
       - "tests/test_v60_accumulation_backtest.py"
+      - "tests/test_v60_historical_report.py"
+      - "tests/test_v60_allocation_scale_report.py"
+      - "tests/test_v60_historical_pacing_report.py"
       - ".github/workflows/v60_accumulation_ranking.yml"
   pull_request:
     branches: [main]
