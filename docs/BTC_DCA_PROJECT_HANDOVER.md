@@ -343,3 +343,12 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 
 - Audited derived E21 NUPL vs Bitview classification on threshold sets (not strategy test). Below 0 agreement 99.92% from 2017 / 99.96% from 2020. Below -0.10: Jaccard 0.946 (2017+) / 0.925 (2020+); daily agreement still >99.6%. Outliers: 2018-11-20 E21 -0.1088 vs Bitview +0.0381; 2020-03-12 E21 -0.1649 vs Bitview -0.0227. 2022-23 dates straddle -0.10 boundary. This matters for extreme stress classification; thresholds not recommended.
 - Updated comparison report commit **66da4ddf9a61bdeb101a646be84f2dfa87568601**, PR #410 head **66da4ddf9a61bdeb101a646be84f2dfa87568601**. Check CI.
+
+
+## Continuation checkpoint — 27 Nov 2026 (stress-date price-provenance audit)
+
+- PR #410 diagnostic run **45977576799** succeeded on code head **66da4ddf9a61bdeb101a646be84f2dfa87568601**; artifact **15187148686** inspected. All three code-level checks on that head passed: Explore21/Bitview diagnostic, Research DCA regression, and V5.9 Research Risk Validation.
+- Raw source-price comparisons quantified stress-date mismatches: 2017-05-27 Bitview +23.02% vs E21; 2018-02-02 -18.94%; 2018-11-20 +15.48%; 2020-03-12 +14.82%. On 2018-11-20 and 2020-03-12 these co-occur with large NUPL differences (E21-derived -0.1088 vs Bitview +0.0381; and -0.1649 vs -0.0227 respectively). Price-source mismatch is a plausible confounder, not proven sole cause; MVRV/NUPL also depend on realized-cap/UTXO methodology.
+- Jan 2013 realized-price gap is not explained by contemporaneous spot-price mismatch: Explore21 price and Bitview price were close, while RP remained ~26% different. Cost-basis/UTXO/source history remains unresolved.
+- Updated PR #410 report with this diagnostic at commit **b7c45c6742055a4b770544e6540440b2c14d310a**. Documentation-only commit; no CI rerun required by configured path filters. PR #410 remains draft/open/unmerged. No Production/model/dashboard/signal/notification changes.
+- Next: investigate supply-in-profit outliers and methodology/version history; consider another independent source if a documented direct NUPL/Z-score match becomes available. Do not normalize raw data or approve candidate metrics without causal walk-forward/ablation/forward validation.
