@@ -76,3 +76,43 @@ This provenance difference is a plausible explanation for some historical RP/MVR
 ## Additional diagnostic expansion
 
 Raw retrieval now also includes Explore21 Bitcoin price and realized-cap CSVs, and Bitview search queries for global price, realized-cap, and Puell Multiple series. This is for provenance and metric corroboration; no data is transformed into model inputs. Quantitative comparisons await the next successful artifact.
+
+## Quantitative results: price, realized cap and Puell (artifact run 45973887035)
+
+Matched daily comparisons use calendar date (no date shifting), and relative error is Explore21 value denominator; symmetric percentage difference is shown for metric interpretation where helpful.
+
+### Price
+| Period | n | Mean APE | Median APE | P95 APE | Max |
+|---|---:|---:|---:|---:|---:|
+| Full | 5,580 | 0.633% | 0.235% | 1.718% | 75.000% |
+| 2013+ | 5,078 | 0.426% | 0.244% | 1.284% | 23.359% |
+| 2017+ | 3,617 | 0.436% | 0.249% | 1.309% | 23.359% |
+| 2020+ | 2,522 | 0.329% | 0.220% | 0.934% | 12.904% |
+
+Correlation is 0.999986. Median symmetric difference full sample 0.235%, p95 1.713%. High early outliers are expected to be investigated by date/source-regime; broad modern agreement is strong.
+
+### Realized Cap
+| Period | n | Mean APE | Median APE | P95 APE | Max |
+|---|---:|---:|---:|---:|---:|
+| Full | 5,580 | 4.972% | 0.135% | 48.126% | 98.524% |
+| 2013+ | 5,078 | 0.511% | 0.119% | 2.013% | 21.061% |
+| 2017+ | 3,617 | 0.164% | 0.124% | 0.513% | 2.942% |
+| 2020+ | 2,522 | 0.127% | 0.107% | 0.302% | 1.008% |
+
+Correlation 0.9999994; symmetric difference median 0.135%, p95 63.377% (tail dominated by earliest history). Modern agreement is excellent.
+
+### Puell Multiple
+| Period | n | Mean APE | Median APE | P95 APE | Max |
+|---|---:|---:|---:|---:|---:|
+| Full | 5,216 | 1.778% | 1.186% | 5.456% | 41.038% |
+| 2013+ | 5,078 | 1.779% | 1.188% | 5.465% | 41.038% |
+| 2017+ | 3,617 | 1.739% | 1.193% | 5.188% | 29.136% |
+| 2020+ | 2,522 | 1.580% | 1.115% | 4.604% | 29.136% |
+
+Correlation 0.996677; symmetric median difference 1.191%, p95 5.558%. Unlike RP/realized cap, Puell's discrepancy remains consistently around 1.1–1.2% median through modern history, with tails around volatile periods (e.g. 2013 Apr, 2020-03-12, 2017 May). Candidate cross-source corroboration, but definition/window/smoothing and issuance conventions need closer review before acceptance.
+
+### Preliminary research assessment
+- BTC price: strong modern corroboration; price-source regimes likely explain outliers.
+- Realized Cap: very strong from 2017 onward, matching Realized Price validation.
+- Puell Multiple: highly correlated but systematically offset; must investigate precise denominator window, subsidy/issuance treatment, and sample timing before using as a research signal.
+- No metric approved as a Production input. Raw source values and comparison tables are diagnostic only.
