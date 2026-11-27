@@ -49,3 +49,18 @@ The close median level agreement is promising, but variability is consistent wit
 - Supply-in-profit largest post-2013 differences: 2015-08-24 (15.42 pp), 2015-08-18 (9.40 pp), 2017-03-10 (7.26 pp), 2013-01-14 (7.10 pp), 2015-09-05 (6.77 pp). The differences cluster around volatile early price history and cycle-transition periods; source-specific price and supply/UTXO methodology remain candidate causes, not established explanations.
 - Realized-price largest post-2013 relative differences cluster on 2013-01-01 through 2013-01-10, with APE about 26.7% and absolute difference near USD 1.57. That sustained early-period offset suggests upstream price/cost-basis methodology differences rather than a one-day alignment issue. Calendar mapping has already been verified; no shift applied.
 - Follow-up: capture and compare source spot-price inputs on discrepancy dates where possible, and document metric formula/version histories. Keep candidate metrics unapproved.
+
+## Hashrate apples-to-apples smoothing follow-up
+
+Bitview's day1 value is a trailing-24-hour estimate; Explore21 publishes a trailing 7-day average. I calculated a 7-observation rolling mean of Bitview day1 estimates (calendar daily points) and compared this with Explore21's 7-day average. This is a diagnostic smoothing operation only, not a model input.
+
+| Period | Matched n | Median ratio (smoothed Bitview / E21) | Median abs % diff | P95 abs % diff | Max |
+|---|---:|---:|---:|---:|---:|
+| 2017 onward | 3,617 | 1.00636 | 0.636% | 1.177% | 2.908% |
+| 2020 onward | 2,522 | 1.00640 | 0.640% | 1.188% | 2.908% |
+
+This materially reduces disagreement versus the unsmoothed series (median APE ~5.23%, p95 ~16.35% since 2020). The remaining ~0.64% median level offset may be methodology/version differences; candidate cross-check only.
+
+## Realized-price early-history detail
+
+The first 10 days of January 2013 show a persistent offset: Explore21 realized price ~USD 5.88–5.95 while Bitview ~USD 7.45–7.50; Explore21 BTC daily close ~USD 13.1–13.6. A sustained multi-day offset is not a date-alignment issue. It likely reflects differing early price/cost-basis inputs or methodology, but exact cause is unconfirmed. No shifting/correction applied.
