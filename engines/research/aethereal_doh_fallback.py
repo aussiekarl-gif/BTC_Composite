@@ -35,7 +35,7 @@ def extract_ipv4_answer(payload):
     if not isinstance(payload, dict) or payload.get("Status") != 0:
         return None
     for answer in payload.get("Answer") or []:
-        if answer.get("type") != 1:
+        if not isinstance(answer, dict) or answer.get("type") != 1:
             continue
         try:
             return str(ipaddress.IPv4Address(answer.get("data", "")))
