@@ -4,12 +4,14 @@ from __future__ import annotations
 from datetime import date
 import hashlib
 import json
+import sys
 from pathlib import Path
+
+ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT))
 
 from engines.research.v60_historical_report import load_btc_daily,fetch_usd_per_aud
 from engines.research.prospective_adaptive_recovery_replay import run_all_cohorts,summary_table
-
-ROOT=Path(__file__).resolve().parents[2]
 OUTPUT=ROOT/"research_artifacts"/"prospective_adaptive_recovery_replay"
 
 
