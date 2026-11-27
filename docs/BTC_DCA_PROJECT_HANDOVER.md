@@ -477,3 +477,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Pre-2022 median BTC for hybrids 25/50/75 base: 7.961 / 9.349 / 13.708 vs fixed weekly18.277; paired median BTC −75/−50/−25%, paired final-equity −14.20/−9.47/−4.73%. 2022+ median BTC2.015/2.422/2.870 vs fixed3.827; paired median BTC −15.96/−10.81/−5.42%, final-equity +25.22/+16.57/+8.27% (66.67% equity wins).
 - 75% fixed base/25% reserve is strongest hybrid for unconditional BTC accumulation, but does not beat fixed weekly median BTC. Adaptive trigger rate30% pre-2022,58.33% 2022+. Conditional triggered cohorts improve, but no-trigger opportunity cost remains. Report `docs/research/hybrid_calendar_adaptive_dca_20261127.md` on PR branch.
 - Next: predeclared 80/90% base allocation variants to test a smaller reserve, keeping assumptions and cohorts unchanged. No Production/dashboard/live signal/notifications/portfolio changes.
+
+
+## Continuation checkpoint — 27 Nov 2026 (stacked high-base hybrid sweep)
+
+- Draft stacked PR #414 `research/hybrid-calendar-dca-high-base-allocations` extends PR #413's hybrid base allocation sweep with 80% and 90% fixed DCA bases (20%/10% adaptive reserve). It depends on #413; keep both draft/unmerged.
+- PR #413 report confirmation workflow **940** passed regression, synthetic tests, replay and artifact upload. The earlier successful artifact run937 remains byte-identical.
+- PR #414 current-head workflow **941**: existing DCA regression and expanded 6 synthetic hybrid tests passed; historical 32-cohort replay is still running; Aethereal public-data smoke failure is upstream.
+- Results for 80/90% variants are pending. No Production/dashboard/signal/notification/portfolio changes.
