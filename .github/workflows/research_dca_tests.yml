@@ -6,6 +6,7 @@ on:
       - "engines/research/**"
       - "tests/**"
       - "requirements.txt"
+      - "docs/research/hybrid_calendar_adaptive_dca_20261127.md"
       - ".github/workflows/research_dca_tests.yml"
   push:
     branches: [main]
