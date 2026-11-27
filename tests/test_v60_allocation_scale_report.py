@@ -51,7 +51,7 @@ class V60AllocationScaleReportTests(unittest.TestCase):
         self.assertTrue((summary["split"] == "train").all())
         self.assertEqual(set(summary["cash_yield_annual_pct"]), {0.0, 5.0})
         self.assertEqual(set(summary["dynamic_allocation_scale"]), {0.5, 0.75, 1.0, 1.25, 1.5})
-        self.assertIn("p10_final_equity_uplift_vs_matched_fixed_pct", summary.columns)
+        self.assertIn("p10_final_equity_uplift_vs_matched_fixed_pct", summary.columns)\n        self.assertIn("median_equal_buy_amount_uniform_dates_btc_uplift_pct", summary.columns)\n        self.assertIn("median_actual_spend_distribution_uniform_dates_btc_timing_only_pct", summary.columns)
         self.assertEqual(set(summary["threshold_set"]), set(THRESHOLD_SETS))
         self.assertTrue(summary["cohorts_overlap"].all())
 
