@@ -80,7 +80,7 @@ def _buy(cash,day,price,target,*,weekly_cap,friction,fee):
     return cash-outlay,units,outlay,target
 
 
-def _simulate(name,dates,price,budget,capital,cash_yield,weekly_cap,friction,fee,cohort_low):
+def _simulate(name,dates,price,budget,capital,cash_yield,weekly_cap,friction,fee,cohort_low,enrolment):
     cash=float(budget)
     btc=0.
     spent=0.
@@ -88,7 +88,7 @@ def _simulate(name,dates,price,budget,capital,cash_yield,weekly_cap,friction,fee
     buys=0
     amounts=[]
     buy_dates=[]
-    previous=dates[0]
+    previous=pd.Timestamp(enrolment)
     for day in dates:
         day=pd.Timestamp(day)
         elapsed=(day-previous).days
