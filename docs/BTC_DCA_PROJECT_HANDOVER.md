@@ -220,3 +220,13 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Bitview source independence is potentially high for chain-derived metrics because it runs its own node and derives metrics locally. However, it may share the Bitcoin Research Kit/BRK computation code ecosystem across the hosted service and self-hostable implementation; distinguish independent raw chain calculation from independent metric methodology. Validate catalog series IDs, units, indexes, date coverage, revisions and methods before use.
 - This web/documentation review is not an API retrieval or quantitative validation. Next concrete task: implement a research-only GitHub Actions diagnostic that fetches Explore21 candidate series and Bitview catalog/selected series, captures raw snapshots and metadata, and reports date coverage, missingness, stale/repeated values, units/method versions, and matched-date comparisons against Coin Metrics/Firsthand where comparable. No Production, dashboard, live signal, or notifications changes. PR #409 remains draft/unmerged.
 - Sources reviewed 27 Nov 2026: Explore21 data/API catalogue and metric docs (https://charts.explore21.com/data, https://charts.explore21.com/about, https://charts.explore21.com/faq); Bitview API docs and Terms (https://bitview.space/api/, https://bitview.space/terms/, https://bitview.space/support/); Bitcoin Research Kit/BRK overview (https://opensats.org/projects/bitcoinresearchkit).
+
+
+## Continuation checkpoint — 27 Nov 2026 (PR #410 diagnostic created)
+
+- PR #410 opened as draft: https://github.com/aussiekarl-gif/BTC_Composite/pull/410 (`research/explore21-bitview-diagnostic`).
+- Adds `engines/research/explore21_bitview_diagnostic.py` and a manual + pull-request GitHub Actions workflow.
+- Scope: raw Explore21 MVRV/Puell/MVRV-Z CSV snapshots and Bitview metric discovery/search/info/daily-series endpoint probes. Raw files, retrieval metadata, HTTP failures and SHA-256 hashes are retained in a 14-day Actions artifact.
+- No normalization, metric merge, Production input, dashboard, signal, or notification changes. Diagnostic workflow was triggered by PR; status was queued at checkpoint and requires a follow-up check before conclusions.
+- Bitview's official API docs identify series search and metadata/data endpoints. Official Terms state that the hosted data is computed from its own node, while price history has mixed sources and is chain-derived from block 340,000 onward. Do not use its price for execution modeling without further validation.
+- Next: inspect PR #410 Actions result and artifact; verify endpoint shapes/series IDs, coverage and missingness. PR #409 remains draft/unmerged; PR #407 remains open/unmerged. Production stays frozen.
