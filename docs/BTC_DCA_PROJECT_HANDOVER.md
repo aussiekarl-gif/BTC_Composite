@@ -331,3 +331,9 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 
 - Created cross-source validation standard **docs/research/CROSS_SOURCE_METRIC_VALIDATION_STANDARD_2026-11-27.md** at research branch commit **3eeaf75437cf10dd85be710e31bd8b187831b1a0**. It codifies source capture, formula alignment, calendar mapping, central/tail errors, stress-date review, reproducibility, causal walk-forward, incremental-value/ablation and forward-validation gates. Reliability status explicitly does not equal signal approval.
 - Latest PR #410 head **3eeaf75437cf10dd85be710e31bd8b187831b1a0**. Workflows 849 regression, 17 diagnostic, 552 research validation queued; check after run. Previous run 16 diagnostic was still in progress at last poll.
+
+
+## Continuation checkpoint — 27 Nov 2026 (MVRV Z-score status)
+
+- Latest successful diagnostic artifact run 16 (head d2b401ba…) searched Bitview MVRV Z-score variants; all returned empty. No independent Bitview matching series available. Explore21 has MVRV Z-score CSV, but exploratory reconstruction via market cap minus realized cap over rolling market-cap standard deviation windows 2–10 years did not exactly match E21; no formula assumptions. Status: not comparable/formula unverified.
+- Validation standard appended with this result; PR #410 update **d3847b411ad52eac72d73321dc123eadac6863c6**, current PR head **d3847b411ad52eac72d73321dc123eadac6863c6**. Latest CI should be polled. Production unchanged.
