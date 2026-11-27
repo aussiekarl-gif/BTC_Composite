@@ -274,3 +274,12 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Realized Price largest post-2013 relative differences cluster 2013-01-01 through 2013-01-10 (~26.7% APE, ~USD 1.57 absolute gap), indicating sustained early-period offset rather than a calendar alignment problem. No date shifting applied.
 - PR #410 comparison report extended with outlier-date review, latest head **ad2aa76b47e1903ec6a0de5dbdb6c281991540c1**, draft/open/unmerged. Checks were in progress on prior head bc35a4cd1c192cf2f2afedeba34ad97e68ebcb27; check latest status before reporting CI complete.
 - Next: validate latest checks; investigate source price input provenance and formula/version history for 2013 RP and 2015/2017 supply-profit discrepancies. Production remains untouched.
+
+
+## Continuation checkpoint — 27 Nov 2026 (Hashrate smoothing and latest CI)
+
+- Latest PR #410 head **ad2aa76b47e1903ec6a0de5dbdb6c281991540c1** checks all succeeded: Explore21/Bitview diagnostic run **45973457803**, V5.9 Research Risk Validation **45973457884**, regression tests **45973457850**. Artifact **15185758640** inspected.
+- Hashrate apples-to-apples test: Bitview day1 is trailing-24h estimate; Explore21 is 7-day average. Applying a 7-observation rolling mean to Bitview daily values yields, from 2020: median ratio Bitview/E21 **1.00640**, median APE **0.640%**, p95 **1.188%**, max **2.908%** (n=2,522), versus unsmoothed median APE 5.235%, p95 16.35%. This supports close metric-level corroboration once smoothing is matched; still not approved.
+- Realized Price Jan 1–10 2013 offset confirmed with raw values: Explore21 ~USD 5.88–5.95 vs Bitview ~USD 7.45–7.50, while Explore21 BTC close ~USD 13.1–13.6. Sustained offset, not calendar mapping; exact upstream cause unknown.
+- PR #410 report updated at latest commit **201b39014372fba904c303e2dc164798e84eb5c1**, draft/open/unmerged; check new CI statuses.
+- No Production/dashboard/signal/notification changes. Continue research on discrepancy provenance and validation; keep candidates unapproved.
