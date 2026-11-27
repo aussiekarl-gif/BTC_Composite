@@ -286,8 +286,14 @@ def summary_table(cohorts):
                 "median_terminal_equity_aud":float(sub.terminal_equity_aud.median()),
                 "trigger_rate_pct":100*float(sub.trigger_date.notna().mean()) if policy=="adaptive_recovery" else None,
                 "median_weeks_until_trigger":float(sub.weeks_until_trigger.dropna().median()) if policy=="adaptive_recovery" and sub.weeks_until_trigger.notna().any() else None,
-                "median_paired_btc_uplift_vs_fixed_weekly_pct":float(pd.Series(btc_uplifts).median()),
-                "median_paired_equity_uplift_vs_fixed_weekly_pct":float(pd.Series(equity_uplifts).median()),
-                "cohort_win_rate_btc_vs_fixed_weekly_pct":100*sum(x>0 for x in btc_uplifts)/len(btc_uplifts),
+                "median_paired_btc_uplift_vs_fixed_weekly_pct":float(btc_uplifts.median()),
+                "median_paired_equity_uplift_vs_fixed_weekly_pct":float(equity_uplifts.median()),
+                "cohort_win_rate_btc_vs_fixed_weekly_pct":100*float((btc_uplifts>0).mean()),
+                "cohort_win_rate_equity_vs_fixed_weekly_pct":100*float((equity_uplifts>0).mean()),
+                "active_cohort_count":int(active.sum()),
+                "active_median_paired_btc_uplift_vs_fixed_weekly_pct":float(btc_uplifts.loc[active].median()) if active.any() else None,
+                "active_median_paired_equity_uplift_vs_fixed_weekly_pct":float(equity_uplifts.loc[active].median()) if active.any() else None,
+                "active_cohort_btc_win_rate_vs_fixed_weekly_pct":100*float((btc_uplifts.loc[active]>0).mean()) if active.any() else None,
+                "active_cohort_equity_win_rate_vs_fixed_weekly_pct":100*float((equity_uplifts.loc[active]>0).mean()) if active.any() else None,
             })
     return pd.DataFrame(rows).sort_values(["entry_period","policy"]).reset_index(drop=True)
