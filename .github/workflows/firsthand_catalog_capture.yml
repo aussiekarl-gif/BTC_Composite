@@ -1,0 +1,106 @@
+name: Firsthand Bitcoin research catalogue capture
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/firsthand_catalog_capture.yml"
+      - "scripts/research/compare_firsthand_sources.py"
+  push:
+    branches:
+      - research/firsthand-catalog-capture-workflow
+    paths:
+      - ".github/workflows/firsthand_catalog_capture.yml"
+      - "scripts/research/compare_firsthand_sources.py"
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository snapshots and validator
+        uses: actions/checkout@v4
+      - name: Fetch public provider catalogue (no keys)
+        run: |
+          set -euo pipefail
+          mkdir -p capture/series
+          curl --fail --location --retry 3 --retry-delay 3 --max-time 60 \
+            https://firsthandbitcoin.com/data/api/series.json \
+            --output capture/series_catalogue.json
+      - name: Fetch selected daily series and inspect CSV structure
+        run: |
+          python - <<'PY'
+          import csv
+          import hashlib
+          import json
+          from datetime import datetime
+          import urllib.request
+          from pathlib import Path
+
+          root = Path("capture")
+          catalogue = json.loads((root / "series_catalogue.json").read_text(encoding="utf-8"))
+          print("Catalogue valid JSON; bytes:", (root / "series_catalogue.json").stat().st_size)
+          print("Top-level keys:", sorted(catalogue.keys()))
+          print("Provider-generated timestamp:", catalogue.get("generated"))
+          series = catalogue.get("series")
+          if not isinstance(series, list):
+              raise SystemExit("Catalogue has no series list")
+          by_key = {item.get("key"): item for item in series if isinstance(item, dict)}
+          print("Series entries:", len(by_key))
+          selected = ("btc", "fees", "fees7", "revenue", "tx7", "revSubsidy", "revFees", "blocksDay")
+          metadata = []
+          for key in selected:
+              item = by_key.get(key)
+              if not item:
+                  raise SystemExit(f"Missing required catalogue series: {key}")
+              url = item.get("csv")
+              if not isinstance(url, str) or not url.startswith("https://firsthandbitcoin.com/"):
+                  raise SystemExit(f"Unexpected/untrusted CSV URL for {key}: {url}")
+              target = root / "series" / f"{key}.csv"
+              request = urllib.request.Request(url, headers={"User-Agent": "BTC_Composite-research-validation"})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  raw = response.read()
+              target.write_bytes(raw)
+              text = raw.decode("utf-8-sig")
+              rows = list(csv.DictReader(text.splitlines()))
+              headers = list(rows[0].keys()) if rows else []
+              date_candidates = [c for c in headers if c.lower() in ("day", "date", "time", "timestamp", "datetime")]
+              date_values = [r.get(date_candidates[0]) for r in rows] if date_candidates else []
+              parsed_dates = []
+              invalid_dates = 0
+              for value in date_values:
+                  try:
+                      parsed_dates.append(datetime.fromisoformat(str(value).replace("Z", "+00:00")).date().isoformat())
+                  except (TypeError, ValueError):
+                      invalid_dates += 1
+              duplicate_dates = len(parsed_dates) - len(set(parsed_dates))
+              dates_sorted = parsed_dates == sorted(parsed_dates)
+              record = {
+                  "key": key, "label": item.get("label"), "unit": item.get("unit"),
+                  "csv_url": url, "row_count": len(rows), "columns": headers,
+                  "date_column": date_candidates[0] if date_candidates else None,
+                  "first_date": parsed_dates[0] if parsed_dates else None,
+                  "last_date": parsed_dates[-1] if parsed_dates else None,
+                  "invalid_dates": invalid_dates, "duplicate_dates": duplicate_dates,
+                  "dates_sorted": dates_sorted,
+                  "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw),
+              }
+              metadata.append(record)
+              print(json.dumps(record, sort_keys=True))
+              if not date_candidates or invalid_dates or duplicate_dates or not dates_sorted:
+                  raise SystemExit(f"Date integrity check failed for {key}: {record}")
+          (root / "series_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+          PY
+      - name: Compare Firsthand against existing research snapshots
+        run: |
+          python scripts/research/compare_firsthand_sources.py
+      - name: Upload temporary raw data and comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: firsthand-series-comparison-${{ github.run_id }}
+          path: capture/
+          retention-days: 3
