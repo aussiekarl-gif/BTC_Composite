@@ -198,3 +198,10 @@ I reconstructed the formula from Explore21's captured realized-cap CSV (`market_
 The formula reconstruction matches the first published observations to floating-point precision and the latest observation (26 Nov 2026) within ~0.0000004. It is also close in recent history, but notable unexplained divergence remains around the 2013 cycle peak (largest discrepancy 0.472238 on 30 Nov 2013) and around 2017. Example 2013-11-30 reconstructed 7.5503 vs published 7.0781; 2017-12-17 reconstructed 8.2407 vs published 8.3180. This suggests the stated formula is correct but the captured market-cap/realized-cap inputs or historical revisions are not fully aligned with the published Z-score series. The earlier exploratory 2–10-year rolling-window attempts were not the correct documented formula; this expanding-window reconstruction supersedes that interpretation.
 
 **Status:** formula identified and partially reproduced; historical input/version alignment unresolved; no independent cross-source; not approved as signal input. Official formula source: https://charts.explore21.com/bitcoin-mvrv-z-score and method comparison https://charts.explore21.com/mvrv-vs-mvrv-z-score.
+
+
+## Explore21 Z-Score method changelog
+
+The raw API changelog capture succeeded (HTTP 200) and reports: metric id `bitcoin-mvrv-z-score`, `method_version=1`, first published **2026-07-15**, with no subsequent method-change entries. This does not prove historical data inputs have never been revised, but it means the API changelog does not document a method-version change that explains the residuals. Captured raw JSON and SHA-256 in diagnostic run 27 artifact **15187998679**.
+
+**Remaining question:** the MVRV ratio reconstructed from Explore21 realized-cap CSV (market cap ÷ realized cap) matches its published MVRV series within ~5e-7, so numerator inputs are internally consistent. The Z-Score denominator remains the unexplained part of the historical reconstruction. Do not assume this is an E21 error; it may be a mismatch in our reconstruction/input series or a historical data-version difference not represented in the changelog.
