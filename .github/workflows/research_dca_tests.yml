@@ -55,6 +55,17 @@ jobs:
           python -m unittest discover -s tests -p 'test_aethereal_public_data.py' -v
           python -m unittest discover -s tests -p 'test_obm_cdd_public_data.py' -v
           python -m py_compile engines/research/cowen_onchain_risk.py engines/research/cowen_onchain_snapshot_guard.py engines/research/aethereal_public_data.py engines/research/obm_cdd_public_data.py engines/research/coinmetrics_community.py engines/research/explore21_public_data.py tests/test_cowen_onchain_risk.py tests/test_cowen_onchain_snapshot_guard.py tests/test_coinmetrics_community.py tests/test_explore21_public_data.py engines/research/v59_200wma_distance_dynamic_dca.py engines/research/v60_200wma_policy.py engines/research/v60_200wma_backtest.py engines/research/v60_allocation_scale_report.py engines/research/v60_allocation_scale_stress_report.py engines/research/v60_historical_report.py engines/research/v60_synthetic_stress.py engines/research/v60_deployment_cap_report.py engines/research/v60_historical_pacing_report.py engines/research/v60_200wma_paper_tape.py engines/research/v60_path_cost_sensitivity.py tests/test_v60_path_cost_sensitivity.py engines/shared/dca_purchase_status.py engines/production/production_model.py engines/research/research_model.py engines/production/production_app.py engines/research/research_app.py
+      - name: Test calendar-enrolled prospective adaptive recovery
+        run: python -m unittest discover -s tests -p "test_prospective_adaptive_recovery_replay.py" -v
+      - name: Generate calendar-enrolled prospective adaptive recovery cohort artifact
+        run: python engines/research/run_prospective_adaptive_recovery_replay.py
+      - name: Upload prospective adaptive recovery research outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: prospective-adaptive-recovery-replay
+          path: research_artifacts/prospective_adaptive_recovery_replay/
+          if-no-files-found: error
+          retention-days: 14
       - name: Run matched 200WMA discount-tier historical research
         run: |
           python -m engines.research.v59_200wma_distance_dynamic_dca --out artifacts/v59_200wma_distance_dynamic_dca.json
