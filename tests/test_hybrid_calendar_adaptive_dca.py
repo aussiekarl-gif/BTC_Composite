@@ -25,12 +25,15 @@ class HybridCalendarAdaptiveTests(unittest.TestCase):
         btc,fx=synthetic(rally_date=None,drop=False)
         results=[run_hybrid_cohort(btc,fx,enrolment_date="2016-01-04",
                     base_allocation_pct=p) for p in BASE_ALLOCATIONS]
-        for r in results:
+        for pct,r in zip(BASE_ALLOCATIONS,results):
             self.assertIsNone(r["trigger_date"])
             self.assertEqual(r["adaptive_buy_count"],0)
             self.assertEqual(r["base_buy_count"],104)
             self.assertGreater(r["btc_accumulated"],0)
-            if pct<100:\n                self.assertGreater(r["adaptive_cash_remaining_aud"],0)\n            else:\n                self.assertEqual(r["adaptive_cash_remaining_aud"],0.)
+            if pct<100:
+                self.assertGreater(r["adaptive_cash_remaining_aud"],0)
+            else:
+                self.assertEqual(r["adaptive_cash_remaining_aud"],0.)
             self.assertTrue(r["weekly_cap_compliant"] if "weekly_cap_compliant" in r else
                            r["largest_weekly_combined_outlay_aud"]<=r["weekly_cap_aud"]+1e-6)
 
