@@ -74,7 +74,10 @@ jobs:
           path: artifacts/v59_200wma_distance_dynamic_dca.json
           if-no-files-found: error
 
+  # Live upstream availability is diagnostic, not a code-regression gate.
+  # Scheduled source refresh remains strict and reports provider outages.
   v60-public-data-smoke:
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
