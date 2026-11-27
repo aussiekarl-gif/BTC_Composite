@@ -4,6 +4,8 @@ This is a visual research replica, not Cowen's proprietary indicator. It shows
 only data that exists locally, labels proxy series, and never emits a trade signal.
 """
 from pathlib import Path
+import json
+from datetime import datetime, timezone
 import sys
 
 import numpy as np
@@ -90,6 +92,50 @@ st.markdown(
 )
 
 DATA_DIR = ROOT / "data"
+
+
+def onchain_source_health():
+    """Read retrieval sidecars and report source freshness without altering metrics."""
+    base = DATA_DIR / "research" / "cowen_onchain"
+    metadata_files = [
+        ("Explore21 Puell", base / "explore21" / "bitcoin-puell-multiple.metadata.json"),
+        ("Explore21 MVRV", base / "explore21" / "bitcoin-mvrv-ratio.metadata.json"),
+        ("Explore21 MVRV Z", base / "explore21" / "bitcoin-mvrv-z-score.metadata.json"),
+        ("Coin Metrics", base / "coinmetrics_btc_daily_community.metadata.json"),
+        ("Aethereal fees", base / "bitcoin_network_daily_aethereal.metadata.json"),
+        ("Open Bitcoin Metrics CDD", base / "obm_cdd_btcxdays_daily.metadata.json"),
+    ]
+    now = datetime.now(timezone.utc)
+    rows = []
+    for source, path in metadata_files:
+        if not path.exists():
+            rows.append({"Source": source, "Latest observation": "—",
+                        "Retrieved (UTC)": "—", "Age": "—", "Health": "NO METADATA"})
+            continue
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+            last_date = metadata.get("last_date_utc")
+            retrieved = metadata.get("retrieved_at_utc")
+            retrieval_dt = datetime.fromisoformat(retrieved.replace("Z", "+00:00")) if retrieved else None
+            obs_dt = datetime.fromisoformat(last_date).replace(tzinfo=timezone.utc) if last_date else None
+            retrieval_age = (now - retrieval_dt).total_seconds() / 86400 if retrieval_dt else None
+            observation_age = (now.date() - obs_dt.date()).days if obs_dt else None
+            age_text = (
+                f"{retrieval_age:.1f}d retrieved / {observation_age}d data"
+                if retrieval_age is not None and observation_age is not None else "unknown"
+            )
+            health = "FRESH" if retrieval_age is not None and observation_age is not None and retrieval_age <= 3 and observation_age <= 2 else "STALE"
+            rows.append({
+                "Source": source,
+                "Latest observation": last_date or "—",
+                "Retrieved (UTC)": retrieval_dt.strftime("%Y-%m-%d %H:%M") if retrieval_dt else "—",
+                "Age": age_text,
+                "Health": health,
+            })
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            rows.append({"Source": source, "Latest observation": "—",
+                        "Retrieved (UTC)": "—", "Age": "—", "Health": "METADATA ERROR"})
+    return rows
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -195,6 +241,10 @@ c2.metric("Dashboard completeness", f"{active_available / 7:.0%}")
 c3.metric("Latest source date", latest_date.strftime("%d %b %Y") if latest_date is not None else "Unavailable")
 c4.metric("Composite score", "NOT CALCULATED")
 st.caption("Completeness is assessed on the common latest source date. Cards show each metric's own latest valid date. No missing values are carried forward.")
+with st.expander("Source freshness and acquisition health", expanded=True):
+    st.caption("Freshness is based on retrieval timestamp (≤3 days) and latest observation date (≤2 days). This reports local snapshot metadata, not a live provider probe.")
+    st.dataframe(onchain_source_health(), hide_index=True, use_container_width=True)
+
 
 if load_error:
     st.error(f"Local source files could not be loaded: {load_error}")
