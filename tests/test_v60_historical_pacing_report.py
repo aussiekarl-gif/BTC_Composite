@@ -58,7 +58,7 @@ class V60HistoricalPacingTests(unittest.TestCase):
         self.assertTrue(summary["cohorts_overlap"].all())
         self.assertIn("median_spend_difference_vs_matched_fixed_pct", summary.columns)
         self.assertIn("p10_final_equity_uplift_vs_matched_fixed_pct", summary.columns)
-        self.assertIn("median_max_drawdown_difference_vs_fixed_pp", summary.columns)
+        self.assertIn("median_max_drawdown_difference_vs_fixed_pp", summary.columns)\n        self.assertIn("median_equal_buy_amount_uniform_dates_btc_uplift_pct", summary.columns)\n        self.assertIn("median_actual_spend_distribution_uniform_dates_btc_timing_only_pct", summary.columns)
 
     def test_cumulative_caps_are_enforced_in_each_replay(self):
         results = build_pacing_results(sample_weekly_rows())
