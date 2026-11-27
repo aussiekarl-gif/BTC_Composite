@@ -55,3 +55,18 @@ Workflow run `45968107990` passed; artifact `15183034026` was downloaded and ins
 At the 2020-03-12 outlier, Firsthand is USD 6,770.48; Explore21 Bitstamp close is USD 4,841.67; Coin Metrics is USD 4,959.31. At 2013-04-11, Firsthand is USD 159.88; Explore21 is USD 83.40; Coin Metrics is USD 82.90. Firsthand is the clear outlier on both dates. This materially weakens the case for using its BTC price series. A minor UTC daily-boundary mismatch cannot reasonably explain these differences.
 
 **Decision:** exclude Firsthand BTC price from model-input consideration unless Firsthand explains and corrects the historical observations. Its 200WMA can still be cross-checked as a derived series, but the independently computed Coin Metrics 1,400-day SMA is preferable as the reference. This is still research-only.
+
+
+## Exact V6.0 weekly threshold sensitivity — 27 Nov 2026
+
+- Added `compare_200wma_distance` to the cross-source diagnostic and corrected it to call the same `weekly_prior_200wma_signals` function used by V6.0. This uses each completed Sunday close divided by the mean of the previous 200 completed Sunday closes; the signal Sunday is excluded.
+- Workflow run **45969244125** passed; artifact **15183528981** downloaded and inspected. Comparison covers 517 matched weekly signals from 2017-01-01 to 2026-11-22.
+- Absolute difference in discount-to-200WMA: mean **0.093 percentage points**, median **0.000 pp**, p95 **0.570 pp**, max **5.221 pp**.
+- Threshold classification disagreements:
+  - 5% below: 2 weeks (0.387%)
+  - 10% below: 1 week (0.193%)
+  - 15% below: 2 weeks (0.387%)
+  - 20%, 25% and 30% below: **zero disagreements** across all 517 weeks.
+- This is much more relevant than the earlier daily 1,400-day approximation; use the exact weekly result above. It indicates that, despite historical daily spot-price outliers, the weekly V6.0 20/25/30% discount-tier classifications agree on this sample.
+- Important limitation: this is still a signal-classification comparison, **not a portfolio backtest**. It does not quantify the effect of provider-specific next-Monday execution prices on BTC accumulated or terminal AUD equity. That is the next required test before deciding whether Firsthand spot prices are acceptable for research execution modelling.
+- Latest branch head after the correction: `ba460760ade389f7b8bab4c00dac57e3a70d9d97`. Regression run **45969036789** passed (including the regression test job); V5.9 Research Risk Validation **45969036778** passed; Firsthand raw diagnostic **45969036779** passed. Public-data smoke's Aethereal fetch step failed as already known; it is not evidence of Firsthand failure.
