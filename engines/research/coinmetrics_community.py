@@ -20,6 +20,7 @@ DEFAULT_METRICS = (
     "CapMVRVCur",
     "CapMVRVZ",
     "FeeTotUSD",
+    "FeeTotNtv",
     "IssTotUSD",
     "PuellMulTot",
     "PriceUSD",

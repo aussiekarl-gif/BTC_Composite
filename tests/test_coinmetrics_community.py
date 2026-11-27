@@ -43,6 +43,7 @@ class CoinMetricsCommunityTests(unittest.TestCase):
         from engines.research.coinmetrics_community import DEFAULT_METRICS
 
         self.assertIn("SplyMiner0HopAllNtv", DEFAULT_METRICS)
+        self.assertIn("FeeTotNtv", DEFAULT_METRICS)
         self.assertIn("SplyMiner1HopAllNtv", DEFAULT_METRICS)
 
     def test_fetches_and_follows_pagination(self):
