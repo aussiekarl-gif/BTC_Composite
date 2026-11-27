@@ -268,8 +268,14 @@ def summary_table(cohorts):
     for split,group in cohorts.groupby("entry_period"):
         for policy,sub in group.groupby("policy"):
             peers=fixed.loc[sub.enrolment_date]
-            btc_uplifts=[100*(float(a)/float(b)-1) for a,b in zip(sub.btc_accumulated,peers.btc_accumulated)]
-            equity_uplifts=[100*(float(a)/float(b)-1) for a,b in zip(sub.terminal_equity_aud,peers.terminal_equity_aud)]
+            btc_uplifts=pd.Series([100*(float(a)/float(b)-1) for a,b in zip(sub.btc_accumulated,peers.btc_accumulated)],index=sub.index)
+            equity_uplifts=pd.Series([100*(float(a)/float(b)-1) for a,b in zip(sub.terminal_equity_aud,peers.terminal_equity_aud)],index=sub.index)
+            if policy=="adaptive_recovery":
+                active=sub.trigger_date.notna()
+            elif policy=="remaining_cash_2_5pct_below_200wma":
+                active=sub.buy_count.gt(0)
+            else:
+                active=pd.Series(True,index=sub.index)
             rows.append({
                 "entry_period":split,"policy":policy,"cohort_count":len(sub),
                 "median_btc_accumulated":float(sub.btc_accumulated.median()),
