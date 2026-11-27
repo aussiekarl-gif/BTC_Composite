@@ -20,7 +20,7 @@ E21 = {
 BITVIEW = "https://bitview.space/api"
 COIN_METRICS_NUPL = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=NUPL&frequency=1d&start_time=2010-01-01&page_size=10000"
 BLOCKHORIZON_MVRV_Z = "https://raw.githubusercontent.com/aussiekarl-gif/BTC_Composite/a0c63a680b345dc5dd0f904c3a0bc68ca7f033bb/data/mvrv_z_score_2026-10-06T21-46-14.csv"
-SEARCHES = ["realized price, "realized cap", "hashrate", "mvrv", "supply in profit", "price", "puell multiple", "mvrv z score", "mvrv-z-score", "z score"]
+SEARCHES = ["realized price", "realized cap", "hashrate", "mvrv", "supply in profit", "price", "puell multiple", "mvrv z score", "mvrv-z-score", "z score"]
 session = requests.Session()
 session.headers.update({"User-Agent": "BTC-Composite-research-diagnostic/1.0"})
 
