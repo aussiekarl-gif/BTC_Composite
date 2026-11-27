@@ -134,3 +134,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Historical price outliers: 2013-04-11 ~92.86%, 2020-03-12 ~36.52%; fee outliers: 2014-09-07 ~95.38%, 2024-04-19 ~34.99%. Need investigate date/close conventions and possible source errors. Firsthand BTC price repeated USD 59,171.86 on 25 and 26 Nov 2026 in this snapshot; investigate freshness.
 - A follow-up comparator now tests Firsthand 200WMA against a 1,400-calendar-day SMA from Coin Metrics PriceUSD. Run 45967448045 was in progress at last check; latest head then 9f28e3eb81702ef2f9c93ca64a71525af5433a94. Do not approve Firsthand for any model input until this check and outlier/freshness analysis are complete.
 - PR #409 remains draft; no Production/V6.0 model inputs or notifications changed.
+
+
+#### Independent 200WMA cross-check — completed 27 Nov 2026
+
+- The first comparator workflow artifacts omitted the 200WMA metric due to a report-builder omission. The script was corrected; do not treat runs 45967448045 or 45967577757 as 200WMA validation.
+- Corrected cross-source run 45967697247 passed; artifact 15183821578 was downloaded and inspected. Firsthand `ma200w` vs 1,400-observation rolling SMA of Coin Metrics `PriceUSD`: 3,679 overlapping daily dates (2016-10-31 to 2026-11-26), mean APE 0.2735%, median 0.2239%, p95 0.6690%, maximum 1.7734%; latest 90-day mean APE 0.0130%.
+- This is a strong independent cross-source consistency check for the 200WMA calculation. It does not approve Firsthand's daily spot-price series, fees, or other indicators. Daily price/fee outliers, close-time conventions, and data update/finality still require investigation.
+- Latest PR #409 branch head at this checkpoint: `b0fc5e591901e75b7a313f73d12fd9be664c29b8`. PR remains draft. Production and notifications unchanged.
