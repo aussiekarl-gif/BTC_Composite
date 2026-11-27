@@ -212,3 +212,20 @@ The raw API changelog capture succeeded (HTTP 200) and reports: metric id `bitco
 - Explore21 Z-Score CSV and its separate Bitcoin Price CSV have exactly identical daily price values on all 5,551 matched dates (0 difference).
 - The Explore21 MVRV Ratio is independently reconstructed as `market_cap_usd / realized_cap_usd` from the Realized Cap CSV and matches the published ratio within ~5e-7 throughout.
 - These checks isolate the remaining discrepancy to the **standard-deviation denominator calculation/input series**, not a daily price mismatch or the numerator's market-cap-minus-realized-cap spread. This still cannot distinguish our reconstruction implementation from historical input/version differences in the Z-score calculation. No error attribution is made.
+
+
+### Cycle-anchor reconstruction check
+
+| Date | Event/anchor | Reconstructed | Published | Absolute difference |
+|---|---|---:|---:|---:|
+| 2013-12-04 | Cycle top | 6.51455 | 6.22195 | 0.29260 |
+| 2015-01-14 | Cycle low | -0.57355 | -0.56915 | 0.00440 |
+| 2017-12-16 | Cycle top | 8.62980 | 8.71054 | 0.08074 |
+| 2018-12-15 | Cycle low | -0.46659 | -0.46982 | 0.00323 |
+| 2021-11-08 | Cycle top | 3.40601 | 3.42232 | 0.01632 |
+| 2022-11-21 | Cycle low | -0.30754 | -0.30869 | 0.00116 |
+| 2025-10-06 | Cycle top | 2.47436 | 2.48074 | 0.00637 |
+| 2026-06-30 | Latest cycle low so far | 0.17736 | 0.17775 | 0.00039 |
+| 2026-11-26 | Latest captured day | 0.237797 | 0.237797 | 0.0000004 |
+
+The reconstruction is close at most later-cycle anchors, particularly the 2022 low, 2025 top, and current cycle low; the 2013 top remains the largest anchor mismatch, and 2017 is a smaller residual. This pattern supports partial formula reconstruction, not independent provider corroboration or signal approval.
