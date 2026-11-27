@@ -79,8 +79,10 @@ class AetherealDohFallbackTests(unittest.TestCase):
                 self.assertNotIn("-k", command)
                 self.assertNotIn("--insecure", command)
                 output.write_text(
-                    "date,price_usd,fees_btc,miners_revenue_usd,transactions\\n"
-                    "2026-11-26,90000,2.5,100000,1000\\n",
+                    "\\n".join([
+                        "date,price_usd,fees_btc,miners_revenue_usd,transactions",
+                        "2026-11-26,90000,2.5,100000,1000",
+                    ]) + "\\n",
                     encoding="utf-8",
                 )
 
