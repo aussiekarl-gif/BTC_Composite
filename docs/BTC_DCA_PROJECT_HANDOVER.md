@@ -493,3 +493,15 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Updated PR #414 report to reflect completed 80/90% replay and next sweep. Docs confirmation run **944** in progress; main research DCA tests/replay running. V5.9 validation run **645** passed. Aethereal public source smoke still fails upstream, separate.
 - Draft PR #415 created: research/hybrid-calendar-dca-near-fixed-sweep, stacked on #414; adds 95% base/5% adaptive and 100% fixed weekly baseline, synthetic edge-case tests. Initial run **943** caught 2 test expectation errors (allocation tuple not extended; zero-reserve 100% variant should have no reserve cash). Corrected both. Current head **585efe27c701ce626cbe7a191189033b3c16a8bc**, CI run **945** pending. No Production/dashboard/signals/notifications/portfolio changes.
 - PR #412–#415 all remain draft/open/unmerged. #415 depends on #414 and earlier PR #413; do not merge any without user approval.
+
+
+## 2026-11-28 checkpoint — hybrid calendar DCA sweeps confirmed
+
+- **PR #414 run 944 completed successfully** and produced/confirmed the 80%/90% base hybrid cohort artifact. PR remains draft/open/unmerged. The previously reported outcomes stand: no unconditional BTC-unit superiority; higher fixed base allocation narrows the gap to fixed weekly DCA.
+- **PR #415 run 946 completed successfully** on final head `ed4d2fc644a2e1b77ca102fb3768b11a5d90f3dc`; regression/synthetic tests passed and historical artifact was inspected. Added 95% base/5% adaptive reserve plus 100% fixed control.
+- 95%/5% results vs matched 100% fixed weekly baseline: pre-2022 median paired BTC −5.00%, paired final equity −0.95%; 2022+ median paired BTC −1.10%, paired final equity +1.63%. Median BTC 17.363 vs 18.277 pre-2022; 3.635 vs 3.827 in 2022+.
+- Trigger rates/delay unchanged by reserve fraction: pre-2022 30.0%, median 69.07 weeks; 2022+ 58.33%, median 10.57 weeks. All 32 cohort outputs comply with the shared A$25,500 weekly cap.
+- **Research conclusion:** no hybrid allocation beats fixed weekly DCA on median BTC units. The 95%/5% hybrid is closest, but its small conditional reserve benefit is not robustly demonstrated. Positive 2022+ equity median is not sufficient evidence given only 12 overlapping cohorts, assumed cash yield/friction and non-point-in-time archived BTC export.
+- PR #415 report now includes run 946 results. PR #414 and #415 bodies updated with confirmed statuses. Both remain draft/unmerged; #415 is stacked and depends on earlier PRs. No Production/dashboard/signals/notifications/portfolio changes.
+- Artifacts: PR #414 run 944 artifact ID `15195910234`; PR #415 run 946 artifact ID `15195238726` (hybrid replay CSVs, metadata). PR #415 current report path: `docs/research/hybrid_calendar_adaptive_dca_20261127.md`.
+- Next direction: do not expand the hybrid allocation sweep further; marginal reserve percentages have not established a robust advantage. Move to research with better potential relevance to BTC timing (e.g. signal-based cadence or recovery confirmation) and rigorously compare to calendar-fixed DCA, while keeping production untouched.
