@@ -278,6 +278,8 @@ def summary_table(cohorts):
                 "median_cash_deployed_pct":float(sub.cash_budget_deployed_pct.median()),
                 "median_vwap_premium_to_104w_low_pct":float(sub.vwap_premium_to_cohort_low_pct.dropna().median()) if sub.vwap_premium_to_cohort_low_pct.notna().any() else None,
                 "median_terminal_equity_aud":float(sub.terminal_equity_aud.median()),
+                "trigger_rate_pct":100*float(sub.trigger_date.notna().mean()) if policy=="adaptive_recovery" else None,
+                "median_weeks_until_trigger":float(sub.weeks_until_trigger.dropna().median()) if policy=="adaptive_recovery" and sub.weeks_until_trigger.notna().any() else None,
                 "median_paired_btc_uplift_vs_fixed_weekly_pct":float(pd.Series(btc_uplifts).median()),
                 "median_paired_equity_uplift_vs_fixed_weekly_pct":float(pd.Series(equity_uplifts).median()),
                 "cohort_win_rate_btc_vs_fixed_weekly_pct":100*sum(x>0 for x in btc_uplifts)/len(btc_uplifts),
