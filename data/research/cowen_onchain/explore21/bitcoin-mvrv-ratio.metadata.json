@@ -5,11 +5,11 @@
   "source_csv_url": "https://charts.explore21.com/data/bitcoin-mvrv-ratio.csv",
   "method_version": 2,
   "license": "CC BY 4.0",
-  "attribution": "Explore21 Charts, https://charts.explore21.com/bitcoin-mvrv-ratio, accessed 2026-11-24",
-  "retrieved_at_utc": "2026-11-24T14:52:08.901802+00:00",
+  "attribution": "Explore21 Charts, https://charts.explore21.com/bitcoin-mvrv-ratio, accessed 2026-11-27",
+  "retrieved_at_utc": "2026-11-27T05:50:44.738452+00:00",
   "first_date_utc": "2011-09-16",
-  "last_date_utc": "2026-11-20",
-  "observations": 5545,
+  "last_date_utc": "2026-11-26",
+  "observations": 5551,
   "columns": [
     "mvrv_ratio",
     "btc_close_usd"
@@ -18,6 +18,6 @@
     "mvrv_ratio": 0,
     "btc_close_usd": 0
   },
-  "sha256_csv": "def5cf00fbf151952c2216a13aa0b443e932dedd56cac26a938050d8b76137b5",
+  "sha256_csv": "369f440ec74716b09ae0c418f1ce0150865f1fac0ba9a796aaba2e3b347278e9",
   "historical_vintage_note": "Explore21's published point-in-time vintages begin 2026-11-18; earlier historical rows are not verified historical vintages."
 }
