@@ -106,3 +106,13 @@ At the 2020-03-12 outlier, Firsthand is USD 6,770.48; Explore21 Bitstamp close i
 - The same-date 2020-03-12 Firsthand value was USD 6,770.48 vs Coin Metrics USD 4,959.31 (36.52%) and Bitstamp USD 4,841.67 (39.84%). A one-day alignment improves but does not remove the crash-day anomaly.
 - Interpretation: date convention mismatch is plausible, but provider close methodology and source venue remain undisclosed. Do not relabel or shift Firsthand data to force a match; obtain the exact UTC boundary and underlying source from Firsthand first.
 - Follow-up matched V6.0 price-source replay run **45970691675** passed. Research DCA regression run **45970639038** passed. The lag diagnostic is comparison-only and does not change any strategy input.
+
+
+### Raw Firsthand price-series plateau finding — 27 Nov 2026
+
+- Latest raw diagnostic run **45970824915** passed; artifact **15185031194** downloaded and inspected. The BTC price series payload was generated **2026-11-27T08:28:00.683Z**, with 5,079 daily observations.
+- Found **33 consecutive dates (2025-07-29 through 2025-08-30 inclusive)** with the exact same BTC price **USD 116,666.67**. This is a serious data-quality defect/stale-value indicator; it is not credible as a market-price series over a month-long interval.
+- Additional consecutive exact-repeat pairs exist elsewhere, including **2026-11-25 and 2026-11-26 at USD 59,171.86** in this snapshot. Some one-day repeated closes may be legitimate; the 33-day plateau is not.
+- This raw observation strengthens the decision: **Firsthand BTC spot price remains rejected for model inputs and research execution-price simulation** until provider explains/corrects the plateau and historical outliers. No automatic date shifting or value repair.
+- CI at head **ae9e5de5ed80229f30fef163be96da44c100149b**: cross-source validation **45970824823**, API diagnostic **45970824915**, V6.0 price-source sensitivity **45970825031**, V5.9 risk validation **45970824836**, and Research DCA regression **45970824825** all passed. PR #409 remains open/draft; no production, dashboard, live signal, or notification changes.
+- Next: retain Firsthand 200WMA as cross-check only; seek exact price venue/time-boundary/finality and explanation for plateau and outliers. No provider contact sent.
