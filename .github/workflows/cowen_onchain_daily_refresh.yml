@@ -85,15 +85,29 @@ jobs:
           done
 
           echo "Normal DNS failed; trying Cloudflare DNS-over-HTTPS and pinned HTTPS."
-          dns_json="$(curl --fail --silent --show-error --retry 2 --retry-all-errors \
-            -H 'accept: application/dns-json' \
-            'https://cloudflare-dns.com/dns-query?name=dataset.aethereal.top&type=A')"
-          ip="$(printf '%s' "${dns_json}" | python -c 'import json,sys; d=json.load(sys.stdin); print(next((a["data"] for a in d.get("Answer", []) if a.get("type")==1), ""))')"
+          ip=""
+          for resolver in cloudflare google; do
+            if [ "${resolver}" = "cloudflare" ]; then
+              doh_url='https://cloudflare-dns.com/dns-query?name=dataset.aethereal.top&type=A'
+              doh_header='accept: application/dns-json'
+            else
+              doh_url='https://dns.google/resolve?name=dataset.aethereal.top&type=A'
+              doh_header='accept: application/json'
+            fi
+            echo "Trying ${resolver} DNS-over-HTTPS."
+            dns_json="$(curl --fail --silent --show-error --retry 2 --retry-all-errors \
+              -H "${doh_header}" "${doh_url}")" || continue
+            ip="$(printf '%s' "${dns_json}" | python -c 'import json,sys; d=json.load(sys.stdin); print(next((a["data"] for a in d.get("Answer", []) if a.get("type")==1), ""))')"
+            if [ -n "${ip}" ]; then
+              echo "${resolver} DoH resolved dataset.aethereal.top to ${ip}."
+              break
+            fi
+            printf '%s' "${dns_json}" | python -c 'import json,sys; d=json.load(sys.stdin); print("DoH DNS status:", d.get("Status"), "answers:", d.get("Answer", []))'
+          done
           if [ -z "${ip}" ]; then
-            echo "Cloudflare DoH returned no IPv4 address for Aethereal."
+            echo "Cloudflare and Google DoH returned no IPv4 address for Aethereal."
             exit 1
           fi
-          echo "Cloudflare DoH resolved dataset.aethereal.top to ${ip}."
           curl --fail --location --silent --show-error --retry 2 --retry-all-errors \
             --connect-timeout 15 --max-time 60 \
             --resolve "dataset.aethereal.top:443:${ip}" \
