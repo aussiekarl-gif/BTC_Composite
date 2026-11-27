@@ -325,3 +325,9 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 ## Continuation checkpoint — 27 Nov 2026 (MVRV Z-Score cross-source discovery)
 
 - Diagnostic discovery expanded to search Bitview for MVRV Z-Score and Z-score variants, with candidate global IDs added to selection priority, to compare against Explore21's existing Z-score CSV. Latest diagnostic code commit **d2b401ba6cae71f1c36ea8837c06889f5f51c8bd**, PR head **d2b401ba6cae71f1c36ea8837c06889f5f51c8bd**. Await discovery output before deciding if comparison possible.
+
+
+## Continuation checkpoint — 27 Nov 2026 (metric-validation gates)
+
+- Created cross-source validation standard **docs/research/CROSS_SOURCE_METRIC_VALIDATION_STANDARD_2026-11-27.md** at research branch commit **3eeaf75437cf10dd85be710e31bd8b187831b1a0**. It codifies source capture, formula alignment, calendar mapping, central/tail errors, stress-date review, reproducibility, causal walk-forward, incremental-value/ablation and forward-validation gates. Reliability status explicitly does not equal signal approval.
+- Latest PR #410 head **3eeaf75437cf10dd85be710e31bd8b187831b1a0**. Workflows 849 regression, 17 diagnostic, 552 research validation queued; check after run. Previous run 16 diagnostic was still in progress at last poll.
