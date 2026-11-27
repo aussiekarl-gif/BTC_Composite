@@ -84,6 +84,19 @@ URL: https://github.com/aussiekarl-gif/BTC_Composite/pull/407
 - Firsthand Bitcoin is a possible replacement/cross-check: its public API lists daily hashrate, difficulty, fees, transactions, miner revenue, Puell, realised price and MVRV, free with attribution. It remains a candidate pending methodology and historical comparison.
 - **Keep PR #407 open and unmerged.** The helper tests pass, but Aethereal itself is not recovered. No Production changes.
 
+
+### Firsthand Bitcoin API candidate review (27 Nov 2026)
+
+Official API catalogue: https://firsthandbitcoin.com/data/api
+
+- The series catalogue is live and was generated at 2026-11-27T08:23:56Z. It exposes public JSON/CSV endpoints without an API key and says free use is permitted with attribution/link to https://firsthandbitcoin.com/data; it reports updates a few times daily.
+- Candidate series include daily hashrate, difficulty, BTC fees, transactions, miner revenue, realised price, MVRV, UTXO count, 200WMA and 200DMA.
+- The API catalogue confirms endpoint names and units, but direct CSV fetches through the research browser timed out or returned unsupported content-type; JSON endpoints opened but their payloads were not rendered for inspection. Therefore end-to-end machine retrieval, row schema, full historical depth and completeness have NOT yet been verified.
+- Published methodology evidence: Firsthand describes hashrate as a block-arrival-based estimate and explicitly notes high daily noise; its chart line is a 7-day average. Difficulty is consensus retarget data. Fee series is presented as daily BTC fees paid to miners and commonly charted as a 7-day average. Realised price is described as average BTC cost basis from the price at which each BTC last moved; MVRV is market value divided by realised value.
+- Independence caution: Firsthand is operated by NMine LLC, a mining hardware sales/hosting business. This is not a reason to reject its public on-chain series, but its incentive context should be recorded and its values independently cross-checked.
+- Preliminary suitability: promising independent research cross-check for hashrate, difficulty, fees and realised price; NOT yet approved as a production/research pipeline replacement. Need direct API retrieval in GitHub Actions, schema/units/date checks, historic overlap against Coin Metrics/Explore21/OBM/Aethereal snapshots where available, and formula validation before integration.
+- Avoid using Firsthand's 200WMA as a model input until verified against the project's own canonical price series and rolling-window calculation; it can be compared as an external cross-check only.
+
 ## Session continuation protocol
 
 At the end of each substantial work session, update this file or add a dated checkpoint recording:
