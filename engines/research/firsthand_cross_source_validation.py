@@ -5,6 +5,8 @@ Research-only diagnostic. It does not write project model inputs or alter signal
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +16,7 @@ import requests
 
 FIRSTHAND_CATALOGUE = "https://firsthandbitcoin.com/data/api/series.json"
 COINMETRICS_URL = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics"
+EXPLORE21_PRICE_CSV = "https://charts.explore21.com/data/bitcoin-price.csv"
 METRICS = ("PriceUSD", "FeeTotNtv", "CapMVRVCur")
 
 
@@ -72,6 +75,30 @@ def fetch_coinmetrics(session=requests, start_date="2013-01-01"):
     return frame
 
 
+
+def fetch_explore21_price(session=requests):
+    """Fetch Explore21's independent Bitstamp UTC daily OHLC price history."""
+    response = session.get(EXPLORE21_PRICE_CSV, timeout=45,
+                           headers={"User-Agent": "BTC-Composite-research/1.0",
+                                    "Accept": "text/csv"})
+    response.raise_for_status()
+    if len(response.content) > 10_000_000:
+        raise ValueError("Unexpectedly large Explore21 price CSV")
+    reader = csv.DictReader(io.StringIO(response.text))
+    required = {"date", "btc_open_usd", "btc_high_usd", "btc_low_usd", "btc_close_usd"}
+    if not reader.fieldnames or not required.issubset(reader.fieldnames):
+        raise ValueError("Explore21 price CSV schema changed")
+    frame = pd.DataFrame(list(reader))
+    frame["date"] = pd.to_datetime(frame["date"], utc=True, errors="raise").dt.normalize()
+    for col in required - {"date"}:
+        frame[col] = pd.to_numeric(frame[col], errors="coerce")
+    frame = frame.set_index("date").sort_index()
+    if frame.index.duplicated().any():
+        raise ValueError("Explore21 price dates are duplicated")
+    return frame
+
+
+
 def compare_series(left, right, *, min_observations=30):
     pair = pd.concat([left.rename("firsthand"), right.rename("coinmetrics")], axis=1).dropna()
     pair = pair[(pair["firsthand"] > 0) & (pair["coinmetrics"] > 0)]
@@ -101,9 +128,11 @@ def compare_series(left, right, *, min_observations=30):
     }
 
 
-def build_report(firsthand, coinmetrics):
+def build_report(firsthand, coinmetrics, explore21_price):
     comparisons = {
-        "btc_price_usd": compare_series(firsthand["btc"], coinmetrics["PriceUSD"]),
+        "btc_price_usd_vs_coinmetrics": compare_series(firsthand["btc"], coinmetrics["PriceUSD"]),
+        "btc_price_usd_vs_explore21_bitstamp_close": compare_series(firsthand["btc"], explore21_price["btc_close_usd"]),
+        "coinmetrics_priceusd_vs_explore21_bitstamp_close": compare_series(coinmetrics["PriceUSD"], explore21_price["btc_close_usd"]),
         "200wma_vs_coinmetrics_1400_calendar_day_sma": compare_series(
             firsthand["ma200w"],
             coinmetrics["PriceUSD"].rolling(1400, min_periods=1400).mean(),
@@ -132,7 +161,8 @@ def build_report(firsthand, coinmetrics):
         "provider": "Firsthand Bitcoin vs Coin Metrics Community",
         "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
         "purpose": "research-only cross-source comparison; not a data-source approval",
-        "comparison_method": "same UTC calendar date; absolute percentage error relative to Coin Metrics",
+        "comparison_method": "same UTC calendar date; three-way BTC price comparison includes Explore21 Bitstamp UTC close",
+        "price_source_notes": {"coinmetrics": "PriceUSD is Coin Metrics reference rate at end of UTC day", "explore21": "Explore21 states daily BTC/USD candles are Bitstamp last trade of UTC day", "firsthand": "Firsthand provider daily price venue and timestamp convention still to be confirmed"},
         "realized_price_note": "Coin Metrics reference is PriceUSD / CapMVRVCur, not a directly published realised-price metric; this assumes matching supply basis.",
         "coverage": coverage,
         "comparisons": comparisons,
@@ -146,7 +176,8 @@ def main():
     args = parser.parse_args()
     firsthand = fetch_firsthand()
     coinmetrics = fetch_coinmetrics(start_date=str(firsthand.index.min().date()))
-    report = build_report(firsthand, coinmetrics)
+    explore21_price = fetch_explore21_price()
+    report = build_report(firsthand, coinmetrics, explore21_price)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
