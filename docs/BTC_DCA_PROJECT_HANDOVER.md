@@ -337,3 +337,9 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 
 - Latest successful diagnostic artifact run 16 (head d2b401ba…) searched Bitview MVRV Z-score variants; all returned empty. No independent Bitview matching series available. Explore21 has MVRV Z-score CSV, but exploratory reconstruction via market cap minus realized cap over rolling market-cap standard deviation windows 2–10 years did not exactly match E21; no formula assumptions. Status: not comparable/formula unverified.
 - Validation standard appended with this result; PR #410 update **d3847b411ad52eac72d73321dc123eadac6863c6**, current PR head **d3847b411ad52eac72d73321dc123eadac6863c6**. Latest CI should be polled. Production unchanged.
+
+
+## Continuation checkpoint — 27 Nov 2026 (NUPL threshold disagreement)
+
+- Audited derived E21 NUPL vs Bitview classification on threshold sets (not strategy test). Below 0 agreement 99.92% from 2017 / 99.96% from 2020. Below -0.10: Jaccard 0.946 (2017+) / 0.925 (2020+); daily agreement still >99.6%. Outliers: 2018-11-20 E21 -0.1088 vs Bitview +0.0381; 2020-03-12 E21 -0.1649 vs Bitview -0.0227. 2022-23 dates straddle -0.10 boundary. This matters for extreme stress classification; thresholds not recommended.
+- Updated comparison report commit **66da4ddf9a61bdeb101a646be84f2dfa87568601**, PR #410 head **66da4ddf9a61bdeb101a646be84f2dfa87568601**. Check CI.
