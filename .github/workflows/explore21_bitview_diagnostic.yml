@@ -1,6 +1,10 @@
 name: Explore21 and Bitview Public Data Diagnostic
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'engines/research/explore21_bitview_diagnostic.py'
+      - '.github/workflows/explore21_bitview_diagnostic.yml'
 permissions:
   contents: read
 jobs:
