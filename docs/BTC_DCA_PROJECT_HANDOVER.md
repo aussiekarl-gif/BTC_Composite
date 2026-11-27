@@ -416,3 +416,13 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - BH MVRV Z-Score is generally higher than E21; 2017+ MAE 0.1263, median abs diff 0.0838, p95 0.4432, max 1.3140; 2020+ median 0.07925, p95 0.30496. High-threshold overlap weak: Z>=7 Jaccard 0.636 from 2017 and 0.000 from 2020+ (BH has 3 days, E21 none). BH formula not reconciled; thresholds are provider-specific, no Z-score signal approval.
 - Report and validation standard updated; PR #410 body updated at latest head **3cbd445e94c502eea8b00d51f5861f3aa3b5766e**, draft/open/unmerged, mergeable true. Code head **3cca1d07501613a98dfff4a4b2c53a12af75d283** all CI green: diagnostic 34, DCA regression 866, V5.9 validation 569.
 - No Production/model/dashboard/signal/notification changes. Continue reliability research; all Z-score threshold candidates remain unapproved.
+
+
+## Continuation checkpoint — 27 Nov 2026 (V6.0 Firsthand/Coin Metrics portfolio-source sensitivity)
+
+- PR #409 run **45971267940** passed; artifact **15184698285** downloaded and inspected. 414 overlapping 104-week cohorts per policy/floor/yield, matched Firsthand vs Coin Metrics price source; cohorts are not independent. The full paired-source report is now in `docs/research/FIRSTHAND_V60_PRICE_SOURCE_SENSITIVITY_2026-11-27.md` on PR #409 branch.
+- Price errors on execution dates: Sunday signal closes 517 obs median APE 1.077%, p95 5.45%; Monday execution closes median 1.217%, p95 6.41%, max 19.75%.
+- At 5% cash yield/20% initial cash floor, measured policy: train (158 cohorts) median equity source delta ~0.0002%, mean -0.0288%, p95 abs 7.94%, max 11.02%; BTC held median +0.1667%, mean +0.2659%, p95 abs 4.83%, max 8.32%. Holdout (153 cohorts): median equity +0.0541%, mean +0.0293%, p95 abs 3.81%, max 7.65%; BTC held median +0.1679%, mean +0.2713%, p95 abs 2.65%, max 4.26%. Buy counts remain identical across paired 20/25/30-threshold rows.
+- Source effects are very small in median but material in tails. This is a source sensitivity audit, not a strategy win or approval. Firsthand price remains not approved; V6.0 current BlockHorizon price source is separately cross-validated exact against Explore21 from 2013 onward.
+- PR #409 latest head **6db361f9f134ce22ed95b68cdbd218956063328a**, draft/open/unmerged, mergeable true. Code head **7cc2f6b6391d3a29c35c87918dff88f63ee39d91** had all five CI checks green. Docs-only update; no new tests needed.
+- PR #410 remains a separate diagnostics-only draft/open/unmerged PR; latest known head **5dd2fc08069f09ad05b352c152c12c6b7ee2c91f** mergeable true. No Production/model/dashboard/signal/notification changes.
