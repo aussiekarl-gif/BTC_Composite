@@ -44,11 +44,11 @@ Medians across cohorts; these are not independent observations.
 
 ### Pre-2022 calendar entries (20 cohorts)
 
-| Policy | Median BTC | Median AUD VWAP | Median cash left | Median budget deployed | Median VWAP premium to cohort low | Median final equity |
+| Policy | Median BTC | Median AUD VWAP | Median cash left | Median budget deployed | Median VWAP premium to cohort low | Median final equity | Final-equity win rate vs fixed |
 |---|---:|---:|---:|---:|---:|---:|
-| Fixed weekly | 18.277 | A$16,124 | A$14,989 | 100.11% | 136.32% | A$397,791 |
-| Adaptive recovery | 0.000 | A$29,868* | A$322,245 | 0.00% | 25.70%* | A$322,245 |
-| 2.5% below 200WMA | 0.000 | A$29,097* | A$322,245 | 0.00% | 22.22%* | A$322,245 |
+| Fixed weekly | 18.277 | A$16,124 | A$14,989 | 100.11% | 136.32% | A$397,791 | baseline |
+| Adaptive recovery | 0.000 | A$29,868* | A$322,245 | 0.00% | 25.70%* | A$322,245 | 35.0% |
+| 2.5% below 200WMA | 0.000 | A$29,097* | A$322,245 | 0.00% | 22.22%* | A$322,245 | 35.0% |
 
 `*` VWAP/premium are calculated only for cohorts with actual buys; medians are conditional and should not be read as the group-wide median timing result. No buys occurred in the median cohort for either signal policy.
 
@@ -56,9 +56,9 @@ Medians across cohorts; these are not independent observations.
 
 | Policy | Median BTC | Median AUD VWAP | Median cash left | Median budget deployed | Median VWAP premium to cohort low | Median final equity |
 |---|---:|---:|---:|---:|---:|---:|
-| Fixed weekly | 3.827 | A$77,016 | A$14,989 | 100.11% | 85.77% | A$537,913 |
-| Adaptive recovery | 1.736 | A$33,653* | A$151,003 | 58.17% | 25.09%* | A$356,227 |
-| 2.5% below 200WMA | 0.596 | A$29,097* | A$277,167 | 14.51% | 21.86%* | A$335,455 |
+| Fixed weekly | 3.827 | A$77,016 | A$14,989 | 100.11% | 85.77% | A$537,913 | baseline |
+| Adaptive recovery | 1.736 | A$33,653* | A$151,003 | 58.17% | 25.09%* | A$356,227 | 66.67% |
+| 2.5% below 200WMA | 0.596 | A$29,097* | A$277,167 | 14.51% | 21.86%* | A$335,455 | 50.0% |
 
 Again, conditional VWAP/premium stats describe buy-executing cohorts only.
 
@@ -77,6 +77,16 @@ Again, conditional VWAP/premium stats describe buy-executing cohorts only.
 | 2022+ | 7/12 | +37.03% | 6/7 | +42.19% | 7/7 |
 
 This conditional result is not an unbiased replacement for the unconditional comparison: triggering selects cohorts where the strategy actually deploys, while **not triggering is itself a material outcome**. In no-trigger cohorts, adaptive cash earns the assumed 5% yield but generally lags the fixed weekly comparator's final equity; median paired-equity uplift in no-trigger cohorts was −38.60% pre-2022 and −37.19% in 2022+.
+
+
+### Conditional results for the 2.5%-of-remaining-cash below-200WMA policy
+
+| Entry group | Buy-active cohorts | Median paired BTC uplift when active | BTC wins | Median paired final-equity uplift when active | Equity wins |
+|---|---:|---:|---:|---:|---:|
+| Pre-2022 | 6/20 | −21.00% | 0/6 | +30.00% | 6/6 |
+| 2022+ | 7/12 | −28.94% | 0/7 | +2.58% | 5/7 |
+
+The policy's active cohorts still did not accumulate more BTC than the fixed weekly benchmark. Some final-equity wins come from retaining cash and earning the assumed yield rather than from superior BTC accumulation.
 
 ## Timing score (retrospective)
 
@@ -98,6 +108,6 @@ Test a **hybrid calendar DCA + adaptive reserve** so a portion of the budget acc
 ## CI
 
 - Earlier Research DCA regression runs **907/908**: main regression suite, synthetic replay tests and historical cohort runner passed; artifact produced and repeated outputs were byte-identical.
-- The subsequent summary-table enhancement added explicit triggered-cohort and final-equity win-rate columns; a fresh CI rerun on the current head is pending before this report is considered fully validated.
-- Public-source smoke test: Aethereal upstream fetch failed; it is separate from the strategy tests and does not invalidate the earlier replay artifact.
+- Current-head Research DCA workflow run **918** passed the regression suite, synthetic replay tests, historical cohort runner, and artifact upload. The summary-table enhancement added triggered-cohort and final-equity win-rate columns; final artifact was inspected. The duplicate run 917 was still in progress at checkpoint.
+- Public-source smoke test: Aethereal upstream fetch failed; it is separate from the strategy tests and does not invalidate the replay artifact.
 
