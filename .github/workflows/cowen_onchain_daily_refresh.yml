@@ -73,12 +73,14 @@ jobs:
         continue-on-error: true
         run: |
           set -uo pipefail
-          for attempt in 1 2 3 4; do
-            echo "Aethereal attempt ${attempt}/4"
+          # This provider has intermittently failed DNS. Short adapter timeout
+          # prevents one unavailable source from monopolizing the daily refresh.
+          for attempt in 1 2 3; do
+            echo "Aethereal attempt ${attempt}/3"
             if python -m engines.research.aethereal_public_data --output data/research/cowen_onchain/bitcoin_network_daily_aethereal.csv; then exit 0; fi
-            if [ "${attempt}" -lt 4 ]; then sleep $((attempt * 20)); fi
+            if [ "${attempt}" -lt 3 ]; then sleep $((attempt * 10)); fi
           done
-          echo "Aethereal failed after four attempts"; exit 1
+          echo "Aethereal failed after three bounded attempts"; exit 1
       - name: Fetch Open Bitcoin Metrics daily CDD (retry)
         id: obm
         continue-on-error: true
