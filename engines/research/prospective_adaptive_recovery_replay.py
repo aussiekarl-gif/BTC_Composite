@@ -221,7 +221,7 @@ def run_cohort(btc_usd,usd_per_aud,*,enrolment_date,budget_aud=DEFAULT_BUDGET_AU
     }
     return {
         "enrolment_date":str(enrol.date()),"terminal_date":str(end.date()),
-        "validation_split":"train" if enrol.date()<HOLDOUT_START else "holdout",
+        "entry_period":"pre_2022_calendar_entry" if enrol.date()<HOLDOUT_START else "2022plus_calendar_entry",
         "trigger_date":str(trigger.date()) if trigger is not None else None,
         "weeks_until_trigger":(trigger-enrol).days/7 if trigger is not None else None,
         "cohort_104w_low_aud":low,"terminal_btc_aud_price":float(price.loc[end]),
@@ -265,7 +265,7 @@ def summary_table(cohorts):
         raise ValueError("Completed cohort results required")
     rows=[]
     fixed=cohorts.loc[cohorts.policy=="fixed_weekly"].set_index("enrolment_date")
-    for split,group in cohorts.groupby("validation_split"):
+    for split,group in cohorts.groupby("entry_period"):
         for policy,sub in group.groupby("policy"):
             peers=fixed.loc[sub.enrolment_date]
             btc_uplifts=[100*(float(a)/float(b)-1) for a,b in zip(sub.btc_accumulated,peers.btc_accumulated)]
