@@ -64,3 +64,11 @@ This materially reduces disagreement versus the unsmoothed series (median APE ~5
 ## Realized-price early-history detail
 
 The first 10 days of January 2013 show a persistent offset: Explore21 realized price ~USD 5.88–5.95 while Bitview ~USD 7.45–7.50; Explore21 BTC daily close ~USD 13.1–13.6. A sustained multi-day offset is not a date-alignment issue. It likely reflects differing early price/cost-basis inputs or methodology, but exact cause is unconfirmed. No shifting/correction applied.
+
+## Price-input provenance and interpretation
+
+Official source documentation confirms a material upstream price-history difference:
+- Explore21 uses daily BTC/USD closes from Bitstamp's public market data back to Aug 2011; its on-chain metrics are computed from its own Bitcoin Core node.
+- Bitview price history: before block 74,641 (Aug 2010), no price; through Jan 5, 2015, an older exchange-price record of undocumented original source (later followed Bitstamp); Jan 5 to block 340,000, Bitfinex minute closes; from block 340,000 (later Jan 2015), price is estimated from transaction-output patterns on-chain rather than an exchange feed.
+
+This provenance difference is a plausible explanation for some historical RP/MVRV and supply-in-profit differences, especially in early dates and after Bitview transitions to its on-chain price estimate. It is not proven as the sole cause of each outlier. To quantify this, the diagnostic now captures Explore21 `bitcoin-price.csv` and discovers Bitview price-series candidates. Compare exact date/series metadata before attributing discrepancies. Source citations: Explore21 FAQ/about; Bitview Terms/Support.
