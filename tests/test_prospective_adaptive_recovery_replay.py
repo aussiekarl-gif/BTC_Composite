@@ -72,13 +72,13 @@ class ProspectiveAdaptiveReplayTests(unittest.TestCase):
                 rows.append({"enrolment_date":enrol,"entry_period":"pre_2022_calendar_entry" if enrol<"2022-01-01" else "2022plus_calendar_entry",
                             "trigger_date":"2020-01-10" if policy=="adaptive_recovery" else None,
                             "weeks_until_trigger":4.0 if policy=="adaptive_recovery" else None,
-                            "policy":policy,"btc_accumulated":btc,"terminal_equity_aud":equity,
+                            "policy":policy,"btc_accumulated":btc,"terminal_equity_aud":equity,"buy_count":1,
                             "effective_vwap_aud_per_btc":100.,"cash_remaining_aud":10.,
                             "cash_budget_deployed_pct":90.,"vwap_premium_to_cohort_low_pct":10.})
         s=summary_table(pd.DataFrame(rows))
         a=s.loc[s.policy=="adaptive_recovery"].iloc[0]
         self.assertAlmostEqual(a["median_paired_btc_uplift_vs_fixed_weekly_pct"],10.)
-        self.assertEqual(a["cohort_win_rate_btc_vs_fixed_weekly_pct"],100.)
+        self.assertEqual(a["cohort_win_rate_btc_vs_fixed_weekly_pct"],100.)\n        self.assertEqual(a["cohort_win_rate_equity_vs_fixed_weekly_pct"],100.)\n        self.assertEqual(a["active_cohort_count"],1)\n        self.assertEqual(a["active_cohort_btc_win_rate_vs_fixed_weekly_pct"],100.)
 
     def test_invalid_cash_inputs_fail_closed(self):
         btc,fx=synthetic(dip_date="2016-01-04",dip=50.)
