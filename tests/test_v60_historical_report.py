@@ -29,7 +29,7 @@ class V60HistoricalReportTests(unittest.TestCase):
             "total_buy_spend_aud": 200_000.0,
             "buy_count": 40,
             "max_drawdown_pct": -20.0,
-            "same_spend_same_count_btc_timing_uplift_pct_hindsight": 2.0,
+            "same_spend_same_count_btc_timing_uplift_pct_hindsight": 2.0,\n            "same_actual_spend_distribution_uniform_dates_btc_timing_only_pct": 1.5,
         }
         rows = [
             {**common, "policy": "fixed_weekly", "final_equity_aud": 600_000.0, "btc_held": 5.0},
@@ -41,7 +41,7 @@ class V60HistoricalReportTests(unittest.TestCase):
         self.assertAlmostEqual(measured["median_final_equity_uplift_vs_fixed_weekly_pct"], 5.0, places=8)
         self.assertAlmostEqual(measured["median_btc_uplift_vs_fixed_weekly_pct"], 10.0, places=8)
         self.assertEqual(measured["cohort_win_rate_final_equity_vs_fixed_weekly_pct"], 100.0)
-        self.assertTrue(measured["cohorts_overlap"])
+        self.assertTrue(measured["cohorts_overlap"])\n        self.assertEqual(measured["median_equal_buy_amount_uniform_dates_btc_uplift_pct"], 2.0)\n        self.assertEqual(measured["median_actual_spend_distribution_uniform_dates_btc_timing_only_pct"], 1.5)
 
 
     def test_discount_activation_counts_report_sparse_valuation_events(self):
