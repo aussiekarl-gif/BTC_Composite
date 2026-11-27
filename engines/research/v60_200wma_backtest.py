@@ -105,6 +105,19 @@ def validate_weekly_cohort(rows: list[dict]) -> None:
             raise ValueError("Invalid prior 200WMA ratio or BTC/AUD execution proxy")
 
 
+def _prior_week_momentum_nonnegative(rows: list[dict], execution_index: int) -> bool:
+    """Use only the two completed weekly observations before this execution.
+
+    The current row is the execution-price proxy and is deliberately excluded
+    from the decision. Insufficient prior history fails closed.
+    """
+    if execution_index < 2:
+        return False
+    latest_completed = float(rows[execution_index - 1]["btc_price_aud"])
+    previous_completed = float(rows[execution_index - 2]["btc_price_aud"])
+    return latest_completed >= previous_completed
+
+
 def simulate_weekly_cohort(
     rows: list[dict],
     *,
@@ -122,6 +135,7 @@ def simulate_weekly_cohort(
     threshold_set: str = "20_25_30",
     max_cumulative_buy_spend_pct_initial_cash: float | None = None,
     dynamic_allocation_scale: float = 1.0,
+    require_nonnegative_weekly_momentum: bool = False,
 ) -> dict:
     """Replay one 104-week cohort with cash yield, BTC drag and buy friction.
 
@@ -199,6 +213,11 @@ def simulate_weekly_cohort(
             pct = allocation_for_discount(
                 float(row["ratio_to_200wma"]), candidate=policy, thresholds=thresholds
             )
+            # Decide before the current row's execution: use only the two
+            # most recent completed weekly observations. Never inspect the
+            # current execution-price proxy when selecting its own tier.
+            if require_nonnegative_weekly_momentum and not _prior_week_momentum_nonnegative(rows, i):
+                pct = 2.5
             target_spend = deployable * pct * dynamic_allocation_scale / 100.0
         remaining_cumulative_budget = (
             max(0.0, cumulative_budget - total_spend)
@@ -244,6 +263,7 @@ def simulate_weekly_cohort(
         "model_version": "V6.0",
         "policy": policy,
         "dynamic_allocation_scale": float(dynamic_allocation_scale),
+        "require_nonnegative_weekly_momentum": bool(require_nonnegative_weekly_momentum),
         "threshold_set": threshold_set,
         "discount_thresholds_pct": list(thresholds) if threshold_set != "none" else [],
         "cohort_start": rows[0]["execution_date"].isoformat(),
