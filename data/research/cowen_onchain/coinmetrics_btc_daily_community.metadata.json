@@ -26,7 +26,7 @@
   "first_date_utc": "2009-01-03",
   "last_date_utc": "2026-11-26",
   "observations": 6537,
-  "retrieved_at_utc": "2026-11-27T07:52:52.625720+00:00",
+  "retrieved_at_utc": "2026-11-27T08:02:23.513717+00:00",
   "license": "Coin Metrics Community Data \u2014 CC BY-NC 4.0; non-commercial use only; attribution required",
   "sha256_csv": "3f6f48e2f312e408ea5daee89c7ddbff05661820ce3308152ed9b8f461aebcf5",
   "missing_values_by_metric": {
