@@ -124,3 +124,19 @@ Explore21's component columns validate its calculation: `issuance_usd / issuance
 Ratio diagnostics (Bitview / Explore21): median Puell ratio ~1.00509 overall and ~1.00552 since 2020; median BTC-price ratio is near 1 (~0.99983 overall and ~0.99928 since 2020). Puell ratio and price ratio correlation only ~0.39 overall (~0.46 since 2020). After dividing Puell ratio by price ratio, the median residual is ~+0.51% overall, ~+0.55% since 2020. This indicates price-history mismatch alone cannot explain the stable Puell offset; likely differences in issuance window/block count timing and 365-day window conventions remain candidate causes, not proven. Keep Puell cross-source validation as provisional pending method-level test.
 
 Source methodology references: Explore21 Puell chart https://charts.explore21.com/bitcoin-puell-multiple ; Bitview series metadata captured in artifact `bitview/series_info/puell_multiple.json`.
+
+
+## Stress-date source-price diagnostic (run 19, 27 Nov 2026)
+
+The latest raw artifact (diagnostic run 19; artifact 15187148686) includes Explore21 spot-price CSV and Bitview global price day1 data. Spot-price differences on the same dates are substantial and coincide with several NUPL/MVRV cross-source outliers:
+
+| Date | Explore21 close (USD) | Bitview price (USD) | Bitview vs E21 | E21-derived NUPL | Bitview NUPL | NUPL difference |
+|---|---:|---:|---:|---:|---:|---:|
+| 2017-05-27 | 2,042.00 | 2,512.04 | +23.02% | — | — | — |
+| 2018-02-02 | 8,838.83 | 7,165.13 | -18.94% | — | — | — |
+| 2018-11-20 | 4,352.00 | 5,025.57 | +15.48% | -0.108758 | +0.038128 | -0.146886 |
+| 2020-03-12 | 4,841.67 | 5,558.99 | +14.82% | -0.164934 | -0.022728 | -0.142206 |
+
+This supports spot-price provenance/valuation as a plausible contributor to MVRV/NUPL stress divergence on 2018-11-20 and 2020-03-12. It does **not** prove causality: MVRV/NUPL also depend on realized-cap/cost-basis and supply/UTXO calculations, and the sources may differ in those methods. Spot-price mismatch is not sufficient explanation for the Jan 2013 realized-price offset: Explore21 and Bitview prices were close on the same dates, while realized price differed by about 26% (Explore21 ~USD 5.88–5.98 vs Bitview ~USD 7.45–7.53). Therefore the early RP discrepancy likely involves cost-basis/UTXO method or source history, but its exact cause remains unresolved.
+
+**Research implication:** use source-price regime differences as a documented confounder when reviewing stress-date MVRV/NUPL divergence. Keep both series unadjusted, calendar-matched and candidate-only; no normalization or Production/model input approval.
