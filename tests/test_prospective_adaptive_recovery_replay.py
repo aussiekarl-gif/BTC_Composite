@@ -69,7 +69,7 @@ class ProspectiveAdaptiveReplayTests(unittest.TestCase):
         rows=[]
         for enrol in ("2020-01-06","2022-01-03"):
             for policy,btc,equity in (("fixed_weekly",1.,100.),("adaptive_recovery",1.1,110.)):
-                rows.append({"enrolment_date":enrol,"validation_split":"train" if enrol<"2022-01-01" else "holdout",
+                rows.append({"enrolment_date":enrol,"entry_period":"pre_2022_calendar_entry" if enrol<"2022-01-01" else "2022plus_calendar_entry",
                             "policy":policy,"btc_accumulated":btc,"terminal_equity_aud":equity,
                             "effective_vwap_aud_per_btc":100.,"cash_remaining_aud":10.,
                             "cash_budget_deployed_pct":90.,"vwap_premium_to_cohort_low_pct":10.})
