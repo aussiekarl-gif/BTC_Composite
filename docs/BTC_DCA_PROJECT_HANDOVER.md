@@ -320,3 +320,8 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Derived Explore21 NUPL from its MVRV (`1 - 1/MVRV`) because no direct E21 NUPL capture available; compare with Bitview NUPL. Bitview internal MVRV/NUPL identity matches within max residual ~5.64e-7.
 - Since 2020: correlation **0.999775**; median abs diff **0.001299** (NUPL ratio units, ~0.13 percentage points), p95 **0.005398**, max **0.142206**. Modern typical agreement is strong; stress-date outliers (e.g., 12 Mar 2020) remain. Full history skewed by anomalous early data. Candidate only, derived, not direct E21 NUPL validation.
 - Report update commit **38af8b725441e22bd612ea6f2a6eb4aafac17566**; PR #410 head **38af8b725441e22bd612ea6f2a6eb4aafac17566**. Keep unmerged.
+
+
+## Continuation checkpoint — 27 Nov 2026 (MVRV Z-Score cross-source discovery)
+
+- Diagnostic discovery expanded to search Bitview for MVRV Z-Score and Z-score variants, with candidate global IDs added to selection priority, to compare against Explore21's existing Z-score CSV. Latest diagnostic code commit **d2b401ba6cae71f1c36ea8837c06889f5f51c8bd**, PR head **d2b401ba6cae71f1c36ea8837c06889f5f51c8bd**. Await discovery output before deciding if comparison possible.
