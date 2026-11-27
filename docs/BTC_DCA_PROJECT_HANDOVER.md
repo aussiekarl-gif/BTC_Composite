@@ -246,3 +246,12 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Bitview series metadata/payload diagnostic: `realized_price` unit USD, 6,532 non-null/6,540 slots, 8 nulls; `mvrv` 5,948 non-null, 592 null; `hashrate` 6,533 non-null, 7 null (value range ~49,710 to 1.31e21, which needs unit/method review); `supply_in_profit` 6,533 non-null, 7 null; `supply_in_profit_share` 6,532 non-null, 8 null; `nupl` 5,948 non-null, 592 null. These counts and ranges describe the raw API response, not a verified date-mapped history or approval. Series version IDs preserved in artifact.
 - Current diagnostic code now also probes date-addressed ranges for MVRV and realized price to verify calendar-date mapping. Commit `d3e079fe4d89d4e3af1594e2f92b071c7a546430`; all four PR checks queued as of this checkpoint. Await this run and inspect date-range probe before cross-source statistical comparisons.
 - First artifact's E21 raw observations remain as reported in previous checkpoint. No Production changes.
+
+
+## Continuation checkpoint — 27 Nov 2026 (Explore21/Bitview MVRV comparison)
+
+- Bitview date-range probe confirmed calendar alignment: query for 2020-01-01 to 2020-01-04 returned start index 4017/end-exclusive 4020; its 3 values exactly matched the full daily array at positions 4017:4020. The day1 index maps consistently to calendar dates from 2009-01-01.
+- Matched-date MVRV diagnostic with Explore21 MVRV CSV (5,551 matched dates 2011-09-16 to 2026-11-26): full-period mean APE 4.848%, median 0.320%, p95 45.035%, max 83.400%. Early divergence dominates: 2011 mean APE 73.03%, 2012 41.26%. From 2013 onward mean APE 0.787%, median 0.286%, p95 2.528%, max 21.484%; from 2017 onward 3,617 matches mean 0.447%, median 0.254%, p95 1.413%, max 20.658%; 2020 onward 2,522 matches mean 0.334%, median 0.224%, p95 0.964%, max 13.905%.
+- Comparison report added to PR #410: `docs/research/EXPLORE21_BITVIEW_MVRV_COMPARISON_2026-11-27.md`. Candidate cross-check only; no input approval. Methodology and early historical divergence need investigation, including outliers around 2017-05-27, 2018-02-02, 2018-11-20 and 2020-03-12.
+- PR #410 updated with report summary. Latest commit `b59c00bb3c12af05864d3131e5a1b2161b897093`; validation runs 45972702941 (diagnostic), 45972702933 (V5.9), 45972702895 (regression) were in progress as of 09:19 UTC. Draft/open/unmerged.
+- Production remains unchanged; no notifications or dashboard changes.
