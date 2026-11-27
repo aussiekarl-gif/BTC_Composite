@@ -283,3 +283,10 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Realized Price Jan 1–10 2013 offset confirmed with raw values: Explore21 ~USD 5.88–5.95 vs Bitview ~USD 7.45–7.50, while Explore21 BTC close ~USD 13.1–13.6. Sustained offset, not calendar mapping; exact upstream cause unknown.
 - PR #410 report updated at latest commit **201b39014372fba904c303e2dc164798e84eb5c1**, draft/open/unmerged; check new CI statuses.
 - No Production/dashboard/signal/notification changes. Continue research on discrepancy provenance and validation; keep candidates unapproved.
+
+
+## Continuation checkpoint — 27 Nov 2026 (price-source provenance)
+
+- Official source docs reviewed. Explore21 uses Bitstamp daily BTC/USD closes from Aug 2011. Bitview: older exchange-price history of undocumented original source through Jan 2015 (later followed Bitstamp); Bitfinex minute closes from Jan 5 2015 until block 340,000; from block 340,000 it uses a chain-derived transaction-output price estimate. This makes price-input differences a plausible source of early RP/MVRV and profitability metric mismatches, but not a proven explanation for each outlier.
+- PR #410 diagnostic expanded to capture Explore21 `bitcoin-price.csv` and search Bitview price-series candidates. Latest head **5504c5c8e8666b16faecaa8cd2d021191ba9a851**, draft/open/unmerged; report updated with provenance. Check latest CI.
+- References: Explore21 FAQ/about and Bitview Terms/Support (public official source pages). Continue quantitative source-price comparison from diagnostic artifact, then investigate remaining discrepancies. Production remains unchanged.
