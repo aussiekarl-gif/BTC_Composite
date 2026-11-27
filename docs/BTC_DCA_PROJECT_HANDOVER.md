@@ -385,3 +385,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - PR #410 report and validation standard updated; latest branch head **f9a9aa1e179144f730a66431d0e207886691bd3a**, draft/open/unmerged, mergeable true. Code head **7ad93dce9898a1fe9c04841246e22f08bc157b61**: diagnostic run 23 **45978508682** success, V5.9 validation run 558 **45978509158** success, regression run 855 **45978508708** success. Direct Coin Metrics daily NUPL probe returned 403; documented.
 - All cross-source work remains diagnostic/research only. No Production/model/dashboard/signal/notification changes.
 - Next: continue method/source alignment for Z-score residuals or shift to the next validated metric candidate; keep raw source values unadjusted and candidates unapproved until full signal validation gates are met.
+
+
+## Continuation checkpoint — 27 Nov 2026 (Z-Score method changelog probe and final CI)
+
+- Explore21 Z-score method changelog captured raw (run 27 artifact **15187998679**, HTTP 200): method v1, first published 2026-07-15, no subsequent method-change entries. This does not rule out data revisions. E21 MVRV ratio reconstructed from its cap CSV matches published ratio within ~5e-7; Z-score denominator residual is still unexplained, do not label source error.
+- PR #410 code head **ca6c4c24ca5146430d9aa74120db9fa7a0b8e0b5**, latest PR head **0bb806e4bfd1aff23dd10248735c0c2b03d1689d** (documentation commits after code). Diagnostic run 27 **45979050729** success, Research DCA regression run 859 **45979050701** success, V5.9 Research Risk Validation run 562 **45979050815** success.
+- PR #410 remains draft/open/unmerged, mergeable true at last metadata poll. No Production/model/dashboard/signal/notification changes.
+- MVRV Z-score remains candidate-only; formula identified, reconstruction partial, no independent cross-source series, historical denominator/input alignment unresolved. Continue investigating only with raw data and transparent methods; do not promote or tune thresholds.
