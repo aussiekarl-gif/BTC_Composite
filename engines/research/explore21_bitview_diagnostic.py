@@ -11,6 +11,9 @@ E21 = {
     "bitcoin-mvrv-ratio": "https://charts.explore21.com/data/bitcoin-mvrv-ratio.csv",
     "bitcoin-puell-multiple": "https://charts.explore21.com/data/bitcoin-puell-multiple.csv",
     "bitcoin-mvrv-z-score": "https://charts.explore21.com/data/bitcoin-mvrv-z-score.csv",
+    "bitcoin-realized-price": "https://charts.explore21.com/data/bitcoin-realized-price.csv",
+    "bitcoin-percent-supply-in-profit": "https://charts.explore21.com/data/bitcoin-percent-supply-in-profit.csv",
+    "bitcoin-hashrate": "https://charts.explore21.com/data/bitcoin-hashrate.csv",
 }
 BITVIEW = "https://bitview.space/api"
 SEARCHES = ["realized price", "hashrate", "mvrv", "supply in profit"]
