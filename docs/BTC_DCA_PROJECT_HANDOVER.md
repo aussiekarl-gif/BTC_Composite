@@ -306,3 +306,10 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Puell Multiple: correlation **0.996677**; median APE **1.115%** since 2020, p95 **4.604%**, persistent ~1.1–1.2% median offset. Investigate precise denominator window, issuance/subsidy conventions, and timing before candidate approval. Report expanded with full periods.
 - PR #410 latest report update commit **217251ad8e34ab0f185b53c53ec4f07022cf49f3**; still draft/unmerged. CI statuses should be checked at latest PR head.
 - No Production input or dashboard changes.
+
+
+## Continuation checkpoint — 27 Nov 2026 (Puell method audit)
+
+- Explore21 Puell component columns reproduce its multiple (max absolute residual ~3.76e-7). It uses observed daily new coin supply change valued at daily close and 365d average of same. Bitview describes trailing-24h subsidy/USD, trailing 365d claimed subsidy USD, sampled at the daily final block and monotonic block time.
+- Median Bitview/E21 Puell ratio ~1.00509 overall/~1.00552 since 2020; price ratio median ~1.0. Puell ratio vs price ratio correlation ~0.39; after normalizing by price ratio median residual +0.51% overall/+0.55% since 2020. Price source mismatch alone insufficient; window/timing/issuance conventions are plausible but not confirmed.
+- Puell cross-source candidate remains provisional; source methodology notes added. PR #410 latest head **3aaefaf579740a0385550f1af49886234a6e4610**. Diagnostic success; regression and risk validation pending.
