@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
+from engines.research.aethereal_public_data import parse_daily_btc_network
 from engines.research.aethereal_doh_fallback import (
     CSV_URL,
     HOST,
@@ -90,6 +91,9 @@ class AetherealDohFallbackTests(unittest.TestCase):
             self.assertEqual(result["resolver"], "Cloudflare")
             self.assertTrue(output.is_file())
             self.assertGreater(output.stat().st_size, 0)
+            parsed = parse_daily_btc_network(output.read_text(encoding="utf-8"))
+            self.assertEqual(len(parsed), 1)
+            self.assertAlmostEqual(parsed["fees_btc"].iloc[0], 2.5)
 
 
 if __name__ == "__main__":
