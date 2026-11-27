@@ -58,7 +58,7 @@ class HybridCalendarAdaptiveTests(unittest.TestCase):
         ])
         hybrid=pd.DataFrame([
             {"enrolment_date":"2020-01-06","entry_period":"pre_2022_calendar_entry","policy":"hybrid_base_25_adaptive_reserve_75","base_allocation_pct":25,"btc_accumulated":1.1,"terminal_equity_aud":110.,"fixed_weekly_btc":1.,"fixed_weekly_terminal_equity_aud":100.,"trigger_date":"2020-01-10","weeks_until_trigger":4.,"effective_vwap_aud_per_btc":100.,"cash_remaining_aud":10.,"cash_budget_deployed_pct":90.,"vwap_premium_to_cohort_low_pct":10.,"largest_weekly_combined_outlay_aud":25000.,"weekly_cap_aud":25500.},
-            {"enrolment_date":"2022-01-03","entry_period":"2022plus_calendar_entry","policy":"hybrid_base_25_adaptive_reserve_75","base_allocation_pct":25,"btc_accumulated":1.1,"terminal_equity_aud":110.,"trigger_date":"2022-01-10","weeks_until_trigger":1.,"effective_vwap_aud_per_btc":100.,"cash_remaining_aud":10.,"cash_budget_deployed_pct":90.,"vwap_premium_to_cohort_low_pct":10.,"largest_weekly_combined_outlay_aud":25000.,"weekly_cap_aud":25500.},
+            {"enrolment_date":"2022-01-03","entry_period":"2022plus_calendar_entry","policy":"hybrid_base_25_adaptive_reserve_75","base_allocation_pct":25,"btc_accumulated":1.1,"terminal_equity_aud":110.,"fixed_weekly_btc":1.,"fixed_weekly_terminal_equity_aud":100.,"trigger_date":"2022-01-10","weeks_until_trigger":1.,"effective_vwap_aud_per_btc":100.,"cash_remaining_aud":10.,"cash_budget_deployed_pct":90.,"vwap_premium_to_cohort_low_pct":10.,"largest_weekly_combined_outlay_aud":25000.,"weekly_cap_aud":25500.},
         ])
         s=hybrid_summary_table(hybrid)
         self.assertEqual(len(s),2)
