@@ -296,3 +296,13 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 
 - PR #410 diagnostic scope further expanded to fetch Explore21 price and realized-cap CSVs and search Bitview price, realized-cap, and Puell Multiple global series. New head **66b956727dca109511a394ad7e716545041ea745**. Await next artifact for candidate series selection, source coverage and matched comparisons.
 - Current price provenance conclusion unchanged: price-history regime differences plausibly explain some metric discrepancies; exact outlier attribution remains unresolved. Production unchanged.
+
+
+## Continuation checkpoint — 27 Nov 2026 (price, realized cap, Puell quantitative cross-check)
+
+- Diagnostic artifact run **45973887035**, artifact **15186690700**, extracted and calendar matched.
+- BTC price: correlation **0.999986**; median APE **0.220%** since 2020, p95 **0.934%**. Price-series broadly corroborate modern history.
+- Realized Cap: correlation **0.9999994**; median APE **0.107%** since 2020, p95 **0.302%**; very strong modern agreement.
+- Puell Multiple: correlation **0.996677**; median APE **1.115%** since 2020, p95 **4.604%**, persistent ~1.1–1.2% median offset. Investigate precise denominator window, issuance/subsidy conventions, and timing before candidate approval. Report expanded with full periods.
+- PR #410 latest report update commit **217251ad8e34ab0f185b53c53ec4f07022cf49f3**; still draft/unmerged. CI statuses should be checked at latest PR head.
+- No Production input or dashboard changes.
