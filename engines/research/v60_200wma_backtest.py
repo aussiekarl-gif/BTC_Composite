@@ -287,7 +287,8 @@ def simulate_weekly_cohort(
             max(0.0, cumulative_budget - total_spend) if cumulative_budget is not None else None
         ),
         "max_drawdown_pct": 100.0 * max_drawdown,
-        "same_spend_same_count_btc_timing_uplift_pct_hindsight": legacy_equal_amount_uplift,\n        "same_actual_spend_distribution_uniform_dates_btc_timing_only_pct": timing_only_actual_spend_uplift,
+        "same_spend_same_count_btc_timing_uplift_pct_hindsight": legacy_equal_amount_uplift,
+        "same_actual_spend_distribution_uniform_dates_btc_timing_only_pct": timing_only_actual_spend_uplift,
         "research_only": True,
         "trade_executable": False,
         "execution_proxy": "next_Monday_BTC_AUD_spot_close_not_ASX_IBIT_fill",
