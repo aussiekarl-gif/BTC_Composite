@@ -122,11 +122,14 @@ def compare_replays(firsthand_results: list[dict], coinmetrics_results: list[dic
 
 
 def summarise_price_observations(firsthand: pd.Series, coinmetrics: pd.Series,
-                                 weekday: int | None = None) -> dict:
+                                 weekday: int | None = None,
+                                 start_date: str | None = None) -> dict:
     pair = pd.concat({
         "firsthand": firsthand.rename("firsthand"),
         "coinmetrics": coinmetrics.rename("coinmetrics"),
     }, axis=1).dropna()
+    if start_date is not None:
+        pair = pair.loc[pair.index >= pd.Timestamp(start_date, tz="UTC")]
     if weekday is not None:
         pair = pair.loc[pair.index.dayofweek == weekday]
     ape = ((pair["firsthand"] / pair["coinmetrics"]) - 1.0).abs() * 100.0
@@ -164,9 +167,16 @@ def build_report(output_dir: Path) -> dict:
     fh_price = fh_price.loc[common_start:common_end]
     cm_price = cm_price.loc[common_start:common_end]
     price_observations = {
-        "all_days": summarise_price_observations(fh_price, cm_price),
-        "completed_sunday_signal_closes": summarise_price_observations(fh_price, cm_price, weekday=6),
-        "next_monday_execution_closes": summarise_price_observations(fh_price, cm_price, weekday=0),
+        "all_history": summarise_price_observations(fh_price, cm_price),
+        "strategy_period_all_days_from_2017": summarise_price_observations(
+            fh_price, cm_price, start_date="2017-01-01"
+        ),
+        "strategy_period_sunday_signal_closes": summarise_price_observations(
+            fh_price, cm_price, weekday=6, start_date="2017-01-01"
+        ),
+        "strategy_period_monday_execution_closes": summarise_price_observations(
+            fh_price, cm_price, weekday=0, start_date="2017-01-01"
+        ),
     }
     fh_rows = build_weekly_execution_rows(
         fh_price, fx, first_execution_date=date(2017, 1, 1)
