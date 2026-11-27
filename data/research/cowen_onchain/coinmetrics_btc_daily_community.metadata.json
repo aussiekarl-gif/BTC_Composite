@@ -7,6 +7,7 @@
     "CapMVRVCur",
     "CapMVRVZ",
     "FeeTotUSD",
+    "FeeTotNtv",
     "IssTotUSD",
     "PuellMulTot",
     "PriceUSD",
@@ -17,6 +18,7 @@
   ],
   "returned_metrics": [
     "CapMVRVCur",
+    "FeeTotNtv",
     "IssTotUSD",
     "PriceUSD",
     "SplyCur"
@@ -24,11 +26,12 @@
   "first_date_utc": "2009-01-03",
   "last_date_utc": "2026-11-26",
   "observations": 6537,
-  "retrieved_at_utc": "2026-11-27T07:02:47.107845+00:00",
+  "retrieved_at_utc": "2026-11-27T07:09:22.913387+00:00",
   "license": "Coin Metrics Community Data \u2014 CC BY-NC 4.0; non-commercial use only; attribution required",
-  "sha256_csv": "30ea6095230c0c5e3834b329145d148e2567b0d02632651605b616cce0cbc0b6",
+  "sha256_csv": "3f6f48e2f312e408ea5daee89c7ddbff05661820ce3308152ed9b8f461aebcf5",
   "missing_values_by_metric": {
     "CapMVRVCur": 561,
+    "FeeTotNtv": 0,
     "IssTotUSD": 561,
     "PriceUSD": 561,
     "SplyCur": 0
