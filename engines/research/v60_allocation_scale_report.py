@@ -124,8 +124,11 @@ def summarise_scale_results(frame: pd.DataFrame) -> pd.DataFrame:
             "median_total_buy_spend_aud": float(group["total_buy_spend_aud"].median()),
             "median_cash_remaining_aud": float(group["cash_remaining_aud"].median()),
             "median_max_drawdown_difference_vs_fixed_pp": float(pd.Series(dd).median()),
-            "median_same_spend_same_count_timing_uplift_pct_hindsight": float(
+            "median_equal_buy_amount_uniform_dates_btc_uplift_pct": float(
                 group["same_spend_same_count_btc_timing_uplift_pct_hindsight"].median()
+            ),
+            "median_actual_spend_distribution_uniform_dates_btc_timing_only_pct": float(
+                group["same_actual_spend_distribution_uniform_dates_btc_timing_only_pct"].median()
             ),
             "cohorts_overlap": True,
             "interpretation": "Matched fixed DCA uses identical cohort, initial capital, cash yield, reserve and spend cap; realised spend can differ.",
