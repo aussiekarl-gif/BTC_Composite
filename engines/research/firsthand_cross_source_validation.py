@@ -148,6 +148,7 @@ def compare_date_lags(left, right, *, start_date="2017-01-01", max_lag_days=2):
             rows.append({"right_date_offset_days": lag, "observations": 0})
             continue
         ape = ((aligned["left"] / aligned["right"]) - 1.0).abs() * 100.0
+        worst = ape.nlargest(5)
         rows.append({
             "right_date_offset_days": lag,
             "observations": int(len(aligned)),
@@ -155,6 +156,14 @@ def compare_date_lags(left, right, *, start_date="2017-01-01", max_lag_days=2):
             "median_ape_pct": float(ape.median()),
             "p95_ape_pct": float(ape.quantile(0.95)),
             "max_ape_pct": float(ape.max()),
+            "worst_dates": [
+                {"left_date": d.date().isoformat(),
+                 "right_date": (d + pd.Timedelta(days=lag)).date().isoformat(),
+                 "ape_pct": float(v),
+                 "left_price": float(aligned.loc[d, "left"]),
+                 "right_price": float(aligned.loc[d, "right"])}
+                for d, v in worst.items()
+            ],
         })
     return {
         "status": "DIAGNOSTIC_ONLY_NO_AUTOMATIC_REALIGNMENT",
