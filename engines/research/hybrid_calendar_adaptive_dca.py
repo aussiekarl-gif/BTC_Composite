@@ -150,7 +150,7 @@ def run_hybrid_cohort(btc_usd,usd_per_aud,*,enrolment_date,
     if not 0<weekly_cap_pct<=100 or not 0<=buy_friction<1 or fee_aud<0:
         raise ValueError("Invalid weekly cap, friction or fee")
     price=_aud_prices(btc,fx)
-    enrol=pd.Timestamp(enrolment_date,tz="UTC").normalize()
+    enrol=pd.Timestamp(enrolment_date)\n    enrol=enrol.tz_localize("UTC") if enrol.tzinfo is None else enrol.tz_convert("UTC")\n    enrol=enrol.normalize()
     end=enrol+pd.Timedelta(days=7*COHORT_WEEKS)
     fixed_dates=[enrol+pd.Timedelta(days=7*i) for i in range(1,COHORT_WEEKS+1)]
     if enrol not in price.index or end not in price.index or any(d not in price.index for d in fixed_dates):
