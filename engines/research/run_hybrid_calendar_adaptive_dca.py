@@ -10,7 +10,6 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
 
 from engines.research.v60_historical_report import load_btc_daily,fetch_usd_per_aud
-from engines.research.prospective_adaptive_recovery_replay import run_all_cohorts
 from engines.research.hybrid_calendar_adaptive_dca import run_all_hybrid_cohorts,hybrid_summary_table
 
 OUTPUT=ROOT/"research_artifacts"/"hybrid_calendar_adaptive_dca"
@@ -19,9 +18,8 @@ OUTPUT=ROOT/"research_artifacts"/"hybrid_calendar_adaptive_dca"
 def main():
     btc,btc_sha,btc_end=load_btc_daily()
     fx,fx_sha=fetch_usd_per_aud(date(2016,1,1),btc.index[-1].date())
-    fixed_reference=run_all_cohorts(btc,fx)
     hybrids=run_all_hybrid_cohorts(btc,fx)
-    summary=hybrid_summary_table(hybrids,fixed_reference)
+    summary=hybrid_summary_table(hybrids)
     OUTPUT.mkdir(parents=True,exist_ok=True)
     hybrids.to_csv(OUTPUT/"hybrid_calendar_adaptive_cohorts.csv",index=False)
     summary.to_csv(OUTPUT/"hybrid_calendar_adaptive_summary.csv",index=False)
