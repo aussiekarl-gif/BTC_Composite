@@ -43,3 +43,9 @@ The close median level agreement is promising, but variability is consistent wit
 - **Supply in Profit:** reasonable but not exact; compare definitions and inspect discrepancy dates. Not approved.
 - **Hashrate:** level agreement is close, but smoothing mismatch makes this a methodological diagnostic only. Not approved.
 - No metric is approved for production/model inputs. No date shifting or silent corrections. Keep raw snapshots and provenance.
+
+## Outlier-date inspection (follow-up)
+
+- Supply-in-profit largest post-2013 differences: 2015-08-24 (15.42 pp), 2015-08-18 (9.40 pp), 2017-03-10 (7.26 pp), 2013-01-14 (7.10 pp), 2015-09-05 (6.77 pp). The differences cluster around volatile early price history and cycle-transition periods; source-specific price and supply/UTXO methodology remain candidate causes, not established explanations.
+- Realized-price largest post-2013 relative differences cluster on 2013-01-01 through 2013-01-10, with APE about 26.7% and absolute difference near USD 1.57. That sustained early-period offset suggests upstream price/cost-basis methodology differences rather than a one-day alignment issue. Calendar mapping has already been verified; no shift applied.
+- Follow-up: capture and compare source spot-price inputs on discrepancy dates where possible, and document metric formula/version histories. Keep candidate metrics unapproved.
