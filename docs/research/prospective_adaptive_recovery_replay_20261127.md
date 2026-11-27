@@ -97,8 +97,7 @@ Test a **hybrid calendar DCA + adaptive reserve** so a portion of the budget acc
 
 ## CI
 
-- Existing Research DCA regression suite: passed.
-- Synthetic prospective replay tests: passed.
-- Historical cohort runner: passed; artifacts produced.
-- Public-source smoke test: Aethereal upstream fetch failed; it is separate from the strategy tests and does not invalidate the replay artifact.
+- Earlier Research DCA regression runs **907/908**: main regression suite, synthetic replay tests and historical cohort runner passed; artifact produced and repeated outputs were byte-identical.
+- The subsequent summary-table enhancement added explicit triggered-cohort and final-equity win-rate columns; a fresh CI rerun on the current head is pending before this report is considered fully validated.
+- Public-source smoke test: Aethereal upstream fetch failed; it is separate from the strategy tests and does not invalidate the earlier replay artifact.
 
