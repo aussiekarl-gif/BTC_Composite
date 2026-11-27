@@ -33,7 +33,7 @@ Purpose: prevent a candidate on-chain metric from becoming a research or Product
 | NUPL | Derived from E21 MVRV vs Bitview NUPL; 2020+ median absolute diff 0.13 pp; stress outliers | Corroborated but provisional (derived comparison) |
 | Puell Multiple | 2020+ median APE 1.115%, p95 4.604%, persistent ~0.5% residual after price normalization | Provisional, methodology differences unresolved |
 | Supply in Profit | Modern typical differences modest but outliers significant | Provisional; outlier/source method work needed |
-| MVRV Z-Score | Explore21 expanding-sample-std formula identified; partial reconstruction; no independent Bitview match | Provisional / input alignment unresolved |
+| MVRV Z-Score | BlockHorizon direct export vs Explore21; modern errors modest but positive bias; high-threshold set overlap weak; formula/input alignment unresolved | Corroborated but provisional; threshold-sensitive |
 
 **Important:** These categories are metric reliability only, not evidence that a metric is profitable, predictive, or suitable for DCA signals. No Production inputs are approved by this report.
 
@@ -41,3 +41,12 @@ Purpose: prevent a candidate on-chain metric from becoming a research or Product
 ## MVRV Z-Score candidate status
 
 Bitview discovery returned no global MVRV Z-Score series for queries `mvrv z score`, `mvrv-z-score`, or `z score` (empty search responses). Explore21's official method v1 is now documented: `(market cap - realized cap) / expanding sample standard deviation of market cap`, beginning 18 Aug 2011 and plotted after 30 days. A reconstruction from Explore21 realized-cap CSV using expanding sample standard deviation matches the first observations and latest 26 Nov 2026 value to floating-point tolerance, and is close in modern history (2024+ mean absolute Z difference 0.00402, median 0.00451, p95 0.00730, max 0.00845). However, material residuals remain in historical 2013 and 2017 periods (max 0.4722 on 30 Nov 2013). The published formula is identified, but historical source-input/version alignment is not fully reconciled. No independent matching Bitview series; status: **formula identified, partial reconstruction, input alignment unresolved**, candidate only and not approved. Earlier 2–10-year rolling-window tests were not the documented formula and are superseded by this expanding-window test. The captured E21 method changelog (HTTP 200) reports method_version 1, first published 2026-07-15, with no subsequent method-version changes. MVRV ratio inputs reconstructed from the same cap CSV match to ~5e-7; denominator remains unexplained, so this is a partial reconstruction rather than source validation.
+
+
+## BlockHorizon MVRV Z-Score cross-source comparison
+
+The user-confirmed BlockHorizon export has direct MVRV Z-Score values and a Price column. Matched dates with Explore21: 5,499 (2011-09-16–2026-10-05). BH Price matches E21 exactly from 2013-01-01 onward (5,026 dates), including all V6.0 price history from its 2017 start. Early 2011–2012 prices differ, with maximum APE 42.09%.
+
+Z-Score BH−E21: 2017+ mean absolute difference 0.1263, median 0.0838, p95 0.4432, max 1.3140; 2020+ MAE 0.09782, median 0.07925, p95 0.30496, max 0.57479; 2024+ MAE/median 0.08203/0.08848, p95 0.13974, max 0.16143. BH is generally higher. Formula/realized-cap/denominator methodology for BH not reconciled.
+
+Threshold overlap is weaker than daily agreement suggests: for Z>=7, Jaccard above-threshold overlap 0.468 from 2013 and 0.636 from 2017; from 2020 BH has 3 above-7 days while E21 has none (Jaccard 0). High thresholds must be source-specific; no Z-score signal approval. Note V6.0 accumulation backtest imports this export but reads its **Price** column only, not its Z-score column. Since its price history starts in 2017 and matches E21 exactly over that range, this improves price-source reliability for V6.0 but does not validate MVRV Z-score.
