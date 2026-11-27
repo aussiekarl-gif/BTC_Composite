@@ -184,3 +184,13 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Matched V6.0 replay after this diagnostic was run 45970639184 (pending at checkpoint). Keep Firsthand spot price unapproved pending exact provider close convention, date-lag outlier review and portfolio sensitivity.
 - Contact page lists provider operator email but no contact has been sent. Questions to ask: underlying BTC/USD venue(s); exact UTC day boundary and close/last/average/VWAP definition; historical revision/backfill policy; explanation of the 2017–2021 and 2020-03-12 discrepancies.
 - PR #409 remains draft/open/unmerged. Production and live signals unchanged; notifications disabled.
+
+
+### Firsthand date-lag outlier review — completed 27 Nov 2026
+
+- Follow-up date-lag workflow run 45970691684 passed; artifact 15184802112 inspected. Offsets -2 to +2 tested for 3,617 strategy-era daily observations; no source data was shifted.
+- Comparing Firsthand date D to comparator date D-1 gives the best mean alignment: Coin Metrics mean APE 1.936% -> 1.591% (median 1.139% -> 0.886%; p95 6.593% -> 5.634%); Explore21 Bitstamp 1.954% -> 1.573% (median 1.141% -> 0.852%; p95 6.695% -> 5.616%). This suggests a one-day date-label/close-time mismatch explains part, but not all, of the disagreement.
+- Major outliers persist after the one-day comparison: Firsthand 2020-03-13 USD 6,189.76 vs Coin Metrics 2020-03-12 USD 4,959.31 (24.81%) and Bitstamp 2020-03-12 USD 4,841.67 (27.84%). Same-date 2020-03-12 Firsthand USD 6,770.48 vs CM USD 4,959.31 (36.52%) and Bitstamp USD 4,841.67 (39.84%). Firsthand 2018-02-06 USD 8,212.81 vs CM 2018-02-05 USD 6,849.54 (19.90%) is another large shifted-date difference.
+- Conclusion: close-time/date convention may explain some of the average 2% difference, but it does not explain crash-day outliers. Do not shift data automatically. Obtain Firsthand's exact UTC boundary, venue/aggregation and history revision policy before any use.
+- Matched V6.0 price-source replay run 45970691675 passed; research DCA regression run 45970639038 passed. The diagnostic is comparison-only.
+- Report on PR #409 updated at ae9e5de5ed80229f30fef163be96da44c100149b. PR remains draft/unmerged. No Production/live signal/notification changes.
