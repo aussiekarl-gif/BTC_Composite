@@ -120,6 +120,32 @@ def compare_replays(firsthand_results: list[dict], coinmetrics_results: list[dic
     }
 
 
+
+def summarise_price_observations(firsthand: pd.Series, coinmetrics: pd.Series,
+                                 weekday: int | None = None) -> dict:
+    pair = pd.concat({
+        "firsthand": firsthand.rename("firsthand"),
+        "coinmetrics": coinmetrics.rename("coinmetrics"),
+    }, axis=1).dropna()
+    if weekday is not None:
+        pair = pair.loc[pair.index.dayofweek == weekday]
+    ape = ((pair["firsthand"] / pair["coinmetrics"]) - 1.0).abs() * 100.0
+    worst = ape.nlargest(10)
+    return {
+        "observations": int(len(pair)),
+        "mean_ape_pct": float(ape.mean()),
+        "median_ape_pct": float(ape.median()),
+        "p95_ape_pct": float(ape.quantile(0.95)),
+        "max_ape_pct": float(ape.max()),
+        "worst_dates": [
+            {"date": d.date().isoformat(), "ape_pct": float(v),
+             "firsthand": float(pair.loc[d, "firsthand"]),
+             "coinmetrics": float(pair.loc[d, "coinmetrics"])}
+            for d, v in worst.items()
+        ],
+    }
+
+
 def build_report(output_dir: Path) -> dict:
     retrieved = datetime.now(timezone.utc).isoformat()
     firsthand = fetch_firsthand(keys=("btc",))
@@ -137,6 +163,11 @@ def build_report(output_dir: Path) -> dict:
     common_end = min(fh_price.index.max(), cm_price.index.max())
     fh_price = fh_price.loc[common_start:common_end]
     cm_price = cm_price.loc[common_start:common_end]
+    price_observations = {
+        "all_days": summarise_price_observations(fh_price, cm_price),
+        "completed_sunday_signal_closes": summarise_price_observations(fh_price, cm_price, weekday=6),
+        "next_monday_execution_closes": summarise_price_observations(fh_price, cm_price, weekday=0),
+    }
     fh_rows = build_weekly_execution_rows(
         fh_price, fx, first_execution_date=date(2017, 1, 1)
     )
@@ -178,6 +209,7 @@ def build_report(output_dir: Path) -> dict:
         "coinmetrics_price_sha256": hashlib.sha256(cm_price.to_csv().encode()).hexdigest(),
         "fx_source": "Frankfurter USD/AUD inverted to USD per AUD",
         "fx_sha256": fx_hash,
+        "matched_daily_price_comparison": price_observations,
         "weekly_signal": "Completed Sunday close / mean of previous 200 completed Sunday closes; signal Sunday excluded",
         "execution_proxy": "Next Monday BTC/USD daily close / latest USD per AUD observation on or before signal Sunday; not ASX:IBIT fill",
         "capital_aud": 510000,
