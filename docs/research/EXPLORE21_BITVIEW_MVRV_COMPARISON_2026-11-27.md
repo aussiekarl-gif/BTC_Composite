@@ -51,3 +51,19 @@ Explore21 does not currently have a captured NUPL CSV in this diagnostic. For a 
 | 2020+ | 2,522 | 0.002003 | 0.001299 | 0.005398 | 0.142206 | 0.999775 |
 
 Difference is in NUPL ratio units (e.g. 0.01 = one percentage point). Full-history comparison is heavily dominated by 2011 anomalous data. Modern correlation is extremely high and median absolute difference is ~0.13 percentage points since 2020, but large stress-period outliers (e.g. 2020-03-12, 2018-11-20) remain. This is a derived cross-check, not a direct two-provider NUPL series comparison, and it inherits Explore21 MVRV source/methodology differences. Candidate metric corroboration only.
+
+
+## NUPL threshold-regime agreement (derived comparison)
+
+For threshold tests, compare Explore21-derived NUPL and Bitview NUPL classifications on matched dates; not a signal test, and thresholds are illustrative only.
+
+| Period | Threshold | E21 dates below | Bitview dates below | Classification agreement | Jaccard (below set) |
+|---|---:|---:|---:|---:|---:|
+| 2017+ | 0.00 | 319 | 318 | 99.92% | 0.991 |
+| 2017+ | -0.10 | 219 | 215 | 99.67% | 0.946 |
+| 2017+ | -0.20 | 86 | 85 | 99.92% | 0.966 |
+| 2020+ | 0.00 | 185 | 186 | 99.96% | 0.995 |
+| 2020+ | -0.10 | 103 | 103 | 99.68% | 0.925 |
+| 2020+ | -0.20 | 22 | 23 | 99.96% | 0.957 |
+
+Agreement is high overall, but the severe threshold (-0.10) has lower Jaccard due to small, decision-relevant stress-date divergences. 12 Mar 2020: E21-derived -0.1649 vs Bitview -0.0227; 20 Nov 2018: -0.1088 vs +0.0381. Several 2022–23 dates sit near the -0.10 boundary, so small metric offsets flip classifications. This reinforces that reliability is not interchangeable at extreme stress and boundary dates. No thresholds recommended for strategy from this audit.
