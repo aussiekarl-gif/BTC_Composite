@@ -203,6 +203,69 @@ class CowenOnchainRiskTests(unittest.TestCase):
             self.assertEqual(raw.index.max(), dates[-1])
 
 
+    def test_public_fee_candidate_uses_coinmetrics_native_fees_without_aethereal(self):
+        import tempfile
+        from pathlib import Path
+        from engines.research.cowen_onchain_risk import build_existing_raw_candidates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / "research" / "cowen_onchain"
+            explore = target / "explore21"
+            explore.mkdir(parents=True)
+            dates = pd.date_range("2026-11-20", periods=3, freq="D", tz="UTC")
+            date_text = dates.strftime("%Y-%m-%d")
+            for path, columns in (
+                ("bitcoin-puell-multiple.csv", {
+                    "puell_multiple": [1.0, 1.1, 1.2],
+                    "issuance_btc": [1.0, 1.0, 1.0],
+                    "issuance_usd": [100.0, 100.0, 100.0],
+                    "issuance_usd_365d_avg": [90.0, 90.0, 90.0],
+                    "btc_close_usd": [10000.0, 10100.0, 10200.0],
+                }),
+                ("bitcoin-mvrv-ratio.csv", {
+                    "mvrv_ratio": [1.0, 1.1, 1.2],
+                    "btc_close_usd": [10000.0, 10100.0, 10200.0],
+                }),
+                ("bitcoin-mvrv-z-score.csv", {
+                    "mvrv_z_score": [0.0, 0.1, 0.2],
+                    "btc_close_usd": [10000.0, 10100.0, 10200.0],
+                }),
+            ):
+                pd.DataFrame({"date_utc": date_text, **columns}).to_csv(
+                    explore / path, index=False
+                )
+            fee_values = [2.0, 2.5, 3.0]
+            prices = [10000.0, 10100.0, 10200.0]
+            issuance = [100.0, 100.0, 100.0]
+            supply = [19000000.0, 19000001.0, 19000002.0]
+            pd.DataFrame({
+                "date_utc": date_text,
+                "CapMVRVCur": [1.0, 1.1, 1.2],
+                "IssTotUSD": issuance,
+                "PriceUSD": prices,
+                "SplyCur": supply,
+                "FeeTotNtv": fee_values,
+            }).to_csv(target / "coinmetrics_btc_daily_community.csv", index=False)
+
+            raw = build_existing_raw_candidates(root)
+            self.assertEqual(
+                raw["transaction_fees_btc_source"].tolist(),
+                ["Coin Metrics Community"] * 3,
+            )
+            self.assertEqual(raw["transaction_fees_btc_candidate"].tolist(), fee_values)
+            expected_thermocap = sum(
+                issuance[i] + fee_values[i] * prices[i] for i in range(3)
+            )
+            self.assertAlmostEqual(
+                raw["thermocap_usd_candidate"].iloc[-1], expected_thermocap
+            )
+            self.assertAlmostEqual(
+                raw["mctc_ratio_candidate"].iloc[-1],
+                prices[-1] * supply[-1] / expected_thermocap,
+            )
+            self.assertEqual(raw["thermocap_fee_fallback_count"].iloc[-1], 0)
+
     def test_research_10_dashboard_has_safe_runtime_guards(self):
         from pathlib import Path
 
