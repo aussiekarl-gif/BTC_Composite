@@ -313,3 +313,10 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Explore21 Puell component columns reproduce its multiple (max absolute residual ~3.76e-7). It uses observed daily new coin supply change valued at daily close and 365d average of same. Bitview describes trailing-24h subsidy/USD, trailing 365d claimed subsidy USD, sampled at the daily final block and monotonic block time.
 - Median Bitview/E21 Puell ratio ~1.00509 overall/~1.00552 since 2020; price ratio median ~1.0. Puell ratio vs price ratio correlation ~0.39; after normalizing by price ratio median residual +0.51% overall/+0.55% since 2020. Price source mismatch alone insufficient; window/timing/issuance conventions are plausible but not confirmed.
 - Puell cross-source candidate remains provisional; source methodology notes added. PR #410 latest head **3aaefaf579740a0385550f1af49886234a6e4610**. Diagnostic success; regression and risk validation pending.
+
+
+## Continuation checkpoint — 27 Nov 2026 (NUPL cross-check)
+
+- Derived Explore21 NUPL from its MVRV (`1 - 1/MVRV`) because no direct E21 NUPL capture available; compare with Bitview NUPL. Bitview internal MVRV/NUPL identity matches within max residual ~5.64e-7.
+- Since 2020: correlation **0.999775**; median abs diff **0.001299** (NUPL ratio units, ~0.13 percentage points), p95 **0.005398**, max **0.142206**. Modern typical agreement is strong; stress-date outliers (e.g., 12 Mar 2020) remain. Full history skewed by anomalous early data. Candidate only, derived, not direct E21 NUPL validation.
+- Report update commit **38af8b725441e22bd612ea6f2a6eb4aafac17566**; PR #410 head **38af8b725441e22bd612ea6f2a6eb4aafac17566**. Keep unmerged.
