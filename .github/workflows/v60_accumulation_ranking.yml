@@ -1,0 +1,46 @@
+name: V6.0 104-week accumulation policy ranking
+
+on:
+  push:
+    branches: [research/v60-accumulation-ranking]
+    paths:
+      - "engines/research/v60_accumulation_backtest.py"
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_200wma_policy.py"
+      - "engines/research/v60_historical_report.py"
+      - ".github/workflows/v60_accumulation_ranking.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "engines/research/v60_accumulation_backtest.py"
+      - "engines/research/v60_200wma_backtest.py"
+      - "engines/research/v60_200wma_policy.py"
+      - "engines/research/v60_historical_report.py"
+      - ".github/workflows/v60_accumulation_ranking.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ranking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install research dependencies
+        run: python -m pip install pandas requests
+      - name: Compile ranking runner
+        run: python -m py_compile engines/research/v60_accumulation_backtest.py
+      - name: Run matched train/holdout accumulation policy ranking
+        run: python -m engines.research.v60_accumulation_backtest --output-dir artifacts/v60_accumulation_ranking
+      - name: Upload cohort results, summary and metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: v60-104-week-accumulation-ranking
+          path: artifacts/v60_accumulation_ranking/
+          if-no-files-found: error
+          retention-days: 30
