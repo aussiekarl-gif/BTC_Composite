@@ -255,3 +255,14 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Comparison report added to PR #410: `docs/research/EXPLORE21_BITVIEW_MVRV_COMPARISON_2026-11-27.md`. Candidate cross-check only; no input approval. Methodology and early historical divergence need investigation, including outliers around 2017-05-27, 2018-02-02, 2018-11-20 and 2020-03-12.
 - PR #410 updated with report summary. Latest commit `b59c00bb3c12af05864d3131e5a1b2161b897093`; validation runs 45972702941 (diagnostic), 45972702933 (V5.9), 45972702895 (regression) were in progress as of 09:19 UTC. Draft/open/unmerged.
 - Production remains unchanged; no notifications or dashboard changes.
+
+
+## Continuation checkpoint — 27 Nov 2026 (additional cross-source metric comparisons)
+
+- PR #410 expanded Explore21 captures to include `bitcoin-realized-price.csv`, `bitcoin-percent-supply-in-profit.csv`, and `bitcoin-hashrate.csv`. Diagnostic run **45972922447** succeeded, artifact **15185263956** reviewed from ZIP.
+- Realized Price matched-date comparisons (Explore21 vs Bitview, APE): from 2017 mean 0.163%, median 0.123%, p95 0.510%, max 2.857%; from 2020 median 0.106%, p95 0.300%, max 0.997%. Early-history mismatches (2011) huge and inflate full-history mean; not date-shifted. Candidate corroboration only.
+- Supply in Profit (percentage points absolute difference): from 2020 mean 0.759 pp, median 0.627 pp, p95 1.891 pp, max 4.608 pp. Some historical divergence remains; not approved.
+- Hashrate: Explore21 series is a 7-day average; Bitview metadata describes trailing-24h block/difficulty-derived estimate. Matched 6,526 dates; median Bitview/Explore21 ratio ~1.018 overall, ~1.009 from 2020; median absolute percentage difference ~5.23% since 2020 and p95 ~16.35%, likely partly due smoothing mismatch. Need like-for-like smoothing before validation.
+- New report committed to PR #410: `docs/research/EXPLORE21_BITVIEW_REALIZED_PRICE_SUPPLY_HASHRATE_2026-11-27.md`. PR body updated. Latest head **bc35a4cd1c192cf2f2afedeba34ad97e68ebcb27**, draft/open/unmerged. Awaiting CI for this new report/body update.
+- No metric approved; no Production, dashboard, model, signal or notification changes.
+- Next: inspect CI for latest PR head; continue investigating supply-in-profit discrepancies and earliest-history realized price/MVRV divergences. Hashrate should be compared after consistent averaging windows.
