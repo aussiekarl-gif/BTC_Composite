@@ -176,7 +176,7 @@ def run_cohort(btc_usd,usd_per_aud,*,enrolment_date,budget_aud=DEFAULT_BUDGET_AU
     }
     # Replace generic adaptive targets with exact original-budget weekly fractions,
     # retaining existing signal/size helper, 5%-capital cap and cash yield.
-    adaptive_cash=float(budget_aud);adaptive_btc=adaptive_spent=adaptive_gross=0.;adaptive_count=0
+    adaptive_cash=float(budget_aud) if schedule else no_trigger_cash;adaptive_btc=adaptive_spent=adaptive_gross=0.;adaptive_count=0
     adaptive_dates=[];previous=enrol
     for day in schedule:
         elapsed=(day-previous).days
