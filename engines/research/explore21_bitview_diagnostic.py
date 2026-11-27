@@ -19,7 +19,8 @@ E21 = {
 }
 BITVIEW = "https://bitview.space/api"
 COIN_METRICS_NUPL = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=NUPL&frequency=1d&start_time=2010-01-01&page_size=10000"
-SEARCHES = ["realized price", "realized cap", "hashrate", "mvrv", "supply in profit", "price", "puell multiple", "mvrv z score", "mvrv-z-score", "z score"]
+BLOCKHORIZON_MVRV_Z = "https://raw.githubusercontent.com/aussiekarl-gif/BTC_Composite/a0c63a680b345dc5dd0f904c3a0bc68ca7f033bb/data/mvrv_z_score_2026-10-06T21-46-14.csv"
+SEARCHES = ["realized price, "realized cap", "hashrate", "mvrv", "supply in profit", "price", "puell multiple", "mvrv z score", "mvrv-z-score", "z score"]
 session = requests.Session()
 session.headers.update({"User-Agent": "BTC-Composite-research-diagnostic/1.0"})
 
@@ -74,6 +75,12 @@ def main():
             }
         except (ValueError, TypeError):
             cm_meta["parse_error"] = "Coin Metrics response could not be summarized"
+    # Capture the user-confirmed BlockHorizon MVRV Z-score export at its immutable repository commit.
+    bh_meta, bh_response = fetch(BLOCKHORIZON_MVRV_Z, OUT / "blockhorizon" / "mvrv_z_score.csv", "text/csv")
+    report["blockhorizon"] = {"mvrv_z_score": bh_meta}
+    if bh_response is not None and bh_response.ok:
+        bh_meta["csv_header"] = bh_response.text.splitlines()[0][:1200] if bh_response.text else ""
+        bh_meta["row_count_including_header"] = len(bh_response.text.splitlines())
     # Preserve CSV snapshots as raw provider files; no transformations/merging.
     for metric, url in E21.items():
         meta, response = fetch(url, OUT / "explore21" / f"{metric}.csv", "text/csv")
