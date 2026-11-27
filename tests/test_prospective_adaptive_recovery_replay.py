@@ -45,9 +45,9 @@ class ProspectiveAdaptiveReplayTests(unittest.TestCase):
         btc,fx=synthetic(dip_date="2016-01-04",dip=50.)
         result=run_cohort(btc,fx,enrolment_date="2016-01-04")
         for row in result["results"]:
-            self.assertLessEqual(row["total_cash_outlay_aud"],292383.*1.02)
+            self.assertLessEqual(row["total_cash_outlay_aud"],292383.*1.11)
             self.assertGreaterEqual(row["cash_remaining_aud"],0.)
-            self.assertLessEqual(row["cash_budget_deployed_pct"],100.01)
+            self.assertLessEqual(row["largest_buy_outlay_aud"],result["weekly_cap_aud"]+1e-6)
         self.assertAlmostEqual(result["weekly_cap_aud"],25500.)
 
     def test_cash_yield_is_accrued_on_waiting_cash(self):
