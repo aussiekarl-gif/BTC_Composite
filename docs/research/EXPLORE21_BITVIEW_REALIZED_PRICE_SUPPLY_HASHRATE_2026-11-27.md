@@ -116,3 +116,11 @@ Correlation 0.996677; symmetric median difference 1.191%, p95 5.558%. Unlike RP/
 - Realized Cap: very strong from 2017 onward, matching Realized Price validation.
 - Puell Multiple: highly correlated but systematically offset; must investigate precise denominator window, subsidy/issuance treatment, and sample timing before using as a research signal.
 - No metric approved as a Production input. Raw source values and comparison tables are diagnostic only.
+
+## Puell methodology investigation follow-up
+
+Explore21's component columns validate its calculation: `issuance_usd / issuance_usd_365d_avg` reproduces `puell_multiple` to floating point tolerance (max absolute residual ~3.76e-7; median relative residual ~2.18e-10). Explore21 says it uses actual daily new coins from its own node (supply change, including unclaimed/burned fractions), valued at that day's close; denominator is the 365-day average of the same daily dollar issuance. Bitview describes a trailing-24h subsidy valuation and trailing-365-day claimed subsidy USD window, sampled at the final block of the daily period; window is based on monotonic block time and block price.
+
+Ratio diagnostics (Bitview / Explore21): median Puell ratio ~1.00509 overall and ~1.00552 since 2020; median BTC-price ratio is near 1 (~0.99983 overall and ~0.99928 since 2020). Puell ratio and price ratio correlation only ~0.39 overall (~0.46 since 2020). After dividing Puell ratio by price ratio, the median residual is ~+0.51% overall, ~+0.55% since 2020. This indicates price-history mismatch alone cannot explain the stable Puell offset; likely differences in issuance window/block count timing and 365-day window conventions remain candidate causes, not proven. Keep Puell cross-source validation as provisional pending method-level test.
+
+Source methodology references: Explore21 Puell chart https://charts.explore21.com/bitcoin-puell-multiple ; Bitview series metadata captured in artifact `bitview/series_info/puell_multiple.json`.
