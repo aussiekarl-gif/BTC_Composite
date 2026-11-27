@@ -194,3 +194,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Conclusion: close-time/date convention may explain some of the average 2% difference, but it does not explain crash-day outliers. Do not shift data automatically. Obtain Firsthand's exact UTC boundary, venue/aggregation and history revision policy before any use.
 - Matched V6.0 price-source replay run 45970691675 passed; research DCA regression run 45970639038 passed. The diagnostic is comparison-only.
 - Report on PR #409 updated at ae9e5de5ed80229f30fef163be96da44c100149b. PR remains draft/unmerged. No Production/live signal/notification changes.
+
+
+## Continuation checkpoint — 27 Nov 2026 (Firsthand price plateau)
+- PR #409 branch `research/firsthand-api-validation`; head at checkpoint `ae9e5de5ed80229f30fef163be96da44c100149b` before latest report-only commit. PR remains open/draft; latest report-only commit is `7cc2f6b6391d3a29c35c87918dff88f63ee39d91`.
+- Latest CI five checks all passed at prior head: cross-source `45970824823`, raw diagnostic `45970824915`, V6.0 sensitivity `45970825031`, V5.9 risk `45970824836`, regression `45970824825`.
+- Raw Firsthand BTC series: 33 consecutive identical daily prices USD 116,666.67 from 2025-07-29 to 2025-08-30 inclusive; repeated value also 2026-11-25/26 at USD 59,171.86. Strong data defect/stale-series indicator; Firsthand spot price remains rejected for model inputs/execution replay.
+- Added raw plateau finding to `docs/research/FIRSTHAND_COINMETRICS_COMPARISON_2026-11-27.md` on PR branch in commit `7cc2f6b6391d3a29c35c87918dff88f63ee39d91`. No Production, dashboard, live signals, or notifications changed.
+- Next task: inspect checks triggered by report update; continue independent source investigation/provider methodology questions. Do not contact provider without user authorization. PR #409 stays draft/unmerged.
