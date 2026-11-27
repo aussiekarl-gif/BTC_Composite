@@ -407,3 +407,12 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Added cycle anchor table for the expanding-sample-std reconstruction. Absolute differences: 2013 top 0.29260, 2015 low 0.00440, 2017 top 0.08074, 2018 low 0.00323, 2021 top 0.01632, 2022 low 0.00116, 2025 top 0.00637, 2026-06-30 low 0.00039, latest 26 Nov 2026 ~0.0000004. Most later cycle anchors close; largest discrepancy remains 2013, 2017 smaller. This is partial reconstruction, not independent validation.
 - Report and PR #410 body updated at **5dd2fc08069f09ad05b352c152c12c6b7ee2c91f**. Latest PR branch mergeable true, draft/open/unmerged; code head ca6c4c24 CI green (diagnostic 27, DCA regression 859, risk validation 562). Docs-only updates do not trigger tests.
 - No Production/model/dashboard/signal/notification changes. Continue to keep Z-score provisional/unapproved.
+
+
+## Continuation checkpoint — 27 Nov 2026 (BlockHorizon vs Explore21 price/Z-score)
+
+- PR #410 diagnostic captures the user-confirmed BlockHorizon MVRV Z-score CSV at immutable commit; artifact **15188303737** inspected. Matched with Explore21 on 5,499 dates (2011-09-16–2026-10-05).
+- BH Price column exactly matches Explore21 from 2013-01-01 onward (5,026 dates), including V6.0's entire 2017+ price input period. Earlier 2011–12 prices differ (max APE 42.09%). Important: V6.0 historical accumulation backtest uses the export's Price column only, not its MVRV Z-score column; its 2017+ price source is strongly corroborated. No backtest changes.
+- BH MVRV Z-Score is generally higher than E21; 2017+ MAE 0.1263, median abs diff 0.0838, p95 0.4432, max 1.3140; 2020+ median 0.07925, p95 0.30496. High-threshold overlap weak: Z>=7 Jaccard 0.636 from 2017 and 0.000 from 2020+ (BH has 3 days, E21 none). BH formula not reconciled; thresholds are provider-specific, no Z-score signal approval.
+- Report and validation standard updated; PR #410 body updated at latest head **3cbd445e94c502eea8b00d51f5861f3aa3b5766e**, draft/open/unmerged, mergeable true. Code head **3cca1d07501613a98dfff4a4b2c53a12af75d283** all CI green: diagnostic 34, DCA regression 866, V5.9 validation 569.
+- No Production/model/dashboard/signal/notification changes. Continue reliability research; all Z-score threshold candidates remain unapproved.
