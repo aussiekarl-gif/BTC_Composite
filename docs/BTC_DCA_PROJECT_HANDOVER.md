@@ -73,12 +73,13 @@ URL: https://github.com/aussiekarl-gif/BTC_Composite/pull/407
 
 - State: open, not merged.
 - Branch: `research/aethereal-google-doh-fallback`
-- Head at last review: `7c50429494380c2b78fcf268c71ee2abd32a6057`
-- Adds Google DNS-over-HTTPS after Cloudflare DoH in the scheduled refresh workflow.
-- Uses curl `--resolve` for the original Aethereal hostname, preserving HTTPS hostname/TLS verification.
-- Latest associated workflow run: 45963293586. Regression `test` job passed. The live public-data smoke test failed at normal Aethereal DNS resolution and does not exercise the workflow-level DoH fallback; it therefore does not validate the fallback end-to-end.
-- The Aethereal adapter itself has no DoH fallback; the fallback exists in workflow shell code. Existing adapter tests cover parsing, missing values, duplicate dates, and snapshot metadata, but not DNS fallback.
-- **Do not merge PR #407 until the fallback has a testable implementation and adequate validation.** Keep Production untouched.
+- Head at last review: `711184738e8a53eddb0a7f4441b97e6156bb1bd0`
+- Adds a separately testable Python DoH helper used by the scheduled refresh after normal DNS retries.
+- Tries Cloudflare then Google DoH, validates IPv4 A records, and uses curl `--resolve` for the original Aethereal hostname, preserving HTTPS hostname/TLS verification.
+- Adds unit coverage for resolver failover, empty answers, IPv4 validation, pinned HTTPS hostname, and parsing the downloaded CSV.
+- Regression run 45964293725 passed its `test` job at commit `d0d79255`; a few hardening/test-fixture commits followed, so current head `711184738e8a53eddb0a7f4441b97e6156bb1bd0` still needs a fresh CI result.
+- The live public-data smoke test failed at normal Aethereal DNS resolution and bypasses the fallback helper. A live runner download through DoH has not yet been demonstrated.
+- **Do not merge PR #407 until current-head CI passes and the fallback has suitable live integration validation.** Keep Production untouched.
 
 ## Session continuation protocol
 
