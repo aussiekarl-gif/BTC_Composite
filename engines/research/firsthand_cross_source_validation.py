@@ -17,7 +17,7 @@ COINMETRICS_URL = "https://community-api.coinmetrics.io/v4/timeseries/asset-metr
 METRICS = ("PriceUSD", "FeeTotNtv", "CapMVRVCur")
 
 
-def fetch_firsthand(session=requests, keys=("btc", "fees", "realized", "mvrv")):
+def fetch_firsthand(session=requests, keys=("btc", "fees", "realized", "mvrv", "ma200w")):
     response = session.get(FIRSTHAND_CATALOGUE, timeout=30)
     response.raise_for_status()
     catalogue = response.json()
