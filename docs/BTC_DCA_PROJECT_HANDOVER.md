@@ -202,3 +202,10 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Raw Firsthand BTC series: 33 consecutive identical daily prices USD 116,666.67 from 2025-07-29 to 2025-08-30 inclusive; repeated value also 2026-11-25/26 at USD 59,171.86. Strong data defect/stale-series indicator; Firsthand spot price remains rejected for model inputs/execution replay.
 - Added raw plateau finding to `docs/research/FIRSTHAND_COINMETRICS_COMPARISON_2026-11-27.md` on PR branch in commit `7cc2f6b6391d3a29c35c87918dff88f63ee39d91`. No Production, dashboard, live signals, or notifications changed.
 - Next task: inspect checks triggered by report update; continue independent source investigation/provider methodology questions. Do not contact provider without user authorization. PR #409 stays draft/unmerged.
+
+
+## Continuation checkpoint — 27 Nov 2026 (next data-source candidates)
+- All five PR #409 workflows triggered by report checkpoint commit `7cc2f6b6391d3a29c35c87918dff88f63ee39d91` completed successfully: V5.9 risk `45971267919`, Research DCA regression `45971268047`, Firsthand raw diagnostic `45971267980`, V6.0 price sensitivity `45971267940`, cross-source comparison `45971268023`.
+- Candidate source exploration: Explore21 public CSV/API has price history, realized price (method v2), MVRV, realized cap, 200WMA, hashrate 7d avg, HODL waves and point-in-time vintages. CC BY 4.0 attribution; API no key with 30 req/min. Prior price data cross-check exists; expand only research diagnostics to other metrics, with method/changelog/provenance validation.
+- Bitview is another candidate: open-source Bitcoin data server, public API/OpenAPI docs, CSV/JSON, historical series and mining/network metrics; investigate endpoints, coverage, and whether source-independent. Not approved or integrated.
+- No production changes, notifications remain off, PR #409 draft/unmerged. Next: build candidate comparison diagnostics for Explore21 and Bitview, inspect vintage/as-published support, then validate overlapping metrics independently against Coin Metrics and Firsthand.
