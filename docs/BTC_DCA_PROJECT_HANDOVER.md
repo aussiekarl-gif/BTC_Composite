@@ -106,11 +106,11 @@ Official API catalogue: https://firsthandbitcoin.com/data/api
 
 URL: https://github.com/aussiekarl-gif/BTC_Composite/pull/409
 
-- Draft PR, branch `research/firsthand-api-validation`, latest head `85cdf6340a0b0cbee6a265a0d5f2ba9b11ab91d3`.
+- Draft PR, branch `research/firsthand-api-validation`, latest head `2b2f1198236350af1bfe4605e60a7e565177e309`.
 - Adds `engines/research/firsthand_api_diagnostic.py` to fetch and preserve raw JSON for the catalogue, summary, BTC price, daily hashrate, fees, difficulty, realised price and MVRV.
 - Adds a dedicated Actions workflow and 14-day raw-payload artifact. No data is normalised or integrated.
-- Dedicated diagnostic workflow run 45965988733 passed, and its raw artifact was downloaded and inspected. The workflow now runs on push and pull_request. Retrieval is validated; the series are not yet approved for model use.
-- Keep PR draft and do not integrate until price/fee differences, missing dates, upstream independence, realised-price formula, and 200WMA calculation are validated. Research-only; Production and notifications unchanged.
+- Dedicated diagnostic workflow run 45965988733 passed, and its raw artifact was downloaded and inspected. The workflow now runs on push and pull_request. A dated validation report was added at `docs/research/FIRSTHAND_API_INITIAL_VALIDATION_2026-11-27.md` on the PR branch. Retrieval is validated; the series are not yet approved for model use.
+- Keep PR draft and do not integrate until price/fee differences, missing dates, upstream independence, realised-price formula, and source methodology are validated. Firsthand's 200WMA matches a 1,400-calendar-day rolling mean of its own BTC price series over 3,680 dates (max relative difference ~0.0000048%); this is an internal consistency check, not independent corroboration. Its hashrate 7/30/60-day averages similarly reproduce from its daily hashrate series (~0.000005% max relative difference). Daily hashrate omits 2013-03-19, 2013-03-20, 2013-03-26 and 2013-03-28; daily fees omit 2025-11-13 to 2025-11-15. Fee7 has a ~3.75% discrepancy on 2025-11-21 under a seven-observation rolling comparison, immediately after the fee-data gap. Research-only; Production and notifications unchanged.
 - Latest related research regression run 45965988723: regression tests, matched 200WMA research and V6.0 path/cost report passed; public-data smoke failed at Aethereal after Explore21 and Coin Metrics succeeded. CDD/snapshot summary steps were skipped.
 
 ## Session continuation protocol
