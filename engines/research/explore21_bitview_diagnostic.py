@@ -60,17 +60,45 @@ def main():
                     discovered.update(str(x) for x in ids)
             except ValueError:
                 meta["parse_error"] = "response was not JSON"
-    # Limit diagnostic payloads to selected candidates, retaining exact search-derived IDs.
-    candidates = sorted(x for x in discovered if any(term in x.lower() for term in ("realized_price", "hashrate", "mvrv", "profit")))
-    for series_id in candidates[:20]:
+    # Use priority global metrics rather than alphabetically selecting cohort variants.
+    # Keep only IDs that were actually returned by one of the searches.
+    priority = ["realized_price", "mvrv", "hashrate", "supply_in_profit", "supply_in_profit_share", "nupl"]
+    candidates = [series_id for series_id in priority if series_id in discovered]
+    report["bitview"]["selected_candidates"] = candidates
+    for series_id in candidates:
         safe = series_id.replace("/", "_")
         info_url = f"{BITVIEW}/series/{requests.utils.quote(series_id, safe='')}"
         info_meta, info_response = fetch(info_url, OUT / "bitview" / "series_info" / f"{safe}.json", "application/json")
-        series_record = {"info": info_meta, "data_attempts": []}
+        series_record = {"info": info_meta, "data_attempts": [], "metadata_summary": None, "daily_data_summary": None}
+        if info_response is not None and info_response.ok:
+            try:
+                info_json = info_response.json()
+                series_record["metadata_summary"] = {
+                    "unit": info_json.get("unit"), "type": info_json.get("type"),
+                    "indexes": info_json.get("indexes"), "nullable": info_json.get("nullable"),
+                    "description": info_json.get("description"),
+                }
+            except ValueError:
+                info_meta["parse_error"] = "series info response was not JSON"
         # API documents the index-specific series endpoint; daily index is the initial candidate.
         data_url = f"{BITVIEW}/series/{requests.utils.quote(series_id, safe='')}/day1"
         data_meta, data_response = fetch(data_url, OUT / "bitview" / "series_data" / f"{safe}_day1.json", "application/json")
         series_record["data_attempts"].append(data_meta)
+        if data_response is not None and data_response.ok:
+            try:
+                payload = data_response.json()
+                values = payload.get("data", []) if isinstance(payload, dict) else []
+                non_null = [x for x in values if x is not None]
+                series_record["daily_data_summary"] = {
+                    "index": payload.get("index"), "start": payload.get("start"), "end": payload.get("end"),
+                    "total_slots": len(values), "null_count": len(values) - len(non_null),
+                    "non_null_count": len(non_null), "min": min(non_null) if non_null else None,
+                    "max": max(non_null) if non_null else None,
+                    "repeated_adjacent_values": sum(1 for a, b in zip(values, values[1:]) if a is not None and a == b),
+                    "version": payload.get("version"),
+                }
+            except (ValueError, TypeError):
+                data_meta["parse_error"] = "daily data response schema could not be summarized"
         if data_response is not None and not data_response.ok:
             fallback_url = data_url + "/data"
             fallback_meta, _ = fetch(fallback_url, OUT / "bitview" / "series_data" / f"{safe}_day1_data.json", "application/json")
