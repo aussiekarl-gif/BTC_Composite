@@ -129,6 +129,45 @@ def compare_series(left, right, *, min_observations=30):
 
 
 
+
+def compare_date_lags(left, right, *, start_date="2017-01-01", max_lag_days=2):
+    """Test whether UTC date-label shifts explain apparent price disagreement.
+
+    Positive lag means compare left[D] with right[D+lag]. This is diagnostic
+    only; it must not be used to silently shift or repair a provider series.
+    """
+    rows = []
+    for lag in range(-max_lag_days, max_lag_days + 1):
+        aligned = pd.concat({
+            "left": left,
+            "right": right.shift(-lag),
+        }, axis=1).dropna()
+        aligned = aligned.loc[aligned.index >= pd.Timestamp(start_date, tz="UTC")]
+        aligned = aligned[(aligned["left"] > 0) & (aligned["right"] > 0)]
+        if aligned.empty:
+            rows.append({"right_date_offset_days": lag, "observations": 0})
+            continue
+        ape = ((aligned["left"] / aligned["right"]) - 1.0).abs() * 100.0
+        rows.append({
+            "right_date_offset_days": lag,
+            "observations": int(len(aligned)),
+            "mean_ape_pct": float(ape.mean()),
+            "median_ape_pct": float(ape.median()),
+            "p95_ape_pct": float(ape.quantile(0.95)),
+            "max_ape_pct": float(ape.max()),
+        })
+    return {
+        "status": "DIAGNOSTIC_ONLY_NO_AUTOMATIC_REALIGNMENT",
+        "start_date": start_date,
+        "offset_definition": "positive offset compares left[D] with right[D+offset]",
+        "results": rows,
+        "best_mean_ape_offset_days": min(
+            (r for r in rows if r.get("observations", 0)),
+            key=lambda r: r["mean_ape_pct"],
+        )["right_date_offset_days"],
+    }
+
+
 def compare_200wma_distance(firsthand, coinmetrics, *, start_date="2017-01-01"):
     """Compare discount tiers using the exact V6.0 prior-200-Sunday-close signal."""
     from engines.research.v60_200wma_policy import weekly_prior_200wma_signals
@@ -173,6 +212,8 @@ def compare_200wma_distance(firsthand, coinmetrics, *, start_date="2017-01-01"):
 def build_report(firsthand, coinmetrics, explore21_price):
     comparisons = {
         "btc_price_usd_vs_coinmetrics": compare_series(firsthand["btc"], coinmetrics["PriceUSD"]),
+        "btc_price_date_lag_vs_coinmetrics": compare_date_lags(firsthand["btc"], coinmetrics["PriceUSD"]),
+        "btc_price_date_lag_vs_explore21_bitstamp": compare_date_lags(firsthand["btc"], explore21_price["btc_close_usd"]),
         "btc_price_usd_vs_explore21_bitstamp_close": compare_series(firsthand["btc"], explore21_price["btc_close_usd"]),
         "coinmetrics_priceusd_vs_explore21_bitstamp_close": compare_series(coinmetrics["PriceUSD"], explore21_price["btc_close_usd"]),
         "200wma_vs_coinmetrics_1400_calendar_day_sma": compare_series(
