@@ -146,38 +146,15 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
         from pathlib import Path
         root=Path(__file__).resolve().parents[1]
         self.assertFalse((root/".github/workflows/dca_model_compare_notify.yml").exists())
+        self.assertFalse((root/".github/workflows/cycle_trading_daily_ntfy.yml").exists())
         validation=(root/".github/workflows/validation_research_tuning.yml").read_text()
         self.assertNotIn("NTFY_TOPIC",validation)
-        daily=(root/".github/workflows/cycle_trading_daily_ntfy.yml").read_text()
-        self.assertEqual(daily.count("cron:"),3)
-        self.assertEqual(daily.count("cron: '0 0 * * *'"),1)
-        self.assertEqual(daily.count("cron: '15 0 * * *'"),1)
-        self.assertEqual(daily.count("cron: '35 0 * * *'"),1)
-        self.assertNotIn("cron: '0 22 * * *'",daily)
-        # Brisbane never changes clocks; both UTC times are Brisbane-local
-        # 10:00 and 10:15 respectively, including in southern summer.
-        from zoneinfo import ZoneInfo
-        for date in (dt.date(2026,1,17),dt.date(2026,10,17)):
-            primary=dt.datetime.combine(date,dt.time(0),tzinfo=dt.timezone.utc)
-            backup=primary+dt.timedelta(minutes=15)
-            later=primary+dt.timedelta(minutes=35)
-            self.assertEqual(primary.astimezone(ZoneInfo("Australia/Brisbane")).strftime("%H:%M"),"10:00")
-            self.assertEqual(backup.astimezone(ZoneInfo("Australia/Brisbane")).strftime("%H:%M"),"10:15")
-            self.assertEqual(later.astimezone(ZoneInfo("Australia/Brisbane")).strftime("%H:%M"),"10:35")
-        self.assertIn("last_cycle_ntfy_date.txt",daily)
-        self.assertIn("group: btc-cycle-daily-notify-global",daily)
-        self.assertIn('if [[ "$previous" == "$today" ]]',daily)
-        self.assertIn('SEND_NTFY=no',daily)
-        self.assertIn('SEND_NTFY=yes',daily)
-        self.assertIn('id: delivery_precheck',daily)
-        self.assertIn("TZ=Australia/Brisbane date +%F",daily)
-        self.assertEqual(daily.count("if: steps.delivery_precheck.outputs.already_reserved != 'true'"),4)
-        self.assertIn("already_reserved=true",daily)
-        self.assertIn("group: btc-cycle-daily-notify-global",daily)
-        self.assertNotIn("  workflow_dispatch:",daily.split("jobs:")[0])
+        # Scheduled notifications are paused: no workflow may reference the ntfy secret.
+        workflows=root/".github"/"workflows"
+        for path in workflows.glob("*.yml"):
+            self.assertNotIn("secrets.NTFY_TOPIC",path.read_text(encoding="utf-8"),path.name)
 
-
-    def test_repository_has_only_one_ntfy_sender_and_daily_schedule(self):
+    def test_repository_has_no_scheduled_ntfy_sender(self):
         from pathlib import Path
         root=Path(__file__).resolve().parents[1]
         workflows=root/".github"/"workflows"
@@ -186,7 +163,7 @@ class IBITQuoteAndNotificationTests(unittest.TestCase):
             content=path.read_text(encoding="utf-8")
             if "secrets.NTFY_TOPIC" in content:
                 candidates.append(path.name)
-        self.assertEqual(candidates,["cycle_trading_daily_ntfy.yml"])
+        self.assertEqual(candidates,[])
         retired=(root/"dca_model_compare_notify.py").read_text(encoding="utf-8")
         self.assertNotIn("requests.post(",retired)
         self.assertNotIn("def send_ntfy(",retired)
