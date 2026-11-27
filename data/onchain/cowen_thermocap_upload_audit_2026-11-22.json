@@ -1,0 +1,31 @@
+{
+  "dataset": "ThermoCap",
+  "received_at_utc": "2026-11-22T08:44:49Z",
+  "source_file": "thermocap_2026-11-22T08-44-49.csv",
+  "source_sha256": "66af1ef47805ac2a2183687225d49397b0509a55cc2d325c9dedd88ba9d486a8",
+  "observations": 5865,
+  "first_date_utc": "2010-11-01",
+  "last_date_utc": "2026-11-21",
+  "frequency": "daily",
+  "duplicate_timestamps": 0,
+  "missing_thermocap_values": 0,
+  "missing_price_values": 0,
+  "nonpositive_thermocap_values": 0,
+  "nonpositive_price_values": 0,
+  "gaps_greater_than_one_day": 0,
+  "columns": {
+    "timestamp": "Unix epoch milliseconds, UTC",
+    "Thermocap": "Provider-supplied cumulative miner revenue/ThermoCap; source and calculation convention not independently established from the file",
+    "Price": "Provider-supplied BTC price; quote currency/source not independently established from the file"
+  },
+  "latest_values": {
+    "thermocap": 100566384572.11,
+    "price": 60078.34
+  },
+  "limitations": [
+    "The uploaded CSV does not identify the upstream provider, retrieval endpoint, metric version, revision policy, or quote currency for Price.",
+    "The file is a snapshot through 2026-11-21 UTC, not a self-updating feed.",
+    "Do not represent the series as point-in-time frozen history without vintage/revision evidence."
+  ],
+  "usage": "Research-only raw input audit. Not a validated DCA signal."
+}

@@ -1,0 +1,44 @@
+{
+  "pair": "User-uploaded MCTC and ThermoCap daily CSVs",
+  "audited_at_utc": "2026-11-22",
+  "mctc_file": {
+    "source_file": "market_cap_to_thermocap_ratio_2026-11-22T08-40-14.csv",
+    "sha256": "1d8f01064d0eace8446024fe3fe637193b91b1edcace45053b209cc36edaa406",
+    "observations": 5865
+  },
+  "thermocap_file": {
+    "source_file": "thermocap_2026-11-22T08-44-49.csv",
+    "sha256": "66af1ef47805ac2a2183687225d49397b0509a55cc2d325c9dedd88ba9d486a8",
+    "observations": 5865
+  },
+  "coverage": {
+    "first_date_utc": "2010-11-01",
+    "last_date_utc": "2026-11-21",
+    "frequency": "daily",
+    "timestamps_match_exactly_in_same_order": true,
+    "btc_price_fields_match_exactly_on_all_5865_rows": true,
+    "price_difference_rows": 0,
+    "duplicate_timestamps_across_files": 0,
+    "missing_values": 0,
+    "gaps_greater_than_one_day": 0
+  },
+  "latest": {
+    "mctc": 12.017,
+    "thermocap": 100566384572.11,
+    "provider_price": 60078.34,
+    "implied_market_cap_from_uploaded_pair": 1208506243403.046
+  },
+  "interpretation": [
+    "The two files are structurally and temporally paired and their BTC Price columns are identical on every observation.",
+    "MCTC multiplied by ThermoCap implies a latest market capitalisation of approximately 1.2085 trillion in the files' unstated currency.",
+    "This is an internal arithmetic consistency check only; it is not independent validation of the ratio because both inputs may originate from the same provider or calculation chain.",
+    "The ratio is MCTC (Market Cap / ThermoCap), not mCTC (Miner Cap / ThermoCap)."
+  ],
+  "unresolved": [
+    "Upstream provider, endpoint, metric version, and revision/vintage policy are unknown.",
+    "BTC Price quote currency is unknown.",
+    "An independent market-cap series is still required to verify MCTC = Market Cap / ThermoCap.",
+    "No inference about Cowen's component risk transform or 0-1 normalisation is permitted."
+  ],
+  "usage": "Research-only data-quality and pair-consistency audit; not a validated Cowen replication or DCA signal."
+}
