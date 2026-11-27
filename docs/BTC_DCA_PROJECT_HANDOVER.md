@@ -400,3 +400,10 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Additional checks: Explore21 Z-score CSV and separate BTC Price CSV are exactly identical on all 5,551 matched dates; MVRV ratio reconstructed as market_cap_usd/realized_cap_usd from Explore21 Realized Cap CSV matches published MVRV within ~5e-7 throughout. Remaining Z-score reconstruction residual is isolated to the standard-deviation denominator calculation/input series; no attribution (our reconstruction implementation vs historical input/version mismatch) is proven.
 - Report and validation standard updated; PR #410 body updated. Latest branch head **d5e2bfb851ec16f7a401d170a48ff411813a4c24**, draft/open/unmerged, mergeable true. Docs-only commits since code head ca6c4c24; CI code head all green: diagnostic run 27, DCA regression 859, V5.9 validation 562.
 - All diagnostic metrics remain unapproved. No Production/model/dashboard/signal/notification changes. Next: only further denominator reconstruction tests with clear assumptions; otherwise move to the next reliability-qualified metric, keeping PR #410 diagnostics separate from strategy research.
+
+
+## Continuation checkpoint — 27 Nov 2026 (MVRV Z-Score cycle-anchor check)
+
+- Added cycle anchor table for the expanding-sample-std reconstruction. Absolute differences: 2013 top 0.29260, 2015 low 0.00440, 2017 top 0.08074, 2018 low 0.00323, 2021 top 0.01632, 2022 low 0.00116, 2025 top 0.00637, 2026-06-30 low 0.00039, latest 26 Nov 2026 ~0.0000004. Most later cycle anchors close; largest discrepancy remains 2013, 2017 smaller. This is partial reconstruction, not independent validation.
+- Report and PR #410 body updated at **5dd2fc08069f09ad05b352c152c12c6b7ee2c91f**. Latest PR branch mergeable true, draft/open/unmerged; code head ca6c4c24 CI green (diagnostic 27, DCA regression 859, risk validation 562). Docs-only updates do not trigger tests.
+- No Production/model/dashboard/signal/notification changes. Continue to keep Z-score provisional/unapproved.
