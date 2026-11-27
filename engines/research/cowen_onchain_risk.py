@@ -409,11 +409,19 @@ def build_public_raw_candidates(data_dir):
         "transaction_fees_btc_candidate",
         "coinmetrics_price_usd",
         "coinmetrics_supply_btc",
-        "aethereal_price_usd",
-        "aethereal_miner_revenue_usd",
     }
     if thermocap_columns.issubset(result.columns):
         thermo_inputs = result[list(thermocap_columns)].copy()
+        # Aethereal miner-revenue fields are optional fallback inputs. Coin
+        # Metrics native fees plus issuance/price/supply can reconstruct daily
+        # revenue without the Aethereal dataset being present.
+        for optional_column in (
+            "aethereal_price_usd", "aethereal_miner_revenue_usd"
+        ):
+            if optional_column in result.columns:
+                thermo_inputs[optional_column] = result[optional_column]
+            else:
+                thermo_inputs[optional_column] = np.nan
         core_columns = [
             "coinmetrics_issuance_usd",
             "coinmetrics_price_usd",
