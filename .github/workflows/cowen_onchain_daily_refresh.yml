@@ -84,21 +84,9 @@ jobs:
             if [ "${attempt}" -lt 3 ]; then sleep $((attempt * 10)); fi
           done
 
-          echo "Normal DNS failed; trying Cloudflare DNS-over-HTTPS and pinned HTTPS."
-          dns_json="$(curl --fail --silent --show-error --retry 2 --retry-all-errors \
-            -H 'accept: application/dns-json' \
-            'https://cloudflare-dns.com/dns-query?name=dataset.aethereal.top&type=A')"
-          ip="$(printf '%s' "${dns_json}" | python -c 'import json,sys; d=json.load(sys.stdin); print(next((a["data"] for a in d.get("Answer", []) if a.get("type")==1), ""))')"
-          if [ -z "${ip}" ]; then
-            echo "Cloudflare DoH returned no IPv4 address for Aethereal."
-            exit 1
-          fi
-          echo "Cloudflare DoH resolved dataset.aethereal.top to ${ip}."
-          curl --fail --location --silent --show-error --retry 2 --retry-all-errors \
-            --connect-timeout 15 --max-time 60 \
-            --resolve "dataset.aethereal.top:443:${ip}" \
-            'https://dataset.aethereal.top/files/bitcoin-network-daily.csv' \
-            --output /tmp/aethereal-bitcoin-network-daily.csv
+          echo "Normal DNS failed; trying the tested Cloudflare/Google DoH fallback."
+          python -m engines.research.aethereal_doh_fallback \
+            --output-csv /tmp/aethereal-bitcoin-network-daily.csv
           python -m engines.research.aethereal_public_data \
             --input-csv /tmp/aethereal-bitcoin-network-daily.csv \
             --output "${output}"
