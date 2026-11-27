@@ -46,6 +46,7 @@ jobs:
           mkdir -p /tmp/cowen_onchain_baseline
           cp -a data/research/cowen_onchain/. /tmp/cowen_onchain_baseline/
       - name: Fetch Explore21 daily BTC metrics (retry)
+        id: explore21
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -56,6 +57,7 @@ jobs:
           done
           echo "Explore21 failed after four attempts"; exit 1
       - name: Fetch Coin Metrics Community cross-check (retry)
+        id: coinmetrics
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -66,6 +68,7 @@ jobs:
           done
           echo "Coin Metrics failed after four attempts"; exit 1
       - name: Fetch Aethereal daily transaction fees (retry)
+        id: aethereal
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -76,6 +79,7 @@ jobs:
           done
           echo "Aethereal failed after four attempts"; exit 1
       - name: Fetch Open Bitcoin Metrics daily CDD (retry)
+        id: obm
         continue-on-error: true
         run: |
           set -uo pipefail
@@ -99,16 +103,25 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(research): refresh Cowen on-chain source snapshots"
           git push origin HEAD:main
-      - name: Publish daily refresh health summary and fail if any source unavailable
+      - name: Publish refresh health summary and mark incomplete refresh as failed
         if: always()
+        env:
+          EXPLORE21: ${{ steps.explore21.outcome }}
+          COINMETRICS: ${{ steps.coinmetrics.outcome }}
+          AETHEREAL: ${{ steps.aethereal.outcome }}
+          OBM: ${{ steps.obm.outcome }}
         run: |
           {
             echo "## Cowen on-chain refresh health"
-            echo "| Source | Attempt status |"
+            echo "| Source | Result |"
             echo "|---|---|"
-            echo "| Explore21 | ${{ steps.explore21.outcome || 'check retry step logs' }} |"
-            echo "| Coin Metrics | ${{ steps.coinmetrics.outcome || 'check retry step logs' }} |"
-            echo "| Aethereal | ${{ steps.aethereal.outcome || 'check retry step logs' }} |"
-            echo "| Open Bitcoin Metrics | ${{ steps.obm.outcome || 'check retry step logs' }} |"
+            echo "| Explore21 | ${EXPLORE21:-not-run} |"
+            echo "| Coin Metrics | ${COINMETRICS:-not-run} |"
+            echo "| Aethereal | ${AETHEREAL:-not-run} |"
+            echo "| Open Bitcoin Metrics | ${OBM:-not-run} |"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "Refresh step outcomes are available in the job log; source snapshots only publish after integrity guard."
+          if [ "${EXPLORE21}" != "success" ] || [ "${COINMETRICS}" != "success" ] || [ "${AETHEREAL}" != "success" ] || [ "${OBM}" != "success" ]; then
+            echo "One or more sources failed; any independently validated updates were published, and this run is marked failed for visibility."
+            exit 1
+          fi
+          echo "All four source fetches succeeded."
