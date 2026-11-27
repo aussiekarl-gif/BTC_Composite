@@ -32,7 +32,7 @@ def main():
         "cohort_entry_dates":"First Monday of each calendar quarter; full 104-week cohorts only",
         "cohort_count":int(hybrids.enrolment_date.nunique()),
         "cohorts_overlap":True,
-        "base_allocation_variants_pct":[25,50,75],
+        "base_allocation_variants_pct":[25,50,75,80,90,95,100],
         "base_leg":"Fixed weekly purchases of its original sub-budget divided by 104",
         "adaptive_leg":"Existing prospective adaptive_recovery helper on remaining original sub-budget",
         "weekly_cap_aud":25500.0,
