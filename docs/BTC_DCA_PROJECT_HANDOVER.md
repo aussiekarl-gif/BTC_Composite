@@ -97,6 +97,17 @@ Official API catalogue: https://firsthandbitcoin.com/data/api
 - Preliminary suitability: promising independent research cross-check for hashrate, difficulty, fees and realised price; NOT yet approved as a production/research pipeline replacement. Need direct API retrieval in GitHub Actions, schema/units/date checks, historic overlap against Coin Metrics/Explore21/OBM/Aethereal snapshots where available, and formula validation before integration.
 - Avoid using Firsthand's 200WMA as a model input until verified against the project's own canonical price series and rolling-window calculation; it can be compared as an external cross-check only.
 
+
+### PR #409 — Firsthand public API diagnostic (27 Nov 2026)
+
+URL: https://github.com/aussiekarl-gif/BTC_Composite/pull/409
+
+- Draft PR, branch `research/firsthand-api-validation`, head `83905cebdca77381239b883e5bf185913663dd1b`.
+- Adds `engines/research/firsthand_api_diagnostic.py` to fetch and preserve raw JSON for the catalogue, summary, BTC price, daily hashrate, fees, difficulty, realised price and MVRV.
+- Adds a dedicated Actions workflow and 14-day raw-payload artifact. No data is normalised or integrated.
+- PR is intentionally draft; no workflow run has yet been returned by the GitHub connector. Confirm Actions run and inspect artifact payloads before treating retrieval as validated.
+- Do not merge or integrate until API schema, date coverage, units, freshness, historical overlap and formula definitions are inspected. Research-only; Production and notifications unchanged.
+
 ## Session continuation protocol
 
 At the end of each substantial work session, update this file or add a dated checkpoint recording:
