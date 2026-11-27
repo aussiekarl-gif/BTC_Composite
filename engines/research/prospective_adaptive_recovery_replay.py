@@ -86,6 +86,7 @@ def _simulate(name,dates,price,budget,capital,cash_yield,weekly_cap,friction,fee
     spent=0.
     gross=0.
     buys=0
+    largest_buy_outlay=0.
     amounts=[]
     buy_dates=[]
     previous=pd.Timestamp(enrolment)
@@ -110,6 +111,7 @@ def _simulate(name,dates,price,budget,capital,cash_yield,weekly_cap,friction,fee
             cash,day,px,target,weekly_cap=weekly_cap,friction=friction,fee=fee)
         if units:
             btc+=units;spent+=outlay;gross+=consideration;buys+=1
+            largest_buy_outlay=max(largest_buy_outlay,outlay)
             amounts.append(outlay);buy_dates.append(day)
     terminal=dates[-1]
     elapsed=(terminal-previous).days
@@ -121,7 +123,7 @@ def _simulate(name,dates,price,budget,capital,cash_yield,weekly_cap,friction,fee
     return {
         "policy":name,"btc_accumulated":btc,"cash_remaining_aud":cash,
         "total_cash_outlay_aud":spent,"gross_buy_consideration_aud":gross,
-        "buy_count":buys,"effective_vwap_aud_per_btc":vwap,
+        "buy_count":buys,"largest_buy_outlay_aud":largest_buy_outlay,"effective_vwap_aud_per_btc":vwap,
         "cohort_104w_low_aud":cohort_low,"vwap_premium_to_cohort_low_pct":premium,
         "terminal_btc_value_aud":final_btc_value,"terminal_equity_aud":final_equity,
         "cash_budget_deployed_pct":100*spent/budget,
@@ -233,7 +235,7 @@ def run_all_cohorts(btc_usd,usd_per_aud,*,budget_aud=DEFAULT_BUDGET_AUD):
     rows=[]
     for start in quarterly_enrolment_dates():
         terminal=pd.Timestamp(start,tz="UTC")+pd.Timedelta(days=7*COHORT_WEEKS)
-        if start not in price.index or terminal not in price.index:continue
+        if pd.Timestamp(start,tz="UTC") not in price.index or terminal not in price.index:continue
         try:
             cohort=run_cohort(btc,fx,enrolment_date=start,budget_aud=budget_aud)
         except ValueError as exc:
@@ -248,8 +250,12 @@ def summary_table(cohorts):
     if not isinstance(cohorts,pd.DataFrame) or cohorts.empty:
         raise ValueError("Completed cohort results required")
     rows=[]
+    fixed=cohorts.loc[cohorts.policy=="fixed_weekly"].set_index("enrolment_date")
     for split,group in cohorts.groupby("validation_split"):
         for policy,sub in group.groupby("policy"):
+            peers=fixed.loc[sub.enrolment_date]
+            btc_uplifts=[100*(float(a)/float(b)-1) for a,b in zip(sub.btc_accumulated,peers.btc_accumulated)]
+            equity_uplifts=[100*(float(a)/float(b)-1) for a,b in zip(sub.terminal_equity_aud,peers.terminal_equity_aud)]
             rows.append({
                 "split":split,"policy":policy,"cohort_count":len(sub),
                 "median_btc_accumulated":float(sub.btc_accumulated.median()),
@@ -258,6 +264,8 @@ def summary_table(cohorts):
                 "median_cash_deployed_pct":float(sub.cash_budget_deployed_pct.median()),
                 "median_vwap_premium_to_104w_low_pct":float(sub.vwap_premium_to_cohort_low_pct.dropna().median()) if sub.vwap_premium_to_cohort_low_pct.notna().any() else None,
                 "median_terminal_equity_aud":float(sub.terminal_equity_aud.median()),
-                "cohort_win_rate_btc_vs_fixed_weekly_pct":100*float((sub.btc_accumulated>group.loc[group.enrolment_date.isin(sub.enrolment_date),"btc_accumulated"].median()).mean()) if policy!="fixed_weekly" else 0.,
+                "median_paired_btc_uplift_vs_fixed_weekly_pct":float(pd.Series(btc_uplifts).median()),
+                "median_paired_equity_uplift_vs_fixed_weekly_pct":float(pd.Series(equity_uplifts).median()),
+                "cohort_win_rate_btc_vs_fixed_weekly_pct":100*sum(x>0 for x in btc_uplifts)/len(btc_uplifts),
             })
     return pd.DataFrame(rows).sort_values(["split","policy"]).reset_index(drop=True)
