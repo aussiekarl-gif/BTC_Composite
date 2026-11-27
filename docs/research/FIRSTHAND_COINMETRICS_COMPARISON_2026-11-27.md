@@ -83,3 +83,14 @@ At the 2020-03-12 outlier, Firsthand is USD 6,770.48; Explore21 Bitstamp close i
 - **Interpretation:** the user's intuition is broadly supported for the median outcome: average/typical differences do not materially change most 104-week results, and exact V6.0 20/25/30% weekly signal tiers matched on all 517 weeks. But tail cohort outcomes can differ by roughly 10–12%, so the Firsthand spot-price history is not safe to substitute wholesale. Keep it as a research cross-check only; Coin Metrics remains the comparison reference pending explanation/correction from Firsthand.
 - This is a BTC/AUD spot proxy, not ASX:IBIT execution; no IBIT premium/discount, tax, or actual cash-flow effects. No Production or live signals changed.
 - Latest code head at this replay: `bda2c0c85b910e2d12391957415eddaa20205b00`; workflow run **45970024219** succeeded.
+
+
+## Price provenance and date-alignment investigation — 27 Nov 2026
+
+- Firsthand's public Bitcoin price page describes the series as the "daily closing price" in USD, but the page and API catalogue do not specify the exchange/venue, aggregation method, exact UTC cut-off, or whether historical observations are revised. The API catalogue states that answers update a few times a day. This is insufficient provenance for an execution-price input.
+- The API series payload identifies its source as "Firsthand Bitcoin", contains daily date/value pairs, and reports generation time and coverage. It does not expose an underlying venue/source field for the BTC price.
+- The raw diagnostic snapshot generated at 2026-11-27T08:29:14Z contains 5,079 points from 2013-01-01 to 2026-11-27. Notably, 2026-11-25 and 2026-11-26 both show USD 59,171.86 in that snapshot. This may be a stale/unchanged value, not evidence of two genuine equal daily closes; we need the provider's update/finality convention.
+- Added a date-lag sensitivity diagnostic to the cross-source validator. It compares Firsthand against Coin Metrics and Explore21 Bitstamp with offsets from -2 to +2 days, reporting mean/median/p95/max APE at each offset. Positive offset compares Firsthand date D with the comparator date D+offset. This is diagnostic only; no automatic date shifting or data repair is allowed.
+- New cross-source workflow run 45970588864 and matched portfolio workflow run 45970588827 were queued on commit 5a045ba0c6a06332b6418cffac6e022eca1e38be; results pending at this checkpoint.
+- Provider contact page publishes a direct email address for the person running Firsthand. We have not contacted them. Key questions for a provider response: underlying BTC/USD venue(s); exact daily UTC boundary/time; close/last/average/VWAP definition; whether historical data is backfilled or revised; and explanation of the 2017–2021 and 2020-03-12 outliers.
+- Until these are answered and the lag diagnostic is reviewed, Firsthand spot prices remain research-only and unapproved for model inputs.
