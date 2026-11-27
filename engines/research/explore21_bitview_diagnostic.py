@@ -14,9 +14,10 @@ E21 = {
     "bitcoin-realized-price": "https://charts.explore21.com/data/bitcoin-realized-price.csv",
     "bitcoin-percent-supply-in-profit": "https://charts.explore21.com/data/bitcoin-percent-supply-in-profit.csv",
     "bitcoin-hashrate": "https://charts.explore21.com/data/bitcoin-hashrate.csv",
+    "bitcoin-price": "https://charts.explore21.com/data/bitcoin-price.csv",
 }
 BITVIEW = "https://bitview.space/api"
-SEARCHES = ["realized price", "hashrate", "mvrv", "supply in profit"]
+SEARCHES = ["realized price", "hashrate", "mvrv", "supply in profit", "price"]
 session = requests.Session()
 session.headers.update({"User-Agent": "BTC-Composite-research-diagnostic/1.0"})
 
@@ -65,7 +66,7 @@ def main():
                 meta["parse_error"] = "response was not JSON"
     # Use priority global metrics rather than alphabetically selecting cohort variants.
     # Keep only IDs that were actually returned by one of the searches.
-    priority = ["realized_price", "mvrv", "hashrate", "supply_in_profit", "supply_in_profit_share", "nupl"]
+    priority = ["realized_price", "mvrv", "hashrate", "supply_in_profit", "supply_in_profit_share", "nupl", "price", "spot_price", "btc_price", "market_price"]
     candidates = [series_id for series_id in priority if series_id in discovered]
     report["bitview"]["selected_candidates"] = candidates
     for series_id in candidates:
