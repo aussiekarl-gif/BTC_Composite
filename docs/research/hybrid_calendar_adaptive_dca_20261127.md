@@ -95,3 +95,17 @@ Test higher fixed-base allocations **80% and 90%** (20%/10% adaptive reserve) ag
 - Five synthetic hybrid tests: passed.
 - Historical 32-cohort hybrid replay: passed and artifact uploaded.
 - Public-source smoke test: Aethereal upstream fetch failed; unrelated to the hybrid replay.
+
+
+## Near-fixed sweep confirmation (PR #415, run 946)
+
+Run 946 completed successfully on head `09aad97ee2f06717cd9075b263e0e4a12207b0c1`; the historical cohort artifact was inspected. It includes the new 95% base / 5% reserve and 100% fixed weekly control. All 32 cohorts respect the shared A$25,500 weekly cap.
+
+| Policy | Pre-2022 median BTC | Paired BTC vs fixed | Paired equity vs fixed | 2022+ median BTC | Paired BTC vs fixed | Paired equity vs fixed |
+|---|---:|---:|---:|---:|---:|---:|
+| 95% base / 5% adaptive reserve | 17.363 | −5.00% | −0.95% | 3.635 | −1.10% | +1.63% |
+| 100% fixed weekly (control) | 18.277 | 0% | 0% | 3.827 | 0% | 0% |
+
+The adaptive trigger frequency and delay do not improve with reserve size: 30% of pre-2022 cohorts triggered (median 69.07 weeks), versus 58.33% of 2022+ cohorts (median 10.57 weeks). The 5% reserve captures only modest conditional benefit when triggered, while the fixed weekly base remains the unconditional benchmark. The 95% variant is near-fixed, not a demonstrated superior BTC-accumulation strategy. Its positive 2022+ paired-equity median (+1.63%) is not robustly established from only 12 overlapping cohorts and assumed cash yield/friction.
+
+**Conclusion:** No hybrid allocation beat 100% fixed weekly DCA in median BTC units. 95%/5% is the closest hybrid, but there is no strong evidence that its tiny adaptive reserve improves unconditional outcomes consistently. Research only; no Production changes.
