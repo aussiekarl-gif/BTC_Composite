@@ -20,7 +20,7 @@ def synthetic(start="2010-01-01",end="2019-01-01",enrol="2016-01-04",rally_date=
 
 class HybridCalendarAdaptiveTests(unittest.TestCase):
     def test_allocation_sweep_is_predeclared(self):
-        self.assertEqual(BASE_ALLOCATIONS,(25,50,75,80,90))
+        self.assertEqual(BASE_ALLOCATIONS,(25,50,75,80,90,95,100))
     def test_predeclared_base_leg_buys_without_adaptive_trigger(self):
         btc,fx=synthetic(rally_date=None,drop=False)
         results=[run_hybrid_cohort(btc,fx,enrolment_date="2016-01-04",
@@ -30,7 +30,7 @@ class HybridCalendarAdaptiveTests(unittest.TestCase):
             self.assertEqual(r["adaptive_buy_count"],0)
             self.assertEqual(r["base_buy_count"],104)
             self.assertGreater(r["btc_accumulated"],0)
-            self.assertGreater(r["adaptive_cash_remaining_aud"],0)
+            if pct<100:\n                self.assertGreater(r["adaptive_cash_remaining_aud"],0)\n            else:\n                self.assertEqual(r["adaptive_cash_remaining_aud"],0.)
             self.assertTrue(r["weekly_cap_compliant"] if "weekly_cap_compliant" in r else
                            r["largest_weekly_combined_outlay_aud"]<=r["weekly_cap_aud"]+1e-6)
 
