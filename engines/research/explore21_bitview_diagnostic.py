@@ -103,6 +103,24 @@ def main():
             fallback_url = data_url + "/data"
             fallback_meta, _ = fetch(fallback_url, OUT / "bitview" / "series_data" / f"{safe}_day1_data.json", "application/json")
             series_record["data_attempts"].append(fallback_meta)
+        # Probe date-addressed range semantics for key daily series. These results
+        # help verify the mapping between day1 array offsets and calendar dates.
+        if series_id in ("mvrv", "realized_price"):
+            date_url = data_url + "?start=2020-01-01&end=2020-01-04"
+            date_meta, date_response = fetch(date_url, OUT / "bitview" / "date_range" / f"{safe}_2020-01.json", "application/json")
+            series_record["date_range_probe"] = date_meta
+            if date_response is not None and date_response.ok:
+                try:
+                    date_payload = date_response.json()
+                    series_record["date_range_probe_summary"] = {
+                        "payload_keys": list(date_payload.keys()) if isinstance(date_payload, dict) else None,
+                        "start": date_payload.get("start") if isinstance(date_payload, dict) else None,
+                        "end": date_payload.get("end") if isinstance(date_payload, dict) else None,
+                        "index": date_payload.get("index") if isinstance(date_payload, dict) else None,
+                        "data": date_payload.get("data") if isinstance(date_payload, dict) else date_payload,
+                    }
+                except ValueError:
+                    date_meta["parse_error"] = "date range response was not JSON"
         report["bitview"]["series"][series_id] = series_record
         time.sleep(0.15)
     report["finished_utc"] = datetime.now(timezone.utc).isoformat()
