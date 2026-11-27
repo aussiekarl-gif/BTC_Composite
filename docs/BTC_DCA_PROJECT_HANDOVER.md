@@ -352,3 +352,11 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Jan 2013 realized-price gap is not explained by contemporaneous spot-price mismatch: Explore21 price and Bitview price were close, while RP remained ~26% different. Cost-basis/UTXO/source history remains unresolved.
 - Updated PR #410 report with this diagnostic at commit **b7c45c6742055a4b770544e6540440b2c14d310a**. Documentation-only commit; no CI rerun required by configured path filters. PR #410 remains draft/open/unmerged. No Production/model/dashboard/signal/notification changes.
 - Next: investigate supply-in-profit outliers and methodology/version history; consider another independent source if a documented direct NUPL/Z-score match becomes available. Do not normalize raw data or approve candidate metrics without causal walk-forward/ablation/forward validation.
+
+
+## Continuation checkpoint — 27 Nov 2026 (Supply-in-profit price-context audit)
+
+- Compared supply-in-profit outlier gaps with matched Explore21/Bitview spot-price differences from PR #410 run-19 artifact. Correlation between absolute price mismatch and supply-in-profit gap is modest (Pearson 0.355 from 2013, 0.351 from 2017, 0.235 from 2020; rank correlations weak). Price-source mismatch likely contributes to some large outliers, but not all; 2013 outliers exist with close spot-price agreement.
+- Largest outlier 2015-08-24: E21 36.04% vs Bitview 51.4625% (15.4225 pp), price mismatch +19.72%. 2017-03-10 gap 7.2631 pp, price mismatch +11.67%. 2013-01-14 gap 7.104 pp despite spot prices only -0.92% apart. Causes remain unresolved hypotheses (price assignment, UTXO cohorts/exclusions, supply-accounting or provenance).
+- PR #410 report updated at **30c6375ba35ae45364029f533bf9d70e9f41ac03**; draft/open/unmerged. Documentation-only commit, no new tests triggered by configured path filters. Supply-in-profit remains provisional/unapproved.
+- Next: review metric definition and methodology version/source for supply-in-profit and investigate if independent direct NUPL/Z-score series exist; no strategy or Production integration.
