@@ -1,0 +1,22 @@
+name: Bitview research series discovery
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/bitview_series_discovery.yml"
+      - "scripts/research/discover_bitview_series.py"
+
+permissions:
+  contents: read
+
+jobs:
+  discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout research script
+        uses: actions/checkout@v4
+      - name: Discover Bitview series metadata (no historical data download)
+        run: python scripts/research/discover_bitview_series.py
