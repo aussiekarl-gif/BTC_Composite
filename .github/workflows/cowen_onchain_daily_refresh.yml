@@ -69,19 +69,40 @@ jobs:
             if [ "${attempt}" -lt 4 ]; then sleep $((attempt * 20)); fi
           done
           echo "Coin Metrics failed after four attempts"; exit 1
-      - name: Fetch Aethereal daily transaction fees (retry)
+      - name: Fetch Aethereal daily transaction fees (normal DNS, then DoH fallback)
         id: aethereal
         continue-on-error: true
         run: |
-          set -uo pipefail
-          # This provider has intermittently failed DNS. Short adapter timeout
-          # prevents one unavailable source from monopolizing the daily refresh.
+          set -euo pipefail
+          output="data/research/cowen_onchain/bitcoin_network_daily_aethereal.csv"
           for attempt in 1 2 3; do
-            echo "Aethereal attempt ${attempt}/3"
-            if python -m engines.research.aethereal_public_data --output data/research/cowen_onchain/bitcoin_network_daily_aethereal.csv; then exit 0; fi
+            echo "Aethereal normal DNS attempt ${attempt}/3"
+            if python -m engines.research.aethereal_public_data --output "${output}"; then
+              echo "Aethereal fetched using the runner's normal DNS resolver."
+              exit 0
+            fi
             if [ "${attempt}" -lt 3 ]; then sleep $((attempt * 10)); fi
           done
-          echo "Aethereal failed after three bounded attempts"; exit 1
+
+          echo "Normal DNS failed; trying Cloudflare DNS-over-HTTPS and pinned HTTPS."
+          dns_json="$(curl --fail --silent --show-error --retry 2 --retry-all-errors \
+            -H 'accept: application/dns-json' \
+            'https://cloudflare-dns.com/dns-query?name=dataset.aethereal.top&type=A')"
+          ip="$(printf '%s' "${dns_json}" | python -c 'import json,sys; d=json.load(sys.stdin); print(next((a["data"] for a in d.get("Answer", []) if a.get("type")==1), ""))')"
+          if [ -z "${ip}" ]; then
+            echo "Cloudflare DoH returned no IPv4 address for Aethereal."
+            exit 1
+          fi
+          echo "Cloudflare DoH resolved dataset.aethereal.top to ${ip}."
+          curl --fail --location --silent --show-error --retry 2 --retry-all-errors \
+            --connect-timeout 15 --max-time 60 \
+            --resolve "dataset.aethereal.top:443:${ip}" \
+            'https://dataset.aethereal.top/files/bitcoin-network-daily.csv' \
+            --output /tmp/aethereal-bitcoin-network-daily.csv
+          python -m engines.research.aethereal_public_data \
+            --input-csv /tmp/aethereal-bitcoin-network-daily.csv \
+            --output "${output}"
+          echo "Aethereal fetched through the DNS-over-HTTPS fallback."
       - name: Fetch Open Bitcoin Metrics daily CDD (retry)
         id: obm
         continue-on-error: true
