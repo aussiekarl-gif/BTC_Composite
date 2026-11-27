@@ -18,6 +18,7 @@ E21 = {
     "bitcoin-realized-cap": "https://charts.explore21.com/data/bitcoin-realized-cap.csv",
 }
 BITVIEW = "https://bitview.space/api"
+COIN_METRICS_NUPL = "https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=NUPL&frequency=1d&start_time=2010-01-01&page_size=10000"
 SEARCHES = ["realized price", "realized cap", "hashrate", "mvrv", "supply in profit", "price", "puell multiple", "mvrv z score", "mvrv-z-score", "z score"]
 session = requests.Session()
 session.headers.update({"User-Agent": "BTC-Composite-research-diagnostic/1.0"})
@@ -43,7 +44,23 @@ def fetch(url, path, accept=None):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    report = {"started_utc": datetime.now(timezone.utc).isoformat(), "explore21": {}, "bitview": {"search": {}, "series": {}}}
+    report = {"started_utc": datetime.now(timezone.utc).isoformat(), "explore21": {}, "bitview": {"search": {}, "series": {}}, "coin_metrics": {}}
+    # Capture Coin Metrics Community NUPL directly, without deriving it from MVRV.
+    cm_meta, cm_response = fetch(COIN_METRICS_NUPL, OUT / "coin_metrics" / "nupl_community.json", "application/json")
+    report["coin_metrics"]["nupl"] = {"fetch": cm_meta}
+    if cm_response is not None and cm_response.ok:
+        try:
+            cm_payload = cm_response.json()
+            cm_rows = cm_payload.get("data", []) if isinstance(cm_payload, dict) else []
+            report["coin_metrics"]["nupl"]["summary"] = {
+                "response_keys": list(cm_payload.keys()) if isinstance(cm_payload, dict) else None,
+                "row_count": len(cm_rows),
+                "first_date": cm_rows[0].get("time") if cm_rows else None,
+                "last_date": cm_rows[-1].get("time") if cm_rows else None,
+                "next_page_token_present": bool(cm_payload.get("next_page_token")) if isinstance(cm_payload, dict) else None,
+            }
+        except (ValueError, TypeError):
+            cm_meta["parse_error"] = "Coin Metrics response could not be summarized"
     # Preserve CSV snapshots as raw provider files; no transformations/merging.
     for metric, url in E21.items():
         meta, response = fetch(url, OUT / "explore21" / f"{metric}.csv", "text/csv")
