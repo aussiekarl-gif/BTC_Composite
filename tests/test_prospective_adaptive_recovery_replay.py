@@ -78,7 +78,10 @@ class ProspectiveAdaptiveReplayTests(unittest.TestCase):
         s=summary_table(pd.DataFrame(rows))
         a=s.loc[s.policy=="adaptive_recovery"].iloc[0]
         self.assertAlmostEqual(a["median_paired_btc_uplift_vs_fixed_weekly_pct"],10.)
-        self.assertEqual(a["cohort_win_rate_btc_vs_fixed_weekly_pct"],100.)\n        self.assertEqual(a["cohort_win_rate_equity_vs_fixed_weekly_pct"],100.)\n        self.assertEqual(a["active_cohort_count"],1)\n        self.assertEqual(a["active_cohort_btc_win_rate_vs_fixed_weekly_pct"],100.)
+        self.assertEqual(a["cohort_win_rate_btc_vs_fixed_weekly_pct"],100.)
+        self.assertEqual(a["cohort_win_rate_equity_vs_fixed_weekly_pct"],100.)
+        self.assertEqual(a["active_cohort_count"],1)
+        self.assertEqual(a["active_cohort_btc_win_rate_vs_fixed_weekly_pct"],100.)
 
     def test_invalid_cash_inputs_fail_closed(self):
         btc,fx=synthetic(dip_date="2016-01-04",dip=50.)
