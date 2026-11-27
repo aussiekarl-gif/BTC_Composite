@@ -128,6 +128,44 @@ def compare_series(left, right, *, min_observations=30):
     }
 
 
+
+def compare_200wma_distance(firsthand, coinmetrics, *, start_date="2017-01-01"):
+    """Check whether price-source differences change 200WMA discount tiers."""
+    cm_ma = coinmetrics["PriceUSD"].rolling(1400, min_periods=1400).mean()
+    pair = pd.concat({
+        "firsthand_distance_pct": (firsthand["btc"] / firsthand["ma200w"] - 1.0) * 100.0,
+        "coinmetrics_distance_pct": (coinmetrics["PriceUSD"] / cm_ma - 1.0) * 100.0,
+    }, axis=1).dropna()
+    pair = pair.loc[pair.index >= pd.Timestamp(start_date, tz="UTC")]
+    if pair.empty:
+        return {"status": "INSUFFICIENT_OVERLAP", "observations": 0}
+    delta = (pair["firsthand_distance_pct"] - pair["coinmetrics_distance_pct"]).abs()
+    tiers = {}
+    for threshold in (0, 5, 10, 15, 20, 25, 30):
+        a = pair["firsthand_distance_pct"] <= -threshold
+        b = pair["coinmetrics_distance_pct"] <= -threshold
+        flips = pair.index[a != b]
+        tiers[str(threshold)] = {
+            "firsthand_signal_days": int(a.sum()),
+            "coinmetrics_signal_days": int(b.sum()),
+            "disagreement_days": int(len(flips)),
+            "disagreement_pct": float(len(flips) / len(pair) * 100.0),
+            "first_10_disagreement_dates": [d.date().isoformat() for d in flips[:10]],
+        }
+    return {
+        "status": "RESEARCH_ONLY_THRESHOLD_SENSITIVITY",
+        "first_date": pair.index.min().date().isoformat(),
+        "last_date": pair.index.max().date().isoformat(),
+        "observations": int(len(pair)),
+        "absolute_distance_difference_pp": {
+            "mean": float(delta.mean()), "median": float(delta.median()),
+            "p95": float(delta.quantile(0.95)), "max": float(delta.max()),
+        },
+        "thresholds": tiers,
+        "note": "Daily threshold classifications only; no simulated execution or portfolio outcome.",
+    }
+
+
 def build_report(firsthand, coinmetrics, explore21_price):
     comparisons = {
         "btc_price_usd_vs_coinmetrics": compare_series(firsthand["btc"], coinmetrics["PriceUSD"]),
@@ -137,6 +175,7 @@ def build_report(firsthand, coinmetrics, explore21_price):
             firsthand["ma200w"],
             coinmetrics["PriceUSD"].rolling(1400, min_periods=1400).mean(),
         ),
+        "200wma_distance_threshold_sensitivity": compare_200wma_distance(firsthand, coinmetrics),
         "daily_fees_btc": compare_series(firsthand["fees"], coinmetrics["FeeTotNtv"]),
         "mvrv": compare_series(firsthand["mvrv"], coinmetrics["CapMVRVCur"]),
     }
