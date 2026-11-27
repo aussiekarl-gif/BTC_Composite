@@ -104,6 +104,10 @@ def compare_series(left, right, *, min_observations=30):
 def build_report(firsthand, coinmetrics):
     comparisons = {
         "btc_price_usd": compare_series(firsthand["btc"], coinmetrics["PriceUSD"]),
+        "200wma_vs_coinmetrics_1400_calendar_day_sma": compare_series(
+            firsthand["ma200w"],
+            coinmetrics["PriceUSD"].rolling(1400, min_periods=1400).mean(),
+        ),
         "daily_fees_btc": compare_series(firsthand["fees"], coinmetrics["FeeTotNtv"]),
         "mvrv": compare_series(firsthand["mvrv"], coinmetrics["CapMVRVCur"]),
     }
