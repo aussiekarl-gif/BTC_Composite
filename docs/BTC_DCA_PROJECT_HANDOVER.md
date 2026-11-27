@@ -142,3 +142,12 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Corrected cross-source run 45967697247 passed; artifact 15183821578 was downloaded and inspected. Firsthand `ma200w` vs 1,400-observation rolling SMA of Coin Metrics `PriceUSD`: 3,679 overlapping daily dates (2016-10-31 to 2026-11-26), mean APE 0.2735%, median 0.2239%, p95 0.6690%, maximum 1.7734%; latest 90-day mean APE 0.0130%.
 - This is a strong independent cross-source consistency check for the 200WMA calculation. It does not approve Firsthand's daily spot-price series, fees, or other indicators. Daily price/fee outliers, close-time conventions, and data update/finality still require investigation.
 - Latest PR #409 branch head at this checkpoint: `b0fc5e591901e75b7a313f73d12fd9be664c29b8`. PR remains draft. Production and notifications unchanged.
+
+
+#### Three-way Firsthand BTC price validation — 27 Nov 2026
+
+- Added Explore21 Bitstamp daily OHLC CSV to the Firsthand comparator. Workflow run 45968107990 passed; artifact 15183034026 downloaded and inspected.
+- Coin Metrics vs Explore21 price agreement is strong: 5,078 overlaps, mean APE 0.252%, median 0.125%, p95 0.893%, max 9.290%.
+- Firsthand vs Explore21 is materially worse: 5,078 overlaps, mean APE 2.253%, median 1.243%, p95 7.904%, max 91.703%. On 2020-03-12 Firsthand = USD 6,770.48 vs Explore21 = USD 4,841.67 and Coin Metrics = USD 4,959.31. On 2013-04-11 Firsthand = USD 159.88 vs Explore21 = USD 83.40 and Coin Metrics = USD 82.90. These discrepancies are too large to attribute to small UTC close-boundary differences.
+- **Decision: Firsthand BTC price and fees are not eligible for model inputs** unless source methodology is explained and data defects are resolved. Keep fee outliers under investigation. 200WMA still validates closely against Coin Metrics' independent 1,400-observation SMA; this does not validate the Firsthand price input itself. MVRV is effectively identical to Coin Metrics CapMVRVCur and is not an independent signal.
+- Report updated at `docs/research/FIRSTHAND_COINMETRICS_COMPARISON_2026-11-27.md` on PR #409. Latest branch head `ebf68fa94c191b7232e294050d88f9bceb99bdd0`. PR remains draft; no Production or notification changes.
