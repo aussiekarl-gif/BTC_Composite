@@ -72,3 +72,7 @@ Official source documentation confirms a material upstream price-history differe
 - Bitview price history: before block 74,641 (Aug 2010), no price; through Jan 5, 2015, an older exchange-price record of undocumented original source (later followed Bitstamp); Jan 5 to block 340,000, Bitfinex minute closes; from block 340,000 (later Jan 2015), price is estimated from transaction-output patterns on-chain rather than an exchange feed.
 
 This provenance difference is a plausible explanation for some historical RP/MVRV and supply-in-profit differences, especially in early dates and after Bitview transitions to its on-chain price estimate. It is not proven as the sole cause of each outlier. To quantify this, the diagnostic now captures Explore21 `bitcoin-price.csv` and discovers Bitview price-series candidates. Compare exact date/series metadata before attributing discrepancies. Source citations: Explore21 FAQ/about; Bitview Terms/Support.
+
+## Additional diagnostic expansion
+
+Raw retrieval now also includes Explore21 Bitcoin price and realized-cap CSVs, and Bitview search queries for global price, realized-cap, and Puell Multiple series. This is for provenance and metric corroboration; no data is transformed into model inputs. Quantitative comparisons await the next successful artifact.
