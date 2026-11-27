@@ -140,3 +140,23 @@ The latest raw artifact (diagnostic run 19; artifact 15187148686) includes Explo
 This supports spot-price provenance/valuation as a plausible contributor to MVRV/NUPL stress divergence on 2018-11-20 and 2020-03-12. It does **not** prove causality: MVRV/NUPL also depend on realized-cap/cost-basis and supply/UTXO calculations, and the sources may differ in those methods. Spot-price mismatch is not sufficient explanation for the Jan 2013 realized-price offset: Explore21 and Bitview prices were close on the same dates, while realized price differed by about 26% (Explore21 ~USD 5.88–5.98 vs Bitview ~USD 7.45–7.53). Therefore the early RP discrepancy likely involves cost-basis/UTXO method or source history, but its exact cause remains unresolved.
 
 **Research implication:** use source-price regime differences as a documented confounder when reviewing stress-date MVRV/NUPL divergence. Keep both series unadjusted, calendar-matched and candidate-only; no normalization or Production/model input approval.
+
+
+## Supply-in-profit outliers vs spot-price divergence (run 19)
+
+Using calendar-matched Explore21 spot close and Bitview price series alongside the supply-in-profit comparison, absolute price error and absolute supply-in-profit gap show only a modest association: Pearson correlation is 0.355 from 2013 (0.351 from 2017; 0.235 from 2020), while Spearman rank correlation is weak (0.097, 0.132, and 0.089 respectively). Therefore spot-price divergence may explain part of some outliers but does not establish a general cause.
+
+Largest post-2013 gaps with price context:
+
+| Date | E21 supply in profit | Bitview | Gap (pp) | E21 close USD | Bitview price USD | Price diff |
+|---|---:|---:|---:|---:|---:|---:|
+| 2015-08-24 | 36.04% | 51.4625% | 15.4225 | 209.72 | 251.08 | +19.72% |
+| 2015-08-18 | 38.64% | 48.0417% | 9.4017 | 224.80 | 251.23 | +11.76% |
+| 2017-03-10 | 90.03% | 97.2931% | 7.2631 | 1,116.97 | 1,247.29 | +11.67% |
+| 2013-01-14 | 97.67% | 90.5660% | 7.1040 | 14.10 | 13.97 | -0.92% |
+| 2015-09-05 | 47.80% | 54.5699% | 6.7699 | 235.60 | 251.26 | +6.65% |
+| 2017-05-27 | 92.54% | 98.4366% | 5.8966 | 2,042.00 | 2,512.04 | +23.02% |
+| 2013-01-02 | 85.40% | 78.7903% | 6.6097 | 13.09 | 13.02 | -0.53% |
+| 2013-01-04 | 87.77% | 81.4346% | 6.3354 | 13.19 | 13.15 | -0.30% |
+
+The largest 2015 and 2017 disagreements coincide with sizable spot-price differences; however, 2013 outliers occur with close spot-price agreement, showing price mismatch is not a universal explanation. Supply-in-profit calculation may differ in price assignment, UTXO cohorts, exclusions, supply accounting, or data provenance; these are hypotheses only. No adjustment or source ranking is recommended. Keep the metric provisional.
