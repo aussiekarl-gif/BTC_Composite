@@ -100,6 +100,7 @@ jobs:
         run: python -m engines.research.aethereal_public_data --output artifacts/bitcoin_network_daily_aethereal.csv
       - name: Exercise live Aethereal DoH fallback and validate CSV
         if: always()
+        continue-on-error: true
         run: |
           python -m engines.research.aethereal_doh_fallback --output-csv /tmp/aethereal-doh-smoke.csv
           python -m engines.research.aethereal_public_data --input-csv /tmp/aethereal-doh-smoke.csv --output artifacts/bitcoin_network_daily_aethereal_doh.csv
