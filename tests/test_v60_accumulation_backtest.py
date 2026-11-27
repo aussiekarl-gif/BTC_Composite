@@ -59,6 +59,8 @@ class V60AccumulationRankingTests(unittest.TestCase):
             "median_final_equity_uplift_vs_matched_fixed_pct",
             "p10_btc_uplift_vs_matched_fixed_pct",
             "worst_final_equity_uplift_vs_matched_fixed_pct",
+            "median_equal_buy_amount_uniform_dates_btc_uplift_pct",
+            "median_actual_spend_distribution_uniform_dates_btc_timing_only_pct",
             "cohort_win_rate_btc_pct", "cohort_win_rate_final_equity_pct",
             "median_max_drawdown_difference_vs_fixed_pp",
         ):
