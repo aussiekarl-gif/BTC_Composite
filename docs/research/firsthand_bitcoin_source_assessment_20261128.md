@@ -1,48 +1,49 @@
-# Firsthand Bitcoin source assessment (initial desk review)
+# Firsthand Bitcoin source assessment
 
 Date: 2026-11-28  
 Scope: research-only alternative candidate while Aethereal's Bitcoin Network Daily source is unavailable.
 
-## Verified from the provider's public catalogue
+## Catalogue and access
 
-The API catalogue at https://firsthandbitcoin.com/data/api/series.json was accessible on 2026-11-28 through web retrieval. It identifies provider/source metadata, generated timestamp, an attribution record, and a list of series with JSON and CSV URLs. The page documents no API key or signup, updates several times a day, and requires credit text **"Data: Firsthand Bitcoin"** with a link to https://firsthandbitcoin.com/data wherever data appears.
+The public catalogue at https://firsthandbitcoin.com/data/api/series.json is accessible without API key/signup. It lists series and JSON/CSV URLs, updates several times/day, and requires attribution **Data: Firsthand Bitcoin** linked to the provider's data page wherever data is shown. Provider terms caution that data may be delayed, incomplete, or incorrect and prohibit republishing/reselling pricing or profitability data as one's own. Keep attribution and check terms before public distribution.
 
-Relevant catalogue entries:
-- `fees`: daily fees (BTC/day)
-- `fees7`: fees paid to miners (BTC/day; distinct smoothed series)
-- `revenue`: miner revenue (USD/day)
-- `tx7`: transactions/day
-- `hashrate`: daily network hashrate (EH/s)
-- `difficulty`: mining difficulty
-- `realized`: realised price (USD)
-- `mvrv`: MVRV ratio
-- `puell`: Puell multiple
+Selected datasets were captured from a GitHub Actions runner, not committed as raw files. Point-in-time validation observed:
+- BTC price: 5,079 rows, 2013-01-01 to 2026-11-27
+- Fees (raw series): 5,075 rows, 2013-01-01 to 2026-11-26
+- Miner revenue: 5,079 rows, 2013-01-01 to 2026-11-27
+- tx7: 5,066 rows, 2013-01-07 to 2026-11-27
+- fees7 and revenue components were captured and checked as part of follow-up validation
+- Date integrity checks passed for all selected series (valid dates, no duplicates, sorted)
 
-The catalogue also exposes many other market, mining, on-chain, ETF, derivatives, macro and fee-estimate series. Do not expand the scope without a research question.
+## Matched-date quantitative results
 
-## First-pass relevance to Aethereal
+Comparison is descriptive over exact overlapping daily dates. Median absolute percentage error (median APE) excludes zero-valued reference observations. Results below are from the existing Coin Metrics Community and Aethereal repository snapshots; source definitions/day boundaries may differ.
 
-Aethereal's adapter currently requires `fees_btc`, `price_usd`, `miners_revenue_usd`, and `transactions`. Candidate Firsthand matches exist for fee, miner revenue, transaction count and price series. But series labels alone are not proof of identical metric definitions, aggregation windows, timestamps, or price conventions. The catalogue's `fees7` and `tx7` are explicitly different from daily `fees`; do not use smoothed series for daily parity checks.
+| Firsthand series | Reference | Matched days | Median APE | Correlation |
+|---|---|---:|---:|---:|
+| BTC price | Aethereal price | 5,075 | 0.31% | 0.99976 |
+| BTC price | Coin Metrics PriceUSD | 5,078 | 1.24% | 0.99971 |
+| BTC fees | Coin Metrics FeeTotNtv | 5,075 | 1.14% | 0.99980 |
+| BTC fees | Aethereal fees_btc | 5,072 | 0.000078% | ~1.00000 |
+| Miner revenue | Aethereal miner revenue | 5,075 | 8.97% | 0.98632 |
+| Miner revenue | Coin Metrics derived revenue | 5,078 | 7.66% | 0.98700 |
 
-## Terms / attribution review
+Coin Metrics derived total revenue is `IssTotUSD + FeeTotNtv × PriceUSD`; it is a constructed comparison, not a provider-published total-revenue field.
 
-The API catalogue explicitly permits free use subject to attribution (credit **Data: Firsthand Bitcoin** linked to the provider's data page). The site's terms page also says figures may be delayed, incomplete or wrong, and prohibits reselling/redistributing its pricing or profitability data as one's own product. Our contemplated private research use appears consistent with the API attribution statement, but preserve attribution and do not publish/repackage raw datasets without checking terms.
+## Metric semantics: smoothing and assumptions found
 
-## What this review does NOT establish
+The exact matched-date checks establish:
+- Firsthand `fees7` is a trailing 7-calendar-day mean of its daily fees series (correlation 1.0; median APE about 0.0000011%).
+- Firsthand `tx7` matches Aethereal's trailing 7-day transaction mean extremely closely (correlation about 1.0; median APE below 0.000001%). It is not raw daily transaction count.
+- Firsthand `revFees` is `fees7 × BTC price` (correlation effectively 1; median APE about 0.0000015%). It is not raw daily fee revenue.
+- Firsthand total `revenue` is arithmetically consistent with its subsidy + fee-revenue components (median APE below 0.000002%).
+- Firsthand `revSubsidy` uses a 144-block/day assumption rather than actual `blocksDay`. Across halving eras, its subsidy BTC/day is fixed at 3,600 (25 BTC reward era), 1,800 (12.5 era), 900 (6.25 era), and 450 (3.125 era). Actual Firsthand `blocksDay` values vary (58–260; median 149), so daily subsidy/revenue estimates can deviate from actual block issuance. Median absolute error against `blocksDay × block reward × price` is about 7.46%.
+- Miner-revenue comparisons show sizeable event-day discrepancies, including dates around the 2021 hashrate disruption and the 2024 halving/fee spike. Do not treat Firsthand's miner revenue as actual unsmoothed daily miner revenue.
 
-- Individual series data URLs were identified but their raw payloads could not be reliably extracted by this review's web retrieval, so schema, actual first/last observation dates, gaps, and freshness of each series remain unverified.
-- No quantitative comparison with Coin Metrics, Explore21, OBM, or Aethereal was completed.
-- No source substitution, code integration, or Production change is approved.
+The near-exact fees parity with Aethereal and tx7 parity with a rolling mean indicate likely shared or derived data lineage for those metrics. Independent provenance has not been established.
 
-## Required validation before integration
+## Decision / recommendation
 
-1. Retrieve and archive raw JSON/CSV for the shortlisted daily series using a runner that can fetch them directly.
-2. Validate schema, date range, timezone/day boundary, numeric units, nulls, duplicate dates, and update freshness.
-3. Compare fees BTC/day, miner revenue USD/day, transactions/day and BTC price with existing independent series on exact matched dates. Report sample size, coverage, median absolute percentage error (guard against zero denominators), correlation, and outlier dates; inspect metric definitions before interpreting differences.
-4. Determine if daily fees and transactions are unsmoothed. Explicitly avoid `fees7` and `tx7` for daily exact-match comparisons unless an averaging transform is intentionally part of the test.
-5. Preserve provider and series-key provenance, raw source snapshots, and mandatory credit. The API page requires credit with a link wherever data appears. The provider's site terms also prohibit reselling or redistributing its profitability/pricing data as one's own product; avoid any redistribution beyond permitted use and confirm the relevant terms before publication.
-6. Add parser tests, fixture-based regression tests, and stale-source/failure behavior. Only then decide: accept for limited research use, reject, or keep as backup-only.
+**Do not accept Firsthand Bitcoin as an independent drop-in fallback for raw daily fees, transactions, or actual daily miner revenue.** Its fees7, tx7 and revenue series are explicitly/empirically smoothed or assumption-based, and fees are almost identical to the Aethereal snapshot. This may still be useful for clearly labelled smoothed descriptive/research metrics. BTC price shows high concordance but differing price conventions; no integration or automatic substitution is approved.
 
-## Current recommendation
-
-**Catalogue discovery: promising. Data-validation status: pending.** Firsthand is a candidate fallback source, not a validated replacement. Keep Aethereal recovery work and independent existing sources intact. No Production, sizing, dashboard, or notification changes.
+Keep Aethereal recovery and independent existing sources intact. No Production, strategy, sizing, dashboard, or notification changes. No raw datasets are committed.
