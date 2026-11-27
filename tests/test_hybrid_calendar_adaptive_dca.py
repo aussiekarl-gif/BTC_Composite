@@ -7,7 +7,7 @@ from engines.research.hybrid_calendar_adaptive_dca import (
 )
 
 
-def synthetic(start="2010-01-01",end="2019-01-01",enrol="2016-01-04",rally_date=None):
+def synthetic(start="2010-01-01",end="2019-01-01",enrol="2016-01-04",rally_date=None,drop=True):
     idx=pd.date_range(start,end,freq="D",tz="UTC")
     btc=pd.Series(100.,index=idx)
     btc.loc[idx>=pd.Timestamp(enrol,tz="UTC")]=50.
@@ -19,7 +19,7 @@ def synthetic(start="2010-01-01",end="2019-01-01",enrol="2016-01-04",rally_date=
 
 class HybridCalendarAdaptiveTests(unittest.TestCase):
     def test_predeclared_base_leg_buys_without_adaptive_trigger(self):
-        btc,fx=synthetic(rally_date=None)
+        btc,fx=synthetic(rally_date=None,drop=False)
         results=[run_hybrid_cohort(btc,fx,enrolment_date="2016-01-04",
                     base_allocation_pct=p) for p in BASE_ALLOCATIONS]
         for r in results:
