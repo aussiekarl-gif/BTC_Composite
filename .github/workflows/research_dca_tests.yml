@@ -6,6 +6,7 @@ on:
       - "engines/research/**"
       - "tests/**"
       - "requirements.txt"
+      - "docs/research/prospective_adaptive_recovery_replay_20261127.md"
       - ".github/workflows/research_dca_tests.yml"
   push:
     branches: [main]
