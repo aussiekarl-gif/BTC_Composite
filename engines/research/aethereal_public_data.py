@@ -20,7 +20,7 @@ CSV_URL = "https://dataset.aethereal.top/files/bitcoin-network-daily.csv"
 REQUIRED_COLUMNS = ("fees_btc", "price_usd", "miners_revenue_usd", "transactions")
 
 
-def fetch_daily_btc_network(*, session=None, timeout=60):
+def fetch_daily_btc_network(*, session=None, timeout=15):
     """Fetch the raw daily network CSV and validate dates/fee units."""
     client = session or requests.Session()
     response = client.get(CSV_URL, timeout=timeout)
