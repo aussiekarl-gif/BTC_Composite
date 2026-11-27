@@ -108,7 +108,9 @@ def run_fixed_weekly_reference(btc_usd,usd_per_aud,*,enrolment_date,
     btc=_series(btc_usd,"BTC/USD")
     fx=_series(usd_per_aud,"USD per AUD")
     price=_aud_prices(btc,fx)
-    enrol=pd.Timestamp(enrolment_date,tz="UTC").normalize()
+    enrol=pd.Timestamp(enrolment_date)
+    enrol=enrol.tz_localize("UTC") if enrol.tzinfo is None else enrol.tz_convert("UTC")
+    enrol=enrol.normalize()
     end=enrol+pd.Timedelta(days=7*COHORT_WEEKS)
     dates=[enrol+pd.Timedelta(days=7*i) for i in range(1,COHORT_WEEKS+1)]
     if enrol not in price.index or end not in price.index or any(d not in price.index for d in dates):
