@@ -97,6 +97,20 @@ jobs:
         run: python -m engines.research.coinmetrics_community --output artifacts/coinmetrics_btc_daily_community.csv
       - name: Fetch Aethereal daily BTC network and fee history
         run: python -m engines.research.aethereal_public_data --output artifacts/bitcoin_network_daily_aethereal.csv
+      - name: Exercise live Aethereal DoH fallback and validate CSV
+        if: always()
+        run: |
+          python -m engines.research.aethereal_doh_fallback --output-csv /tmp/aethereal-doh-smoke.csv
+          python -m engines.research.aethereal_public_data --input-csv /tmp/aethereal-doh-smoke.csv --output artifacts/bitcoin_network_daily_aethereal_doh.csv
+          python - <<'PY'
+          import pandas as pd
+          from pathlib import Path
+          path = Path("artifacts/bitcoin_network_daily_aethereal_doh.csv")
+          frame = pd.read_csv(path)
+          if frame.empty or "date" not in frame.columns:
+              raise SystemExit("DoH fallback CSV parsed but produced no dated observations")
+          print(f"DoH fallback validated {len(frame)} rows; latest date={frame['date'].max()}")
+          PY
       - name: Fetch Open Bitcoin Metrics daily CDD history
         run: python -m engines.research.obm_cdd_public_data --output artifacts/obm_cdd_btcxdays_daily.csv
       - name: Summarise latest raw observations and source coverage
