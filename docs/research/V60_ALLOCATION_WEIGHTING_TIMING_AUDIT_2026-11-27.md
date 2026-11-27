@@ -57,6 +57,6 @@ Median cohort uplift at the reference setting (overlapping cohorts; descriptive)
 2. The equal-buy-amount benchmark is a valid allocation-weighting diagnostic for weekly-buy policies, not pure timing. In train it mainly reflects the 2.5% cash-based deployment schedule; holdout includes 200WMA discount weighting.
 3. No threshold ladder (10/15/20 vs 20/25/30) has robust holdout superiority; the paired median difference is zero and wins are below 50%.
 4. Faster 1.25×/1.5× policies can accumulate more BTC but spend more capital. Keep deployment scale separate from timing/discount signal.
-5. Next research candidate: **conditional buys only below the 200WMA (no 2.5% base buy above it), with recovery confirmation**, evaluated on the same matched train/holdout, 5% cash yield, 5% original-capital weekly cap, and reserve/cumulative-spend sensitivity. This would create genuine buy-date selection. Keep it in a separate research PR.
+5. A conditional 200WMA/recovery-buy policy already exists in Cycle Trading research (`cycle_forward_cash_dca.py` / `adaptive_recovery`), but historical/live parity is unverified. Next research: replay that exact fixed-cash prospective policy from predeclared calendar entry dates (not cycle bottoms), compare with fixed weekly DCA and the current remaining-cash 2.5%-below-200WMA rule, and report BTC units, AUD VWAP, cash remaining, timing errors and 5% cash yield. This would test genuine buy-date selection without duplicating existing code.
 
 Research only. No Production, dashboard, signals, notifications or live policy changes.
