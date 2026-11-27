@@ -68,6 +68,17 @@ class HybridCalendarAdaptiveTests(unittest.TestCase):
         self.assertAlmostEqual(s["median_paired_btc_uplift_vs_fixed_weekly_pct"].iloc[0],10.)
         self.assertEqual(s["cohort_btc_win_rate_vs_fixed_weekly_pct"].iloc[0],100.)
 
+    def test_95_and_100_percent_base_are_valid_edge_cases(self):
+        btc,fx=synthetic(rally_date="2016-03-15")
+        near_fixed=run_hybrid_cohort(btc,fx,enrolment_date="2016-01-04",base_allocation_pct=95)
+        fixed_base=run_hybrid_cohort(btc,fx,enrolment_date="2016-01-04",base_allocation_pct=100)
+        self.assertAlmostEqual(near_fixed["adaptive_reserve_budget_aud"],292383.*.05)
+        self.assertAlmostEqual(fixed_base["adaptive_reserve_budget_aud"],0.)
+        self.assertEqual(fixed_base["adaptive_buy_count"],0)
+        self.assertEqual(fixed_base["base_buy_count"],104)
+        self.assertEqual(fixed_base["total_buy_count"],104)
+        self.assertLessEqual(fixed_base["largest_weekly_combined_outlay_aud"],25500.+1e-6)
+
     def test_invalid_base_allocation_rejected(self):
         btc,fx=synthetic()
         with self.assertRaises(ValueError):
