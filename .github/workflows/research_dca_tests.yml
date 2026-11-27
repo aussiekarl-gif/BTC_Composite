@@ -96,6 +96,7 @@ jobs:
       - name: Fetch Coin Metrics Community daily BTC history
         run: python -m engines.research.coinmetrics_community --output artifacts/coinmetrics_btc_daily_community.csv
       - name: Fetch Aethereal daily BTC network and fee history
+        continue-on-error: true
         run: python -m engines.research.aethereal_public_data --output artifacts/bitcoin_network_daily_aethereal.csv
       - name: Exercise live Aethereal DoH fallback and validate CSV
         if: always()
