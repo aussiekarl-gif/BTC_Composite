@@ -36,6 +36,39 @@ class V60BacktestTests(unittest.TestCase):
             result["same_spend_same_count_btc_timing_uplift_pct_hindsight"], 0.0, places=8
         )
 
+
+    def test_baseline_weekly_buys_have_zero_pure_timing_uplift(self):
+        rows = flat_rows(price=100_000, ratio=0.70)
+        for i, row in enumerate(rows):
+            row["btc_price_aud"] = 100_000.0 + i * 1_000.0
+        result = simulate_weekly_cohort(rows, policy="baseline", cash_yield=0.0)
+        self.assertEqual(result["buy_count"], 104)
+        # Actual and uniformly spaced dates are the same (every week); only
+        # actual spend amounts vary, so pure timing-only effect must be zero.
+        self.assertAlmostEqual(
+            result["same_actual_spend_distribution_uniform_dates_btc_timing_only_pct"],
+            0.0, places=8,
+        )
+        # The legacy equal-buy-amount benchmark can be positive even though
+        # dates are unchanged; it captures amount distribution, not timing.
+        self.assertGreater(
+            result["same_spend_same_count_btc_timing_uplift_pct_hindsight"], 0.0
+        )
+
+    def test_capped_early_buys_have_positive_uniform_date_timing_only_on_rising_prices(self):
+        rows = flat_rows(price=100_000, ratio=0.70)
+        for i, row in enumerate(rows):
+            row["btc_price_aud"] = 100_000.0 + i * 1_000.0
+        result = simulate_weekly_cohort(
+            rows, policy="baseline", cash_yield=0.0,
+            max_cumulative_buy_spend_pct_initial_cash=50.0,
+        )
+        self.assertLess(result["buy_count"], 104)
+        self.assertGreater(
+            result["same_actual_spend_distribution_uniform_dates_btc_timing_only_pct"],
+            0.0,
+        )
+
     def test_weekly_cap_is_never_exceeded(self):
         result = simulate_weekly_cohort(
             flat_rows(price=10_000, ratio=0.70), policy="aggressive"

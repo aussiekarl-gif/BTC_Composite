@@ -150,8 +150,11 @@ def summarise_pacing(frame: pd.DataFrame) -> pd.DataFrame:
             "median_policy_buy_count": float(group["buy_count"].median()),
             "median_cash_remaining_aud": float(group["cash_remaining_aud"].median()),
             "median_max_drawdown_pct": float(group["max_drawdown_pct"].median()),
-            "median_same_spend_same_count_timing_uplift_pct_hindsight": float(
+            "median_equal_buy_amount_uniform_dates_btc_uplift_pct": float(
                 group["same_spend_same_count_btc_timing_uplift_pct_hindsight"].median()
+            ),
+            "median_actual_spend_distribution_uniform_dates_btc_timing_only_pct": float(
+                group["same_actual_spend_distribution_uniform_dates_btc_timing_only_pct"].median()
             ),
             "cohorts_overlap": True,
             "interpretation": "Matched starting capital, reserve, yield and cumulative-spend cap; overlapping cohorts are not independent.",

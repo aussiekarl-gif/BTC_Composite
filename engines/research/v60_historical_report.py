@@ -155,8 +155,11 @@ def summarise(results: list[dict]) -> pd.DataFrame:
             "median_btc_uplift_vs_fixed_weekly_pct": float(pd.Series(btc_uplifts).median()),
             "cohort_win_rate_final_equity_vs_fixed_weekly_pct": 100.0 * sum(x > 0 for x in equity_uplifts) / len(equity_uplifts),
             "cohort_win_rate_btc_vs_fixed_weekly_pct": 100.0 * sum(x > 0 for x in btc_uplifts) / len(btc_uplifts),
-            "median_same_spend_timing_uplift_pct_hindsight": float(
+            "median_equal_buy_amount_uniform_dates_btc_uplift_pct": float(
                 group["same_spend_same_count_btc_timing_uplift_pct_hindsight"].median()
+            ),
+            "median_actual_spend_distribution_uniform_dates_btc_timing_only_pct": float(
+                group["same_actual_spend_distribution_uniform_dates_btc_timing_only_pct"].median()
             ),
             "cohorts_overlap": True,
             "interpretation": "Overlapping rolling cohorts; descriptive robustness only, not independent trials",

@@ -151,8 +151,11 @@ def summarise_ranking(frame: pd.DataFrame) -> pd.DataFrame:
             "median_cash_remaining_aud": float(pd.Series([float(r.cash_remaining_aud) for r in rows]).median()),
             "median_max_drawdown_pct": float(pd.Series([float(r.max_drawdown_pct) for r in rows]).median()),
             "median_max_drawdown_difference_vs_fixed_pp": float(pd.Series(drawdown_differences).median()),
-            "median_same_spend_same_count_timing_uplift_pct_hindsight": float(
+            "median_equal_buy_amount_uniform_dates_btc_uplift_pct": float(
                 group["same_spend_same_count_btc_timing_uplift_pct_hindsight"].median()
+            ),
+            "median_actual_spend_distribution_uniform_dates_btc_timing_only_pct": float(
+                group["same_actual_spend_distribution_uniform_dates_btc_timing_only_pct"].median()
             ),
             "cohorts_overlap": True,
             "interpretation": "Matched cohort, capital, yield, reserve and cap; buy-only, no sell or tax timing.",
@@ -242,7 +245,7 @@ def build_report(output_dir: Path) -> dict:
         "leaderboards": reference_leaderboards(ranked),
         "limitations": [
             "Buy-only accumulation: no top-sell, tax or re-entry timing is modelled.",
-            "Leaderboard winners mainly reflect faster cash deployment, not proven 200WMA timing skill; discount tiers were inactive in the pre-2022 train era.",
+            "Leaderboard winners mainly reflect faster cash deployment, not proven 200WMA timing skill; discount tiers were inactive in the pre-2022 train era. Legacy equal-buy-amount uniform-date diagnostic mixes amount distribution with timing; the new actual-spend-distribution uniform-date metric isolates price timing, but its shifted-date cash feasibility is not modelled.",
             "Historical BTC export ends 2026-10-05 and is not a contemporaneous point-in-time vintage.",
             "Execution is a next-Monday BTC/AUD spot proxy, not an ASX:IBIT fill.",
             "Cash yield is gross and not tax-adjusted; BTC drag and buy friction are assumptions.",

@@ -180,6 +180,7 @@ def simulate_weekly_cohort(
     previous_date = rows[0]["execution_date"]
     execution_prices = []
     actual_buy_dates = []
+    actual_buy_spends = []
 
     for i, row in enumerate(rows):
         day = row["execution_date"]
@@ -215,6 +216,7 @@ def simulate_weekly_cohort(
             buy_count += 1
             biggest_buy = max(biggest_buy, spend)
             actual_buy_dates.append(day)
+            actual_buy_spends.append(spend)
 
         equity = cash + btc * price
         peak_equity = max(peak_equity, equity)
@@ -226,8 +228,12 @@ def simulate_weekly_cohort(
 
     terminal_price = execution_prices[-1]
     final_equity = cash + btc * terminal_price
-    uniform_btc_bought = 0.0
+    uniform_btc_equal_buy_amount = 0.0
+    uniform_btc_actual_spend_distribution = 0.0
     if buy_count:
+        # Legacy benchmark: same total gross spend and buy count, but equal
+        # gross amount per purchase at uniformly spaced dates. It mixes amount
+        # allocation with dates, so it is not a pure timing-only metric.
         uniform_gross = total_spend / buy_count
         uniform_net = max(0.0, uniform_gross - fixed_fee_aud) * (1.0 - buy_friction)
         if buy_count == 1:
@@ -235,10 +241,25 @@ def simulate_weekly_cohort(
         else:
             indices = [round(k * (len(execution_prices)-1) / (buy_count-1))
                        for k in range(buy_count)]
-        uniform_btc_bought = sum(uniform_net / execution_prices[j] for j in indices)
-    same_spend_timing_uplift = (
-        100.0 * (net_btc_bought / uniform_btc_bought - 1.0)
-        if uniform_btc_bought > 0 else 0.0
+        uniform_btc_equal_buy_amount = sum(
+            uniform_net / execution_prices[j] for j in indices
+        )
+        # Pure timing diagnostic: preserve each actual buy's gross spend and
+        # transaction count, moving only its date to the uniform schedule.
+        # Counterfactual is unconstrained by the cash path/reserve at those
+        # shifted dates; it isolates execution-price timing, not feasibility.
+        uniform_btc_actual_spend_distribution = sum(
+            max(0.0, gross - fixed_fee_aud) * (1.0 - buy_friction)
+            / execution_prices[j]
+            for gross, j in zip(actual_buy_spends, indices)
+        )
+    legacy_equal_amount_uplift = (
+        100.0 * (net_btc_bought / uniform_btc_equal_buy_amount - 1.0)
+        if uniform_btc_equal_buy_amount > 0 else 0.0
+    )
+    timing_only_actual_spend_uplift = (
+        100.0 * (net_btc_bought / uniform_btc_actual_spend_distribution - 1.0)
+        if uniform_btc_actual_spend_distribution > 0 else 0.0
     )
     return {
         "model_version": "V6.0",
@@ -266,7 +287,8 @@ def simulate_weekly_cohort(
             max(0.0, cumulative_budget - total_spend) if cumulative_budget is not None else None
         ),
         "max_drawdown_pct": 100.0 * max_drawdown,
-        "same_spend_same_count_btc_timing_uplift_pct_hindsight": same_spend_timing_uplift,
+        "same_spend_same_count_btc_timing_uplift_pct_hindsight": legacy_equal_amount_uplift,
+        "same_actual_spend_distribution_uniform_dates_btc_timing_only_pct": timing_only_actual_spend_uplift,
         "research_only": True,
         "trade_executable": False,
         "execution_proxy": "next_Monday_BTC_AUD_spot_close_not_ASX_IBIT_fill",
