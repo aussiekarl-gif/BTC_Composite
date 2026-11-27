@@ -18,7 +18,9 @@ def synthetic(start="2010-01-01",end="2019-01-01",enrol="2016-01-04",rally_date=
     return btc,fx
 
 
-class HybridCalendarAdaptiveTests(unittest.TestCase):\n    def test_allocation_sweep_is_predeclared(self):\n        self.assertEqual(BASE_ALLOCATIONS,(25,50,75,80,90))
+class HybridCalendarAdaptiveTests(unittest.TestCase):
+    def test_allocation_sweep_is_predeclared(self):
+        self.assertEqual(BASE_ALLOCATIONS,(25,50,75,80,90))
     def test_predeclared_base_leg_buys_without_adaptive_trigger(self):
         btc,fx=synthetic(rally_date=None,drop=False)
         results=[run_hybrid_cohort(btc,fx,enrolment_date="2016-01-04",
