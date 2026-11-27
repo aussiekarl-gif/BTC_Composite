@@ -178,7 +178,7 @@ def run_cohort(btc_usd,usd_per_aud,*,enrolment_date,budget_aud=DEFAULT_BUDGET_AU
     }
     # Replace generic adaptive targets with exact original-budget weekly fractions,
     # retaining existing signal/size helper, 5%-capital cap and cash yield.
-    adaptive_cash=float(budget_aud) if schedule else no_trigger_cash;adaptive_btc=adaptive_spent=adaptive_gross=0.;adaptive_count=0
+    adaptive_cash=float(budget_aud) if schedule else no_trigger_cash;adaptive_btc=adaptive_spent=adaptive_gross=0.;adaptive_count=0;adaptive_largest=0.
     adaptive_dates=[];previous=enrol
     for day in schedule:
         elapsed=(day-previous).days
@@ -190,7 +190,7 @@ def run_cohort(btc_usd,usd_per_aud,*,enrolment_date,budget_aud=DEFAULT_BUDGET_AU
             adaptive_cash,day,px,target,weekly_cap=weekly_cap,buy_friction=buy_friction,fee=fee_aud)
         if units:
             adaptive_btc+=units;adaptive_spent+=outlay;adaptive_gross+=consideration
-            adaptive_count+=1;adaptive_dates.append(day)
+            adaptive_count+=1;adaptive_largest=max(adaptive_largest,outlay);adaptive_dates.append(day)
     if schedule:
         elapsed=(end-previous).days
         if elapsed>0:adaptive_cash*=((1+cash_yield)**(elapsed/365.25))
@@ -198,7 +198,7 @@ def run_cohort(btc_usd,usd_per_aud,*,enrolment_date,budget_aud=DEFAULT_BUDGET_AU
     adaptive.update({
         "btc_accumulated":adaptive_btc,"cash_remaining_aud":adaptive_cash,
         "total_cash_outlay_aud":adaptive_spent,"gross_buy_consideration_aud":adaptive_gross,
-        "buy_count":adaptive_count,"effective_vwap_aud_per_btc":adaptive_vwap,
+        "buy_count":adaptive_count,"largest_buy_outlay_aud":adaptive_largest,"effective_vwap_aud_per_btc":adaptive_vwap,
         "vwap_premium_to_cohort_low_pct":100*(adaptive_vwap/low-1) if adaptive_vwap else None,
         "terminal_btc_value_aud":adaptive_btc*float(price.loc[end]),
         "terminal_equity_aud":adaptive_cash+adaptive_btc*float(price.loc[end]),
