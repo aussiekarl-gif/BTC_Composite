@@ -393,3 +393,10 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - PR #410 code head **ca6c4c24ca5146430d9aa74120db9fa7a0b8e0b5**, latest PR head **0bb806e4bfd1aff23dd10248735c0c2b03d1689d** (documentation commits after code). Diagnostic run 27 **45979050729** success, Research DCA regression run 859 **45979050701** success, V5.9 Research Risk Validation run 562 **45979050815** success.
 - PR #410 remains draft/open/unmerged, mergeable true at last metadata poll. No Production/model/dashboard/signal/notification changes.
 - MVRV Z-score remains candidate-only; formula identified, reconstruction partial, no independent cross-source series, historical denominator/input alignment unresolved. Continue investigating only with raw data and transparent methods; do not promote or tune thresholds.
+
+
+## Continuation checkpoint — 27 Nov 2026 (Z-Score residual isolated to denominator)
+
+- Additional checks: Explore21 Z-score CSV and separate BTC Price CSV are exactly identical on all 5,551 matched dates; MVRV ratio reconstructed as market_cap_usd/realized_cap_usd from Explore21 Realized Cap CSV matches published MVRV within ~5e-7 throughout. Remaining Z-score reconstruction residual is isolated to the standard-deviation denominator calculation/input series; no attribution (our reconstruction implementation vs historical input/version mismatch) is proven.
+- Report and validation standard updated; PR #410 body updated. Latest branch head **d5e2bfb851ec16f7a401d170a48ff411813a4c24**, draft/open/unmerged, mergeable true. Docs-only commits since code head ca6c4c24; CI code head all green: diagnostic run 27, DCA regression 859, V5.9 validation 562.
+- All diagnostic metrics remain unapproved. No Production/model/dashboard/signal/notification changes. Next: only further denominator reconstruction tests with clear assumptions; otherwise move to the next reliability-qualified metric, keeping PR #410 diagnostics separate from strategy research.
