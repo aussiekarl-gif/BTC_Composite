@@ -73,11 +73,11 @@ URL: https://github.com/aussiekarl-gif/BTC_Composite/pull/407
 
 - State: open, not merged.
 - Branch: `research/aethereal-google-doh-fallback`
-- Head at last review: `711184738e8a53eddb0a7f4441b97e6156bb1bd0`
+- Head at last review: `a43b3fb0bfce845af3188dc092b04191e2d105b1`
 - Adds a separately testable Python DoH helper used by the scheduled refresh after normal DNS retries.
 - Tries Cloudflare then Google DoH, validates IPv4 A records, and uses curl `--resolve` for the original Aethereal hostname, preserving HTTPS hostname/TLS verification.
 - Adds unit coverage for resolver failover, empty answers, IPv4 validation, pinned HTTPS hostname, and parsing the downloaded CSV.
-- Regression run 45964293725 passed its `test` job at commit `d0d79255`; a few hardening/test-fixture commits followed, so current head `711184738e8a53eddb0a7f4441b97e6156bb1bd0` still needs a fresh CI result.
+- Regression run 45964387695 failed because the test CSV fixture contained escaped backslash-n text, causing the parser to see a malformed header. The fixture was corrected in current head `a43b3fb0bfce845af3188dc092b04191e2d105b1`; a fresh CI result for that exact head is still pending.
 - The live public-data smoke test failed at normal Aethereal DNS resolution and bypasses the fallback helper. A live runner download through DoH has not yet been demonstrated.
 - **Do not merge PR #407 until current-head CI passes and the fallback has suitable live integration validation.** Keep Production untouched.
 
