@@ -36,3 +36,8 @@ Purpose: prevent a candidate on-chain metric from becoming a research or Product
 | MVRV Z-Score | Independent Bitview candidate search underway | Await series discovery |
 
 **Important:** These categories are metric reliability only, not evidence that a metric is profitable, predictive, or suitable for DCA signals. No Production inputs are approved by this report.
+
+
+## MVRV Z-Score candidate status
+
+Bitview discovery returned no global MVRV Z-Score series for queries `mvrv z score`, `mvrv-z-score`, or `z score` (empty search responses). Explore21 provides its own MVRV Z-Score CSV, but there is currently no independent matching Bitview series for cross-source corroboration. Attempts to reconstruct the E21 value from market cap minus realized cap divided by rolling market-cap standard deviation (2–10-year windows) do not exactly reproduce the published E21 series; do not assume a window or formula. Status: **not comparable / formula unverified**, not an approved candidate. Continue only if a documented formula or independent matching source becomes available.
