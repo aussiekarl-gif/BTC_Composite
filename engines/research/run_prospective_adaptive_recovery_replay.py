@@ -36,7 +36,7 @@ def main():
         "fx_payload_sha256":fx_sha,
         "entry_dates":"First Monday of each calendar quarter, 2017 through 2025, full 104-week cohorts only",
         "cohort_weeks":104,
-        "validation_split":"train enrolment before 2022-01-01; holdout enrolment on/after 2022-01-01",
+        "entry_period":"pre_2022_calendar_entry vs 2022plus_calendar_entry; descriptive only, no model fitting",
         "cohorts_overlap":True,
         "cash_budget_aud":292383.0,
         "capital_reference_aud":510000.0,
