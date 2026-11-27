@@ -271,7 +271,7 @@ def summary_table(cohorts):
             btc_uplifts=[100*(float(a)/float(b)-1) for a,b in zip(sub.btc_accumulated,peers.btc_accumulated)]
             equity_uplifts=[100*(float(a)/float(b)-1) for a,b in zip(sub.terminal_equity_aud,peers.terminal_equity_aud)]
             rows.append({
-                "split":split,"policy":policy,"cohort_count":len(sub),
+                "entry_period":split,"policy":policy,"cohort_count":len(sub),
                 "median_btc_accumulated":float(sub.btc_accumulated.median()),
                 "median_vwap_aud":float(sub.effective_vwap_aud_per_btc.dropna().median()) if sub.effective_vwap_aud_per_btc.notna().any() else None,
                 "median_cash_remaining_aud":float(sub.cash_remaining_aud.median()),
@@ -282,4 +282,4 @@ def summary_table(cohorts):
                 "median_paired_equity_uplift_vs_fixed_weekly_pct":float(pd.Series(equity_uplifts).median()),
                 "cohort_win_rate_btc_vs_fixed_weekly_pct":100*sum(x>0 for x in btc_uplifts)/len(btc_uplifts),
             })
-    return pd.DataFrame(rows).sort_values(["split","policy"]).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(["entry_period","policy"]).reset_index(drop=True)
