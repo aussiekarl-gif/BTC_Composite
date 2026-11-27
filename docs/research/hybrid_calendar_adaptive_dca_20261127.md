@@ -85,13 +85,24 @@ All 96 hybrid cohort/variant outputs report **weekly cap compliance**. The 5% or
 4. Conditional reserve timing remains useful in triggered cohorts, but trigger rate is only 30% pre-2022 and 58.33% 2022+. The fixed base reduces no-trigger opportunity cost.
 5. The strategy is not approved for Production. These are descriptive overlapping cohorts, archived/revisable BTC history, deterministic cash yield, assumed fees/friction, no SMSF tax and no ASX:IBIT execution.
 
+## High-base allocation extension (80% and 90%)
+
+Workflow run **941** completed successfully and produced artifact **15195007138**. The replay remains the same 32 overlapping complete calendar cohorts and reference assumptions; all cohort/variant outputs remained weekly-cap compliant.
+
+| Entry group | Base 80% (BTC / paired BTC / paired equity) | Base 90% (BTC / paired BTC / paired equity) | Median cash left (80% / 90%) | Median timing score (80% / 90%) |
+|---|---|---|---:|---:|
+| Pre-2022 (20) | 14.621 / −20.00% / −3.79% | 16.449 / −10.00% / −1.89% | A$76,374 / A$45,682 | 136.38% / 136.35% |
+| 2022+ (12) | 3.061 / −4.34% / +6.61% | 3.444 / −2.18% / +3.29% | A$39,456 / A$27,220 | 76.34% / 82.01% |
+
+Paired medians vs 100% fixed weekly DCA, measured within each cohort. BTC cohort win rates are 20% pre-2022 and 50% in 2022+ for both 80% and 90%; final-equity wins are 35% pre-2022 and 66.67% in 2022+. The adaptive trigger rate remains 30% pre-2022 and 58.33% 2022+, with median trigger delay 69.07 and 10.57 weeks. On triggered cohorts, reserve still adds conditional BTC/final-equity uplift (80% base: +8.48%/+8.26% pre-2022 and +8.52%/+8.37% 2022+; 90% base: +4.22%/+4.11% pre-2022 and +4.25%/+4.16% 2022+), but the trigger/opportunity tradeoff remains.
+
+**Interpretation:** 90% base / 10% reserve is closer to fixed weekly DCA in BTC units than 80%, with the 2022+ paired BTC median −2.18%, and still has positive paired final-equity median (+3.29%) due to unused reserve earning cash yield in this sample. It is not an unconditional superiority result; both hybrid variants still have lower median BTC than fixed weekly and no higher cohort BTC win rate. The results are descriptive and overlapping, not independent.
+
 ## Next research
 
-Test higher fixed-base allocations **80% and 90%** (20%/10% adaptive reserve) against 75% and 100% fixed weekly DCA. The current 75% hybrid closes most of the 2022+ BTC gap but still does not beat fixed weekly; the higher-base variants quantify whether retaining a small adaptive reserve improves final equity without materially sacrificing BTC accumulation. Keep predeclared calendar entry dates, 104-week horizon, shared cap and cash-yield assumptions unchanged.
+PR #415 extends the sweep to **95% base / 5% reserve** and **100% fixed weekly DCA / zero reserve**. This quantifies whether a tiny adaptive reserve adds paired equity while preserving nearly all BTC accumulation. Same calendar cohorts, 104-week horizon, shared cap, price/FX series, cash-yield and friction assumptions. PR #415 is stacked on #414 and remains draft/unmerged.
 
 ## CI
 
-- Existing Research DCA regression suite: passed.
-- Five synthetic hybrid tests: passed.
-- Historical 32-cohort hybrid replay: passed and artifact uploaded.
-- Public-source smoke test: Aethereal upstream fetch failed; unrelated to the hybrid replay.
+- Research DCA regression run **941**: passed, including hybrid tests and historical replay artifact generation/upload.
+- Public-source smoke: Aethereal upstream fetch failed; unrelated to the hybrid replay.
