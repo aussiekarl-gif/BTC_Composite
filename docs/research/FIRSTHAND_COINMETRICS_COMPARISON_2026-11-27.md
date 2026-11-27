@@ -94,3 +94,15 @@ At the 2020-03-12 outlier, Firsthand is USD 6,770.48; Explore21 Bitstamp close i
 - New cross-source workflow run 45970588864 and matched portfolio workflow run 45970588827 were queued on commit 5a045ba0c6a06332b6418cffac6e022eca1e38be; results pending at this checkpoint.
 - Provider contact page publishes a direct email address for the person running Firsthand. We have not contacted them. Key questions for a provider response: underlying BTC/USD venue(s); exact daily UTC boundary/time; close/last/average/VWAP definition; whether historical data is backfilled or revised; and explanation of the 2017–2021 and 2020-03-12 outliers.
 - Until these are answered and the lag diagnostic is reviewed, Firsthand spot prices remain research-only and unapproved for model inputs.
+
+
+### Date-lag diagnostic results — completed 27 Nov 2026
+
+- Workflow run **45970691684** passed; artifact **15184802112** downloaded and inspected. Date offsets tested -2 to +2 days, without altering the source series.
+- Best mean alignment is a comparator offset of -1 day (Firsthand date D compared with Coin Metrics/Bitstamp date D-1). On 3,617 strategy-era observations:
+  - Coin Metrics mean APE improves from 1.936% to 1.591%; median 1.139% to 0.886%; p95 6.593% to 5.634%. Maximum falls from 36.52% to 24.81%.
+  - Explore21 Bitstamp mean APE improves from 1.954% to 1.573%; median 1.141% to 0.852%; p95 6.695% to 5.616%. Maximum falls from 39.84% to 27.84%.
+- This indicates that a one-day date-label/close-time mismatch may explain part of the price differences. It does not explain the major outliers. At offset -1, the largest Coin Metrics discrepancy is Firsthand 2020-03-13 USD 6,189.76 vs Coin Metrics 2020-03-12 USD 4,959.31 (24.81%); Bitstamp 2020-03-12 close USD 4,841.67 (27.84%). Next largest include Firsthand 2018-02-06 USD 8,212.81 vs Coin Metrics 2018-02-05 USD 6,849.54 (19.90%).
+- The same-date 2020-03-12 Firsthand value was USD 6,770.48 vs Coin Metrics USD 4,959.31 (36.52%) and Bitstamp USD 4,841.67 (39.84%). A one-day alignment improves but does not remove the crash-day anomaly.
+- Interpretation: date convention mismatch is plausible, but provider close methodology and source venue remain undisclosed. Do not relabel or shift Firsthand data to force a match; obtain the exact UTC boundary and underlying source from Firsthand first.
+- Follow-up matched V6.0 price-source replay run **45970691675** passed. Research DCA regression run **45970639038** passed. The lag diagnostic is comparison-only and does not change any strategy input.
