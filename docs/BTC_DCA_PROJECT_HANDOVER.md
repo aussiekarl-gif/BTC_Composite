@@ -1,6 +1,6 @@
 # BTC DCA Project Handover
 
-Last updated: 2026-11-27 (Brisbane)
+Last updated: 2026-11-27 (Brisbane; session update 08:22 UTC)
 
 This file is the durable starting point for future ChatGPT sessions and human contributors. Update it when material decisions, validation results, or project status change. The repository and committed evidence are authoritative; chat summaries are secondary.
 
@@ -73,13 +73,15 @@ URL: https://github.com/aussiekarl-gif/BTC_Composite/pull/407
 
 - State: open, not merged.
 - Branch: `research/aethereal-google-doh-fallback`
-- Head at last review: `a43b3fb0bfce845af3188dc092b04191e2d105b1`
+- Head at last review: `ab96ce29ad23c769c25e161ddfebe487e0e0bd09`
 - Adds a separately testable Python DoH helper used by the scheduled refresh after normal DNS retries.
 - Tries Cloudflare then Google DoH, validates IPv4 A records, and uses curl `--resolve` for the original Aethereal hostname, preserving HTTPS hostname/TLS verification.
 - Adds unit coverage for resolver failover, empty answers, IPv4 validation, pinned HTTPS hostname, and parsing the downloaded CSV.
-- Regression run 45964387695 failed because the test CSV fixture contained escaped backslash-n text, causing the parser to see a malformed header. The fixture was corrected in current head `a43b3fb0bfce845af3188dc092b04191e2d105b1`; a fresh CI result for that exact head is still pending.
-- The live public-data smoke test failed at normal Aethereal DNS resolution and bypasses the fallback helper. A live runner download through DoH has not yet been demonstrated.
-- **Do not merge PR #407 until current-head CI passes and the fallback has suitable live integration validation.** Keep Production untouched.
+- Regression run 45964857234: `test` job passed, including the new DoH fallback tests, matched 200WMA research, and V6.0 path/cost sensitivity report. V5.9 validation run 45964857301 passed all steps.
+- Live smoke run 45964857234: Explore21 and Coin Metrics retrieved through 26 Nov. Direct Aethereal fetch failed with a normal DNS resolution error; the explicit DoH fallback then received DNS status 3 (NXDOMAIN) from both Cloudflare and Google for `dataset.aethereal.top`. No HTTPS download was attempted.
+- Public web-indexed Aethereal dataset pages still describe the Bitcoin Network Daily dataset through 24 Nov 2026, but this does not prove the download hostname currently resolves.
+- Current branch head `ab96ce29ad23c769c25e161ddfebe487e0e0bd09` adds `continue-on-error: true` to the direct Aethereal smoke fetch so independent source checks still run. Fresh CI for this head is pending.
+- **Do not merge PR #407 until current-head CI passes and the source hostname is restored or a verified alternative endpoint is available.** Keep Production untouched.
 
 ## Session continuation protocol
 
