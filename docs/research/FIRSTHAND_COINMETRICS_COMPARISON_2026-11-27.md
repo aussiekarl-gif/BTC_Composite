@@ -30,11 +30,11 @@ Recent 90-day mean APE: BTC price 0.818%, daily fees 1.854%, MVRV 0.0000017%, re
 
 ## Next validation
 
-A follow-up workflow now compares Firsthand's 200WMA to a 1,400-calendar-day simple moving average independently calculated from Coin Metrics PriceUSD. Run `45967448045` was in progress when this report was written. After it completes, inspect the artifact and add its results.
+The corrected follow-up workflow run `45967697247` passed and its artifact (`15183821578`) was downloaded and inspected. Firsthand 200WMA vs a 1,400-observation rolling simple mean of Coin Metrics PriceUSD: 3,679 overlaps from 2016-10-31 to 2026-11-26; mean APE 0.274%, median 0.224%, p95 0.669%, maximum 1.773%; recent 90-day mean 0.0130%. This is a strong independent consistency result, although it still depends on the Coin Metrics price daily boundary and a matched 1,400-observation SMA.
 
 Then investigate worst price/fee dates against timestamped provider observations and another independent public source. Keep missing dates unfilled. Do not adopt Firsthand as a production or V6.0 input based on these results.
 
 
 ## 200WMA comparison correction
 
-The first version of the cross-source workflow (runs 45967448045 / 45967577757) completed successfully but its JSON artifact did not contain the 200WMA comparison despite fetching the Firsthand series. This was a reporting-code omission, not a data failure. The comparison builder has now been corrected to compare Firsthand `ma200w` with a 1,400-observation rolling mean of Coin Metrics PriceUSD. A new workflow run is required before reporting any 200WMA result. Do not interpret the earlier workflow success as validation of the independent 200WMA calculation.
+The first version of the cross-source workflow (runs 45967448045 / 45967577757) completed successfully but its JSON artifact did not contain the 200WMA comparison despite fetching the Firsthand series. This was a reporting-code omission, not a data failure. The comparison builder was corrected, and the follow-up run `45967697247` passed with the 200WMA metric present in artifact `15183821578`. Results are recorded above; do not use the earlier runs as evidence for the independent 200WMA calculation.
