@@ -160,3 +160,14 @@ Largest post-2013 gaps with price context:
 | 2013-01-04 | 87.77% | 81.4346% | 6.3354 | 13.19 | 13.15 | -0.30% |
 
 The largest 2015 and 2017 disagreements coincide with sizable spot-price differences; however, 2013 outliers occur with close spot-price agreement, showing price mismatch is not a universal explanation. Supply-in-profit calculation may differ in price assignment, UTXO cohorts, exclusions, supply accounting, or data provenance; these are hypotheses only. No adjustment or source ranking is recommended. Keep the metric provisional.
+
+
+## Definition-level alignment: Supply in Profit (source documentation review)
+
+Official definitions indicate that these two series are broadly the same BTC-weighted UTXO concept, rather than output-count profitability:
+- Explore21 method v2: sum the BTC amount of unspent coins whose last-move daily close is below the current daily close, divided by all supply; pre-price-history coins (before 18 Aug 2011) have zero cost basis and count as profitable. Explore21 uses daily Bitstamp closes and six-block confirmation buffer.
+- Bitview/BRK: all UTXOs; creation/last-move price at or below the sampled spot price; `supply_in_profit_share` is BTC supply in profit divided by total supply for the cohort, as percent. Its day1 uses final-block/day sampling; price history changes source regime and becomes chain-derived after block 340,000.
+
+This resolves one potential comparability concern: both are coin-weighted, all-UTXO supply-profit shares. But several exact convention differences remain: strict < vs <= at break-even, daily-close vs final-block sample, price basis and history, safe-block cutoff vs sample depth, and potential denominator/supply handling. These can affect threshold-edge UTXOs and volatile dates. The modest price-error association with the supply-profit gap is evidence that source price matters sometimes, not proof that it explains the residuals. Metric remains provisional until conventions/data are reconciled and stress-date tests are satisfactory.
+
+Official method references: Explore21 percent-supply-in-profit page https://charts.explore21.com/bitcoin-percent-supply-in-profit and FAQ https://charts.explore21.com/faq; Bitview series metadata captured in raw artifact `bitview/series_info/supply_in_profit_share.json` and Terms https://bitview.space/terms/.
