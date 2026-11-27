@@ -462,3 +462,10 @@ In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/
 - Adaptive median VWAP premium to the future cohort low, conditional on buying, ~25.70% pre-2022 / 25.09% 2022+. Retrospective timing score only, not forecast accuracy. 
 - Report `docs/research/prospective_adaptive_recovery_replay_20261127.md` on PR #412. Current recommendation: no Production change. For BTC accumulation, fixed weekly remains the stronger unconditional baseline in this sample; next research test a hybrid fixed calendar DCA plus adaptive reserve (25/50/75% base allocation), predeclared cohort dates and same cap/cash assumptions.
 - No Production/dashboard/live signal/notifications/portfolio changes. PR #412 remains draft/unmerged; summary-enhancement CI rerun pending.
+
+
+## Continuation checkpoint — 27 Nov 2026 (calendar replay final artifact and CI confirmation)
+
+- Current PR #412 report: `docs/research/prospective_adaptive_recovery_replay_20261127.md` on branch. Final cohort CSV from workflow run **918** is byte-identical to earlier 907/908 artifacts. Research DCA test job run 918 passed including the 8 synthetic tests and 32-cohort historical runner. Documentation confirmation run **919** pending; Aethereal public-data smoke failure is upstream and separate.
+- Additional paired results for the below-WMA-only 2.5% baseline: active in 6/20 pre-2022 and 7/12 2022+ cohorts, BTC wins vs fixed weekly 0/6 and 0/7 (conditional median paired BTC uplift −21.00% / −28.94%). Conditional final-equity wins 6/6 and 5/7 due idle cash/yield.
+- Summary metric extension now reports conditional cohort win rates for triggered adaptive/below-WMA cohorts, not only unconditional medians. Final decision remains: fixed weekly DCA better for unconditional BTC accumulation; adaptive recovery adds conditional upside but is not a standalone robust replacement. Next research: hybrid fixed base + adaptive reserve, 25/50/75% base allocation.
