@@ -3,9 +3,10 @@ name: Cowen on-chain daily source refresh
 on:
   schedule:
     # Redundant daily windows: GitHub schedule may be delayed or dropped.
-    - cron: "17 4 * * *"
-    - cron: "17 5 * * *"
-    - cron: "17 6 * * *"
+    # Brisbane (AEST): 09:00, 10:00 and 11:00; UTC 23:00, 00:00, 01:00.
+    - cron: "0 23 * * *"
+    - cron: "0 0 * * *"
+    - cron: "0 1 * * *"
   workflow_dispatch:
   push:
     branches: [main]
