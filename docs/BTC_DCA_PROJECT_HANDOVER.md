@@ -1,6 +1,6 @@
 # BTC DCA Project Handover
 
-Last updated: 2026-11-27 (Brisbane; session update 08:22 UTC)
+Last updated: 2026-11-27 (Brisbane; session update 08:25 UTC)
 
 This file is the durable starting point for future ChatGPT sessions and human contributors. Update it when material decisions, validation results, or project status change. The repository and committed evidence are authoritative; chat summaries are secondary.
 
@@ -73,15 +73,16 @@ URL: https://github.com/aussiekarl-gif/BTC_Composite/pull/407
 
 - State: open, not merged.
 - Branch: `research/aethereal-google-doh-fallback`
-- Head at last review: `ab96ce29ad23c769c25e161ddfebe487e0e0bd09`
+- Head at last review: `e9cdbd592380f0ba3a11f9b2f0795acb7d7d403c`
 - Adds a separately testable Python DoH helper used by the scheduled refresh after normal DNS retries.
 - Tries Cloudflare then Google DoH, validates IPv4 A records, and uses curl `--resolve` for the original Aethereal hostname, preserving HTTPS hostname/TLS verification.
 - Adds unit coverage for resolver failover, empty answers, IPv4 validation, pinned HTTPS hostname, and parsing the downloaded CSV.
-- Regression run 45964857234: `test` job passed, including the new DoH fallback tests, matched 200WMA research, and V6.0 path/cost sensitivity report. V5.9 validation run 45964857301 passed all steps.
-- Live smoke run 45964857234: Explore21 and Coin Metrics retrieved through 26 Nov. Direct Aethereal fetch failed with a normal DNS resolution error; the explicit DoH fallback then received DNS status 3 (NXDOMAIN) from both Cloudflare and Google for `dataset.aethereal.top`. No HTTPS download was attempted.
-- Public web-indexed Aethereal dataset pages still describe the Bitcoin Network Daily dataset through 24 Nov 2026, but this does not prove the download hostname currently resolves.
-- Current branch head `ab96ce29ad23c769c25e161ddfebe487e0e0bd09` adds `continue-on-error: true` to the direct Aethereal smoke fetch so independent source checks still run. Fresh CI for this head is pending.
-- **Do not merge PR #407 until current-head CI passes and the source hostname is restored or a verified alternative endpoint is available.** Keep Production untouched.
+- Regression run 45965169468: `test` and `v60-public-data-smoke` jobs both completed successfully. The test job passed fallback unit tests, matched 200WMA research, and V6.0 path/cost sensitivity report. V5.9 validation run 45965169446 passed.
+- Important: the smoke job is green because the direct Aethereal and DoH steps are explicitly `continue-on-error`. Direct Aethereal fetch failed normal DNS; DoH received DNS status 3 (NXDOMAIN) from both Cloudflare and Google. No CSV was downloaded.
+- Explore21 and Coin Metrics returned observations through 26 Nov. Open Bitcoin Metrics CDD returned 6,533 rows through 22 Nov.
+- Search-indexed Aethereal pages advertise the Bitcoin Network Daily CSV through 24 Nov, but web page retrieval returned 502 and runner DoH checks returned NXDOMAIN. Treat search-indexed pages as unverified cache, not live availability.
+- Firsthand Bitcoin is a possible replacement/cross-check: its public API lists daily hashrate, difficulty, fees, transactions, miner revenue, Puell, realised price and MVRV, free with attribution. It remains a candidate pending methodology and historical comparison.
+- **Keep PR #407 open and unmerged.** The helper tests pass, but Aethereal itself is not recovered. No Production changes.
 
 ## Session continuation protocol
 
