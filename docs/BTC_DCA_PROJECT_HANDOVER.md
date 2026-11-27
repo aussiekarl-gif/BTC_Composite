@@ -124,3 +124,13 @@ At the end of each substantial work session, update this file or add a dated che
 6. Any user decision that changes project constraints.
 
 In a new ChatGPT conversation, begin with: "Continue BTC DCA project. Read docs/BTC_DCA_PROJECT_HANDOVER.md and inspect the current GitHub state before making changes."
+
+### Firsthand cross-source comparison (27 Nov 2026)
+
+- Added research-only comparator `engines/research/firsthand_cross_source_validation.py` and workflow `.github/workflows/firsthand_cross_source_validation.yml` on PR #409.
+- First completed comparison workflow run 45967307751 passed; artifact 15182853419 downloaded and inspected. Full results in `docs/research/FIRSTHAND_COINMETRICS_COMPARISON_2026-11-27.md` on the PR branch.
+- Same-UTC-date comparison 2013-01-01 to 2026-11-26: BTC price Firsthand vs Coin Metrics PriceUSD mean absolute percentage error 2.235% (median 1.236%, p95 7.929%, max 92.855%); recent 90-day mean 0.818%. Daily fees vs FeeTotNtv mean 1.570% (median 1.141%, p95 4.023%, max 95.380%).
+- Firsthand MVRV is effectively identical to Coin Metrics CapMVRVCur (mean difference ~0.0000013%), so it is not an independent MVRV check and likely shares upstream data or methodology. Firsthand realised price vs Coin Metrics PriceUSD / CapMVRVCur proxy mean difference 1.740%; this proxy assumes compatible supply basis and is not a direct CM realised-price series.
+- Historical price outliers: 2013-04-11 ~92.86%, 2020-03-12 ~36.52%; fee outliers: 2014-09-07 ~95.38%, 2024-04-19 ~34.99%. Need investigate date/close conventions and possible source errors. Firsthand BTC price repeated USD 59,171.86 on 25 and 26 Nov 2026 in this snapshot; investigate freshness.
+- A follow-up comparator now tests Firsthand 200WMA against a 1,400-calendar-day SMA from Coin Metrics PriceUSD. Run 45967448045 was in progress at last check; latest head then 9f28e3eb81702ef2f9c93ca64a71525af5433a94. Do not approve Firsthand for any model input until this check and outlier/freshness analysis are complete.
+- PR #409 remains draft; no Production/V6.0 model inputs or notifications changed.
