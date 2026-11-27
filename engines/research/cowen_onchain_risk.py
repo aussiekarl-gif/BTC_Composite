@@ -350,7 +350,7 @@ def build_public_raw_candidates(data_dir):
         result = result.join(
             fees[["fees_btc", "price_usd", "miners_revenue_usd"]].rename(
                 columns={
-                    "fees_btc": "transaction_fees_btc_candidate",
+                    "fees_btc": "transaction_fees_btc_aethereal",
                     "price_usd": "aethereal_price_usd",
                     "miners_revenue_usd": "aethereal_miner_revenue_usd",
                 }
@@ -370,10 +370,33 @@ def build_public_raw_candidates(data_dir):
             "PriceUSD": "coinmetrics_price_usd",
             "SplyCur": "coinmetrics_supply_btc",
         }
+        if "FeeTotNtv" in cm.columns:
+            cm_columns.append("FeeTotNtv")
+            cm_rename["FeeTotNtv"] = "transaction_fees_btc_coinmetrics"
         if "RevAllTimeUSD" in cm.columns:
             cm_columns.append("RevAllTimeUSD")
             cm_rename["RevAllTimeUSD"] = "coinmetrics_thermocap_crosscheck"
         result = result.join(cm[cm_columns].rename(columns=cm_rename), how="outer")
+    # Prefer Aethereal where available; use Coin Metrics native BTC fees as a
+    # transparent fallback on missing dates. Preserve both source series and a
+    # provenance label so the mixed-source candidate can be audited.
+    aethereal_fees = result.get(
+        "transaction_fees_btc_aethereal", pd.Series(np.nan, index=result.index)
+    )
+    coinmetrics_fees = result.get(
+        "transaction_fees_btc_coinmetrics", pd.Series(np.nan, index=result.index)
+    )
+    result["transaction_fees_btc_candidate"] = aethereal_fees.combine_first(
+        coinmetrics_fees
+    )
+    result["transaction_fees_btc_source"] = pd.Series(
+        np.where(
+            aethereal_fees.notna(), "Aethereal",
+            np.where(coinmetrics_fees.notna(), "Coin Metrics Community", "Unavailable"),
+        ),
+        index=result.index,
+        dtype="object",
+    )
     if "transaction_fees_btc_candidate" in result and "coinmetrics_price_usd" in result:
         result["transaction_fees_usd_coinmetrics_close"] = (
             result["transaction_fees_btc_candidate"] * result["coinmetrics_price_usd"]
