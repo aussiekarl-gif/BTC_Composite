@@ -178,3 +178,23 @@ Official method references: Explore21 percent-supply-in-profit page https://char
 A raw, no-key Community API request for BTC `NUPL` at daily frequency was tested by diagnostic run 23 (code head 7ad93dce9898a1fe9c04841246e22f08bc157b61). The endpoint returned HTTP 403 with the API message: metric `NUPL` at frequency `1d` for asset `btc` is not available with the supplied credentials. The failed response was preserved in the diagnostic report; no NUPL data file was created. Coin Metrics Community does expose MVRV-related inputs used for a derived NUPL, but the direct metric is unavailable on this tested entitlement. Therefore the derived Coin Metrics NUPL would not provide an independent metric input from MVRV; existing independent provider (Bitview) comparison remains the direct cross-check.
 
 Run 23 diagnostic workflow passed and artifact **15187578852** was inspected. The new code keeps this endpoint test visible in future diagnostics so availability changes can be detected, but it is not a dependency and no signal or model input is created. Reference: Coin Metrics Community/API access documentation https://docs.coinmetrics.io/ and https://docs.coinmetrics.io/community-data.
+
+
+## MVRV Z-Score formula reconstruction follow-up (27 Nov)
+
+Official Explore21 documentation now explicitly states method v1: (Market Cap − Realized Cap) divided by the **expanding sample standard deviation** of daily Market Cap from 18 Aug 2011 through each observation; it starts after 30 days of history. Bitview has no independent matching series.
+
+I reconstructed the formula from Explore21's captured realized-cap CSV (`market_cap_usd`, `realized_cap_usd`) using expanding standard deviation with sample denominator (ddof=1), calendar joined to the published Z-score. Results:
+
+| Period | n | Mean absolute Z difference | Median | P95 | Max |
+|---|---:|---:|---:|---:|---:|
+| Full overlap | 5,551 | 0.008913 | 0.004492 | 0.032303 | 0.472238 |
+| 2013+ | 5,078 | 0.008951 | 0.004411 | 0.034100 | 0.472238 |
+| 2017+ | 3,617 | 0.007627 | 0.004607 | 0.029446 | 0.084872 |
+| 2020+ | 2,522 | 0.005250 | 0.004306 | 0.017314 | 0.032713 |
+| 2024+ | 1,061 | 0.004021 | 0.004508 | 0.007297 | 0.008448 |
+
+
+The formula reconstruction matches the first published observations to floating-point precision and the latest observation (26 Nov 2026) within ~0.0000004. It is also close in recent history, but notable unexplained divergence remains around the 2013 cycle peak (largest discrepancy 0.472238 on 30 Nov 2013) and around 2017. Example 2013-11-30 reconstructed 7.5503 vs published 7.0781; 2017-12-17 reconstructed 8.2407 vs published 8.3180. This suggests the stated formula is correct but the captured market-cap/realized-cap inputs or historical revisions are not fully aligned with the published Z-score series. The earlier exploratory 2–10-year rolling-window attempts were not the correct documented formula; this expanding-window reconstruction supersedes that interpretation.
+
+**Status:** formula identified and partially reproduced; historical input/version alignment unresolved; no independent cross-source; not approved as signal input. Official formula source: https://charts.explore21.com/bitcoin-mvrv-z-score and method comparison https://charts.explore21.com/mvrv-vs-mvrv-z-score.
