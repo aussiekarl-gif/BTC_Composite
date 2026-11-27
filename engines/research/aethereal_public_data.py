@@ -20,12 +20,9 @@ CSV_URL = "https://dataset.aethereal.top/files/bitcoin-network-daily.csv"
 REQUIRED_COLUMNS = ("fees_btc", "price_usd", "miners_revenue_usd", "transactions")
 
 
-def fetch_daily_btc_network(*, session=None, timeout=15):
-    """Fetch the raw daily network CSV and validate dates/fee units."""
-    client = session or requests.Session()
-    response = client.get(CSV_URL, timeout=timeout)
-    response.raise_for_status()
-    frame = pd.read_csv(StringIO(response.text))
+def parse_daily_btc_network(csv_text, *, source_url=CSV_URL):
+    """Parse and validate Aethereal CSV text, regardless of how it was retrieved."""
+    frame = pd.read_csv(StringIO(csv_text))
     if "date" not in frame.columns:
         raise ValueError("Aethereal Bitcoin Network Daily CSV has no date column")
     missing = set(REQUIRED_COLUMNS) - set(frame.columns)
@@ -40,8 +37,16 @@ def fetch_daily_btc_network(*, session=None, timeout=15):
     for column in frame.columns:
         frame[column] = pd.to_numeric(frame[column], errors="coerce")
     frame.attrs["provider"] = "Aethereal Data"
-    frame.attrs["source_url"] = CSV_URL
+    frame.attrs["source_url"] = source_url
     return frame
+
+
+def fetch_daily_btc_network(*, session=None, timeout=15):
+    """Fetch the raw daily network CSV and validate dates/fee units."""
+    client = session or requests.Session()
+    response = client.get(CSV_URL, timeout=timeout)
+    response.raise_for_status()
+    return parse_daily_btc_network(response.text)
 
 
 def save_snapshot(frame, output_csv):
@@ -81,8 +86,15 @@ def main():
         "--output",
         default="data/research/cowen_onchain/bitcoin_network_daily_aethereal.csv",
     )
+    parser.add_argument(
+        "--input-csv",
+        help="Use an already-downloaded CSV (for example, a DNS-over-HTTPS fallback).",
+    )
     args = parser.parse_args()
-    frame = fetch_daily_btc_network()
+    if args.input_csv:
+        frame = parse_daily_btc_network(Path(args.input_csv).read_text(encoding="utf-8"))
+    else:
+        frame = fetch_daily_btc_network()
     sidecar = save_snapshot(frame, args.output)
     print(json.dumps({
         "rows": len(frame),
