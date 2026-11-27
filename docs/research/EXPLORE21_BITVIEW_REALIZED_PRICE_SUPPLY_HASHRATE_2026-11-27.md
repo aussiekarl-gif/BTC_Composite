@@ -229,3 +229,44 @@ The raw API changelog capture succeeded (HTTP 200) and reports: metric id `bitco
 | 2026-11-26 | Latest captured day | 0.237797 | 0.237797 | 0.0000004 |
 
 The reconstruction is close at most later-cycle anchors, particularly the 2022 low, 2025 top, and current cycle low; the 2013 top remains the largest anchor mismatch, and 2017 is a smaller residual. This pattern supports partial formula reconstruction, not independent provider corroboration or signal approval.
+
+
+## BlockHorizon MVRV Z-Score and price cross-source comparison (run 34)
+
+Raw capture: user-confirmed BlockHorizon MVRV Z-score export from immutable repository commit `a0c63a680b345dc5dd0f904c3a0bc68ca7f033bb`; artifact **15188303737**. Calendar-aligned (UTC dates; no shifting) with Explore21 price and Z-score CSVs. BH coverage 2010-11-01–2026-10-05; matched overlap 5,499 dates (2011-09-16–2026-10-05).
+
+### BTC price series
+
+| Period | n | Median APE | P95 APE | Max APE |
+|---|---:|---:|---:|---:|
+| Full matched | 5,499 | 0.000% | 0.000% | 42.092% |
+| 2013+ | 5,026 | 0.000% | 0.000% | 0.000% |
+| 2017+ | 3,565 | 0.000% | 0.000% | 0.000% |
+
+The two BTC price columns are exactly equal on every matched date from 1 Jan 2013 onward. The largest price differences are early (2011–2012), with source-history divergence. This is especially relevant because the V6.0 accumulation backtest reads the BH export's **Price** column only; it does not use the MVRV Z-score column as a signal. Since V6.0 starts execution in 2017, the BTC/USD input prices match Explore21 exactly over its tested period.
+
+### MVRV Z-Score series
+
+| Period | n | Mean signed difference (BH−E21) | Mean absolute difference | Median absolute difference | P95 absolute difference | Max |
+|---|---:|---:|---:|---:|---:|---:|
+| Full | 5,499 | +0.01938 | 0.29171 | 0.09060 | 1.58776 | 3.93879 |
+| 2013+ | 5,026 | +0.16210 | 0.17828 | 0.07955 | 0.64709 | 3.93879 |
+| 2017+ | 3,565 | +0.12326 | 0.12630 | 0.08382 | 0.44319 | 1.31398 |
+| 2020+ | 2,470 | +0.09627 | 0.09782 | 0.07925 | 0.30496 | 0.57479 |
+| 2024+ | 1,009 | +0.08203 | 0.08203 | 0.08848 | 0.13974 | 0.16143 |
+
+BlockHorizon Z-score is generally higher than Explore21, especially around 2013 cycle peaks. Price series are exactly matched from 2013, so the Z-score differences are not explained by BTC/USD input-price differences in that period. Provider methodology, realized-cap/supply convention, or standard-deviation denominator differences remain unresolved. BH formula/method page was not independently captured; no source ranking or approval.
+
+### Threshold classification (above level)
+
+| Threshold | 2013+ daily agreement | Jaccard overlap of above-threshold dates | 2017+ Jaccard | 2020+ Jaccard |
+|---|---:|---:|---:|---:|
+| 0 | 100.00% | 1.000 | 1.000 | 1.000 |
+| 1 | 96.82% | 0.946 | 0.960 | 0.954 |
+| 3 | 96.64% | 0.769 | 0.871 | 0.802 |
+| 5 | 97.67% | 0.573 | 0.571 | 0.656 |
+| 7 | 99.34% | 0.468 | 0.636 | 0.000 |
+
+At Z-score ≥7, 2020+ has 3 BH days and zero Explore21 days (Jaccard 0). The high daily agreement at extreme thresholds is misleading because the above-threshold sets are small. A threshold rule must be source-specific; do not transfer levels or candidate thresholds across providers.
+
+**Reliability conclusion:** the BlockHorizon price series is strongly corroborated by Explore21 from 2013 onward (and exactly matches the V6.0 start period). The BH MVRV Z-score is a different/unreconciled series; high thresholds are provider-sensitive. V6.0 price-source reliability is improved, but no MVRV Z-score signal is approved.
