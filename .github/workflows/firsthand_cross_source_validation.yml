@@ -1,0 +1,35 @@
+name: Firsthand cross-source validation
+
+on:
+  push:
+    branches: [research/firsthand-api-validation]
+    paths:
+      - "engines/research/firsthand_cross_source_validation.py"
+      - ".github/workflows/firsthand_cross_source_validation.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "engines/research/firsthand_cross_source_validation.py"
+      - ".github/workflows/firsthand_cross_source_validation.yml"
+  workflow_dispatch:
+
+jobs:
+  compare-independent-sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install research dependencies
+        run: pip install pandas requests
+      - name: Compare Firsthand with Coin Metrics on matched UTC dates
+        run: python -m engines.research.firsthand_cross_source_validation --output artifacts/firsthand/cross_source_comparison.json
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: firsthand-cross-source-comparison
+          path: artifacts/firsthand/cross_source_comparison.json
+          if-no-files-found: error
+          retention-days: 30
