@@ -8,7 +8,7 @@
   "frequency": "daily UTC",
   "license": "CC BY 4.0",
   "attribution": "Llanos, D. R., Open Bitcoin Metrics, metric obm_cdd_btcxdays_daily, https://arxiv.org/abs/2607.03124",
-  "retrieved_at_utc": "2026-11-28T07:49:23.591803+00:00",
+  "retrieved_at_utc": "2026-11-28T08:57:11.224243+00:00",
   "first_date_utc": "2009-01-03",
   "last_date_utc": "2026-11-23",
   "observations": 6534,
